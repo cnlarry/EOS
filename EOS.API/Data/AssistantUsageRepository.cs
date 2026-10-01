@@ -8,6 +8,12 @@ public sealed record DailyUsage(int Requests, long PromptTokens, long Completion
 /// <summary>当日回复延迟聚合（毫秒）：样本数 / 均值 / P95，供治理看板观察延迟水位。</summary>
 public sealed record LatencySummary(int Samples, double AvgMs, double P95Ms);
 
+/// <summary>按模型的用量（模型管理页用）：<paramref name="ModelName"/> 取消息落库时的实际值。</summary>
+public sealed record ModelUsage(string ModelName, DailyUsage Usage, DateTimeOffset LastUsedAt);
+
+/// <summary>按 UTC 自然日的用量（趋势）。</summary>
+public sealed record DayUsage(DateTime Day, DailyUsage Usage);
+
 public interface IAssistantUsageRepository
 {
     Task<DailyUsage> GetUserDailyUsageAsync(string userId, DateTimeOffset dayStartUtc, CancellationToken token);
@@ -30,6 +36,19 @@ public interface IAssistantUsageRepository
     Task SettleAsync(
         string userId, DateTimeOffset dayStartUtc, long reserveMicro, long actualMicro,
         bool completed, CancellationToken token);
+
+    /// <summary>
+    /// 按模型聚合用量（自 <paramref name="sinceUtc"/> 起）。
+    ///
+    /// <para>
+    /// <c>ASSISTANT_MESSAGE.MODEL_NAME</c> 一直有列、也一直在写，但**从未被聚合过**——
+    /// "换个模型之后用量怎么变的"因此无从回答。这个查询就是补这个洞。
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<ModelUsage>> GetPerModelUsageAsync(DateTimeOffset sinceUtc, CancellationToken token);
+
+    /// <summary>按 UTC 自然日聚合（趋势），只含有回复的日期。</summary>
+    Task<IReadOnlyList<DayUsage>> GetDailyTrendAsync(DateTimeOffset sinceUtc, CancellationToken token);
 }
 
 /// <summary> 用量聚合：复用 ASSISTANT_MESSAGE 已记录的 token/耗时，按 UTC 自然日聚合。</summary>
@@ -103,6 +122,69 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
         {
             result.Add((reader.GetString(0),
                 new(Convert.ToInt32(reader.GetValue(1)), Convert.ToInt64(reader.GetValue(2)), Convert.ToInt64(reader.GetValue(3)))));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<ModelUsage>> GetPerModelUsageAsync(DateTimeOffset sinceUtc, CancellationToken token)
+    {
+        // 没记模型名的历史消息归成一档：宁可显示"(未记录)"，也不要让它们从看板上凭空消失
+        const string sql = """
+            SELECT ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)') AS MODEL_NAME,
+                   COUNT_BIG(1),
+                   ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0),
+                   ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0),
+                   ISNULL(MAX(m.CREATED_AT), SYSUTCDATETIME())
+            FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
+            WHERE m.ROLE = 2 AND m.CREATED_AT >= @Since
+            GROUP BY ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)')
+            ORDER BY ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0)
+                     + ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0) DESC;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Since", SqlDbType.DateTime2).Value = sinceUtc.UtcDateTime;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<ModelUsage>();
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new ModelUsage(
+                reader.GetString(0),
+                new(Convert.ToInt32(reader.GetValue(1)),
+                    Convert.ToInt64(reader.GetValue(2)), Convert.ToInt64(reader.GetValue(3))),
+                new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc))));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<DayUsage>> GetDailyTrendAsync(DateTimeOffset sinceUtc, CancellationToken token)
+    {
+        // 按 UTC 自然日切分，与其它用量口径一致（别在这里悄悄换成服务器本地时区）
+        const string sql = """
+            SELECT CAST(m.CREATED_AT AS date) AS USAGE_DAY,
+                   COUNT_BIG(1),
+                   ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0),
+                   ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0)
+            FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
+            WHERE m.ROLE = 2 AND m.CREATED_AT >= @Since
+            GROUP BY CAST(m.CREATED_AT AS date)
+            ORDER BY USAGE_DAY;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Since", SqlDbType.DateTime2).Value = sinceUtc.UtcDateTime;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<DayUsage>();
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new DayUsage(
+                reader.GetDateTime(0),
+                new(Convert.ToInt32(reader.GetValue(1)),
+                    Convert.ToInt64(reader.GetValue(2)), Convert.ToInt64(reader.GetValue(3)))));
         }
 
         return result;

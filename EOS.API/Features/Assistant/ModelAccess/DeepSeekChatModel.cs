@@ -79,6 +79,16 @@ public sealed class DeepSeekChatModel(
             ["stream"] = true,
             ["stream_options"] = new { include_usage = true },
         };
+        // 只在配了才带上：传 null 会被部分厂商当成非法值，而"不传"才是各家一致认可的"用默认"
+        if (config.Temperature is { } temperature)
+        {
+            payload["temperature"] = temperature;
+        }
+
+        if (config.MaxTokens is { } maxTokens)
+        {
+            payload["max_tokens"] = maxTokens;
+        }
         if (tools is { Count: > 0 })
         {
             payload["tools"] = tools.Select(t => new

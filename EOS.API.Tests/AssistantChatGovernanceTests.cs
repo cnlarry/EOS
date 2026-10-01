@@ -82,6 +82,13 @@ public sealed class AssistantChatGovernanceTests
             DateTimeOffset dayStartUtc, int top, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<(string UserId, DailyUsage Usage)>>([]);
 
+        // 治理测试不关心看板聚合：模型/趋势两个新方法给空结果即可
+        public Task<IReadOnlyList<ModelUsage>> GetPerModelUsageAsync(DateTimeOffset sinceUtc, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<ModelUsage>>([]);
+
+        public Task<IReadOnlyList<DayUsage>> GetDailyTrendAsync(DateTimeOffset sinceUtc, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<DayUsage>>([]);
+
         public Task<bool> TryReserveAsync(string userId, DateTimeOffset dayStartUtc, long reserveMicro,
             long userCapMicro, long globalCapMicro, CancellationToken token)
         {

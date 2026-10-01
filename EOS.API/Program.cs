@@ -278,8 +278,16 @@ builder.Services.AddScoped<AttachmentRepository>();
 builder.Services.AddHttpClient("AssistantModel");
 builder.Services.Configure<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>(
     builder.Configuration.GetSection(EOS.API.Features.Assistant.ModelAccess.AssistantSettings.SectionName));
-builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IChatModel,
-    EOS.API.Features.Assistant.ModelAccess.DeepSeekChatModel>();
+// 模型可运行期切换（菜单组 31 / 3102，见 ADR-030 §3）：
+// 目录（读 dbo.ASSISTANT_MODEL）、密钥存取（只走环境变量）与"当前模型"快照都是单例；
+// 真正被消费的 IChatModel 改为 **Scoped** —— 一次请求内模型固定（一条回答不会跨两个模型），
+// 跨请求能读到新快照（所以切换模型不必重启）。ChatService 只按接口注入，无需改动。
+builder.Services.AddSingleton<EOS.API.Data.IAssistantModelCatalog, EOS.API.Data.AssistantModelCatalog>();
+builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IAssistantSecretStore,
+    EOS.API.Features.Assistant.ModelAccess.EnvironmentSecretStore>();
+builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.AssistantModelRegistry>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IChatModel,
+    EOS.API.Features.Assistant.ModelAccess.ResolvingChatModel>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantRepository, EOS.API.Data.AssistantRepository>();
 // 管理侧会话仓储（跨用户，菜单组 31 / 3101，见 ADR-030）：与个人侧并存，语义互不影响
 builder.Services.AddScoped<EOS.API.Data.IAssistantAdminRepository, EOS.API.Data.AssistantAdminRepository>();
@@ -506,6 +514,11 @@ app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
+// 模型注册表同样在这里读一次：迁移刚跑完，dbo.ASSISTANT_MODEL 才是可用的（照上一行的做法）。
+// 读失败不会中断启动——注册表内部会保留"用配置文件里的模型"这一退路。
+await app.Services
+    .GetRequiredService<EOS.API.Features.Assistant.ModelAccess.AssistantModelRegistry>()
+    .RefreshAsync(CancellationToken.None);
 
 RegisterPdfFont();
 

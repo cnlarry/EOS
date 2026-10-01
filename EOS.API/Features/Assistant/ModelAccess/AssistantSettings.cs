@@ -20,6 +20,19 @@ public sealed class AssistantSettings
     /// <summary>单次调用总时长上限（秒），覆盖流式全程。</summary>
     public int TimeoutSeconds { get; set; } = 300;
 
+    /// <summary>
+    /// 采样温度。<c>null</c> = 不传该参数，用厂商默认。
+    ///
+    /// <para>
+    /// 与 <c>BaseUrl</c>/<c>Model</c> 一样属于**传输层参数**：当管理员在模型管理页（3102）
+    /// 配了模型，这些值由那一行覆盖；表为空时退回这里的配置。
+    /// </para>
+    /// </summary>
+    public decimal? Temperature { get; set; }
+
+    /// <summary>单次回复的最大输出 token。<c>null</c> = 不传，用厂商默认。</summary>
+    public int? MaxTokens { get; set; }
+
     /// <summary>会话结束自动提炼：done 事件后异步提炼候选记忆，失败静默。运维可关闭。</summary>
     public bool EnableAutoDistill { get; set; } = true;
 
