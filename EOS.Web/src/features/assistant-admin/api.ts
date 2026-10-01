@@ -129,3 +129,133 @@ export function listKbDocuments(collectionId: string, includeDeleted = false) {
 export function deleteKbDocument(docId: string) {
   return apiClient.delete<void>(`/admin/assistant/kb/documents/${docId}`)
 }
+
+// ---------------------------------------------------------------------------
+// 3102 模型与用量（见 ADR-030 §3）：密钥只写不读，库里只有环境变量名。
+// ---------------------------------------------------------------------------
+
+/** 一条模型配置。**没有密钥字段**——只有"用哪个环境变量 + 是否已配置 + 掩码末四位"。 */
+export interface AssistantModelItem {
+  modelId: number
+  displayName: string
+  provider: string
+  modelName: string
+  baseUrl: string
+  apiKeyEnvVar: string
+  apiKeyConfigured: boolean
+  /** 形如 `****abcd`；未配置时为 null。 */
+  apiKeyMaskedTail: string | null
+  timeoutSeconds: number
+  temperature: number | null
+  maxTokens: number | null
+  isActive: boolean
+  enabled: boolean
+  sortIdx: number
+  remark: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** "现在到底在用哪个模型"：表里没有启用的当前模型时，助手用配置文件那套。 */
+export interface AssistantModelCurrent {
+  source: 'appsettings' | 'database'
+  modelId?: number | null
+  displayName?: string | null
+  model: string
+  baseUrl: string
+  timeoutSeconds: number
+  temperature: number | null
+  maxTokens: number | null
+  apiKeyConfigured: boolean
+}
+
+export interface AssistantModelList {
+  items: AssistantModelItem[]
+  current: AssistantModelCurrent
+}
+
+/** 新增 / 修改模型的入参（**不含密钥**：密钥走 setModelKey 那条单独的路）。 */
+export interface AssistantModelWriteInput {
+  displayName: string
+  provider: string
+  modelName: string
+  baseUrl: string
+  apiKeyEnvVar: string
+  timeoutSeconds: number
+  temperature: number | null
+  maxTokens: number | null
+  enabled: boolean
+  sortIdx: number
+  remark: string | null
+}
+
+export interface AssistantModelUsageRow {
+  modelName: string
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  estimatedCostYuan: number
+  lastUsedAt: string
+}
+
+export interface AssistantUsageTrendRow {
+  day: string
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  estimatedCostYuan: number
+}
+
+export interface AssistantModelUsage {
+  days: number
+  since: string
+  today: { requests: number; promptTokens: number; completionTokens: number; estimatedCostYuan: number }
+  models: AssistantModelUsageRow[]
+  trend: AssistantUsageTrendRow[]
+  caps: { userDailyCapYuan: number; globalDailyCapYuan: number }
+}
+
+export function listModels() {
+  return apiClient.get<AssistantModelList>('/admin/assistant/models')
+}
+
+export function createModel(input: AssistantModelWriteInput) {
+  return apiClient.post<{ modelId: number }>('/admin/assistant/models', input)
+}
+
+export function updateModel(modelId: number, input: AssistantModelWriteInput) {
+  return apiClient.put<void>(`/admin/assistant/models/${modelId}`, input)
+}
+
+/**
+ * 写入密钥：服务端把它写进环境变量（进程级立即生效 + 用户级持久化），**数据库里只留变量名**。
+ * 返回值里的 `persisted` 为假表示只有本次进程生效（受限账户 / 平台不支持用户级写入）。
+ */
+export function setModelKey(modelId: number, apiKey: string) {
+  return apiClient.put<{
+    envVar: string
+    configured: boolean
+    maskedTail: string | null
+    processUpdated: boolean
+    persisted: boolean
+  }>(`/admin/assistant/models/${modelId}/key`, { apiKey })
+}
+
+/** 设为当前模型。**要求密钥已配置**，否则服务端拒绝（否则整个助手的模型调用会立刻失败）。 */
+export function activateModel(modelId: number) {
+  return apiClient.post<void>(`/admin/assistant/models/${modelId}/activate`)
+}
+
+/** 取消当前模型：助手回到用配置文件里的那套。 */
+export function clearActiveModel() {
+  return apiClient.post<void>('/admin/assistant/models/active/clear')
+}
+
+export function deleteModel(modelId: number) {
+  return apiClient.delete<void>(`/admin/assistant/models/${modelId}`)
+}
+
+/** 近 N 天用量：按模型、按天，以及当日总览。 */
+export function getModelUsage(days = 30) {
+  return apiClient.get<AssistantModelUsage>('/admin/assistant/usage', { query: { days } })
+}

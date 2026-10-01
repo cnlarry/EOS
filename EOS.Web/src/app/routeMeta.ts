@@ -22,4 +22,5 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/admin/assistant/sessions': { section: '工作助手管理', title: '会话管理' },
   '/admin/assistant/mechanism': { section: '工作助手管理', title: '机制与工具总览' },
   '/admin/assistant/kb': { section: '工作助手管理', title: '知识库管理' },
+  '/admin/assistant/models': { section: '工作助手管理', title: '模型与用量' },
 }

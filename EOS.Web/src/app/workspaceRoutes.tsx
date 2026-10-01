@@ -32,6 +32,7 @@ import {
   AdminSessionsPage,
   MechanismOverviewPage,
   KbAdminPage,
+  ModelAdminPage,
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
@@ -111,6 +112,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 3103 知识库管理：清单与删除（入库仍走运维通道）
   { element: <RequirePermission permission={moduleReadPermission(3103)} />, children: [
     { path: 'admin/assistant/kb', element: withSuspense(<KbAdminPage />) },
+  ] },
+  // 3102 模型与用量：模型增改/切换/密钥 + 用量看板
+  { element: <RequirePermission permission={moduleReadPermission(3102)} />, children: [
+    { path: 'admin/assistant/models', element: withSuspense(<ModelAdminPage />) },
   ] },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
