@@ -37,3 +37,4 @@ export const LayoutDesignerPage = lazy(() => import('../features/layout-designer
 export const AdminSessionsPage = lazy(() => import('../features/assistant-admin/AdminSessionsPage').then((module) => ({ default: module.AdminSessionsPage })))
 export const MechanismOverviewPage = lazy(() => import('../features/assistant-admin/MechanismOverviewPage').then((module) => ({ default: module.MechanismOverviewPage })))
 export const KbAdminPage = lazy(() => import('../features/assistant-admin/KbAdminPage').then((module) => ({ default: module.KbAdminPage })))
+export const ModelAdminPage = lazy(() => import('../features/assistant-admin/ModelAdminPage').then((module) => ({ default: module.ModelAdminPage })))
