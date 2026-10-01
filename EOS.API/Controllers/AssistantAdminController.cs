@@ -433,8 +433,19 @@ public sealed class AssistantAdminController(
             modelWrites.Add(ToModelWrite(model, providerId: 0));
         }
 
-        var providerId = await modelCatalog.CreateProviderAsync(
-            ToProviderWrite(request), userContext.UserId, token);
+        var write = ToProviderWrite(request);
+        // CODE 上有唯一约束（它决定用哪个客户端实现）。撞上去原本会抛 SqlException → 500 与一句
+        // 看不懂的英文，所以在这里先挡一次，把"为什么不能加"说清楚。
+        var existing = await modelCatalog.ListProvidersAsync(token);
+        if (existing.Any(item => string.Equals(item.Code, write.Code, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "PROVIDER_CODE_EXISTS",
+                $"已经有一个「{write.Code}」供应商了。CODE 决定用哪个客户端实现，所以同类型只能有一个接入点；"
+                + "要用另一把密钥或另一个端点，请先删掉已有的那一个，或改用「自定义」。"));
+        }
+
+        var providerId = await modelCatalog.CreateProviderAsync(write, userContext.UserId, token);
         var created = 0;
         if (modelWrites.Count > 0)
         {
@@ -495,8 +506,19 @@ public sealed class AssistantAdminController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
         }
 
+        var write = ToProviderWrite(request);
+        // 改 CODE 等同于换客户端实现，同样要防撞唯一约束（否则又是一个 500 而不是一句说明）
+        var others = await modelCatalog.ListProvidersAsync(token);
+        if (others.Any(item => item.ProviderId != providerId
+            && string.Equals(item.Code, write.Code, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "PROVIDER_CODE_EXISTS",
+                $"已经有一个「{write.Code}」供应商了，不能把这一条也改成它。"));
+        }
+
         var updated = await modelCatalog.UpdateProviderAsync(
-            providerId, ToProviderWrite(request), userContext.UserId, token);
+            providerId, write, userContext.UserId, token);
         if (!updated)
         {
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
