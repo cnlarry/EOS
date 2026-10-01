@@ -22,7 +22,7 @@ AGENTS.md 是常驻规范，技能是**按需加载的可执行流程**，二者
 | 技能 | 来源 | 说明 |
 |---|---|---|
 | `eos-verify` / `eos-commit` / `eos-db-objects` / `eos-security-check` | 自建（本仓库） | EOS 验证、提交、库对象/迁移、安全边界四大可执行流程 |
-| `eos-publish` | 自建（本仓库） | ⚠️ **已退役**：原双仓发布机制的墓碑说明，只解释发生了什么、不执行任何动作（脚本已删除，见该技能正文） |
+| `eos-release` | 自建（本仓库） | **唯一的发布技能**：判定版本号 → CHANGELOG 定稿 → 打标签 → 推送 → 建 GitHub Release → 收尾核对；配套 `<scripts/publish-release.ps1>`（位于该技能 `scripts/` 下）带网络重试。原 `eos-publish`（双仓快照机制）已删除，不要再从历史里复活 |
 | `tdd` / `diagnosing-bugs` / `code-review` / `grill-me` / `grilling` / `handoff` | [mattpocock/skills](https://github.com/mattpocock/skills)，MIT | 精选子集，pin 到 commit `6654f6b`（2026-08-24）；已在 `THIRD-PARTY-NOTICES.md` 登记 |
 
 - 外部技能只选子集、逐文件审读后入仓；新增或改动技能后跑 `scripts/check-agent-skills.ps1` 校验
