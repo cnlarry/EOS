@@ -134,59 +134,123 @@ export function deleteKbDocument(docId: string) {
 // 3102 模型与用量（见 ADR-030 §3）：密钥只写不读，库里只有环境变量名。
 // ---------------------------------------------------------------------------
 
-/** 一条模型配置。**没有密钥字段**——只有"用哪个环境变量 + 是否已配置 + 掩码末四位"。 */
+/** 预设目录里的一个模型：系统"知道"的参考参数（价格留空 = 用全局兜底价）。 */
+export interface AssistantModelPreset {
+  modelCode: string
+  displayName: string
+  contextWindow: number | null
+  maxOutputTokens: number | null
+  supportsTools: boolean
+  inputPerMillionYuan: number | null
+  outputPerMillionYuan: number | null
+  defaultTemperature: number | null
+  remark: string | null
+}
+
+/** 预设目录里的一个供应商（接入点）及其可用模型。 */
+export interface AssistantProviderPreset {
+  code: string
+  displayName: string
+  baseUrl: string
+  suggestedApiKeyEnvVar: string
+  timeoutSeconds: number
+  remark: string | null
+  models: AssistantModelPreset[]
+}
+
+/**
+ * 一条模型（**模型级**）：真正发给厂商的标识、上下文窗口、单价、工具能力。
+ *
+ * <p>端点与密钥不在这里——它们在供应商上（一个供应商一个端点、一把密钥，通吃它名下所有模型）。</p>
+ */
 export interface AssistantModelItem {
   modelId: number
+  providerId: number
+  modelCode: string
   displayName: string
-  provider: string
-  modelName: string
-  baseUrl: string
-  apiKeyEnvVar: string
-  apiKeyConfigured: boolean
-  /** 形如 `****abcd`；未配置时为 null。 */
-  apiKeyMaskedTail: string | null
-  timeoutSeconds: number
-  temperature: number | null
-  maxTokens: number | null
+  contextWindow: number | null
+  maxOutputTokens: number | null
+  defaultTemperature: number | null
+  /** 超时覆盖：null = 用供应商的默认超时（推理模型往往要单独调大）。 */
+  timeoutSeconds: number | null
+  inputPerMillionYuan: number | null
+  outputPerMillionYuan: number | null
+  supportsTools: boolean
   isActive: boolean
   enabled: boolean
   sortIdx: number
   remark: string | null
-  createdAt: string
-  updatedAt: string
 }
 
-/** "现在到底在用哪个模型"：表里没有启用的当前模型时，助手用配置文件那套。 */
-export interface AssistantModelCurrent {
-  source: 'appsettings' | 'database'
-  modelId?: number | null
-  displayName?: string | null
-  model: string
-  baseUrl: string
-  timeoutSeconds: number
-  temperature: number | null
-  maxTokens: number | null
-  apiKeyConfigured: boolean
-}
-
-export interface AssistantModelList {
-  items: AssistantModelItem[]
-  current: AssistantModelCurrent
-}
-
-/** 新增 / 修改模型的入参（**不含密钥**：密钥走 setModelKey 那条单独的路）。 */
-export interface AssistantModelWriteInput {
+/** 一个供应商（**接入点**）：端点 + 密钥环境变量名 + 默认超时 + 它名下的模型。 */
+export interface AssistantProviderItem {
+  providerId: number
+  code: string
   displayName: string
-  provider: string
-  modelName: string
   baseUrl: string
   apiKeyEnvVar: string
+  apiKeyConfigured: boolean
+  /** 形如 `****abcd`；未配置时为 null。密钥本体永远不会下发。 */
+  apiKeyMaskedTail: string | null
   timeoutSeconds: number
-  temperature: number | null
-  maxTokens: number | null
   enabled: boolean
   sortIdx: number
   remark: string | null
+  models: AssistantModelItem[]
+}
+
+/** "现在到底在用哪个模型"。**null 就是尚未配置**——此时助手不可用，界面要直说。 */
+export interface AssistantModelCurrent {
+  modelId: number
+  displayName: string
+  modelCode: string
+  providerId: number
+  providerCode: string
+  providerDisplayName: string
+  contextWindow: number | null
+  timeoutSeconds: number
+  supportsTools: boolean
+  apiKeyConfigured: boolean
+}
+
+export interface AssistantProviderList {
+  providers: AssistantProviderItem[]
+  current: AssistantModelCurrent | null
+}
+
+/** 新增 / 修改模型的入参（**不含密钥**：密钥挂在供应商上，走 setProviderKey 那条单独的路）。 */
+export interface AssistantModelWriteInput {
+  providerId?: number
+  modelCode: string
+  displayName: string
+  contextWindow: number | null
+  maxOutputTokens: number | null
+  defaultTemperature: number | null
+  timeoutSeconds: number | null
+  inputPerMillionYuan: number | null
+  outputPerMillionYuan: number | null
+  supportsTools: boolean
+  enabled: boolean
+  sortIdx: number
+  remark: string | null
+}
+
+/**
+ * 新增 / 修改供应商的入参。
+ *
+ * <p>`models` 是"顺带添加"：界面上"选供应商 → 勾选可用模型"是**一次**提交，
+ * 先建供应商再发 N 个建模型请求的话，中间失败会留下半个供应商。</p>
+ */
+export interface AssistantProviderWriteInput {
+  code: string
+  displayName: string
+  baseUrl: string
+  apiKeyEnvVar: string
+  timeoutSeconds: number
+  enabled: boolean
+  sortIdx: number
+  remark: string | null
+  models?: AssistantModelWriteInput[]
 }
 
 export interface AssistantModelUsageRow {
@@ -215,8 +279,42 @@ export interface AssistantModelUsage {
   caps: { userDailyCapYuan: number; globalDailyCapYuan: number }
 }
 
-export function listModels() {
-  return apiClient.get<AssistantModelList>('/admin/assistant/models')
+/** 预设目录（代码内置，不进数据库）：界面"选供应商 → 自动罗列可用模型"靠它。 */
+export function listPresets() {
+  return apiClient.get<AssistantProviderPreset[]>('/admin/assistant/presets')
+}
+
+/** 供应商 + 其下模型（一次给全，界面两级渲染）。`current` 为 null 表示**尚未配置**。 */
+export function listProviders() {
+  return apiClient.get<AssistantProviderList>('/admin/assistant/providers')
+}
+
+export function createProvider(input: AssistantProviderWriteInput) {
+  return apiClient.post<{ providerId: number; modelsCreated: number }>('/admin/assistant/providers', input)
+}
+
+export function updateProvider(providerId: number, input: AssistantProviderWriteInput) {
+  return apiClient.put<void>(`/admin/assistant/providers/${providerId}`, input)
+}
+
+/**
+ * 写入**供应商**的密钥：服务端把它写进环境变量（进程级立即生效 + 用户级持久化），
+ * **数据库里只留变量名**。返回值里的 `persisted` 为假表示只有本次进程生效
+ * （受限账户 / 平台不支持用户级写入），界面要如实提示"重启后需重设"。
+ */
+export function setProviderKey(providerId: number, apiKey: string) {
+  return apiClient.put<{
+    envVar: string
+    configured: boolean
+    maskedTail: string | null
+    processUpdated: boolean
+    persisted: boolean
+  }>(`/admin/assistant/providers/${providerId}/key`, { apiKey })
+}
+
+/** 删除供应商。**名下还有模型时服务端会拒绝**（级联会一次带走整家配置）。 */
+export function deleteProvider(providerId: number) {
+  return apiClient.delete<void>(`/admin/assistant/providers/${providerId}`)
 }
 
 export function createModel(input: AssistantModelWriteInput) {
@@ -228,29 +326,19 @@ export function updateModel(modelId: number, input: AssistantModelWriteInput) {
 }
 
 /**
- * 写入密钥：服务端把它写进环境变量（进程级立即生效 + 用户级持久化），**数据库里只留变量名**。
- * 返回值里的 `persisted` 为假表示只有本次进程生效（受限账户 / 平台不支持用户级写入）。
+ * 设为当前模型。**要求该供应商的密钥已配置**，否则服务端拒绝——把没有密钥的模型设成当前，
+ * 会让所有人的助手立刻不可用，而原因只写在服务端日志里。
  */
-export function setModelKey(modelId: number, apiKey: string) {
-  return apiClient.put<{
-    envVar: string
-    configured: boolean
-    maskedTail: string | null
-    processUpdated: boolean
-    persisted: boolean
-  }>(`/admin/assistant/models/${modelId}/key`, { apiKey })
-}
-
-/** 设为当前模型。**要求密钥已配置**，否则服务端拒绝（否则整个助手的模型调用会立刻失败）。 */
 export function activateModel(modelId: number) {
   return apiClient.post<void>(`/admin/assistant/models/${modelId}/activate`)
 }
 
-/** 取消当前模型：助手回到用配置文件里的那套。 */
+/** 取消当前模型：助手回到**未配置**状态（供应商与模型都留着，只是没有"当前"）。 */
 export function clearActiveModel() {
   return apiClient.post<void>('/admin/assistant/models/active/clear')
 }
 
+/** 删除模型。**当前模型删不掉**。 */
 export function deleteModel(modelId: number) {
   return apiClient.delete<void>(`/admin/assistant/models/${modelId}`)
 }
