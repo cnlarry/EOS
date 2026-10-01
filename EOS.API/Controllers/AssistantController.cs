@@ -6,6 +6,7 @@ using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Admin;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
+using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Security;
 using EOS.API.Telemetry;
@@ -34,7 +35,7 @@ public sealed class AssistantController(
     SituationContextSanitizer situationSanitizer,
     AssistantSituationService situationService,
     SituationDigestService situationDigest,
-    IOptions<Features.Assistant.ModelAccess.AssistantSettings> assistantOptions) : ControllerBase
+    IAssistantRuntimeConfig runtime) : ControllerBase
 {
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
@@ -429,10 +430,34 @@ public sealed class AssistantController(
     }
 
     /// <summary>本人今日用量（请求数/token/估算成本 + 限额）。</summary>
+    /// <summary>
+    /// 助手是否可用（**登录即可访问**，不需要任何管理权限）。
+    ///
+    /// <para>
+    /// 前端在**打开助手时**先问它一次，好在界面上就把"尚未配置模型"说清楚，而不是等用户打完字发送
+    /// 才收到一句失败——那时用户已经付出了打字成本，而失败原因和他自己毫无关系（ADR-030 §8）。
+    /// </para>
+    /// </summary>
+    [HttpGet("availability")]
+    public IActionResult Availability()
+    {
+        var snapshot = runtime.Current;
+        return Ok(new
+        {
+            configured = snapshot.IsConfigured,
+            model = snapshot.Model?.ModelCode,
+            displayName = snapshot.Model?.DisplayName,
+            provider = snapshot.Model?.ProviderDisplayName,
+            hint = snapshot.IsConfigured
+                ? null
+                : "工作助手尚未配置模型。请管理员在「工作助手管理 → 模型与用量」中添加模型、设置密钥并设为当前。",
+        });
+    }
+
     [HttpGet("usage")]
     public async Task<IActionResult> MyUsage(CancellationToken token)
     {
-        var cost = assistantOptions.Value.Cost;
+        var cost = runtime.Current.Settings.Cost;
         var usage = await usageRepository.GetUserDailyUsageAsync(
             userContext.UserId, DateTimeOffset.UtcNow.Date, token);
         return Ok(new
@@ -453,7 +478,7 @@ public sealed class AssistantController(
     public async Task<IActionResult> Metrics(CancellationToken token)
     {
         if (!(await rightsRepository.GetAsync(userContext.UserId, 2306, token)).CanSetup) return Forbid();
-        var cost = assistantOptions.Value.Cost;
+        var cost = runtime.Current.Settings.Cost;
         var dayStart = DateTimeOffset.UtcNow.Date;
         var global = await usageRepository.GetGlobalDailyUsageAsync(dayStart, token);
         var perUser = await usageRepository.GetPerUserDailyUsageAsync(dayStart, 20, token);

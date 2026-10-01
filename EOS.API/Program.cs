@@ -276,16 +276,19 @@ builder.Services.AddScoped<ILayoutRenderer, QuestPdfLayoutRenderer>();
 builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddScoped<AttachmentRepository>();
 builder.Services.AddHttpClient("AssistantModel");
-builder.Services.Configure<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>(
-    builder.Configuration.GetSection(EOS.API.Features.Assistant.ModelAccess.AssistantSettings.SectionName));
-// 模型可运行期切换（菜单组 31 / 3102，见 ADR-030 §3）：
-// 目录（读 dbo.ASSISTANT_MODEL）、密钥存取（只走环境变量）与"当前模型"快照都是单例；
-// 真正被消费的 IChatModel 改为 **Scoped** —— 一次请求内模型固定（一条回答不会跨两个模型），
-// 跨请求能读到新快照（所以切换模型不必重启）。ChatService 只按接口注入，无需改动。
+// 助手配置**一律来自数据库**（ADR-030 §8）：模型与供应商读 dbo.ASSISTANT_MODEL / ASSISTANT_PROVIDER
+// （菜单组 31 / 3102），全局策略读 dbo.ASSISTANT_SETTING（3105）。appsettings 里**没有** Assistant 段——
+// 它是运行期要能改的业务配置，不是部署参数，混在配置清单里会让"改个模型名要改文件加重启"。
+// 密钥仍只走环境变量，库里存的是变量名（§3）。
+// 目录 / 密钥存取 / 设置读写 / 运行期快照都是单例；真正被消费的 IChatModel 是 **Scoped**：
+// 一次请求内配置固定（一条回答不会跨两个模型），跨请求读得到新快照（改配置与切模型都不必重启）。
 builder.Services.AddSingleton<EOS.API.Data.IAssistantModelCatalog, EOS.API.Data.AssistantModelCatalog>();
+builder.Services.AddSingleton<EOS.API.Data.IAssistantSettingStore, EOS.API.Data.AssistantSettingStore>();
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IAssistantSecretStore,
     EOS.API.Features.Assistant.ModelAccess.EnvironmentSecretStore>();
-builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.AssistantModelRegistry>();
+builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.AssistantRuntimeRegistry>();
+builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>(sp =>
+    sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.AssistantRuntimeRegistry>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IChatModel,
     EOS.API.Features.Assistant.ModelAccess.ResolvingChatModel>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantRepository, EOS.API.Data.AssistantRepository>();
@@ -379,10 +382,12 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IFieldRelationRepo
     EOS.API.Features.Assistant.Metrics.FieldRelationRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantUsageRepository, EOS.API.Data.AssistantUsageRepository>();
+// 熔断阈值同样来自设置表，所以**按需读取**而不是构造期固定：管理员在 3105 改了阈值应当立即生效，
+// 否则"配了却要等重启"又会变成一处说不清的坑（这个单例的存活期与进程一样长）
 builder.Services.AddSingleton(sp => new EOS.API.Features.Assistant.Governance.FailureBreaker(
     () => DateTimeOffset.UtcNow,
-    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>>().Value.Cost.MaxConsecutiveFailures,
-    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>>().Value.Cost.CooldownSeconds));
+    () => sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>()
+        .Current.Settings.Cost));
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [
@@ -514,10 +519,11 @@ app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
-// 模型注册表同样在这里读一次：迁移刚跑完，dbo.ASSISTANT_MODEL 才是可用的（照上一行的做法）。
-// 读失败不会中断启动——注册表内部会保留"用配置文件里的模型"这一退路。
+// 助手运行期配置同样在这里读一次：迁移刚跑完，ASSISTANT_MODEL / ASSISTANT_SETTING 才是可用的
+// （照上一行的做法）。读失败不会中断启动——注册表内部会沿用旧值，最终表现为"未配置"，
+// 而助手会以一句**可执行的**文案告诉管理员去哪儿配（不再有"退回 appsettings"的兜底）。
 await app.Services
-    .GetRequiredService<EOS.API.Features.Assistant.ModelAccess.AssistantModelRegistry>()
+    .GetRequiredService<EOS.API.Features.Assistant.ModelAccess.AssistantRuntimeRegistry>()
     .RefreshAsync(CancellationToken.None);
 
 RegisterPdfFont();
