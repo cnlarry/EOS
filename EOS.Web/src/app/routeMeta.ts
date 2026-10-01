@@ -16,4 +16,5 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/admin/groups': { section: '系统管理', title: '用户组管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },
+  '/assistant': { section: '工作助手', title: '工作助手' },
 }

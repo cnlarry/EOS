@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { AssistantDock } from './AssistantDock'
+import { AssistantPage } from './AssistantPage'
+import { AssistantProvider } from './AssistantProvider'
 import { resetSituationSource } from './situationSource'
 
 /** 路由探针：闭环判据 P3 是"全程不离开助手"，路径变了这里就看得见。 */
@@ -14,7 +16,34 @@ function renderDock(path = '/dashboard') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <LocationProbe />
+      <AssistantProvider>
+        <AssistantDock />
+      </AssistantProvider>
+    </MemoryRouter>,
+  )
+}
+
+/**
+ * 半屏抽屉与全屏页共存的最小外壳，接线方式与 AppShell 一致：
+ * 抽屉由 open 控制，全屏走路由（`/assistant`）。用来验证"换壳不换会话"。
+ */
+function Shells() {
+  const location = useLocation()
+  return (
+    <>
       <AssistantDock />
+      {location.pathname === '/assistant' ? <AssistantPage /> : null}
+    </>
+  )
+}
+
+function renderBothShells(path = '/dashboard') {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
+      <AssistantProvider>
+        <Shells />
+      </AssistantProvider>
     </MemoryRouter>,
   )
 }
@@ -582,5 +611,41 @@ describe('AssistantDock', () => {
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
     expect(harness.calls.some(call => call.url.includes('/messages'))).toBe(true)
     expect(revokeObjectURL).toHaveBeenCalled()
+  })
+
+  it('半屏与全屏只是换壳：切形态时对话与工具卡都不丢', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      chatFrames: [
+        `event: delta\ndata: ${JSON.stringify({ text: '采购单的主表是 PUR_PURCHASE_M。' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({
+          message: {
+            id: 'm2', sessionId: '11', role: 2, content: '采购单的主表是 PUR_PURCHASE_M。',
+            modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+            correlationId: null, createdAt: '',
+          },
+          toolCalls: [{ name: 'describe_module', digest: '模块 #1606 采购单' }],
+        })}\n\n`,
+      ],
+    })
+
+    renderBothShells()
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), { target: { value: '采购单主表？' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(screen.getByText(/采购单的主表是/)).toBeInTheDocument())
+
+    // 切全屏：抽屉收起，但会话状态在 Provider 里，全屏面板渲染的是同一份
+    fireEvent.click(screen.getByRole('button', { name: '全屏' }))
+    await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull())
+    expect(screen.getByText(/采购单的主表是/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /查看模块说明/ })).toBeInTheDocument()
+    // 全屏页里不再有"叫出助手"的浮球：助手已占满屏，形态同一时刻只该有一种
+    expect(screen.queryByRole('button', { name: '打开工作助手' })).toBeNull()
+
+    // 切回半屏：同样不丢（这里全屏侧的"半屏"按钮会收起标签、展开抽屉）
+    fireEvent.click(screen.getByRole('button', { name: '半屏' }))
+    await waitFor(() => expect(screen.getByRole('complementary')).not.toBeNull())
+    expect(screen.getByText(/采购单的主表是/)).toBeInTheDocument()
   })
 })

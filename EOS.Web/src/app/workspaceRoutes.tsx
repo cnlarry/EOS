@@ -34,6 +34,7 @@ import {
   LayoutDesignerPage,
 } from './lazyRoutes'
 import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportIdentityRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
+import { AssistantPage } from '../features/assistant/AssistantPage'
 import { withSuspense } from './suspense'
 
 /**
@@ -90,6 +91,8 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { element: <RequirePermission permission={moduleReadPermission(2102)} />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2101)} />, children: [{ path: 'workflow/design', element: withSuspense(<FlowDesignPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2103)} />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },
+  // 助手全屏形态：普通工作区标签页（与半屏抽屉共用同一份会话，见 AssistantProvider）
+  { path: 'assistant', element: <AssistantPage /> },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
   { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
