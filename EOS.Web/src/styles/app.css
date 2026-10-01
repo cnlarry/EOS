@@ -1547,14 +1547,15 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   min-height: 0;
 }
 /* 全屏形态：落在工作区标签页里，占满标签内容区。
-   左右留白 + 页级卡片在这里给——其它页面都是"卡片浮在浅灰底上"（.erp-tab-panel 底色 + .card），
-   助手页若是一块贴边的裸面板，就成了全系统里唯一没有页框的页面。 */
+   页级卡片（圆角 + 边框）在这里给——其它页面都是"卡片浮在浅灰底上"，助手页若是一块贴边的裸面板，
+   就成了全系统里唯一没有页框的页面。
+   **不要再加留白**：标签内容外面已有一层 `container-fluid px-3 px-lg-4` 出左右 10px、
+   `.erp-tab-panel` 出上下 10px，这就是设计语言的 10px 页边距；这里再加一层会变成 20px。 */
 .erp-assistant-page {
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 10px;
 }
 .erp-assistant-page > .erp-assistant-panel {
   flex: 1 1 auto;
