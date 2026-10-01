@@ -194,6 +194,25 @@ describe('SessionAdminPage', () => {
     expect(harness.calls.find(call => call.url.includes('/rename'))?.body).toContain('十月采购复核')
   })
 
+  it('后端还没升级时（列表仍是裸数组）也不白屏：归一化后照常列出', async () => {
+    // 前后端滚动更新的窗口期：前端已发、后端未重启，接口还是旧形状
+    const calls: FetchCall[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      calls.push({ url, method: init?.method ?? 'GET', body: null })
+      if (url.includes('/assistant/sessions')) {
+        return jsonResponse([sessionRow('11', '十月采购对账', null)])
+      }
+      return jsonResponse({})
+    }))
+
+    renderAdmin()
+    await settleTable()
+
+    expect(screen.getByText('十月采购对账')).toBeInTheDocument()
+    expect(screen.getByText('共 1 个在列会话')).toBeInTheDocument()
+  })
+
   it('分页：点第 2 页时按 offset 取页（服务端分页，不是前端切片）', async () => {
     const rows = Array.from({ length: 16 }, (_, index) => sessionRow(String(100 + index), `会话 ${index + 1}`, null))
     const harness = installFetchMock({ sessions: rows, total: 40 })
