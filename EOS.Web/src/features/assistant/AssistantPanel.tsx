@@ -82,6 +82,12 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
     setRenaming(true)
   }, [a.sessions, a.sessionId])
 
+  const cancelRename = useCallback(() => {
+    // 用标记而不是只 setRenaming(false)：元素卸载未必派发 blur，若有 blur 也会被这个标记拦下
+    cancelRenameRef.current = true
+    setRenaming(false)
+  }, [])
+
   const commitRename = useCallback(async () => {
     if (cancelRenameRef.current) {
       cancelRenameRef.current = false
@@ -147,30 +153,51 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
       <header className="erp-assistant-header">
         <IconRobot size={20} />
         <span className="erp-assistant-title">工作助手</span>
-        <button className="btn btn-icon btn-sm btn-ghost-secondary" type="button"
-          title="新对话" aria-label="新建会话"
+        <button
+          className={variant === 'page' ? 'btn btn-sm btn-outline-secondary' : 'btn btn-icon btn-sm btn-ghost-secondary'}
+          type="button"
+          title="新会话" aria-label="新建会话"
           onClick={() => void a.newSession()}>
-          <IconPlus size={16} />
+          <IconPlus size={14} />
+          {variant === 'page' && <span className="ms-1">新会话</span>}
         </button>
         {renaming ? (
-          <input
-            className="form-control form-control-sm erp-assistant-session-select"
-            value={renameValue}
-            autoFocus
-            aria-label="会话标题"
-            onChange={(event) => setRenameValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                void commitRename()
-              }
-              if (event.key === 'Escape') {
-                cancelRenameRef.current = true
-                setRenaming(false)
-              }
-            }}
-            onBlur={() => void commitRename()}
-          />
+          // 编辑态必须一眼看出来：只把下拉换成同尺寸输入框、文字还一样，用户会觉得"点了没反应"
+          // （这正是最初的反馈），所以这里给高亮 + 明确的确认/取消。
+          <div className="erp-assistant-rename">
+            <input
+              className="form-control form-control-sm"
+              value={renameValue}
+              autoFocus
+              aria-label="会话标题"
+              placeholder="会话名称"
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void commitRename()
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  cancelRename()
+                }
+              }}
+              onBlur={() => void commitRename()}
+            />
+            {/* mousedown 先 preventDefault：否则点按钮会先让输入框失焦而触发 blur 提交 */}
+            <button className="btn btn-sm btn-primary" type="button"
+              title="保存名称" aria-label="保存名称"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void commitRename()}>
+              ✓
+            </button>
+            <button className="btn btn-sm btn-ghost-secondary" type="button"
+              title="取消（Esc）" aria-label="取消重命名"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={cancelRename}>
+              ✕
+            </button>
+          </div>
         ) : (
           <select
             className="form-select form-select-sm erp-assistant-session-select"
@@ -298,30 +325,36 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
           </div>
         )}
         {a.bubbles.map(bubble => (
-          <div key={bubble.key} className={`erp-assistant-bubble ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
-            {bubble.role === 2 && bubble.text
-              ? <KbSourceText text={bubble.text} onOpen={setOpenDocId} />
-              : (bubble.text || (bubble.streaming ? '' : '(空回复)'))}
-            {bubble.role === 1 && bubble.text && !bubble.streaming && (
-              <button className="btn btn-sm btn-ghost-secondary mt-1" type="button"
-                title="把这句话记下来（仅本人可见）"
-                aria-label={`记住这条消息：${bubble.text.slice(0, 12)}`}
-                disabled={a.remembered.has(bubble.key)}
-                onClick={() => void a.remember(bubble)}>
-                {a.remembered.has(bubble.key) ? '已记住 ✓' : '记住'}
-              </button>
-            )}
-            {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
-            {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
-              <ToolCalls tools={bubble.tools} />
-            )}
-            {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
-              <div className="erp-assistant-drafts">
-                {bubble.drafts.map((draft, index) => renderDraft(draft, index, a.openInForm))}
+          <div key={bubble.key} className={`erp-assistant-message ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
+            <div className="erp-assistant-bubble">
+              {bubble.role === 2 && bubble.text
+                ? <KbSourceText text={bubble.text} onOpen={setOpenDocId} />
+                : (bubble.text || (bubble.streaming ? '' : '(空回复)'))}
+              {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
+              {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
+                <ToolCalls tools={bubble.tools} />
+              )}
+              {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
+                <div className="erp-assistant-drafts">
+                  {bubble.drafts.map((draft, index) => renderDraft(draft, index, a.openInForm))}
+                </div>
+              )}
+            </div>
+            {/* 操作按钮在气泡**外面**：贴在气泡下方、随其左右对齐，不再挤在正文里抢视线 */}
+            {bubble.text && !bubble.streaming && (
+              <div className="erp-assistant-message-actions">
+                {bubble.role === 2 && <CopyButton text={bubble.text} />}
+                {bubble.role === 1 && (
+                  <button className="btn btn-sm btn-ghost-secondary" type="button"
+                    title="把这句话记下来（仅本人可见）"
+                    aria-label={`记住这条消息：${bubble.text.slice(0, 12)}`}
+                    disabled={a.remembered.has(bubble.key)}
+                    onClick={() => void a.remember(bubble)}>
+                    {a.remembered.has(bubble.key) ? '已记住 ✓' : '记住'}
+                  </button>
+                )}
               </div>
             )}
-            {/* 操作按钮排在内容之后（工具卡/草稿卡之下）：先读完，再决定要不要复制 */}
-            {bubble.role === 2 && bubble.text && !bubble.streaming && <CopyButton text={bubble.text} />}
           </div>
         ))}
       </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSessionMarkdown } from './sessionExport'
+import { buildSessionMarkdown, sanitizeFileName } from './sessionExport'
 import type { AssistantMessage } from './types'
 
 function message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
@@ -43,5 +43,21 @@ describe('会话导出为 Markdown', () => {
 
   it('空会话只留标题', () => {
     expect(buildSessionMarkdown('空会话', []).trim()).toBe('# 空会话')
+  })
+})
+
+describe('导出文件名清洗', () => {
+  it('中文、空格、括号、全角问号原样保留——导出名要就是会话名', () => {
+    expect(sanitizeFileName('十月采购对账.md')).toBe('十月采购对账.md')
+    expect(sanitizeFileName('收料单（1607）的主表是哪张？.md')).toBe('收料单（1607）的主表是哪张？.md')
+  })
+
+  it('只替换真正非法的字符（Windows 路径分隔符与通配符）', () => {
+    expect(sanitizeFileName('a/b\\c:d*e?f"g<h>i|j.md')).toBe('a_b_c_d_e_f_g_h_i_j.md')
+  })
+
+  it('名字被清空时给兜底，不产生空文件名', () => {
+    expect(sanitizeFileName('   ')).toBe('未命名')
+    expect(sanitizeFileName('')).toBe('未命名')
   })
 })

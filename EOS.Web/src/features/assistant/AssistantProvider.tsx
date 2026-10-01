@@ -65,6 +65,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ASSISTANT_OPEN_KEY, String(open))
   }, [open])
 
+  // 站在全屏助手页上时把抽屉收起来：两种形态同一时刻只该有一种。
+  // 深链或刷新进来时 localStorage 里可能还留着 open=true，靠这一条把状态对齐
+  // （界面侧 AssistantDock 也有同样的判断，避免这一帧闪出抽屉）。
+  useEffect(() => {
+    if (location.pathname === ASSISTANT_PATH) setOpen(false)
+  }, [location.pathname])
+
   // Ctrl+/ 唤起/收起抽屉。全屏标签页里这个键由 AssistantPage 接管（它要同时关标签、展开抽屉），
   // 这里按路径让位，避免两边同时响应把开关又翻回去。
   useEffect(() => {
