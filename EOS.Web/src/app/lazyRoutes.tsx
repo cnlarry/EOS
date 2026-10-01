@@ -35,3 +35,4 @@ export const ReportInboxPage = lazy(() => import('../features/reports/ReportInbo
 export const LayoutDesignerPage = lazy(() => import('../features/layout-designer/LayoutDesignerPage').then((module) => ({ default: module.LayoutDesignerPage })))
 // 工作助手管理（菜单组 31，见 ADR-030）
 export const AdminSessionsPage = lazy(() => import('../features/assistant-admin/AdminSessionsPage').then((module) => ({ default: module.AdminSessionsPage })))
+export const MechanismOverviewPage = lazy(() => import('../features/assistant-admin/MechanismOverviewPage').then((module) => ({ default: module.MechanismOverviewPage })))

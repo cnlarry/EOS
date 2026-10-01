@@ -28,8 +28,40 @@ namespace EOS.API.Controllers;
 public sealed class AssistantAdminController(
     IAssistantAdminRepository repository,
     CurrentUserContext userContext,
-    ModuleRightsRepository rightsRepository) : ControllerBase
+    ModuleRightsRepository rightsRepository,
+    IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools) : ControllerBase
 {
+    /// <summary>
+    /// 能力面的边界。写在服务端而不是让前端硬编码：这些是"能力面上根本表达不出来"的东西，
+    /// 摊在总览页上是为了让"助手不能做什么"与"能做什么"同样可见。
+    /// </summary>
+    private static readonly object[] MechanismBoundaries =
+    [
+        new
+        {
+            title = "权限授予类配置不可代劳",
+            detail = "分权与授权（用户、用户组、按钮权限）在能力面上不存在：动作枚举里没有对应成员，"
+                + "写入口也不在可触达的仓储方法集合里（结构断言见 NoPrivilegeConfigCallTests）。",
+        },
+        new
+        {
+            title = "批核族不可代理",
+            detail = "批核 / 解批 / 结案 / 取消结案不在可代理动作里：助手只准备「操作请求卡」，"
+                + "真正执行由界面直接调既有端点。",
+        },
+        new
+        {
+            title = "会话正文不开放给管理面",
+            detail = "菜单组 31 的会话管理只给元数据，不提供对话正文（ADR-030 §2）；"
+                + "真要开放，应当是「独立权限位 ＋ 审计留痕」的另一个决定。",
+        },
+        new
+        {
+            title = "密钥不入库",
+            detail = "模型密钥只以环境变量名入库，密钥本身不落库、不下发前端、不进诊断包（ADR-030 §3）。",
+        },
+    ];
+
     /// <summary>归档 / 取消归档。<c>Archived</c> 缺省视为 <c>true</c>——空 body 不该把会话"取消归档"。</summary>
     public sealed record ArchiveSessionRequest(bool? Archived);
 
@@ -98,6 +130,38 @@ public sealed class AssistantAdminController(
     private async Task<bool> CanEdit(CancellationToken token) =>
         (await rightsRepository.GetAsync(
             userContext.UserId, PermissionModules.AssistantAdmin.SessionAdmin, token)).CanEdit;
+
+    /// <summary>
+    /// 机制与工具总览（只读）：当前挂着的工具、可选动作清单与能力面边界。权限门 3104 的 CanBrowse。
+    ///
+    /// <para>
+    /// 数据全部**现算**（工具来自 DI 注册表、动作来自静态目录），不落库也不缓存：
+    /// 这份清单的意义就是"代码里现在到底是什么"，缓存反而会让它说谎。
+    /// </para>
+    /// </summary>
+    [HttpGet("mechanism")]
+    public async Task<IActionResult> GetMechanism(CancellationToken token)
+    {
+        if (!await CanBrowseMechanism(token)) return Forbid();
+        return Ok(new
+        {
+            tools = assistantTools
+                .OrderBy(item => item.Name, StringComparer.Ordinal)
+                .Select(item => new
+                {
+                    name = item.Name,
+                    risk = item.Risk.ToString(),
+                    description = item.Description,
+                    parametersJson = item.ParametersJson,
+                }),
+            actions = Features.Assistant.Actions.AssistantActionRegistry.All,
+            boundaries = MechanismBoundaries,
+        });
+    }
+
+    private async Task<bool> CanBrowseMechanism(CancellationToken token) =>
+        (await rightsRepository.GetAsync(
+            userContext.UserId, PermissionModules.AssistantAdmin.Mechanism, token)).CanBrowse;
 
     /// <summary>未知取值一律按"在列"处理——列表查不出东西比抛 400 更难排查（与个人侧同口径）。</summary>
     internal static AssistantSessionListState ParseState(string? state) => state?.Trim().ToLowerInvariant() switch
