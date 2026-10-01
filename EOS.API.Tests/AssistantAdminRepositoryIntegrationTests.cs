@@ -76,9 +76,10 @@ public sealed class AssistantAdminRepositoryIntegrationTests : IDisposable
         return session;
     }
 
-    /// <summary>管理侧的默认视图（在列）取一页。</summary>
+    /// <summary>管理侧的默认视图（在列）取一页，默认排序。</summary>
     private Task<(IReadOnlyList<AssistantSessionDto> Items, int Total)> ListActiveAsync(string? owner, CancellationToken token)
-        => _admin.ListSessionsAsync(0, 50, AssistantSessionListState.Active, null, owner, token);
+        => _admin.ListSessionsAsync(
+            0, 50, AssistantSessionListState.Active, null, owner, AssistantSessionSort.LastActive, false, token);
 
     /// <summary>
     /// 管理侧能同时看到不同用户的会话；按归属用户筛能收窄；**个人侧的隔离契约不受影响**。
@@ -145,14 +146,44 @@ public sealed class AssistantAdminRepositoryIntegrationTests : IDisposable
         // 归档后：默认视图看不到它，已归档视图看得到，且该视图里每一行都是已归档
         Assert.Equal(1, await _admin.ArchiveSessionAsync(session.Id, true, token));
         Assert.DoesNotContain((await ListActiveAsync(null, token)).Items, s => s.Id == session.Id);
-        var archived = await _admin.ListSessionsAsync(0, 50, AssistantSessionListState.Archived, null, null, token);
+        var archived = await _admin.ListSessionsAsync(
+            0, 50, AssistantSessionListState.Archived, null, null, AssistantSessionSort.LastActive, false, token);
         Assert.Contains(archived.Items, s => s.Id == session.Id);
         Assert.All(archived.Items, s => Assert.NotNull(s.ArchivedAt));
 
         // 关键词只搜标题
         Assert.Contains(
-            (await _admin.ListSessionsAsync(0, 50, AssistantSessionListState.All, "甲：采购单", null, token)).Items,
+            (await _admin.ListSessionsAsync(
+                0, 50, AssistantSessionListState.All, "甲：采购单", null,
+                AssistantSessionSort.LastActive, false, token)).Items,
             s => s.Id == session.Id);
+    }
+
+    /// <summary>
+    /// 排序在**服务端**做（列表是服务端分页的，在前端排只会排当前这一页）：
+    /// 按消息数降序时，消息多的会话排在前面。
+    /// </summary>
+    [Fact]
+    public async Task Admin_List_Sorts_On_Server()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+        const string user = "eosdev-assistant-test-a";
+
+        var few = await NewSessionAsync(user, token);
+        var many = await NewSessionAsync(user, token);
+        await _personal.AddUserMessageAsync(user, many.Id, "甲", "c-sort", token);
+        await _personal.AddUserMessageAsync(user, many.Id, "乙", "c-sort", token);
+
+        var byMessages = await _admin.ListSessionsAsync(
+            0, 200, AssistantSessionListState.Active, null, user,
+            AssistantSessionSort.Messages, false, token);
+        var ids = byMessages.Items.Select(s => s.Id).ToList();
+
+        var manyIndex = ids.IndexOf(many.Id);
+        var fewIndex = ids.IndexOf(few.Id);
+        Assert.True(manyIndex >= 0 && fewIndex >= 0, "两个测试会话都应在列表里。");
+        Assert.True(manyIndex < fewIndex, "按消息数降序时，消息多的会话应排在消息少的前面。");
     }
 
     /// <summary>归属用户下拉：至少包含上面建过会话的两个用户。</summary>

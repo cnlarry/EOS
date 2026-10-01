@@ -3,6 +3,29 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
+/// 会话列表的排序键。
+///
+/// <para>
+/// 用枚举而不是"传列名进来拼 SQL"：排序列由服务端固定映射，**没有注入面**，
+/// 未知取值在控制器里就退化成默认值（与 state 同口径）。
+/// </para>
+/// </summary>
+public enum AssistantSessionSort
+{
+    /// <summary>最近活跃（默认，降序）。</summary>
+    LastActive = 0,
+
+    /// <summary>创建时间。</summary>
+    Created = 1,
+
+    /// <summary>标题。</summary>
+    Title = 2,
+
+    /// <summary>消息数。</summary>
+    Messages = 3,
+}
+
+/// <summary>
 /// 工作助手会话的**管理侧**读写（菜单组 31 / 模块 3101，见 ADR-030 §4）。
 ///
 /// <para>
@@ -23,9 +46,14 @@ namespace EOS.API.Data;
 /// </summary>
 public interface IAssistantAdminRepository
 {
-    /// <summary>跨用户分页列会话（<paramref name="owner"/> 非空时只看该用户的）。</summary>
+    /// <summary>
+    /// 跨用户分页列会话（<paramref name="owner"/> 非空时只看该用户的）。
+    /// 排序走 <paramref name="sort"/> ＋ <paramref name="ascending"/>：列表是**服务端分页**的，
+    /// 排序也必须在服务端做，否则只会排到当前这一页。
+    /// </summary>
     Task<(IReadOnlyList<AssistantSessionDto> Items, int Total)> ListSessionsAsync(
-        int offset, int limit, AssistantSessionListState state, string? keyword, string? owner, CancellationToken token);
+        int offset, int limit, AssistantSessionListState state, string? keyword, string? owner,
+        AssistantSessionSort sort, bool ascending, CancellationToken token);
 
     /// <summary>出现在会话表里的全部归属用户（供管理页的"按用户筛选"下拉）。</summary>
     Task<IReadOnlyList<string>> ListOwnersAsync(CancellationToken token);
@@ -43,9 +71,31 @@ public interface IAssistantAdminRepository
 /// <summary>管理侧会话读写的 SQL Server 实现。</summary>
 public sealed class AssistantAdminRepository(DbConnectionFactory connections) : IAssistantAdminRepository
 {
+    /// <summary>消息数的聚合子查询：列表要显示它，按它排序时也要用同一份定义。</summary>
+    private const string MessageCountExpr =
+        "(SELECT COUNT(*) FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK) WHERE m.SESSION_ID = s.ID)";
+
+    /// <summary>
+    /// 排序列的服务端映射。**列名永远来自这里**，调用方只能传枚举，
+    /// 所以不存在"把用户输入拼进 ORDER BY"的注入面。
+    /// </summary>
+    private static string OrderByClause(AssistantSessionSort sort, bool ascending) => (sort, ascending) switch
+    {
+        (AssistantSessionSort.Title, true) => "s.TITLE ASC",
+        (AssistantSessionSort.Title, false) => "s.TITLE DESC",
+        (AssistantSessionSort.Created, true) => "s.CREATED_AT ASC",
+        (AssistantSessionSort.Created, false) => "s.CREATED_AT DESC",
+        (AssistantSessionSort.Messages, true) => $"{MessageCountExpr} ASC",
+        (AssistantSessionSort.Messages, false) => $"{MessageCountExpr} DESC",
+        (_, true) => "s.LAST_ACTIVE_AT ASC",
+        // 默认：最近活跃在前。ID 兜底，保证同值行的顺序稳定（分页才不会漏行或重行）
+        _ => "s.LAST_ACTIVE_AT DESC",
+    };
+
     /// <inheritdoc />
     public async Task<(IReadOnlyList<AssistantSessionDto> Items, int Total)> ListSessionsAsync(
-        int offset, int limit, AssistantSessionListState state, string? keyword, string? owner, CancellationToken token)
+        int offset, int limit, AssistantSessionListState state, string? keyword, string? owner,
+        AssistantSessionSort sort, bool ascending, CancellationToken token)
     {
         // 与个人侧同构，只有一处刻意不同：**没有 s.USER_ID = @UserId**，换成可选的 @Owner 过滤。
         const string filter = """
@@ -56,11 +106,11 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
               AND (@Keyword IS NULL OR s.TITLE LIKE @Keyword ESCAPE '\')
               AND (@Owner IS NULL OR s.USER_ID = @Owner)
             """;
-        const string sql = $"""
+        var sql = $"""
             SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_AT, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
-                   (SELECT COUNT(*) FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK) WHERE m.SESSION_ID = s.ID)
+                   {MessageCountExpr}
             {filter}
-            ORDER BY s.LAST_ACTIVE_AT DESC, s.ID DESC
+            ORDER BY {OrderByClause(sort, ascending)}, s.ID DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
             """;
         const string countSql = $"SELECT COUNT(*) {filter};";

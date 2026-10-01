@@ -33,7 +33,14 @@ public sealed class AssistantAdminController(
     /// <summary>归档 / 取消归档。<c>Archived</c> 缺省视为 <c>true</c>——空 body 不该把会话"取消归档"。</summary>
     public sealed record ArchiveSessionRequest(bool? Archived);
 
-    /// <summary>跨用户分页列会话（元数据）。<paramref name="state"/> 三态、<paramref name="owner"/> 按归属用户筛。</summary>
+    /// <summary>
+    /// 跨用户分页列会话（元数据）。<paramref name="state"/> 三态、<paramref name="owner"/> 按归属用户筛、
+    /// <paramref name="sortBy"/><paramref name="sortDir"/> 排序。
+    ///
+    /// <para>
+    /// **排序必须由服务端做**：列表是服务端分页的，在前端排只会排到当前这一页（看着"排了"其实是错的）。
+    /// </para>
+    /// </summary>
     [HttpGet("sessions")]
     public async Task<IActionResult> ListSessions(
         [FromQuery] int offset = 0,
@@ -41,11 +48,14 @@ public sealed class AssistantAdminController(
         [FromQuery] string? state = null,
         [FromQuery] string? keyword = null,
         [FromQuery] string? owner = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken token = default)
     {
         if (!await CanBrowse(token)) return Forbid();
         var (items, total) = await repository.ListSessionsAsync(
-            offset, limit, ParseState(state), keyword, owner, token);
+            offset, limit, ParseState(state), keyword, owner,
+            ParseSort(sortBy), string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase), token);
         return Ok(new { items, total });
     }
 
@@ -95,5 +105,17 @@ public sealed class AssistantAdminController(
         "archived" or "only" or "onlyarchived" => AssistantSessionListState.Archived,
         "all" or "true" => AssistantSessionListState.All,
         _ => AssistantSessionListState.Active,
+    };
+
+    /// <summary>
+    /// 排序列的解析：只认白名单里的名字，未知一律回落"最近活跃"。
+    /// 传出去的是**枚举**，列名由仓储自己映射——调用方无法把列名拼进 SQL。
+    /// </summary>
+    internal static AssistantSessionSort ParseSort(string? sortBy) => sortBy?.Trim().ToLowerInvariant() switch
+    {
+        "title" => AssistantSessionSort.Title,
+        "created" or "createdat" => AssistantSessionSort.Created,
+        "messages" or "messagecount" => AssistantSessionSort.Messages,
+        _ => AssistantSessionSort.LastActive,
     };
 }

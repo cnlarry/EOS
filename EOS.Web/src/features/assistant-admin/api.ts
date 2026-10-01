@@ -12,6 +12,9 @@ export interface AdminSessionQuery {
   keyword?: string
   /** 按归属用户筛；空表示不限（管理侧的关键差别：这里能跨用户看）。 */
   owner?: string
+  /** 排序列。**排序由服务端做**：列表是服务端分页的，在前端排只会排到当前这一页。 */
+  sortBy?: 'lastActive' | 'created' | 'title' | 'messages'
+  sortDir?: 'asc' | 'desc'
 }
 
 /**
@@ -20,9 +23,17 @@ export interface AdminSessionQuery {
  * 与个人侧的 `listSessions` 是两个端点：那一侧服务端强制按 `USER_ID` 隔离，这一侧面向管理员。
  */
 export function listAllSessions(params: AdminSessionQuery = {}) {
-  const { offset = 0, limit = 50, state = 'active', keyword = '', owner = '' } = params
+  const {
+    offset = 0, limit = 50, state = 'active', keyword = '', owner = '',
+    sortBy = 'lastActive', sortDir = 'desc',
+  } = params
   return apiClient.get<AssistantSessionPage>('/admin/assistant/sessions', {
-    query: { offset, limit, state, keyword: keyword.trim() || undefined, owner: owner || undefined },
+    query: {
+      offset, limit, state,
+      keyword: keyword.trim() || undefined,
+      owner: owner || undefined,
+      sortBy, sortDir,
+    },
   })
 }
 
