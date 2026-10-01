@@ -4,8 +4,11 @@
     把应用需要的凭据设成 User 级环境变量（配置里 ${VAR} 引用的真值来源）。
 
 .DESCRIPTION
-    仓库只保留一份入库的 EOS.API/appsettings.json，敏感项写成 ${MSSQL_ERP_CONN} /
-    ${EOS_ASSISTANT_API_KEY} 这类引用，真值只存在于环境变量。
+    仓库只保留一份入库的 EOS.API/appsettings.json，敏感项写成 ${MSSQL_ERP_CONN} 这类引用，
+    真值只存在于环境变量。
+
+    注意：**工作助手的密钥不由本脚本设置**（ADR-030 §3/§8）。它的变量名是每个供应商一行数据，
+    由「工作助手管理 → 模型与用量」在界面上填、并写进环境变量；库里只存变量名。
 
     两种用法：
     1) 迁移（默认）：从既有的 EOS.API/appsettings.Development.json 取值写入 User 级环境变量，
@@ -81,11 +84,17 @@ if (-not $conn -or -not $key) {
 }
 
 Set-EosUserVariable -Name 'MSSQL_ERP_CONN' -Value $conn -Note '业务库连接串（必填；为空则 /health/ready 报 Unhealthy）' -Overwrite:$Force
-Set-EosUserVariable -Name 'EOS_ASSISTANT_API_KEY' -Value $key -Note '工作助手模型密钥（可选；为空则助手降级）' -Overwrite:$Force
+
+# 工作助手的密钥**不在这里设**：变量名是每个供应商一行数据（在「工作助手管理 → 模型与用量」里填），
+# 值由那个界面写进环境变量，库里只存变量名。这里只提示一次，免得有人以为"设个固定的
+# EOS_ASSISTANT_API_KEY 助手就能用"——那个名字已经不是约定了。
+if ($key) {
+    Write-Warning '已忽略 -ApiKey / 旧的 Assistant:ApiKey：工作助手的密钥现在由「工作助手管理 → 模型与用量」写入环境变量，变量名以那边的配置为准（ADR-030 §8）。'
+}
 
 if ($fromFile) {
     Write-Host ''
-    Write-Host '迁移完成后即可删除 EOS.API/appsettings.Development.json（它只承载这两个值）。'
+    Write-Host '迁移完成后即可删除 EOS.API/appsettings.Development.json（它只承载连接串）。'
 }
 
 Write-Host ''

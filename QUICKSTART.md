@@ -26,16 +26,17 @@ sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/40_journal_baseline.sql -f 65001
 ## 2. 配置并启动后端
 
 配置里只写**环境变量引用**（`appsettings.json` 中形如 `${MSSQL_ERP_CONN}` 的占位），真值放环境变量——
-因此配置文件可以入库，连接串与密钥不落文件。需要设的变量：
+因此配置文件可以入库，连接串不落文件。要设的变量只有一个：
 
 ```powershell
 # 业务库连接串（必填；缺了 /health/ready 会报 Unhealthy）
 [Environment]::SetEnvironmentVariable('MSSQL_ERP_CONN',
   'Server=localhost;Database=EOS.ERP;Trusted_Connection=True;TrustServerCertificate=True', 'User')
-
-# 工作助手的模型密钥（可选；不配则助手降级并提示"尚未配置模型接入"，其余功能不受影响）
-[Environment]::SetEnvironmentVariable('EOS_ASSISTANT_API_KEY', '<你的密钥>', 'User')
 ```
+
+**工作助手的配置不在这里设**：模型与供应商在启动后的「工作助手管理 → 模型与用量」里配，密钥由那个界面
+写进环境变量（库里只存变量名，见 ADR-030 §3/§8）。没配之前助手是"未配置"状态——它会明确指路到那一页，
+其余功能不受影响。
 
 设完**重开终端**再启动（环境变量在启动进程时继承）：
 
