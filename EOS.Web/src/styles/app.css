@@ -922,9 +922,72 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-metric-card { overflow: hidden; }
 .erp-metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tblr-primary); }
 .erp-metric-icon { display: grid; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: .7rem; color: var(--tblr-primary); background: var(--tblr-primary-lt); }
-/* 首页卡片布局：卡片间隙与页边距一致（10px），覆盖 Tabler 默认 gutter（page-padding 16px） */
-.erp-dashboard { gap: 10px; }
-.erp-dashboard .row-cards { --tblr-gutter-x: 10px; --tblr-gutter-y: 10px; }
+/* 首页：整页随视口自适应，页面级不出滚动条。高度链自 `.erp-tab-panel > .container-fluid`
+   （flex 列 + min-height:0）承接：指标行定高，主区（待批核单据 + 快捷入口）吃掉剩余高度，
+   两块各自在容器内滚动，内容多也只出容器滚动条。
+   两行共用同一套三列轨道（`--erp-dashboard-cols`）：指标各占一列，主区第一块横跨前两列，
+   于是「待批核单据」宽度恒等于前两张指标卡宽度之和，「快捷入口」恒与第三张指标卡上下对齐。
+   用 grid 而非 Bootstrap row/col 还因为 row/col 对内部行高不是确定尺寸（栏会按内容撑开而不滚动，
+   见字段设置页两栏同理）。卡片间隙与页边距一致（10px）。 */
+.erp-dashboard {
+  --erp-dashboard-cols: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.erp-dashboard > * { min-width: 0; }
+.erp-dashboard-metrics { display: grid; grid-template-columns: var(--erp-dashboard-cols); gap: 10px; flex: 0 0 auto; }
+/* 主区：行轨道 minmax(0,1fr) 给出确定高度，栏内卡片才拿得到确定高度并各自内部滚动 */
+.erp-dashboard-main {
+  display: grid;
+  grid-template-columns: var(--erp-dashboard-cols);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.erp-dashboard-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.erp-dashboard-pane-wide { grid-column: span 2; }
+.erp-dashboard-pane > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
+.erp-dashboard-pane > .card { overflow: hidden; }
+/* 待批核列表：滚动权交给表格容器（吸顶表头随之滚动）；状态区放宽 18rem 定高，避免在小视口被裁 */
+.erp-dashboard-pane .erp-list-card { display: flex; flex-direction: column; overflow: hidden; }
+.erp-dashboard-pane .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.erp-dashboard-pane .erp-list-card .table-responsive { overflow: visible; }
+.erp-dashboard-pane .erp-list-card > .erp-state { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.erp-dashboard-pane .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+/* 快捷入口：卡片标题固定，入口清单占满其余高度并内部滚动 */
+.erp-dashboard-links { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* 我发起的在途流程：有数据才出现的第三块，限高 260px（同子表卡上限口径）、超出在表内滚动，
+   不与主区抢高度；视口不足时允许被压缩 */
+.erp-dashboard-started { flex: 0 1 auto; min-height: 0; max-height: 260px; display: flex; flex-direction: column; }
+.erp-dashboard-started > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-dashboard-started > .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.erp-dashboard-started > .erp-list-card .table-responsive { overflow: visible; }
+.erp-dashboard-started .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+@media (max-width: 991.98px) {
+  /* 窄屏：两栏改为上下堆叠，固定高度会把两块压成一条，交回页面滚动；
+     列表与入口清单仍限高（60vh）内部滚动，只是不再由视口高度决定 */
+  .erp-dashboard { --erp-dashboard-cols: repeat(2, minmax(0, 1fr)); flex: 0 0 auto; overflow: visible; }
+  .erp-dashboard-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; flex: 0 0 auto; }
+  .erp-dashboard-pane-wide { grid-column: auto; }
+  .erp-dashboard-pane > * { flex: 0 0 auto; }
+  .erp-dashboard-pane .erp-list-card,
+  .erp-dashboard-started > .erp-list-card { overflow: visible; }
+  .erp-dashboard-pane .erp-list-card .erp-table-shell,
+  .erp-dashboard-started > .erp-list-card .erp-table-shell,
+  .erp-dashboard-links { max-height: 60vh; }
+  .erp-dashboard-pane .erp-data-table thead th,
+  .erp-dashboard-started .erp-data-table thead th { position: static; }
+  .erp-dashboard-started { flex: 0 0 auto; max-height: none; }
+}
+@media (max-width: 575.98px) {
+  /* 手机：指标卡单列（主区此时同为单列） */
+  .erp-dashboard { --erp-dashboard-cols: minmax(0, 1fr); }
+}
 .erp-chart-placeholder { height: 19rem; display: flex; flex-direction: column; justify-content: flex-end; }
 .erp-chart-bars { display: flex; align-items: end; gap: 2.2%; height: 15rem; padding: 0 1rem; border-bottom: 1px solid var(--tblr-border-color); background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), var(--tblr-border-color-translucent) 25%); }
 .erp-chart-bars span { flex: 1; max-width: 2.5rem; margin-inline: auto; border-radius: .35rem .35rem 0 0; background: linear-gradient(to top, #206bc4, #76aee9); opacity: .9; }
