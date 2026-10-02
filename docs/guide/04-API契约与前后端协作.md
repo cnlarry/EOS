@@ -106,6 +106,10 @@
 - `src/services/api/` 下按 transport 分层：`httpTransport` 负责真实 HTTP，
   `mockTransport` 用于无后端时的开发，`client` 是二者之上的类型化门面。
 - 错误统一走 `client` 的解析，拿到 `code` 后再决定提示或字段级错误回填。
+- **动作类端点要区分"对哪一类做这件事"时用查询串，不要塞进 body**：`client` 的 `post`
+  与 `get` / `postFile` 一样支持 `query`（例：取消当前模型要说明是对话还是嵌入）。
+  同一个参数在 GET 与 POST 两处用两种方式读，早晚有一处读漏；
+  而读漏的那一处通常**不报错**，只是作用于另一个对象（清错了另一条"当前"）。
 
 ## 七、写接口的两个额外要求
 
