@@ -18,15 +18,26 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
-/** 缺行 = 代码默认值：value 为 null 的项就是"没改过"。 */
+/**
+ * 缺行 = 代码默认值：value 为 null 的项就是"没改过"。
+ *
+ * 键用 SYSSS 里的**大写键**（`USER_DAILY_CAP_YUAN`），与参数目录同名——界面按它做少数几处特判
+ * （如提示词渲染成多行框），用旧的小驼峰键会让那些分支静默走不到。
+ */
 function settingItem(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    key: 'UserDailyCapYuan',
+    key: 'USER_DAILY_CAP_YUAN',
     displayName: '每人日上限（元）',
+    groupCode: 'GOVERNANCE',
+    groupLabel: '成本与熔断',
+    seqNo: 10,
     valueType: 'decimal',
     unit: '元',
     description: '单个用户当日上限。必须大于 0。',
+    rangeHint: '大于 0',
     defaultValue: '5',
+    // 读取方非空：否则页头会多出一枚"目前无读取方"的警示徽标，把按徽标计数的断言带偏
+    consumers: ['UserDailyCapYuan'],
     value: null,
     isOverridden: false,
     updatedAt: null,
@@ -35,6 +46,9 @@ function settingItem(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+/** 分组顺序由服务端给；空分组不渲染（目录按批生长，先占号的域此刻可能还没有参数行）。 */
+const SETTINGS_GROUPS = [{ code: 'GOVERNANCE', label: '成本与熔断', seq: 50 }]
+
 function installFetchMock(options: { items?: unknown[]; problems?: string[]; failKeys?: string[] } = {}) {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -42,19 +56,26 @@ function installFetchMock(options: { items?: unknown[]; problems?: string[]; fai
     const method = init?.method ?? 'GET'
     calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : null })
 
+    if (url.includes('/admin/assistant/settings/scopes')) {
+      // 覆盖区块另拉一份清单；给它空清单，免得页面上的设置项被当成"覆盖行"渲染出来
+      return jsonResponse({ items: [], scopable: [] })
+    }
     if (url.includes('/admin/assistant/settings')) {
       if (method === 'GET') {
         return jsonResponse({
+          groups: SETTINGS_GROUPS,
           items: options.items ?? [
             settingItem(),
             settingItem({
-              key: 'SystemPrompt', displayName: '系统提示词', valueType: 'string', unit: null,
+              key: 'SYSTEM_PROMPT', displayName: '系统提示词', valueType: 'string', unit: null,
+              rangeHint: '', consumers: ['SystemPrompt'],
               defaultValue: '你是 EOS ERP 的工作助手。', value: '你是被改过的提示词。', isOverridden: true,
               updatedBy: 'admin', updatedAt: '2026-10-01T08:00:00Z',
             }),
             settingItem({
-              key: 'EnableAutoDistill', displayName: '会话结束自动提炼记忆', valueType: 'bool', unit: null,
-              defaultValue: 'true', value: null,
+              key: 'MEM_ENABLE_AUTO_DISTILL', displayName: '会话结束自动提炼记忆', valueType: 'bit', unit: null,
+              seqNo: 20, rangeHint: '', consumers: ['EnableAutoDistill'],
+              defaultValue: '1', value: null,
             }),
           ],
           problems: options.problems ?? [],
@@ -130,7 +151,7 @@ describe('AssistantSettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存（1）' }))
 
     await waitFor(() => expect(
-      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/UserDailyCapYuan')),
+      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/USER_DAILY_CAP_YUAN')),
     ).toBe(true))
     expect(harness.calls.find(call => call.method === 'PUT')?.body).toContain('8.5')
 
@@ -154,13 +175,13 @@ describe('AssistantSettingsPage', () => {
 
     await waitFor(() => {
       const written = harness.calls.filter(call => call.method === 'PUT').map(call => call.url)
-      expect(written.some(url => url.includes('/settings/UserDailyCapYuan'))).toBe(true)
-      expect(written.some(url => url.includes('/settings/EnableAutoDistill'))).toBe(true)
+      expect(written.some(url => url.includes('/settings/USER_DAILY_CAP_YUAN'))).toBe(true)
+      expect(written.some(url => url.includes('/settings/MEM_ENABLE_AUTO_DISTILL'))).toBe(true)
     })
   })
 
   it('没存进去的那一项要留在待保存里——失败不能被当成成功一起清掉', async () => {
-    const harness = installFetchMock({ failKeys: ['UserDailyCapYuan'] })
+    const harness = installFetchMock({ failKeys: ['USER_DAILY_CAP_YUAN'] })
 
     renderPage()
     const cap = await screen.findByLabelText('每人日上限（元）')
@@ -201,7 +222,7 @@ describe('AssistantSettingsPage', () => {
     fireEvent.click(enabled[0])
 
     await waitFor(() => expect(
-      harness.calls.some(call => call.method === 'DELETE' && call.url.includes('/settings/SystemPrompt')),
+      harness.calls.some(call => call.method === 'DELETE' && call.url.includes('/settings/SYSTEM_PROMPT')),
     ).toBe(true))
   })
 
@@ -218,9 +239,11 @@ describe('AssistantSettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存（1）' }))
 
     await waitFor(() => expect(
-      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/EnableAutoDistill')),
+      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/MEM_ENABLE_AUTO_DISTILL')),
     ).toBe(true))
-    expect(harness.calls.find(call => call.method === 'PUT')?.body).toContain('false')
+    // 关掉 = 写 '0'（SYSSS 的 bit 就是 1/0，不是 true/false）
+    const body = harness.calls.find(call => call.method === 'PUT')?.body ?? ''
+    expect((JSON.parse(body) as { value: string }).value).toBe('0')
   })
 
   it('库里的值解析不了时要当场说出来——否则界面显示着一个其实没生效的值', async () => {
