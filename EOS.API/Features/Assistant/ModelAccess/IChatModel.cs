@@ -19,17 +19,23 @@ public sealed record ChatMessage(
 /// <summary>
 /// 模型流式增量。ContentDelta 为空表示本片无文本；ToolCallDeltas 为 function-call 分片
 /// （arguments 按 Index 顺序拼接）；Usage 非空表示本次调用结束并附带用量统计；
-/// FinishReason 为 "stop"/"tool_calls" 等原始语义。
+/// FinishReason 为 "stop"/"tool_calls"/"length" 等原始语义；
+/// ReasoningDelta 为推理内容增量（模型有则透传，无则为空）。
 /// </summary>
 /// <param name="ContentDelta">文本增量（可为空）。</param>
 /// <param name="Usage">用量收尾帧。</param>
 /// <param name="ToolCallDeltas">工具调用分片。</param>
-/// <param name="FinishReason">完成原因（原样透传，如 stop / tool_calls）。</param>
+/// <param name="FinishReason">完成原因（原样透传，如 stop / tool_calls / length）。</param>
+/// <param name="ReasoningDelta">
+/// 推理内容增量（如 <c>reasoning_content</c>）。它**不回喂后续上下文**，只用于界面展示——
+/// 丢掉的代价是"推理 token 已经付费、用户却看不到"，而它本身并不参与下一轮对话。
+/// </param>
 public sealed record ChatDelta(
     string? ContentDelta,
     ChatUsage? Usage,
     IReadOnlyList<ProposedToolCallFragment>? ToolCallDeltas = null,
-    string? FinishReason = null);
+    string? FinishReason = null,
+    string? ReasoningDelta = null);
 
 /// <summary>单次调用的 token 用量与计时。</summary>
 public sealed record ChatUsage(int PromptTokens, int CompletionTokens, int ElapsedMs);

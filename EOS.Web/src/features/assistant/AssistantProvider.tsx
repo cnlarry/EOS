@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { createSession, getSituation, listMessages, listSessions, saveMemory } from './api'
+import { createSession, getSituation, listMessages, listSessions, saveMemory, setMessageFeedback } from './api'
 import { extractPageContext } from './pageContext'
-import { buildChatSituation } from './situationSource'
+import { buildChatSituation, describeSituation } from './situationSource'
 import { useChatStream, type AssistantFormDraft } from './useChatStream'
 import { isSituationSnapshot } from './assistantText'
 import {
@@ -30,7 +30,33 @@ function toBubble(message: AssistantMessage): Bubble {
     role: message.role as 1 | 2,
     text: message.content,
     tools: message.toolCalls && message.toolCalls.length > 0 ? message.toolCalls : undefined,
+    messageId: Number(message.id),
+    feedback: message.feedback ?? undefined,
+    // 截断提示随消息落库，所以刷新会话后它还在；只有一个"当次流式事件"的话，刷新就没了
+    truncated: message.finishReason === 'length',
   }
+}
+
+/**
+ * 这批错误码属于"用户或管理员**能当场处置**"的一类：密钥、余额、未配置、上下文超限。
+ * 它们不该只躺在气泡里——要顶到输入区上方，否则用户会反复重发同一句，而问题一个字没变。
+ */
+const SELF_SERVICE_ERROR_CODES = new Set([
+  'AI_MODEL_NOT_CONFIGURED',
+  'AI_MODEL_UNAUTHORIZED',
+  'AI_MODEL_INSUFFICIENT_BALANCE',
+  'AI_CONTEXT_LENGTH_EXCEEDED',
+  'AI_MODEL_TIMEOUT',
+  'AI_MODEL_UNAVAILABLE',
+])
+
+/** 从 done 事件带回的消息对象里取库内 id（形状由服务端定义，取不到就返回 undefined）。 */
+function readMessageId(message: unknown): number | undefined {
+  if (typeof message !== 'object' || message === null) return undefined
+  const id = (message as { id?: unknown }).id
+  if (typeof id === 'number') return id
+  if (typeof id === 'string' && id.trim() !== '' && !Number.isNaN(Number(id))) return Number(id)
+  return undefined
 }
 
 /**
@@ -168,39 +194,65 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setInput('')
     const draftKey = `draft-${Date.now()}`
     historyLoadRef.current += 1 // 在途的历史回读就此作废（见该 ref 的说明）
+    // 处境在**发送瞬间**取一次：这一轮带了什么，就按这一刻的状态记进消息（与真正发出去的是同一份对象）。
+    const situation = buildChatSituation(location.pathname)
+    const situationItems = describeSituation(situation)
     setBubbles(prev => [
       ...prev,
-      { key: `u-${Date.now()}`, role: 1, text: content },
+      {
+        key: `u-${Date.now()}`,
+        role: 1,
+        text: content,
+        // 用户侧消息记下"这轮发出去的处境"：隐式上报若连痕迹都没有，用户无从知道助手看到了什么
+        situation: situationItems.length > 0 ? situationItems : undefined,
+      },
       { key: draftKey, role: 2, text: '', streaming: true },
     ])
 
     await send({
       sessionId: target,
       content,
-      // 处境在发送瞬间从状态总线读取：路由 + 筛选 + 选中 + 脏值 + 最近拒绝（服务端再截断与校验）
-      pageContext: buildChatSituation(location.pathname),
+      pageContext: situation,
       onDelta: (text) => {
         setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, text: b.text + text } : b))
       },
-      onDone: (_message, toolCalls, drafts) => {
+      onReasoning: (text) => {
+        setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, reasoning: (b.reasoning ?? '') + text } : b))
+      },
+      onToolStart: (name) => {
+        setBubbles(prev => prev.map(b => b.key === draftKey
+          ? { ...b, runningTools: [...(b.runningTools ?? []), name] }
+          : b))
+      },
+      onToolResult: (name) => {
+        setBubbles(prev => prev.map(b => b.key === draftKey
+          ? { ...b, runningTools: (b.runningTools ?? []).filter(item => item !== name) }
+          : b))
+      },
+      onDone: (message, toolCalls, drafts, finishReason) => {
         setBubbles(prev => prev.map(b => b.key === draftKey
           ? {
               ...b,
               streaming: false,
+              runningTools: undefined,
+              messageId: readMessageId(message) ?? b.messageId,
               tools: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
               drafts: drafts && drafts.length > 0 ? drafts : undefined,
+              truncated: finishReason === 'length',
             }
           : b))
         void refreshSessions()
       },
       onError: (code, message) => {
         setBubbles(prev => prev.map(b => b.key === draftKey && !b.text ? { ...b, text: `⚠ ${message}`, streaming: false } : b))
-        setErrorText(code === 'AI_MODEL_NOT_CONFIGURED' ? message : null)
+        // 可自助处置的错误顶到输入区上方（密钥 / 余额 / 未配置 / 上下文超限 / 超时 / 厂商不可用）：
+        // 只留在气泡里的话，用户会反复重发同一句，而原因一个字没变。
+        setErrorText(SELF_SERVICE_ERROR_CODES.has(code) ? message : null)
       },
     })
 
     // 用户主动停止：保留已收到的增量，去掉流式标记；服务端不落库该回复
-    setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false } : b))
+    setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false, runningTools: undefined } : b))
   }, [sessionId, streaming, send, refreshSessions, location.pathname])
 
   /** 摘要条目可点：就地追问（模型按需调用，不发一言不烧额度）。 */
@@ -236,10 +288,32 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     navigate(workbenchNew(draft.moduleId))
   }, [navigate])
 
+  /**
+   * 反馈：乐观更新（先改本地再提交），失败回滚。它是**标注**而不是业务写入，
+   * 所以不走确认卡那一套；同一个方向再点一次即取消——界面上的按钮点得亮也点得灭。
+   */
+  const rateMessage = useCallback(async (bubble: Bubble, feedback: 0 | 1 | -1, reason?: string) => {
+    if (!bubble.messageId) {
+      setErrorText('这条回复还没落库，暂时不能评价。')
+      return
+    }
+
+    const next = bubble.feedback === feedback ? 0 : feedback
+    const previous = bubble.feedback
+    setBubbles(prev => prev.map(b => b.key === bubble.key ? { ...b, feedback: next === 0 ? undefined : next } : b))
+    try {
+      await setMessageFeedback(bubble.messageId, next === 0 ? null : next, next === -1 ? reason : undefined)
+    } catch {
+      setBubbles(prev => prev.map(b => b.key === bubble.key ? { ...b, feedback: previous } : b))
+      setErrorText('评价没记上，请重试。')
+    }
+  }, [])
+
   const value: AssistantContextValue = {
     open, setOpen, sessions, sessionId, setSessionId, bubbles, input, setInput,
     errorText, setErrorText, situation, remembered, showArchived, setShowArchived,
     streaming, stop, refreshSessions, newSession, sendMessage, askAbout, remember, openInForm,
+    rateMessage,
   }
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>

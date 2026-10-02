@@ -33,12 +33,19 @@ public sealed class AssistantGovernanceTests
     }
 
     [Fact]
-    public void Estimate_IsConservative_OneCharOneToken()
+    public void Estimate_IsConservative_PerCharClass()
     {
-        var (prompt, completion) = ChatService.EstimateUsage(1200, 300);
+        // 中文按 1 token/字（上界），ASCII 按 0.35 token/字（保守上界，留出余量）
+        Assert.Equal(1200, ChatService.EstimateTokens(new string('中', 1200)));
+        Assert.Equal(350, ChatService.EstimateTokens(new string('a', 1000)));
+        Assert.Equal(0, ChatService.EstimateTokens(string.Empty));
+
+        var (prompt, completion) = ChatService.EstimateUsage(1200, new string('中', 300));
 
         Assert.Equal(1200, prompt);
         Assert.Equal(300, completion);
+        // 空回复也要算 1 个 token：0 会让"模型什么都没返回"看起来像没花钱
+        Assert.Equal(1, ChatService.EstimateUsage(0, string.Empty).CompletionTokens);
     }
 
     [Fact]

@@ -8,11 +8,22 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Features.Assistant.ModelAccess;
 
 /// <summary>
-/// DeepSeek（OpenAI 兼容 /chat/completions）流式实现。
+/// OpenAI 兼容 <c>/chat/completions</c> 的流式实现（DeepSeek / OpenAI / 百炼 / 智谱 / Moonshot / 自定义同属一类）。
+///
+/// <para>
+/// 名字按**协议**取，不按厂商取：目录里所有供应商走的都是同一套 HTTP 契约，
+/// 用某一家给类命名会让人以为"换供应商要换客户端"。真正的差异（端点、模型标识、窗口、
+/// 是否支持工具）都是数据，来自 3102 的供应商行与模型行；协议由 <see cref="AssistantProviderCatalog.ProtocolOf"/>
+/// 决定，新增非兼容协议时在 <c>ResolvingChatModel</c> 里分派。
+/// </para>
+///
+/// <para>
 /// 只做出网调用与 SSE 解析：无权限语义、无落库、无提示词组装、不执行工具。
-/// 密钥经 IOptions 注入；请求级取消贯穿到 HTTP 流读取，客户端断开即中止出网调用。
+/// 失败一律归一成 <see cref="AssistantModelException"/>（类别决定文案与是否熔断），
+/// 不在这里决定"怎么告诉用户"。
+/// </para>
 /// </summary>
-public sealed class DeepSeekChatModel(
+public sealed class OpenAiCompatibleChatModel(
     IHttpClientFactory httpClientFactory,
     IOptions<AssistantSettings> settings) : IChatModel
 {
@@ -56,8 +67,7 @@ public sealed class DeepSeekChatModel(
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(linked.Token).ConfigureAwait(false);
-            throw new InvalidOperationException(
-                $"模型服务返回 {(int)response.StatusCode}：{Truncate(body, 300)}");
+            throw FromResponse((int)response.StatusCode, body);
         }
 
         var stream = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
@@ -66,6 +76,44 @@ public sealed class DeepSeekChatModel(
             yield return delta;
         }
     }
+
+    /// <summary>
+    /// 把厂商响应归一成失败类别。状态码先判一轮，认不出来时按错误体特征再判一次——
+    /// 同一件事各家用的码不一样（余额不足有 402、也有 400；超上下文有 413、也有 400），
+    /// 只认状态码会让一半的失败落进"未识别"，而这几类恰好都有明确去处。
+    /// </summary>
+    internal static AssistantModelException FromResponse(int status, string body)
+    {
+        var lower = body.ToLowerInvariant();
+        var kind = status switch
+        {
+            401 or 403 => AssistantModelErrorKind.Unauthorized,
+            402 => AssistantModelErrorKind.InsufficientBalance,
+            429 => AssistantModelErrorKind.RateLimited,
+            413 => AssistantModelErrorKind.ContextLengthExceeded,
+            >= 500 => AssistantModelErrorKind.ProviderUnavailable,
+            _ => AssistantModelErrorKind.Unknown,
+        };
+
+        if (kind is AssistantModelErrorKind.Unknown or AssistantModelErrorKind.RateLimited)
+        {
+            if (ContainsAny(lower, "insufficient_quota", "insufficient balance", "余额不足", "quota exceeded",
+                    "exceeded your current quota", "account balance"))
+            {
+                kind = AssistantModelErrorKind.InsufficientBalance;
+            }
+            else if (ContainsAny(lower, "context length", "context_length", "maximum context", "too many tokens",
+                         "reduce the length", "max_tokens", "token limit"))
+            {
+                kind = AssistantModelErrorKind.ContextLengthExceeded;
+            }
+        }
+
+        return new AssistantModelException(kind, $"模型服务返回 {status}：{Truncate(body, 300)}");
+    }
+
+    private static bool ContainsAny(string haystack, params string[] needles) =>
+        needles.Any(needle => haystack.Contains(needle, StringComparison.Ordinal));
 
     internal static Dictionary<string, object?> BuildPayload(
         AssistantSettings config,
@@ -181,6 +229,7 @@ public sealed class DeepSeekChatModel(
         }
 
         string? text = null;
+        string? reasoning = null;
         List<ProposedToolCallFragment>? fragments = null;
         string? finishReason = null;
         if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
@@ -193,6 +242,19 @@ public sealed class DeepSeekChatModel(
                     && contentEl.ValueKind == JsonValueKind.String)
                 {
                     text = contentEl.GetString();
+                }
+
+                // 推理内容各家字段名不同（DeepSeek 用 reasoning_content，部分兼容实现用 reasoning）。
+                // 它不进后续上下文，仅透传给界面：丢掉等于"推理 token 已付费、用户看不到"。
+                if (deltaEl.TryGetProperty("reasoning_content", out var reasoningEl)
+                    && reasoningEl.ValueKind == JsonValueKind.String)
+                {
+                    reasoning = reasoningEl.GetString();
+                }
+                else if (deltaEl.TryGetProperty("reasoning", out var reasoningAlt)
+                    && reasoningAlt.ValueKind == JsonValueKind.String)
+                {
+                    reasoning = reasoningAlt.GetString();
                 }
 
                 if (deltaEl.TryGetProperty("tool_calls", out var callsEl)
@@ -229,8 +291,8 @@ public sealed class DeepSeekChatModel(
             }
         }
 
-        if (text is null && fragments is null && finishReason is null) return null;
-        return new ChatDelta(text, null, fragments, finishReason);
+        if (text is null && fragments is null && finishReason is null && reasoning is null) return null;
+        return new ChatDelta(text, null, fragments, finishReason, reasoning);
     }
 
     private static string Truncate(string value, int max) =>

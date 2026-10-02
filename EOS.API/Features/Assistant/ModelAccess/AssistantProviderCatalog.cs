@@ -22,7 +22,23 @@ public sealed record AssistantModelPreset(
     string? Remark = null);
 
 /// <summary>
-/// 预设供应商：一个接入点（端点 + 密钥环境变量名 + 默认超时）及其可用模型清单。
+/// 模型接入协议。它是**代码认识的东西**，不是用户填的自由文本：
+/// 协议的选型决定客户端实现，供应商行上的 CODE 只是它的入口。
+///
+/// <para>
+/// 目前只有一种（目录里全部供应商都走 OpenAI 兼容 <c>/chat/completions</c>，含自定义），
+/// 所以这里只有一个成员——留这个枚举是为了让"换协议要改代码"这件事有一个明确的落点，
+/// 而不是散在 <c>ResolvingChatModel</c> 的一行 <c>new</c> 里。
+/// </para>
+/// </summary>
+public enum AssistantModelProtocol
+{
+    /// <summary>OpenAI 兼容 /chat/completions。</summary>
+    OpenAiCompatible = 0,
+}
+
+/// <summary>
+/// 预设供应商：一个接入点（端点 + 密钥环境变量名 + 默认超时 + 协议）及其可用模型清单。
 ///
 /// <para>
 /// 界面上的用法是：选一个供应商 → 带出端点与它的模型清单 → 勾选要启用的模型批量落库。
@@ -36,7 +52,8 @@ public sealed record AssistantProviderPreset(
     string SuggestedApiKeyEnvVar,
     int TimeoutSeconds,
     IReadOnlyList<AssistantModelPreset> Models,
-    string? Remark = null);
+    string? Remark = null,
+    AssistantModelProtocol Protocol = AssistantModelProtocol.OpenAiCompatible);
 
 /// <summary>
 /// 主流供应商与模型的**参考目录**（代码内置，不进数据库）。
@@ -140,6 +157,14 @@ public static class AssistantProviderCatalog
     /// 允许目录里没有的 CODE 没有意义——那样存下来的是一个没人认得的字符串。
     /// </summary>
     public static bool IsSupported(string? code) => Find(code) is not null;
+
+    /// <summary>
+    /// 某个 CODE 用哪种协议。目录外的 CODE 按**默认协议**处理：能落库的 CODE 一定在目录内
+    /// （<see cref="IsSupported"/> 在写入侧拦着），走到这里的未知值只可能来自更早的数据，
+    /// 这时按默认协议跑比直接拒绝更有用——拒绝会让一个正在工作的模型突然不可用。
+    /// </summary>
+    public static AssistantModelProtocol ProtocolOf(string? code) =>
+        Find(code)?.Protocol ?? AssistantModelProtocol.OpenAiCompatible;
 
     /// <summary>允许的 CODE 清单（用于校验失败时给出可选项）。</summary>
     public static IReadOnlyList<string> SupportedCodes { get; } = [.. All.Select(item => item.Code)];

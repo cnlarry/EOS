@@ -52,7 +52,16 @@ public sealed record AssistantMessageDto(
     string? CorrelationId,
     DateTimeOffset CreatedAt,
     /// <summary>本次回复用过的工具摘要（库内 JSON）；只有历史查询会带出，插入回显时为 null。</summary>
-    string? ToolCallsJson = null);
+    string? ToolCallsJson = null,
+    /// <summary>用户反馈：1 = 赞，-1 = 踩，null = 没反馈（与 0 同义）。只有历史查询会带出。</summary>
+    int? Feedback = null,
+    /// <summary>踩的原因（受控短文本）。赞或没反馈时为 null。</summary>
+    string? FeedbackReason = null,
+    /// <summary>
+    /// 该回复的完成原因（厂商语义，如 <c>length</c>）。<c>length</c> = 被输出上限截断，
+    /// 界面据此提示"回答未写完"——只靠当次流式事件的话，刷新会话后这条提示就没了。
+    /// </summary>
+    string? FinishReason = null);
 
 /// <summary>
 /// 工作助手会话/消息持久化契约。所有读写按 USER_ID 强制隔离；
@@ -94,7 +103,14 @@ public interface IAssistantRepository
     Task<AssistantMessageDto> AddAssistantMessageAsync(
         string userId, long sessionId, string content, string modelName,
         int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-        CancellationToken token, bool estimated = false);
+        CancellationToken token, bool estimated = false, string? finishReason = null);
+
+    /// <summary>
+    /// 记录 / 取消一条助手回复的反馈（1 赞 / -1 踩 / null 取消）。归属校验在 SQL 内完成，
+    /// 且只对助手消息（ROLE = 2）生效——给自己的提问点赞没有意义。返回受影响行数。
+    /// </summary>
+    Task<int> SetMessageFeedbackAsync(
+        string userId, long messageId, int? feedback, string? reason, CancellationToken token);
 
     /// <summary>组装模型上下文用的最近 N 条历史（正序返回）；归属校验在 SQL 内完成。</summary>
     Task<IReadOnlyList<(int Role, string Content)>> LoadRecentHistoryAsync(
@@ -257,7 +273,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         const string sql = """
             SELECT m.ID, m.SESSION_ID, m.ROLE, m.CONTENT, m.MODEL_NAME,
                    m.PROMPT_TOKENS, m.COMPLETION_TOKENS, m.ELAPSED_MS, m.CORRELATION_ID, m.CREATED_AT,
-                   m.TOOL_CALLS_JSON
+                   m.TOOL_CALLS_JSON, m.FEEDBACK, m.FEEDBACK_REASON, m.FINISH_REASON
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
             INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
             WHERE s.ID = @SessionId AND s.USER_ID = @UserId
@@ -312,15 +328,16 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     public async Task<AssistantMessageDto> AddAssistantMessageAsync(
         string userId, long sessionId, string content, string modelName,
         int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-        CancellationToken token, bool estimated = false)
+        CancellationToken token, bool estimated = false, string? finishReason = null)
     {
         const string sql = """
             INSERT INTO dbo.ASSISTANT_MESSAGE (SESSION_ID, ROLE, CONTENT, MODEL_NAME,
-                PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CORRELATION_ID, IS_ESTIMATED)
+                PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CORRELATION_ID, IS_ESTIMATED, FINISH_REASON)
             OUTPUT INSERTED.ID, INSERTED.SESSION_ID, INSERTED.ROLE, INSERTED.CONTENT,
                     INSERTED.MODEL_NAME, INSERTED.PROMPT_TOKENS, INSERTED.COMPLETION_TOKENS,
                     INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_AT
-            SELECT @SessionId, 2, @Content, @ModelName, @PromptTokens, @CompletionTokens, @ElapsedMs, @CorrelationId, @Estimated
+            SELECT @SessionId, 2, @Content, @ModelName, @PromptTokens, @CompletionTokens, @ElapsedMs, @CorrelationId, @Estimated,
+                   @FinishReason
             WHERE EXISTS (SELECT 1 FROM dbo.ASSISTANT_SESSION WHERE ID = @SessionId AND USER_ID = @UserId);
             """;
         return await QuerySingleMessage(sql, cmd =>
@@ -334,8 +351,35 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
             AddNullable(cmd, "@ElapsedMs", elapsedMs);
             cmd.Parameters.AddWithValue("@CorrelationId", correlationId);
             cmd.Parameters.Add("@Estimated", System.Data.SqlDbType.Bit).Value = estimated;
+            cmd.Parameters.Add("@FinishReason", System.Data.SqlDbType.NVarChar, 32).Value =
+                (object?)finishReason ?? DBNull.Value;
         }, token)
         ?? throw new UnauthorizedAccessException("会话不存在或不属于当前用户。");
+    }
+
+    /// <inheritdoc />
+    public async Task<int> SetMessageFeedbackAsync(
+        string userId, long messageId, int? feedback, string? reason, CancellationToken token)
+    {
+        // 「赞」一律不留原因（界面上也没有输入口），「取消」把两个字段一起清掉——
+        // 否则撤回之后库里还留着一条孤儿原因，看上去像"曾经踩过但没记录方向"。
+        const string sql = """
+            UPDATE m SET
+                m.FEEDBACK = @Feedback,
+                m.FEEDBACK_REASON = CASE WHEN @Feedback = 1 THEN NULL ELSE @Reason END,
+                m.FEEDBACK_AT = CASE WHEN @Feedback IS NULL THEN NULL ELSE SYSUTCDATETIME() END
+            FROM dbo.ASSISTANT_MESSAGE m
+            INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
+            WHERE m.ID = @Id AND s.USER_ID = @UserId AND m.ROLE = 2;
+            """;
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add("@Feedback", System.Data.SqlDbType.SmallInt).Value = (object?)feedback ?? DBNull.Value;
+        cmd.Parameters.Add("@Reason", System.Data.SqlDbType.NVarChar, 200).Value = (object?)reason ?? DBNull.Value;
+        cmd.Parameters.AddWithValue("@Id", messageId);
+        cmd.Parameters.AddWithValue("@UserId", userId);
+        return await cmd.ExecuteNonQueryAsync(token);
     }
 
     /// <inheritdoc />
@@ -443,6 +487,10 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         reader.IsDBNull(7) ? null : reader.GetInt32(7),
         reader.IsDBNull(8) ? null : reader.GetString(8),
         ToUtc(reader.GetDateTime(9)),
-        // 工具摘要列只有历史查询会 SELECT（插入/回填走的 OUTPUT 不带它），故按列数存在与否取值。
-        reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null);
+        // 工具摘要、反馈与截断原因只有历史查询会 SELECT（插入/回填走的 OUTPUT 不带它们），
+        // 故一律按列数存在与否取值——插入回显时它们是 null，而不是"读到了别的列"。
+        reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null,
+        reader.FieldCount > 11 && !reader.IsDBNull(11) ? Convert.ToInt32(reader.GetValue(11)) : null,
+        reader.FieldCount > 12 && !reader.IsDBNull(12) ? reader.GetString(12) : null,
+        reader.FieldCount > 13 && !reader.IsDBNull(13) ? reader.GetString(13) : null);
 }

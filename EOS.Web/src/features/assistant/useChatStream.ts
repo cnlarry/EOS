@@ -9,10 +9,24 @@ import type {
   AssistantRecordActionResult,
 } from './types'
 
-/** SSE 事件：delta=文本增量；done=回复已落库（含工具摘要与表单草稿）；error=流中失败。 */
+/**
+ * SSE 事件：delta=文本增量；reasoning=推理内容（只展示，不落库）；tool_start / tool_result=工具执行进度
+ * （工具轮里模型常常一次给好几个调用，执行期间不发进度的话界面上是一片空白，会被读成卡死）；
+ * done=回复已落库（含工具摘要、表单草稿与截断原因）；error=流中失败。
+ */
 export type ChatStreamEvent =
   | { event: 'delta'; text: string }
-  | { event: 'done'; message: unknown; toolCalls?: Array<{ name: string; digest: string }>; drafts?: AssistantDraft[] }
+  | { event: 'reasoning'; text: string }
+  | { event: 'tool_start'; name: string }
+  | { event: 'tool_result'; name: string; digest: string; ok: boolean }
+  | {
+      event: 'done'
+      message: unknown
+      toolCalls?: Array<{ name: string; digest: string }>
+      drafts?: AssistantDraft[]
+      /** 完成原因；`length` = 被输出上限截断（界面要如实提示"还没写完"）。 */
+      finishReason?: string | null
+    }
   | { event: 'error'; code: string; message: string }
 
 /**
@@ -49,10 +63,17 @@ interface SendOptions {
   content: string
   pageContext?: ChatPageContext | null
   onDelta: (text: string) => void
+  /** 推理内容增量（模型有才有）。它只用于展示，服务端不落库。 */
+  onReasoning?: (text: string) => void
+  /** 某个工具开始执行：界面据此显示"正在调用 X"，替代此前的空白等待。 */
+  onToolStart?: (name: string) => void
+  /** 某个工具返回（digest 与最终工具卡同源，ok 用于区分"查到"与"没查到"）。 */
+  onToolResult?: (name: string, digest: string, ok: boolean) => void
   onDone?: (
     message: unknown,
     toolCalls?: Array<{ name: string; digest: string }>,
     drafts?: AssistantDraft[],
+    finishReason?: string | null,
   ) => void
   onError?: (code: string, message: string) => void
 }
@@ -123,9 +144,18 @@ export function useChatStream() {
               case 'delta':
                 options.onDelta(evt.text)
                 break
+              case 'reasoning':
+                options.onReasoning?.(evt.text)
+                break
+              case 'tool_start':
+                options.onToolStart?.(evt.name)
+                break
+              case 'tool_result':
+                options.onToolResult?.(evt.name, evt.digest, evt.ok)
+                break
               case 'done':
                 outcome = 'done'
-                options.onDone?.(evt.message, evt.toolCalls, evt.drafts)
+                options.onDone?.(evt.message, evt.toolCalls, evt.drafts, evt.finishReason)
                 break
               case 'error':
                 outcome = 'error'
@@ -164,12 +194,24 @@ function parseFrame(frame: string): ChatStreamEvent | null {
     switch (eventName) {
       case 'delta':
         return { event: 'delta', text: typeof payload.text === 'string' ? payload.text : '' }
+      case 'reasoning':
+        return { event: 'reasoning', text: typeof payload.text === 'string' ? payload.text : '' }
+      case 'tool_start':
+        return { event: 'tool_start', name: typeof payload.name === 'string' ? payload.name : '' }
+      case 'tool_result':
+        return {
+          event: 'tool_result',
+          name: typeof payload.name === 'string' ? payload.name : '',
+          digest: typeof payload.digest === 'string' ? payload.digest : '',
+          ok: payload.ok !== false,
+        }
       case 'done':
         return {
           event: 'done',
           message: (payload as { message?: unknown }).message ?? payload,
           toolCalls: (payload as { toolCalls?: Array<{ name: string; digest: string }> }).toolCalls,
           drafts: (payload as { drafts?: AssistantDraft[] }).drafts,
+          finishReason: (payload as { finishReason?: string | null }).finishReason ?? null,
         }
       case 'error':
         return {

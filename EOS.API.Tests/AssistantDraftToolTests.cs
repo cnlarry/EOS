@@ -292,7 +292,7 @@ public sealed class AssistantDraftToolTests
         public Task<AssistantMessageDto> AddAssistantMessageAsync(
             string userId, long sessionId, string content, string modelName,
             int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-            CancellationToken token, bool estimated = false)
+            CancellationToken token, bool estimated = false, string? finishReason = null)
             => Task.FromResult(new AssistantMessageDto(2, sessionId, 2, content, modelName, promptTokens, completionTokens, elapsedMs, correlationId, DateTimeOffset.UtcNow));
 
         public Task<IReadOnlyList<(int Role, string Content)>> LoadRecentHistoryAsync(
@@ -301,6 +301,9 @@ public sealed class AssistantDraftToolTests
 
         public Task UpdateToolCallsJsonAsync(string userId, long messageId, string toolCallsJson, CancellationToken token)
             => Task.CompletedTask;
+
+        public Task<int> SetMessageFeedbackAsync(string userId, long messageId, int? feedback, string? reason, CancellationToken token)
+            => Task.FromResult(0);
     }
 }
 
