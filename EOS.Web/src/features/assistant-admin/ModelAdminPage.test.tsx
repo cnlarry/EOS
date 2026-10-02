@@ -199,8 +199,10 @@ describe('ModelAdminPage', () => {
     installFetchMock()
     renderPage()
 
-    // 供应商行与模型行各有一个「编辑」，模型在供应商之下，所以取最后一个
-    const edits = await screen.findAllByRole('button', { name: '编辑' })
+    // 供应商行与模型行各有一个「编辑」，模型在供应商之下，所以取最后一个。
+    // 超时给足：满量跑（上千条用例并行）时这一页的数据要一两秒才到位，默认 1s 会偶发失败；
+    // 这条用例要断言的是"锁定"这件事，不是加载有多快
+    const edits = await screen.findAllByRole('button', { name: '编辑' }, { timeout: 10_000 })
     fireEvent.click(edits[edits.length - 1])
 
     // 预设清单是**异步**拉的：字段先渲染出来、锁定状态随后才到，所以要 waitFor
@@ -219,10 +221,10 @@ describe('ModelAdminPage', () => {
     })
     renderPage()
 
-    const edits = await screen.findAllByRole('button', { name: '编辑' })
+    const edits = await screen.findAllByRole('button', { name: '编辑' }, { timeout: 10_000 })
     fireEvent.click(edits[edits.length - 1])
 
-    expect(await screen.findByLabelText('上下文窗口')).not.toHaveAttribute('readonly')
+    expect(await screen.findByLabelText('上下文窗口', {}, { timeout: 10_000 })).not.toHaveAttribute('readonly')
     expect(screen.getByLabelText('支持工具调用')).not.toBeDisabled()
   })
 
