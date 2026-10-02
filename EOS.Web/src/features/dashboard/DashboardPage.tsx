@@ -1,4 +1,4 @@
-import { IconArrowUpRight, IconChecklist, IconClockHour4, IconFolder, IconGitBranch } from '@tabler/icons-react'
+import { IconArrowUpRight, IconChecklist, IconClockHour4, IconEye, IconFolder, IconGitBranch } from '@tabler/icons-react'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -130,9 +130,9 @@ export function DashboardPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, resizable: false, truncate: false, minWidth: 100, minWidthFloor: true },
       cell: ({ row }) => (
-        <Button size="sm" className="erp-table-action" onClick={() => openTab(workbenchList(row.original.moduleId))}>去处理</Button>
+        <Button size="sm" variant="ghost" icon={<IconArrowUpRight size={14} />} onClick={() => openTab(workbenchList(row.original.moduleId))}>去处理</Button>
       ),
     },
   ]
@@ -188,68 +188,62 @@ export function DashboardPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, resizable: false, truncate: false, minWidth: 92, minWidthFloor: true },
       cell: ({ row }) => (
-        <Button size="sm" className="erp-table-action" onClick={() => openTab(workbenchList(row.original.moduleId))}>查看</Button>
+        <Button size="sm" variant="ghost" icon={<IconEye size={14} />} onClick={() => openTab(workbenchList(row.original.moduleId))}>查看</Button>
       ),
     },
   ]
 
   return (
-    <div className="d-grid erp-dashboard">
-      <div className="row row-deck row-cards">
-        <div className="col-sm-6 col-xl-4">
-          <article className="card erp-metric-card">
-            <div className="card-body">
-              <div className="d-flex align-items-start">
-                <div>
-                  <div className="text-secondary fw-medium">待批核单据</div>
-                  <div className="h1 mb-1 mt-2">{canSeeTasks ? (myTasks.isPending ? '…' : totalPending) : '—'}</div>
-                  <div className="text-secondary small">{canSeeTasks ? '未确认单据合计，含已提交流程' : '无「我的任务」模块权限'}</div>
-                </div>
-                <span className="erp-metric-icon ms-auto">
-                  <IconChecklist size={23} stroke={1.7} />
-                </span>
+    <div className="erp-dashboard">
+      <div className="erp-dashboard-metrics">
+        <article className="card erp-metric-card">
+          <div className="card-body">
+            <div className="d-flex align-items-start">
+              <div>
+                <div className="text-secondary fw-medium">待批核单据</div>
+                <div className="h1 mb-1 mt-2">{canSeeTasks ? (myTasks.isPending ? '…' : totalPending) : '—'}</div>
+                <div className="text-secondary small">{canSeeTasks ? '未确认单据合计，含已提交流程' : '无「我的任务」模块权限'}</div>
               </div>
+              <span className="erp-metric-icon ms-auto">
+                <IconChecklist size={23} stroke={1.7} />
+              </span>
             </div>
-          </article>
-        </div>
-        <div className="col-sm-6 col-xl-4">
-          <article className="card erp-metric-card">
-            <div className="card-body">
-              <div className="d-flex align-items-start">
-                <div>
-                  <div className="text-secondary fw-medium">流程审批待办</div>
-                  <div className="h1 mb-1 mt-2">{canSeeTasks ? (myTasks.isPending ? '…' : flowCount) : '—'}</div>
-                  <div className="text-secondary small">{canSeeTasks ? '工作流引擎待我处理的任务' : '无「我的任务」模块权限'}</div>
-                </div>
-                <span className="erp-metric-icon ms-auto">
-                  <IconGitBranch size={23} stroke={1.7} />
-                </span>
+          </div>
+        </article>
+        <article className="card erp-metric-card">
+          <div className="card-body">
+            <div className="d-flex align-items-start">
+              <div>
+                <div className="text-secondary fw-medium">流程审批待办</div>
+                <div className="h1 mb-1 mt-2">{canSeeTasks ? (myTasks.isPending ? '…' : flowCount) : '—'}</div>
+                <div className="text-secondary small">{canSeeTasks ? '工作流引擎待我处理的任务' : '无「我的任务」模块权限'}</div>
               </div>
+              <span className="erp-metric-icon ms-auto">
+                <IconGitBranch size={23} stroke={1.7} />
+              </span>
             </div>
-          </article>
-        </div>
-        <div className="col-sm-6 col-xl-4">
-          <article className="card erp-metric-card">
-            <div className="card-body">
-              <div className="d-flex align-items-start">
-                <div>
-                  <div className="text-secondary fw-medium">我发起的流程</div>
-                  <div className="h1 mb-1 mt-2">{canSeeTasks ? (myStarted.isPending ? '…' : startedRows.length) : '—'}</div>
-                  <div className="text-secondary small">{canSeeTasks ? '在途流程，可撤回后修改重新提交' : '无「我的任务」模块权限'}</div>
-                </div>
-                <span className="erp-metric-icon ms-auto">
-                  <IconClockHour4 size={23} stroke={1.7} />
-                </span>
+          </div>
+        </article>
+        <article className="card erp-metric-card">
+          <div className="card-body">
+            <div className="d-flex align-items-start">
+              <div>
+                <div className="text-secondary fw-medium">我发起的流程</div>
+                <div className="h1 mb-1 mt-2">{canSeeTasks ? (myStarted.isPending ? '…' : startedRows.length) : '—'}</div>
+                <div className="text-secondary small">{canSeeTasks ? '在途流程，可撤回后修改重新提交' : '无「我的任务」模块权限'}</div>
               </div>
+              <span className="erp-metric-icon ms-auto">
+                <IconClockHour4 size={23} stroke={1.7} />
+              </span>
             </div>
-          </article>
-        </div>
+          </div>
+        </article>
       </div>
 
-      <div className="row row-cards">
-        <div className="col-lg-8">
+      <div className="erp-dashboard-main">
+        <div className="erp-dashboard-pane erp-dashboard-pane-wide">
           <ErpListCard
             ariaLabel="待批核单据"
             search={null}
@@ -280,12 +274,12 @@ export function DashboardPage() {
             )}
           </ErpListCard>
         </div>
-        <div className="col-lg-4">
-          <section className="card h-100">
+        <div className="erp-dashboard-pane">
+          <section className="card">
             <div className="card-header">
               <h2 className="card-title">快捷入口</h2>
             </div>
-            <div className="list-group list-group-flush">
+            <div className="list-group list-group-flush erp-dashboard-links">
               {recent.length === 0 ? (
                 <div className="list-group-item text-secondary small">从左侧菜单访问过的工作台/报表会自动出现在这里。</div>
               ) : (
@@ -305,31 +299,33 @@ export function DashboardPage() {
       </div>
 
       {canSeeTasks && startedRows.length > 0 && (
-        <ErpListCard
-          ariaLabel="我发起的在途流程"
-          search={null}
-          actions={<Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => openTab('/my-tasks')}>查看全部</Button>}
-          header={<div className="px-3 pt-2 small text-secondary">我发起的在途流程 {startedRows.length} 项</div>}
-        >
-          {myStarted.isPending ? (
-            <LoadingState label="正在加载流程…" />
-          ) : myStarted.isError ? (
-            <ErrorState message={describeApiError(myStarted.error, '发生未知错误，请稍后重试。')} onRetry={() => void myStarted.refetch()} />
-          ) : (
-            <ErpTable
-              columns={startedColumns}
-              data={startedRows}
-              getRowId={(row) => String(row.wfId)}
-              empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
-              resizable
-              storageKey="dashboard-started"
-              clientSideSorting
-              rowClickSingleSelect
-              rowSelection={startedSelection}
-              onRowSelectionChange={setStartedSelection}
-            />
-          )}
-        </ErpListCard>
+        <div className="erp-dashboard-started">
+          <ErpListCard
+            ariaLabel="我发起的在途流程"
+            search={null}
+            actions={<Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => openTab('/my-tasks')}>查看全部</Button>}
+            header={<div className="px-3 pt-2 small text-secondary">我发起的在途流程 {startedRows.length} 项</div>}
+          >
+            {myStarted.isPending ? (
+              <LoadingState label="正在加载流程…" />
+            ) : myStarted.isError ? (
+              <ErrorState message={describeApiError(myStarted.error, '发生未知错误，请稍后重试。')} onRetry={() => void myStarted.refetch()} />
+            ) : (
+              <ErpTable
+                columns={startedColumns}
+                data={startedRows}
+                getRowId={(row) => String(row.wfId)}
+                empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
+                resizable
+                storageKey="dashboard-started"
+                clientSideSorting
+                rowClickSingleSelect
+                rowSelection={startedSelection}
+                onRowSelectionChange={setStartedSelection}
+              />
+            )}
+          </ErpListCard>
+        </div>
       )}
     </div>
   )
