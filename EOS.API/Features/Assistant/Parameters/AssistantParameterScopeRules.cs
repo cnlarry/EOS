@@ -2,14 +2,21 @@ using EOS.API.Data;
 
 namespace EOS.API.Features.Assistant.Parameters;
 
-/// <summary>作用域表（<c>dbo.ASSISTANT_PARAM_SCOPE</c>）的一行：某一层对某一条参数的覆盖。</summary>
+/// <summary>
+/// 作用域表（<c>dbo.ASSISTANT_PARAM_SCOPE</c>）的一行：某一层对某一条参数的覆盖。
+/// </summary>
+/// <param name="Label">
+/// 显示名（管理列表才解析：模块名 / 员工姓名）。解析不到为 <c>null</c>——**不回落成键名**，
+/// 界面据此决定"要不要在号下面多写一行"。
+/// </param>
 public sealed record AssistantParameterScopeRow(
     string ScopeType,
     string ScopeKey,
     string ParamKey,
     string? Value,
     string? UpdatedBy,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? Label = null);
 
 /// <summary>
 /// 作用域的**纯规则**：分层优先级、"这条参数能不能被覆盖"、以及"收紧型只能更严"。

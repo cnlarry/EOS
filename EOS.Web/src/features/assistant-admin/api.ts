@@ -417,6 +417,8 @@ export function resetSetting(key: string) {
 export interface AssistantScopeOverride {
   scopeType: 'MODULE' | 'USER' | string
   scopeKey: string
+  /** 显示名（模块名 / 员工姓名）；解析不到为 null——界面据此决定要不要多写一行。 */
+  scopeLabel: string | null
   paramKey: string
   value: string | null
   updatedBy: string | null

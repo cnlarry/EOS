@@ -932,6 +932,9 @@ public sealed class AssistantAdminController(
             {
                 scopeType = row.ScopeType,
                 scopeKey = row.ScopeKey,
+                // 显示名（模块名 / 员工姓名）：不带这一列，界面上的"1401"与"wangwu"认不出是谁。
+                // 解析不到就是 null，由界面决定要不要多写一行——不回落成键名
+                scopeLabel = row.Label,
                 paramKey = row.ParamKey,
                 value = row.Value,
                 updatedBy = row.UpdatedBy,

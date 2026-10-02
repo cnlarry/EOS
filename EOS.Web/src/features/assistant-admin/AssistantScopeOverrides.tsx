@@ -135,7 +135,15 @@ export function AssistantScopeOverrides() {
     {
       accessorKey: 'scopeKey',
       header: '对象',
-      cell: info => <span className="font-monospace">{info.getValue<string>()}</span>,
+      // 号是身份（服务端按它匹配），名字是给人看的：两个都要，缺了名字这一列就是天书
+      cell: info => (
+        <span className="d-flex flex-column">
+          <span className="font-monospace">{info.getValue<string>()}</span>
+          {info.row.original.scopeLabel && (
+            <span className="text-secondary small">{info.row.original.scopeLabel}</span>
+          )}
+        </span>
+      ),
     },
     {
       id: 'param',

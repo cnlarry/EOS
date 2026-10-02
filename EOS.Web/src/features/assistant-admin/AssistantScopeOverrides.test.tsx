@@ -141,11 +141,31 @@ describe('AssistantScopeOverrides', () => {
     expect(screen.queryByLabelText('参数')).toBeNull()
   })
 
+  it('清单里带出显示名——号是身份，名字才是给人看的', async () => {
+    vi.mocked(listScopes).mockResolvedValue({
+      items: [
+        // 服务端把名字 join 好了；解析不到就是 null（模块被删、账号没登记姓名）
+        { scopeType: 'MODULE', scopeKey: '1401', scopeLabel: '客户订单', paramKey: 'ACTION_DELETE', value: '0', updatedBy: 'admin', updatedAt: null },
+        { scopeType: 'USER', scopeKey: 'wangwu', scopeLabel: null, paramKey: 'USER_DAILY_CAP_YUAN', value: '8', updatedBy: 'admin', updatedAt: null },
+      ],
+      scopable: SCOPABLE,
+    })
+
+    renderPanel()
+
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('1401')).toBeInTheDocument()
+    expect(within(table).getByText('客户订单')).toBeInTheDocument()
+    // 解析不到名字时只留号，不留一行空占位或回落成键名的假名字
+    expect(within(table).getByText('wangwu')).toBeInTheDocument()
+    expect(within(table).queryByText('—')).toBeNull()
+  })
+
   it('清单里要标出层级——同一列里的 1401 可能是模块号也可能是用户名', async () => {
     vi.mocked(listScopes).mockResolvedValue({
       items: [
-        { scopeType: 'MODULE', scopeKey: '1401', paramKey: 'ACTION_DELETE', value: '0', updatedBy: 'admin', updatedAt: null },
-        { scopeType: 'USER', scopeKey: 'zhangsan', paramKey: 'USER_DAILY_CAP_YUAN', value: '8', updatedBy: 'admin', updatedAt: null },
+        { scopeType: 'MODULE', scopeKey: '1401', scopeLabel: '客户订单', paramKey: 'ACTION_DELETE', value: '0', updatedBy: 'admin', updatedAt: null },
+        { scopeType: 'USER', scopeKey: 'zhangsan', scopeLabel: '张三', paramKey: 'USER_DAILY_CAP_YUAN', value: '8', updatedBy: 'admin', updatedAt: null },
       ],
       scopable: SCOPABLE,
     })
