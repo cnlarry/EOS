@@ -94,7 +94,9 @@ public sealed class AssistantProviderCatalogTests
 
                 if (model.MaxOutputTokens is { } maxOutput)
                 {
-                    Assert.InRange(maxOutput, 1, 200_000);
+                    // 上界与库里的检查约束**同源**：厂商现在的最大输出已经到 393216，
+                    // 早期 200000 的上界会把预设值直接挡在库外（迁移 307 已放宽到 1000000）
+                    Assert.InRange(maxOutput, 1, 1_000_000);
                     // 输出上限不可能超过窗口——算错了会直接带着非法参数去请求
                     if (model.ContextWindow is { } context)
                     {
@@ -104,6 +106,72 @@ public sealed class AssistantProviderCatalogTests
                 }
             }
         }
+    }
+
+    [Fact]
+    public void Model_Presets_Declare_Kind_And_Dimension_Consistently()
+    {
+        foreach (var model in AssistantProviderCatalog.All.SelectMany(provider => provider.Models))
+        {
+            if (model.Kind == AssistantModelKind.Embedding)
+            {
+                // 嵌入模型不给维度，等于把"尺寸对不对"推迟到运行时才暴露
+                Assert.NotNull(model.Dimension);
+                Assert.InRange(model.Dimension!.Value, 1, 20_000);
+                // 嵌入端点没有工具调用这回事：声明成支持会把 tools 带到不认识的请求里
+                Assert.False(model.SupportsTools);
+            }
+            else
+            {
+                // 对话模型带维度是语义错位：维度是向量的属性，不是对话的属性
+                Assert.Null(model.Dimension);
+            }
+        }
+    }
+
+    [Fact]
+    public void Embedding_Capability_Matches_What_The_Presets_Offer()
+    {
+        foreach (var provider in AssistantProviderCatalog.All)
+        {
+            if (provider.Embedding != AssistantCapability.Unsupported)
+            {
+                continue;
+            }
+
+            // 核实过"没有嵌入端点"的那几家，预设里就不能摆嵌入模型：
+            // 摆上等于给一个必定 404 的端点做广告
+            Assert.DoesNotContain(provider.Models, model => model.Kind == AssistantModelKind.Embedding);
+        }
+
+        // 候选清单只列"支持或未核实"的——明知不支持的，不该出现在"选嵌入"的地方
+        Assert.DoesNotContain(
+            AssistantProviderCatalog.EmbeddingCandidates,
+            provider => provider.Embedding == AssistantCapability.Unsupported);
+        Assert.Contains(AssistantProviderCatalog.EmbeddingCandidates, provider => provider.Code == "dashscope");
+        Assert.Contains(AssistantProviderCatalog.EmbeddingCandidates, provider => provider.Code == "zhipu");
+    }
+
+    [Fact]
+    public void Verified_Vendor_Facts_Are_Pinned()
+    {
+        // 下面几条是**核过官方文档的事实**（不是印象）。钉在这里是为了让"顺手把认证头统一成 Bearer"
+        // 这类改动当场撞红——那会让那家供应商再也接不上（它用的是 api-key 头）。
+        var xiaomi = AssistantProviderCatalog.Find("xiaomi");
+        Assert.NotNull(xiaomi);
+        Assert.Equal("https://api.xiaomimimo.com/v1", xiaomi.BaseUrl);
+        Assert.Equal(AssistantAuthStyle.ApiKeyHeader, xiaomi.AuthStyle);
+        Assert.Equal(AssistantAuthStyle.ApiKeyHeader, AssistantProviderCatalog.AuthStyleOf("XIAOMI"));
+
+        // 核过"没有嵌入端点"的三家：不得出现在嵌入候选里
+        foreach (var code in new[] { "deepseek", "moonshot", "xiaomi" })
+        {
+            Assert.Equal(AssistantCapability.Unsupported, AssistantProviderCatalog.Find(code)!.Embedding);
+        }
+
+        // 目录外的 CODE 按主流形态处理：不抛也不拒绝（与协议解析同一口径）
+        Assert.Equal(AssistantAuthStyle.Bearer, AssistantProviderCatalog.AuthStyleOf("unknown-vendor"));
+        Assert.Equal(AssistantAuthStyle.Bearer, AssistantProviderCatalog.AuthStyleOf(null));
     }
 
     [Fact]
