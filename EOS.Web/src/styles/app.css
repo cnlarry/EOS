@@ -2032,3 +2032,17 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   background: var(--tblr-bg-surface-secondary, #f6f8fb);
 }
 .erp-assistant-config-result { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--tblr-border-color, #e6e7e9); }
+
+/* ---- 页面级选项卡（3102 模型与用量：整页分成"模型 / 用量"两个页签）----
+   与卡片内的页签（.erp-tabbed-panel 的默认形态）不同：这里的页签内容自己就是一整块工作台，
+   所以 body 要去掉那圈"内容卡片"的边框与内边距，并且**把高度接着往下传**——
+   否则工作台的 flex 链断在这一层，表格内部滚动条不会出现，反而是整页出现滚动条。 */
+.erp-page-tabs { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.erp-page-tabs > .erp-tabbed-panel-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 0; border: 0; background: transparent; }
+
+/* 3102：供应商行数少、模型行数多，与工作台默认的"主表占满、子表 30%"正好相反——
+   主表按内容高（超过 220px 自己滚），子表占满剩余空间。
+   两条选择器的权重与 .erp-workbench-page 那组相同，靠在这里出现得更晚生效。 */
+.erp-model-admin-page > .erp-list-card { flex: 0 1 auto; }
+.erp-model-admin-page > .erp-list-card .erp-master-table-region { max-height: 220px; }
+.erp-model-admin-page > .erp-detail-card { flex: 1 1 auto; min-height: 200px; max-height: none; }

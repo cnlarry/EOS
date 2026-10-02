@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/ui/Toast'
@@ -57,6 +57,22 @@ function providerRow(overrides: Partial<Record<string, unknown>> = {}) {
     models: [modelRow()],
     ...overrides,
   }
+}
+
+/** 第二家供应商：用来验"点上面那行、下面那张表跟着换"。 */
+function secondProviderRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return providerRow({
+    providerId: 2,
+    code: 'dashscope',
+    displayName: '阿里云百炼（通义千问）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    apiKeyEnvVar: 'EOS_ASSISTANT_KEY_DASHSCOPE',
+    apiKeyMaskedTail: '****wxyz',
+    models: [modelRow({
+      modelId: 31, providerId: 2, modelCode: 'qwen-max', displayName: '通义千问 Max', isActive: false,
+    })],
+    ...overrides,
+  })
 }
 
 /** 一条嵌入模型：用途、维度与"不摆窗口/输出"都是它区别于对话模型的地方。 */
@@ -188,6 +204,9 @@ function renderPage() {
   )
 }
 
+/** 按单元格文本找到它所在的行——表里的操作按钮都按行定位，否则"编辑/删除"会撞在一起。 */
+const rowOf = (text: string) => screen.getByText(text).closest('tr')!
+
 describe('ModelAdminPage', () => {
   beforeEach(() => localStorage.clear())
   afterEach(() => {
@@ -195,15 +214,93 @@ describe('ModelAdminPage', () => {
     vi.unstubAllGlobals()
   })
 
+  it('整页用页签分成"模型 / 用量"，模型页签是"上供应商表 / 下模型表"的主子表', async () => {
+    installFetchMock()
+    const { container } = renderPage()
+
+    // 页签：模型是默认页签
+    expect(await screen.findByRole('tab', { name: '模型' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '用量' })).toHaveAttribute('aria-selected', 'false')
+    // 页面级页签的容器要能把高度接着传下去（否则工作台的 flex 链断在这里，内层表格不出滚动条）
+    expect(container.querySelector('.erp-page-tabs')).not.toBeNull()
+    // 主子表：上（供应商表）与下（模型表）各是一个独立的滚动区
+    expect(container.querySelector('.erp-master-table-region')).not.toBeNull()
+    expect(container.querySelector('.erp-detail-card')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('tab', { name: '用量' }))
+
+    expect(await screen.findByText('按模型（近 30 天）')).toBeInTheDocument()
+    // 页签是**条件渲染**而不是藏起来：切走之后供应商表不在文档里（藏起来会留一堆隐藏的可访问名）
+    expect(screen.queryByText('EOS_ASSISTANT_KEY_DEEPSEEK')).toBeNull()
+  })
+
+  it('供应商表（主表）：端点 / 密钥状态 / 默认超时都摆出来', async () => {
+    installFetchMock()
+    renderPage()
+
+    const row = (await screen.findByText('DeepSeek 开放平台')).closest('tr')!
+
+    // 端点在**供应商**级：加第二个模型不必重复填它
+    expect(within(row).getByText('https://api.deepseek.com')).toBeInTheDocument()
+    expect(within(row).getByText('EOS_ASSISTANT_KEY_DEEPSEEK')).toBeInTheDocument()
+    expect(within(row).getByText(/已配置 \*\*\*\*abcd/)).toBeInTheDocument()
+    expect(within(row).getByText('300 秒')).toBeInTheDocument()
+    // "当前对话"是供应商级的徽标（真正"当前"的是它名下那条模型）
+    expect(within(row).getByText('当前对话')).toBeInTheDocument()
+  })
+
+  it('点供应商行切换下面的模型表（主子联动）', async () => {
+    installFetchMock({ providers: [providerRow(), secondProviderRow()] })
+    renderPage()
+
+    // 默认看第一家
+    expect(await screen.findByText('deepseek-chat')).toBeInTheDocument()
+    expect(screen.queryByText('qwen-max')).toBeNull()
+
+    fireEvent.click(rowOf('阿里云百炼（通义千问）'))
+
+    expect(await screen.findByText('qwen-max')).toBeInTheDocument()
+    expect(screen.queryByText('deepseek-chat')).toBeNull()
+    // 详情区标题跟着选中行走：看不到"现在这张表是谁的"是最容易搞错的地方
+    expect(screen.getByText('阿里云百炼（通义千问） 的模型')).toBeInTheDocument()
+  })
+
+  it('用途切换器：对话看窗口/输出，嵌入看维度（两套列不混用）', async () => {
+    installFetchMock({ providers: [providerRow({ models: [modelRow(), embeddingRow()] })] })
+    renderPage()
+
+    // 默认对话：窗口/输出要显示出来（它会被真的用来裁剪历史，不是装饰）
+    expect(await screen.findByText('65,536 / 8,192')).toBeInTheDocument()
+    expect(screen.queryByText('1024 维')).toBeNull()
+    // 段上带条数：一眼看出这家有几个对话、几个嵌入
+    expect(screen.getByRole('button', { name: '对话（1）' })).toHaveClass('btn-secondary')
+
+    fireEvent.click(screen.getByRole('button', { name: '嵌入（1）' }))
+
+    // 嵌入：维度必须显示（决定向量能不能存进集合），窗口/输出那列不摆出来
+    expect(await screen.findByText('1024 维')).toBeInTheDocument()
+    expect(screen.queryByText('65,536 / 8,192')).toBeNull()
+  })
+
+  it('缺维度的嵌入模型要点出来，而不是显示成"维度空着"', async () => {
+    installFetchMock({
+      providers: [providerRow({ models: [modelRow(), embeddingRow({ dimension: null })] })],
+    })
+
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /^嵌入（/ }))
+
+    expect(await screen.findByText('缺维度')).toBeInTheDocument()
+  })
+
   it('预设里有的型号：窗口与最大输出来自厂商公开值，不给改', async () => {
     installFetchMock()
     renderPage()
 
-    // 供应商行与模型行各有一个「编辑」，模型在供应商之下，所以取最后一个。
     // 超时给足：满量跑（上千条用例并行）时这一页的数据要一两秒才到位，默认 1s 会偶发失败；
     // 这条用例要断言的是"锁定"这件事，不是加载有多快
-    const edits = await screen.findAllByRole('button', { name: '编辑' }, { timeout: 10_000 })
-    fireEvent.click(edits[edits.length - 1])
+    const row = await waitFor(() => rowOf('deepseek-chat'), { timeout: 10_000 })
+    fireEvent.click(within(row).getByRole('button', { name: '编辑' }))
 
     // 预设清单是**异步**拉的：字段先渲染出来、锁定状态随后才到，所以要 waitFor
     // （直接断言会读到"还没锁"的那一帧——这正是本仓库记过的"跨渲染帧竞态"）
@@ -219,30 +316,14 @@ describe('ModelAdminPage', () => {
     installFetchMock({
       providers: [providerRow({ models: [modelRow({ modelCode: 'my-own-model' })] })],
     })
+
     renderPage()
 
-    const edits = await screen.findAllByRole('button', { name: '编辑' }, { timeout: 10_000 })
-    fireEvent.click(edits[edits.length - 1])
+    const row = await waitFor(() => rowOf('my-own-model'), { timeout: 10_000 })
+    fireEvent.click(within(row).getByRole('button', { name: '编辑' }))
 
     expect(await screen.findByLabelText('上下文窗口', {}, { timeout: 10_000 })).not.toHaveAttribute('readonly')
     expect(screen.getByLabelText('支持工具调用')).not.toBeDisabled()
-  })
-
-  it('两级渲染：供应商带出端点与密钥状态，其下挂模型', async () => {
-    installFetchMock()
-
-    renderPage()
-
-    expect(await screen.findByText('DeepSeek 开放平台')).toBeInTheDocument()
-    // 端点在**供应商**级：加第二个模型不必重复填它
-    expect(screen.getByText('https://api.deepseek.com')).toBeInTheDocument()
-    expect(screen.getByText('EOS_ASSISTANT_KEY_DEEPSEEK')).toBeInTheDocument()
-    expect(screen.getByText(/已配置 \*\*\*\*abcd/)).toBeInTheDocument()
-    // 模型名在"模型表"与下面的"用量表"里各出现一次，所以按数量断言（两处都渲染了才算对）
-    expect(screen.getAllByText('deepseek-chat').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('当前对话')).toBeInTheDocument()
-    // 窗口要显示出来：它会被真的用来裁剪历史，不是装饰
-    expect(screen.getByText('65,536 / 8,192')).toBeInTheDocument()
   })
 
   it('未配置时顶部直说"助手不可用"并给出下一步，而不是等人去点聊天才发现', async () => {
@@ -262,7 +343,7 @@ describe('ModelAdminPage', () => {
     const chatAlert = alerts.find(item => item.textContent?.includes('对话模型'))!
     expect(chatAlert.textContent).toContain('尚未配置对话模型')
     expect(chatAlert.textContent).toContain('工作助手当前不可用')
-    expect(chatAlert.textContent).toContain('请先「设置密钥」')
+    expect(chatAlert.textContent).toContain('设置密钥')
     expect(screen.getByText('未配置')).toBeInTheDocument()
   })
 
@@ -272,8 +353,8 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     await screen.findByText('EOS_ASSISTANT_KEY_DEEPSEEK')
-    // 这条是本轮新增分区的关键：嵌入缺失在界面上必须与"助手不可用"分开说——
-    // 它坏掉时用户看到的是"问制度没答案"，不会想到是模型没配
+    // 嵌入缺失在界面上必须与"助手不可用"分开说：它坏掉时用户看到的是"问制度没答案"，
+    // 不会想到是模型没配
     const alerts = await screen.findAllByRole('alert')
     const embeddingAlert = alerts.find(item => item.textContent?.includes('嵌入模型'))!
     expect(embeddingAlert.textContent).toContain('尚未配置嵌入模型')
@@ -328,7 +409,10 @@ describe('ModelAdminPage', () => {
     const harness = installFetchMock()
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: '密钥' }))
+    // 先等数据到位：rowOf 是**同步**查找（不能等着用它的返回值当 find 的参数），
+    // 在数据回来之前直接调用会当场抛"找不到 DeepSeek 开放平台"
+    await screen.findByText('DeepSeek 开放平台')
+    fireEvent.click(within(rowOf('DeepSeek 开放平台')).getByRole('button', { name: '密钥' }))
     expect(await screen.findByLabelText('密钥')).toBeInTheDocument()
     expect(screen.getByText(/密钥不入库、也不会再显示出来/)).toBeInTheDocument()
 
@@ -359,7 +443,7 @@ describe('ModelAdminPage', () => {
     installFetchMock()
 
     renderPage()
-    await screen.findAllByText('deepseek-chat')
+    await screen.findByText('deepseek-chat')
 
     // 用 title 定位而不是可访问名："删除"两个字在模型行与供应商行都有，可访问名会撞
     expect(screen.getByTitle('删除（当前模型不可删）')).toBeDisabled()
@@ -367,52 +451,29 @@ describe('ModelAdminPage', () => {
     expect(screen.getByTitle('名下还有模型，需先删除它们')).toBeDisabled()
   })
 
-  it('用量区按模型与按天聚合，并给出当日上限口径', async () => {
+  it('用量页签：按模型与按天各占一块（上主下子），并给出当日上限口径', async () => {
     installFetchMock()
 
     renderPage()
+    fireEvent.click(await screen.findByRole('tab', { name: '用量' }))
 
     expect(await screen.findByText('按模型（近 30 天）')).toBeInTheDocument()
     expect(screen.getByText('按天（近 30 天）')).toBeInTheDocument()
     expect(screen.getByText(/上限：每人 ¥5\/天、全局 ¥50\/天/)).toBeInTheDocument()
   })
 
-  it('按用途分区：嵌入与对话各成一段，嵌入段显示维度', async () => {
-    installFetchMock({ providers: [providerRow({ models: [modelRow(), embeddingRow()] })] })
-
-    renderPage()
-
-    // 两段标题都在：混在一张表里必然有一半的行在某些列上是空的，
-    // 读的人分不清"这项没有"与"这项没填"
-    expect(await screen.findByText('对话模型')).toBeInTheDocument()
-    expect(screen.getByText('嵌入模型')).toBeInTheDocument()
-    // 维度必须显示：它决定向量能不能存进集合（与集合登记不一致时入库会被拒）
-    expect(screen.getByText('1024 维')).toBeInTheDocument()
-    // 嵌入模型不摆窗口/输出那一列，所以对话模型的数字只出现一次
-    expect(screen.getAllByText('65,536 / 8,192')).toHaveLength(1)
-  })
-
-  it('缺维度的嵌入模型要标出来，而不是显示成"维度空着"', async () => {
-    installFetchMock({
-      providers: [providerRow({ models: [modelRow(), embeddingRow({ dimension: null })] })],
-    })
-
-    renderPage()
-
-    await screen.findByText('嵌入模型')
-    // 缺维度是**入库会被拒**的状态，得在列表里就能看见
-    expect(screen.getByText('缺维度')).toBeInTheDocument()
-  })
-
   it('拉取型号：厂商给的清单里排除已在库的，勾选后按所选用途与维度落库', async () => {
     const harness = installFetchMock()
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: '拉取型号' }))
+    // 「拉取型号 / 新增模型」在没选中供应商时是**禁用**的（详情区还没有上下文）；
+    // 点一个禁用按钮不会报错，只会什么都不发生——所以要等它变成可用再点
+    await waitFor(() => expect(screen.getByRole('button', { name: '拉取型号' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '拉取型号' }))
 
     // 厂商给了两条，库里已有 deepseek-chat → 只列另一条
     // （勾了也会被唯一约束拒，而拒在逐条提交的中途会留下半截结果）
-    expect(await screen.findByLabelText('qwen-embedding')).toBeInTheDocument()
+    expect(await screen.findByLabelText('qwen-embedding', {}, { timeout: 10_000 })).toBeInTheDocument()
     expect(screen.queryByLabelText('deepseek-chat')).toBeNull()
 
     fireEvent.click(screen.getByLabelText('qwen-embedding'))
@@ -437,10 +498,12 @@ describe('ModelAdminPage', () => {
     const harness = installFetchMock()
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: '新增模型' }))
+    // 同上：等选中供应商（按钮从禁用变可用）再点，否则弹窗根本不会打开
+    await waitFor(() => expect(screen.getByRole('button', { name: '新增模型' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '新增模型' }))
 
     // 对话模型的字段先摆出来（默认用途是对话）
-    expect(await screen.findByLabelText('用途')).toBeInTheDocument()
+    expect(await screen.findByLabelText('用途', {}, { timeout: 10_000 })).toBeInTheDocument()
     // 手工新增时**不带** isActive/enabled 之类的默认判断，先都填上
     fireEvent.change(screen.getByLabelText('模型标识'), { target: { value: 'local-bge-m3' } })
     fireEvent.change(screen.getByLabelText('显示名'), { target: { value: '本地嵌入服务' } })
@@ -490,7 +553,7 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     // 把合法的"无凭据端点"显示成红色"未配置"，会让管理员去找一把根本不存在的密钥
-    expect(await screen.findByText('无需凭据（未设密钥变量名）')).toBeInTheDocument()
+    expect(await screen.findByText('无需凭据')).toBeInTheDocument()
     expect(screen.queryByText('未配置')).toBeNull()
   })
 })
