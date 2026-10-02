@@ -284,6 +284,9 @@ builder.Services.AddHttpClient("AssistantModel");
 // 目录 / 密钥存取 / 参数解析 / 运行期快照都是单例；真正被消费的 IChatModel 是 **Scoped**：
 // 一次请求内配置固定（一条回答不会跨两个模型），跨请求读得到新快照（改配置与切模型都不必重启）。
 builder.Services.AddSingleton<EOS.API.Data.IAssistantModelCatalog, EOS.API.Data.AssistantModelCatalog>();
+// 型号拉取：向厂商要可用模型清单（型号不硬编码，ADR-030 §12.3），密钥只从既有密钥存储读
+builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IAssistantModelDiscovery,
+    EOS.API.Features.Assistant.ModelAccess.AssistantModelDiscovery>();
 builder.Services.AddSingleton<EOS.API.Features.Assistant.Parameters.AssistantParameterResolver>();
 // 作用域覆盖：读写在请求作用域内（要写审计），生效参数按当事人叠加，故两者都是 Scoped
 builder.Services.AddScoped<EOS.API.Features.Assistant.Parameters.AssistantParameterScopeStore>();

@@ -36,6 +36,7 @@ public sealed class AssistantAdminController(
     IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools,
     IKnowledgeRepository knowledge,
     IAssistantModelCatalog modelCatalog,
+    IAssistantModelDiscovery modelDiscovery,
     SystemParameterService parameters,
     AssistantParameterScopeStore scopeStore,
     IAssistantSecretStore modelSecrets,
@@ -341,6 +342,55 @@ public sealed class AssistantAdminController(
                 remark = model.Remark,
             }),
         }));
+    }
+
+    /// <summary>
+    /// 向厂商**拉取可用模型清单**（型号清单不硬编码，ADR-030 §12.3；对话与嵌入同一机制）。
+    ///
+    /// <para>
+    /// 权限门用 <c>CanSetup</c> 而不是 <c>CanBrowse</c>：这一步会**带着密钥出网**，不只是读库。
+    /// </para>
+    ///
+    /// <para>
+    /// 失败**如实回报**（密钥没配 / 被拒 / 这家没有该端点 / 网络超时各是一种原因，各有各的 code），
+    /// 并且**不退回"用预设里那几个旧型号"**——那会把一次失败伪装成一次成功的列表，
+    /// 而管理员会拿着过期的型号去落库。
+    /// </para>
+    /// </summary>
+    [HttpGet("models/discover")]
+    public async Task<IActionResult> DiscoverModels([FromQuery] int providerId, CancellationToken token)
+    {
+        if (!await CanSetupModels(token)) return Forbid();
+        var provider = await modelCatalog.GetProviderAsync(providerId, token);
+        if (provider is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
+        }
+
+        var result = await modelDiscovery.DiscoverAsync(provider, token);
+        if (!result.Ok)
+        {
+            // 不是 500：这些是"可以用一句话说清、管理员能自己决定下一步"的结果。
+            // 技术性失败（网络/超时/5xx）给 503——那是"稍后再试"，与"改配置"不是同一个动作。
+            var status = result.Code == AssistantModelDiscovery.FailedCode
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status400BadRequest;
+            return StatusCode(status, ApiProblem.Create(status, result.Code!, result.Message!));
+        }
+
+        return Ok(new
+        {
+            providerId = provider.ProviderId,
+            // 厂商给多少给多少：给不出窗口与最大输出的（多数厂商）就是 null，界面留空由管理员补，
+            // **不猜**（猜小的窗口会削历史，猜错的单价会把成本归因算歪——单价这里根本给不出来）
+            models = result.Models.Select(model => new
+            {
+                modelCode = model.ModelCode,
+                displayName = model.DisplayName,
+                contextWindow = model.ContextWindow,
+                maxOutputTokens = model.MaxOutputTokens,
+            }),
+        });
     }
 
     /// <summary>
