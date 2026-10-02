@@ -2040,8 +2040,13 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-page-tabs { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 /* body 的 overflow 用 auto 而不是 hidden：常规高度下内容正好铺满（不出滚动条），
    而**矮到连最小块都放不下**时（见下面 .erp-model-admin-page 的两个 min-height），
-   它会退化成"页内滚动"——裁掉内容才是真正不能接受的那种静默失败。 */
-.erp-page-tabs > .erp-tabbed-panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; border: 0; background: transparent; }
+   它会退化成"页内滚动"——裁掉内容才是真正不能接受的那种静默失败。
+
+   display:flex 这一条不是装饰：面板 body 默认是**块盒子**，里面的 .erp-workbench-page 虽然写着
+   flex:1 1 auto，在块容器里它只是个"高度按内容算"的普通块——工作台于是只占它内容那么高，
+   面板剩下的高度全空着（实测矮窗口下底部空 88px，高窗口下更空）。
+   高度必须一层层传下去，工作台的 flex 链才接得上。 */
+.erp-page-tabs > .erp-tabbed-panel-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; border: 0; background: transparent; }
 
 /* 3102：供应商行数少、模型行数多，与工作台默认的"主表占满、子表 30%"正好相反——
    主表按内容高（超过 220px 自己滚），子表占满剩余空间。
@@ -2053,3 +2058,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-model-admin-page > .erp-list-card { flex: 0 1 auto; min-height: 110px; }
 .erp-model-admin-page > .erp-list-card .erp-master-table-region { max-height: 220px; }
 .erp-model-admin-page > .erp-detail-card { flex: 1 1 auto; min-height: 140px; max-height: none; }
+
+/* 工作台变体：上下两块**等分**（3102 用量页签——上面按模型、下面按天，两张表一样高）。
+   basis 取 0 而不是 50%：取 50% 时两块的基础高度里各自带着内容高度，行数多的那块先把
+   "想要的高度"抬高，grow 只分配剩余空间，最终两块并不相等——而这正是这里要避免的。
+   max-height:0 那几条是压掉工作台默认的 30% / 260px 上限（同权重、靠出现得更晚生效）。 */
+.erp-workbench-page.erp-workbench-even > .erp-list-card,
+.erp-workbench-page.erp-workbench-even > .erp-detail-card { flex: 1 1 0; min-height: 120px; max-height: none; }
+.erp-workbench-page.erp-workbench-even > .erp-list-card .erp-master-table-region { max-height: none; }
