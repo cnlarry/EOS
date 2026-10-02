@@ -141,7 +141,7 @@ public static class AssistantParameterCatalog
     public static IReadOnlyList<AssistantParameterDescriptor> All { get; } = Build();
 
     /// <summary>
-    /// 27 个工具开关**不手写**：键名与工具名由 <see cref="AssistantToolKeys"/> 机械对应，
+    /// 工具开关**不手写**：键名与工具名由 <see cref="AssistantToolKeys"/> 机械对应，
     /// 这里只把它们按工具清单展开。加一个工具却在开关清单里漏了它，
     /// 由离线门禁（扫源码里的 <c>ToolName</c> 常量）当场判红。
     /// </summary>
@@ -315,6 +315,18 @@ public static class AssistantParameterCatalog
         IntParameter("TOOL_LIMIT_FIELD_RELATIONS_MAX", "字段关系条数上限", "TOOL_LIMIT", "条",
             "get_field_relations 一次最多返回几条关系。",
             ToolLimitDefaults.FieldRelationsMax, ["FieldRelationsMax"], min: 1, max: 500),
+        IntParameter("TOOL_LIMIT_REPORT_LIST_MAX", "模块报表清单条数上限", "TOOL_LIMIT", "个",
+            "list_reports 一次最多列出几个报表。",
+            ToolLimitDefaults.ReportListMax, ["ReportListMax"], min: 1, max: 200),
+        IntParameter("TOOL_LIMIT_REPORT_MAX_ROWS", "报表取数行数上限", "TOOL_LIMIT", "行",
+            "run_report 一次最多带回几行；同时写进发给模型的工具说明。",
+            ToolLimitDefaults.ReportMaxRows, ["ReportMaxRows"], min: 1, max: 200),
+        IntParameter("TOOL_LIMIT_REPORT_MAX_COLUMNS", "报表取数列数上限", "TOOL_LIMIT", "列",
+            "run_report 每行最多带几列。",
+            ToolLimitDefaults.ReportMaxColumns, ["ReportMaxColumns"], min: 1, max: 100),
+        IntParameter("TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH", "报表取数单值字符上限", "TOOL_LIMIT", "字符",
+            "run_report 每个单元格截断到多少字符。",
+            ToolLimitDefaults.ReportMaxValueLength, ["ReportMaxValueLength"], min: 1, max: 1_000),
 
         // ---- 域 CHAT（对话行为）----
         // 默认值一律取自 AssistantChatLimitsOptions 的属性初始值（ChatDefaults），不写第二遍数字
@@ -498,8 +510,11 @@ public static class AssistantParameterCatalog
             KbDefaults.EndpointMaxHits, ["EndpointMaxHits"], min: 1, max: 200),
 
         // ---- 域 CAPABILITY（能力面：工具开关）----
-        // 键名 = TOOL_ + 工具名转大写；默认全开（关掉才落非默认值）
-        .. AssistantToolKeys.ToolNames.Select(ToolSwitch),
+        // 键名 = TOOL_ + 工具名转大写；默认全开（关掉才落非默认值）。
+        // 这里排除"批后追加"的工具：它们排在动作族之后（见下），否则会把动作族的序号推后。
+        .. AssistantToolKeys.ToolNames
+            .Where(name => !AssistantToolKeys.AppendedToolNames.Contains(name, StringComparer.Ordinal))
+            .Select(ToolSwitch),
 
         // ---- 域 CAPABILITY（能力面：记录动作族开关）----
         // 追加在组内**末尾**：组内序号由声明顺序推导（SEQ_NO 按 10 递增），插在中间会让
@@ -509,6 +524,11 @@ public static class AssistantParameterCatalog
         // "哪个模块"，所以"某模块不许助手删除"是一条能真正生效的配置，而不是一个没人读的声明。
         // 策略是**收紧**：只能关、不能开——全局已关的动作，任何模块都不许放开。
         .. AssistantActionKeys.ActionNames.Select(ActionSwitch),
+
+        // ---- 域 CAPABILITY（能力面：批后新增的工具开关）----
+        // 排在组末，理由见 AssistantToolKeys.AppendedToolNames：它们是动作族之后才加的工具，
+        // 插回工具清单中间会让动作族及其后所有参数的序号整体后移。
+        .. AssistantToolKeys.AppendedToolNames.Select(ToolSwitch),
     ];
 
     /// <summary>

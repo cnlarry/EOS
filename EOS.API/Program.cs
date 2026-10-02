@@ -407,6 +407,11 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricRepository,
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricExecutor,
     EOS.API.Features.Assistant.Metrics.MetricExecutor>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ResolveMetricTool>();
+// 报表只读：列清单复用打印设置的可见性口径（REPORT_TAG），取数复用报表仓储的既有链路
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IReportGateway,
+    EOS.API.Features.Assistant.Tools.ReportGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListReportsTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.RunReportTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IFieldRelationRepository,
     EOS.API.Features.Assistant.Metrics.FieldRelationRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>();
@@ -447,7 +452,9 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyConfigChangeTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewBatchDecisionTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Catalog.DescribeMechanismTool>(),
-     ]));
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListReportsTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RunReportTool>(),
+        ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));

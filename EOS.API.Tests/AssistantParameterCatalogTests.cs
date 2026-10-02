@@ -196,6 +196,10 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_LIST_MODULES_MAX"] = "51",
             ["TOOL_LIMIT_LIST_CAPABILITIES_MAX"] = "52",
             ["TOOL_LIMIT_FIELD_RELATIONS_MAX"] = "53",
+            ["TOOL_LIMIT_REPORT_LIST_MAX"] = "21",
+            ["TOOL_LIMIT_REPORT_MAX_ROWS"] = "6",
+            ["TOOL_LIMIT_REPORT_MAX_COLUMNS"] = "13",
+            ["TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH"] = "41",
         };
 
         // 工具开关与动作族开关：键名由各自的清单机械生成，所以探针也按同一份清单生成——

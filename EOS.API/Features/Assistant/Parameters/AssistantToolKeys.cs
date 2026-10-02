@@ -9,13 +9,26 @@ namespace EOS.API.Features.Assistant.Parameters;
 /// </para>
 ///
 /// <para>
-/// 这里写下的是 27 个工具名。**它们与工具类里 <c>ToolName</c> 常量的一致性由离线门禁断言**
+/// 这里写下的是 29 个工具名（其中 2 个为批后追加，见 <see cref="AppendedToolNames"/>）。
+/// **它们与工具类里 <c>ToolName</c> 常量的一致性由离线门禁断言**
 /// （扫源码里的 <c>ToolName = "…"</c> 并逐名比对）：新加一个工具却忘了加开关，门禁当场变红——
 /// 而"忘了加开关"的表现正是新工具绕过了能力面管理。
 /// </para>
 /// </summary>
 public static class AssistantToolKeys
 {
+    /// <summary>
+    /// **批后追加**的工具名：清单与中文标题照常覆盖它们，但开关的**声明位置**排在能力面组的最后。
+    ///
+    /// <para>
+    /// 理由只有一个，但很硬：组内序号由声明顺序推导（按 10 递增），而 CAPABILITY 组的声明顺序是
+    /// "工具开关 → 动作族开关"。把新工具的名字插回 <see cref="ToolNames"/> 的中间，会让动作族与
+    /// 其后所有参数的序号整体后移，与**已经落库的行**对不上（连库门禁逐字段比对序号，正是为此存在）。
+    /// 于是新工具一律追加在组末——就像新增参数一律追加在各自域的末尾一样。
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<string> AppendedToolNames { get; } = ["list_reports", "run_report"];
+
     /// <summary>工具名（与各工具类的 <c>ToolName</c> 常量逐一对应）。</summary>
     public static IReadOnlyList<string> ToolNames { get; } =
     [
@@ -46,6 +59,8 @@ public static class AssistantToolKeys
         "clone_module_config",
         "preview_config_change",
         "apply_config_change",
+        // 批后追加：清单需要覆盖它们（标题与开关覆盖面按 ToolNames 断言），声明位置见 AppendedToolNames
+        .. AppendedToolNames,
     ];
 
     /// <summary>
@@ -88,6 +103,9 @@ public static class AssistantToolKeys
             ["resolve_metric"] = "按口径取数",
             ["kb_search"] = "检索知识库",
             ["describe_mechanism"] = "查看机制说明",
+            // 报表（只读）
+            ["list_reports"] = "列出模块报表",
+            ["run_report"] = "取报表数据",
             // 试算与执行（风险由低到高）
             ["draft_record"] = "试算：起草单据",
             ["apply_changeset"] = "试算：应用变更集",
