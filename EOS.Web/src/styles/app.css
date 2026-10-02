@@ -2038,11 +2038,18 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    所以 body 要去掉那圈"内容卡片"的边框与内边距，并且**把高度接着往下传**——
    否则工作台的 flex 链断在这一层，表格内部滚动条不会出现，反而是整页出现滚动条。 */
 .erp-page-tabs { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.erp-page-tabs > .erp-tabbed-panel-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 0; border: 0; background: transparent; }
+/* body 的 overflow 用 auto 而不是 hidden：常规高度下内容正好铺满（不出滚动条），
+   而**矮到连最小块都放不下**时（见下面 .erp-model-admin-page 的两个 min-height），
+   它会退化成"页内滚动"——裁掉内容才是真正不能接受的那种静默失败。 */
+.erp-page-tabs > .erp-tabbed-panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; border: 0; background: transparent; }
 
 /* 3102：供应商行数少、模型行数多，与工作台默认的"主表占满、子表 30%"正好相反——
    主表按内容高（超过 220px 自己滚），子表占满剩余空间。
-   两条选择器的权重与 .erp-workbench-page 那组相同，靠在这里出现得更晚生效。 */
-.erp-model-admin-page > .erp-list-card { flex: 0 1 auto; }
+   两条选择器的权重与 .erp-workbench-page 那组相同，靠在这里出现得更晚生效。
+   min-height 那一组是给矮视口用的：工作台默认的 min-height:320px 会在矮窗口里把内容顶出去
+   （body 是 hidden/auto，被顶出去的部分要么被裁要么触发页内滚动），这里允许它收缩到
+   两个卡片各自的最小高度之和；再矮就交给上面那条 auto 去滚。 */
+.erp-model-admin-page { min-height: 0; }
+.erp-model-admin-page > .erp-list-card { flex: 0 1 auto; min-height: 110px; }
 .erp-model-admin-page > .erp-list-card .erp-master-table-region { max-height: 220px; }
-.erp-model-admin-page > .erp-detail-card { flex: 1 1 auto; min-height: 200px; max-height: none; }
+.erp-model-admin-page > .erp-detail-card { flex: 1 1 auto; min-height: 140px; max-height: none; }

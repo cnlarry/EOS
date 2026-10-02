@@ -180,6 +180,37 @@ export function ModelAdminPage() {
     () => (selectedProvider?.models ?? []).filter(model => model.kind === kind),
     [selectedProvider, kind])
 
+  /** 两个用途里还没有"当前"的那些：缺失要按用途分开说，因为坏掉的表现与处置都不同。 */
+  const missingKinds = useMemo(
+    () => (['CHAT', 'EMBEDDING'] as const).filter(
+      target => (target === 'CHAT' ? current === null : currentEmbedding === null)),
+    [current, currentEmbedding])
+
+  /**
+   * 每个缺失用途各自的"下一步"：按**卡在哪一步**给，而不是一句万能话。
+   *
+   * <p>顺序不能颠倒——一个模型都没有时说"去点设为当前"，等于把人指到一个不存在的按钮上；
+   * 两个用途各有各的卡点（对话缺模型 / 嵌入缺密钥），所以**不合并成一句**。</p>
+   */
+  const stepFor = useCallback((target: AssistantModelKind) => {
+    if (items.length === 0) {
+      return '先「添加供应商」（可从预设目录选一家），再在模型上点「设为当前」'
+    }
+
+    const noModel = !items.some(item => item.models.some(model => model.kind === target))
+    if (noModel) {
+      return target === 'CHAT'
+        ? '选中一家供应商 → 「拉取型号」或「新增模型」→ 点「设为当前」'
+        : '选中一家供应商 → 拉取型号时把用途选成"嵌入"并给维度（或用「新增模型」）→ 点「设为当前」'
+    }
+
+    if (items.some(item => !item.apiKeyConfigured)) {
+      return '先在那一行点「密钥」完成设置密钥，再点「设为当前」'
+    }
+
+    return '在下面的模型表里点需要那条的「设为当前」'
+  }, [items])
+
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['assistant-admin-providers'] })
     void queryClient.invalidateQueries({ queryKey: ['assistant-admin-model-usage'] })
@@ -469,29 +500,23 @@ export function ModelAdminPage() {
           <div className="erp-workbench-page erp-model-admin-page">
             {/* 「未配置」是**正常且必须显眼**的状态：此时助手不可用，而用户看到的是"助手不好用"。
                 所以在这里直说、并给出下一步，而不是等有人去点聊天才发现。嵌入那条同理：
-                它坏掉时用户看到的是"问制度没答案"，而不会想到是模型没配。 */}
-            {(['CHAT', 'EMBEDDING'] as const).map(target => {
-              const missing = target === 'CHAT' ? current === null : currentEmbedding === null
-              if (!missing) return null
-              // 下一步按**卡在哪一步**给：没供应商 → 有供应商但没有这种用途的模型 → 密钥没配 → 只差点"设为当前"。
-              // 顺序不能颠倒：一个模型都没有时说"去点设为当前"，等于把人指到一个不存在的按钮上
-              const hasModel = items.some(item => item.models.some(model => model.kind === target))
-              const missingKey = items.some(item => !item.apiKeyConfigured)
-              return (
-                <div key={target} className="alert alert-warning mb-0 py-2" role="alert">
-                  <div className="fw-semibold">{KIND_SECTION[target].missing}</div>
-                  <div className="small">
-                    {items.length === 0
-                      ? '先「添加供应商」（可从预设目录选一家，自动带出端点与可用模型），再设置密钥，最后在某个模型上点「设为当前」。'
-                      : !hasModel
-                        ? '先在上表选中一家供应商，用「拉取型号」从厂商拉取（或用「新增模型」手工填），再在该模型上点「设为当前」。'
-                        : missingKey
-                          ? '上面的供应商还有没配密钥的。请先在那一行点「密钥」完成设置密钥，再在需要的那条模型上点「设为当前」。'
-                          : '在下面的模型表里，点需要的那条模型上的「设为当前」。'}
+                它坏掉时用户看到的是"问制度没答案"，而不会想到是模型没配。
+
+                两个用途都缺时**合成一块**，不是叠两个告警：告警是提醒不是内容，
+                而矮窗口里两块告警能把正文挤掉一半（实测 1024×560 下正是如此）。 */}
+            {missingKinds.length > 0 && (
+              <div className="alert alert-warning mb-0 py-2" role="alert">
+                {/* 每个缺失用途一行：标题 + 它自己的下一步。压成一行并用 title 补全——
+                    告警不是内容，长句换三四行会把下面的表格挤出窗口 */}
+                {missingKinds.map(target => (
+                  <div key={target} className="small text-truncate">
+                    <span className="fw-semibold">{KIND_SECTION[target].missing}</span>
+                    {' '}
+                    <span>下一步：{stepFor(target)}</span>
                   </div>
-                </div>
-              )
-            })}
+                ))}
+              </div>
+            )}
 
             <ErpListCard
               ariaLabel="助手模型供应商"
