@@ -527,6 +527,18 @@ public sealed class AssistantParameterResolver(
             case "TOOL_LIMIT_FIELD_RELATIONS_MAX":
                 builder.ToolLimits.FieldRelationsMax = Number();
                 break;
+            case "TOOL_LIMIT_REPORT_LIST_MAX":
+                builder.ToolLimits.ReportListMax = Number();
+                break;
+            case "TOOL_LIMIT_REPORT_MAX_ROWS":
+                builder.ToolLimits.ReportMaxRows = Number();
+                break;
+            case "TOOL_LIMIT_REPORT_MAX_COLUMNS":
+                builder.ToolLimits.ReportMaxColumns = Number();
+                break;
+            case "TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH":
+                builder.ToolLimits.ReportMaxValueLength = Number();
+                break;
         }
     }
 

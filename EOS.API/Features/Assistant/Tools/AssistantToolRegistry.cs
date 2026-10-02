@@ -82,6 +82,11 @@ public sealed class AssistantToolRegistry
             $" 最多返回 {_limits.ListCapabilitiesMax} 个模块（超出部分只报个数）。",
         GetFieldRelationsTool.ToolName =>
             $" 最多返回 {_limits.FieldRelationsMax} 条关系（超出部分只报个数）。",
+        ListReportsTool.ToolName =>
+            $" 最多列出 {_limits.ReportListMax} 个报表（超出部分只报个数）。",
+        RunReportTool.ToolName =>
+            $" 输出上限：最多 {_limits.ReportMaxRows} 行、每行 {_limits.ReportMaxColumns} 列、"
+            + $"单值 {_limits.ReportMaxValueLength} 字符。",
         _ => string.Empty,
     };
 

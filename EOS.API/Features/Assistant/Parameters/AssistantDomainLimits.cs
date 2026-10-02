@@ -170,4 +170,16 @@ public sealed class AssistantToolLimitsOptions
 
     /// <summary>get_field_relations 一次最多返回几条关系。</summary>
     public int FieldRelationsMax { get; set; } = 50;
+
+    /// <summary>list_reports 一次最多列出几个报表。</summary>
+    public int ReportListMax { get; set; } = 20;
+
+    /// <summary>run_report 一次最多带回几行。</summary>
+    public int ReportMaxRows { get; set; } = 20;
+
+    /// <summary>run_report 每行最多带几列。</summary>
+    public int ReportMaxColumns { get; set; } = 12;
+
+    /// <summary>run_report 每个单元格截断到多少字符。</summary>
+    public int ReportMaxValueLength { get; set; } = 40;
 }
