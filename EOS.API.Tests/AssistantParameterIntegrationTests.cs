@@ -134,6 +134,106 @@ public sealed class AssistantParameterIntegrationTests
     }
 
     /// <summary>
+    /// 管理列表要带**显示名**，且名字来自 JOIN——"1401 / 客户订单"能认，光一个"1401"认不出是谁。
+    ///
+    /// <para>
+    /// 还要断言**解析不到时留空**：模块被删、账号没登记姓名时，把号当名字显示等于假装解析成功了，
+    /// 而界面上根本看不出这是"名字"还是"号"。
+    /// </para>
+    ///
+    /// <para>
+    /// 真实对象上若已有同样的覆盖行，说明那是**真实配置**——用例直接让位，不改写它
+    /// （测试造的数据只允许是自己造的那几行）。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Scope_List_Resolves_Display_Names_From_Master_Tables()
+    {
+        if (ConnectionString.Value is null) return;
+
+        var module = await PickModuleWithNameAsync();
+        var user = await PickUserWithNameAsync();
+        if (module is null || user is null) return; // 这台库里没有带名字的主档时不硬造
+
+        var moduleKey = module.Value.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var ghostModuleKey = Random.Shared.Next(9_000_000, 9_999_999)
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (await ScopeRowExistsAsync(AssistantParameterScopeRules.Module, moduleKey, "ACTION_DELETE")) return;
+        if (await ScopeRowExistsAsync(AssistantParameterScopeRules.User, user.Value.UserId, "USER_DAILY_CAP_YUAN")) return;
+
+        try
+        {
+            await SeedAsync(
+                (AssistantParameterScopeRules.Module, moduleKey, "ACTION_DELETE", "0"),
+                (AssistantParameterScopeRules.User, user.Value.UserId, "USER_DAILY_CAP_YUAN", "8"),
+                // 不存在的模块：LEFT JOIN 落空，名字必须是空的
+                (AssistantParameterScopeRules.Module, ghostModuleKey, "ACTION_DELETE", "0"));
+
+            var rows = await ScopeStore().ListAllAsync(CancellationToken.None);
+
+            var moduleRow = rows.First(row =>
+                row.ScopeType == AssistantParameterScopeRules.Module && row.ScopeKey == moduleKey);
+            Assert.Equal(module.Value.Name, moduleRow.Label);
+
+            var userRow = rows.First(row =>
+                row.ScopeType == AssistantParameterScopeRules.User && row.ScopeKey == user.Value.UserId);
+            Assert.Equal(user.Value.Name, userRow.Label);
+
+            var ghostRow = rows.First(row =>
+                row.ScopeType == AssistantParameterScopeRules.Module && row.ScopeKey == ghostModuleKey);
+            Assert.Null(ghostRow.Label);
+        }
+        finally
+        {
+            await CleanupAsync(moduleKey, user.Value.UserId, ghostModuleKey);
+        }
+    }
+
+    private static async Task<(int Id, string Name)?> PickModuleWithNameAsync()
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT TOP 1 M_IDX, LTRIM(RTRIM(ISNULL(M_DESC, N'')))
+            FROM dbo.MODULES WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(ISNULL(M_DESC, N''))) <> N''
+            ORDER BY M_IDX;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? (reader.GetInt32(0), reader.GetString(1)) : null;
+    }
+
+    private static async Task<(string UserId, string Name)?> PickUserWithNameAsync()
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT TOP 1 LTRIM(RTRIM(l.USER_ID)), LTRIM(RTRIM(n.EMP_NAME))
+            FROM dbo.SYSDL l WITH (NOLOCK)
+            JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+            WHERE LTRIM(RTRIM(ISNULL(n.EMP_NAME, N''))) <> N''
+            ORDER BY l.USER_ID;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync() ? (reader.GetString(0), reader.GetString(1)) : null;
+    }
+
+    /// <summary>这一行覆盖是否**真实存在**（存在就不许动）：先问库，再决定要不要造数据。</summary>
+    private static async Task<bool> ScopeRowExistsAsync(string scopeType, string scopeKey, string paramKey)
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT COUNT(1) FROM dbo.ASSISTANT_PARAM_SCOPE WITH (NOLOCK)
+            WHERE SCOPE_TYPE = @Type AND SCOPE_KEY = @Key AND PARAM_KEY = @Param;
+            """, connection);
+        command.Parameters.AddWithValue("@Type", scopeType);
+        command.Parameters.AddWithValue("@Key", scopeKey);
+        command.Parameters.AddWithValue("@Param", paramKey);
+        return Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
+    }
+
+    /// <summary>
     /// 供本组断言用的作用域存储。审计写入器只在**写**路径上被用到，读路径不碰它——
     /// 于是这里传一个"不该被用到"的实参，若哪天读路径真的写了审计，这条会当场炸。
     /// </summary>

@@ -24,13 +24,40 @@ public sealed class AssistantParameterScopeStore(
 {
     private const string SelectColumns = "SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, LAST_UPDATE_BY, LAST_UPDATE_DATE";
 
-    /// <summary>全部覆盖行（管理界面用：看"谁被单独设过什么"）。</summary>
+    /// <summary>
+    /// 管理界面列表用的列清单：在 <see cref="SelectColumns"/> 之外多带一列**显示名**。
+    ///
+    /// <para>
+    /// 库里存的是模块号与登录账号，光看号认不出是谁——"1401"与"wangwu"对操作者同样是天书，
+    /// 而这一页的用途正是"看谁被单独设过什么"。名字来自两张主档表的 JOIN（模块 → `MODULES.M_DESC`、
+    /// 用户 → `SYSDN.EMP_NAME`），**解析不到就留空**（模块已删、账号没登记姓名），
+    /// 而不是回落成键名：把号当名字显示，等于假装解析成功了。
+    /// </para>
+    ///
+    /// <para>
+    /// 这两个 join 只加在管理列表上：运行时那条（<see cref="ListForAsync"/>）只按键取值，
+    /// 多两个 join 是纯开销。
+    /// </para>
+    /// </summary>
+    private const string LabelledSelectColumns = """
+        s.SCOPE_TYPE, s.SCOPE_KEY, s.PARAM_KEY, s.PARAM_VALUE, s.LAST_UPDATE_BY, s.LAST_UPDATE_DATE,
+        CASE WHEN s.SCOPE_TYPE = N'MODULE' THEN ISNULL(m.M_DESC, N'')
+             ELSE ISNULL(NULLIF(LTRIM(RTRIM(n.EMP_NAME)), N''), N'') END AS SCOPE_LABEL
+        """;
+
+    /// <summary>全部覆盖行（管理界面用：看"谁被单独设过什么"，带显示名）。</summary>
     public async Task<IReadOnlyList<AssistantParameterScopeRow>> ListAllAsync(CancellationToken token)
     {
+        // TRY_CONVERT：SCOPE_KEY 是字符串列，用户层的账号名在这个 join 上解析成 NULL 而不抛错
         const string sql = $"""
-            SELECT {SelectColumns}
-            FROM dbo.ASSISTANT_PARAM_SCOPE WITH (NOLOCK)
-            ORDER BY SCOPE_TYPE, SCOPE_KEY, PARAM_KEY;
+            SELECT {LabelledSelectColumns}
+            FROM dbo.ASSISTANT_PARAM_SCOPE s WITH (NOLOCK)
+            LEFT JOIN dbo.MODULES m WITH (NOLOCK)
+                   ON s.SCOPE_TYPE = N'MODULE' AND m.M_IDX = TRY_CONVERT(int, s.SCOPE_KEY)
+            LEFT JOIN dbo.SYSDL l WITH (NOLOCK)
+                   ON s.SCOPE_TYPE = N'USER' AND LTRIM(RTRIM(l.USER_ID)) = s.SCOPE_KEY
+            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+            ORDER BY s.SCOPE_TYPE, s.SCOPE_KEY, s.PARAM_KEY;
             """;
         return await ReadAsync(sql, null, token);
     }
@@ -209,7 +236,11 @@ public sealed class AssistantParameterScopeStore(
                 reader.IsDBNull(4) ? null : reader.GetString(4).Trim(),
                 reader.IsDBNull(5)
                     ? null
-                    : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc))));
+                    : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc)),
+                // 第 7 列只有管理列表查（SCOPE_LABEL）：运行时那条查询不带它，也就没有名字可读
+                reader.FieldCount > 6 && !reader.IsDBNull(6) && !string.IsNullOrWhiteSpace(reader.GetString(6))
+                    ? reader.GetString(6).Trim()
+                    : null));
         }
 
         return items;
