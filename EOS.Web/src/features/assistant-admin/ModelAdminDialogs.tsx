@@ -429,6 +429,20 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
     setForm(previous => ({ ...previous, [key]: parseOptionalNumber(value) }))
   }, [])
 
+  /**
+   * 模型标识与预设对上时，**窗口与最大输出由厂商公开值决定，不给改**——这两个数改错了不会报错，
+   * 只会让助手要么被厂商拒（算大了）、要么白丢历史（算小了），属于"改了没有意义、改坏看不出来"的参数。
+   * 只有预设里没有的型号（自建端点、厂商刚出的新型号）才需要管理员自己填。
+   */
+  const presets = useQuery({ queryKey: ['assistant-admin-presets'], queryFn: listPresets })
+  const providerCode = providers.find(item => item.providerId === form.providerId)?.code
+  const presetModel = useMemo(
+    () => presets.data
+      ?.find(item => item.code === providerCode)
+      ?.models.find(item => item.modelCode === form.modelCode),
+    [presets.data, providerCode, form.modelCode])
+  const lockedByPreset = presetModel !== undefined
+
   const save = useMutation({
     mutationFn: () => updateModel(model.modelId, form),
     onSuccess: () => {
@@ -478,15 +492,21 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
       </div>
       <div className="row">
         <div className="col-md-6">
-          <Field label="上下文窗口（token）" hint="会被用来裁剪历史；留空按保守默认 16384 处理。">
+          <Field label="上下文窗口（token）"
+            hint={lockedByPreset
+              ? '来自预设（厂商公开值），不需要改。'
+              : '会被用来裁剪历史；留空按保守默认 16384 处理。'}>
             <input className="form-control" inputMode="numeric" value={texts.contextWindow} aria-label="上下文窗口"
-              placeholder="留空 = 未知" onChange={(event) => set('contextWindow', event.target.value)} />
+              readOnly={lockedByPreset} placeholder="留空 = 未知"
+              onChange={(event) => set('contextWindow', event.target.value)} />
           </Field>
         </div>
         <div className="col-md-6">
-          <Field label="最大输出（token）" hint="留空 = 不传该参数。">
+          <Field label="最大输出（token）"
+            hint={lockedByPreset ? '来自预设（厂商公开值），不需要改。' : '留空 = 不传该参数。'}>
             <input className="form-control" inputMode="numeric" value={texts.maxOutputTokens} aria-label="最大输出"
-              placeholder="留空 = 厂商默认" onChange={(event) => set('maxOutputTokens', event.target.value)} />
+              readOnly={lockedByPreset} placeholder="留空 = 厂商默认"
+              onChange={(event) => set('maxOutputTokens', event.target.value)} />
           </Field>
         </div>
       </div>
@@ -522,8 +542,11 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
         <div className="col-md-6 d-flex align-items-end pb-2">
           <label className="form-check">
             <input type="checkbox" className="form-check-input" checked={form.supportsTools} aria-label="支持工具调用"
+              disabled={lockedByPreset}
               onChange={(event) => setForm({ ...form, supportsTools: event.target.checked })} />
-            <span className="form-check-label">支持工具调用（不支持时不会带 tools 去请求）</span>
+            <span className="form-check-label">
+              支持工具调用（不支持时不会带 tools 去请求）{lockedByPreset ? '　来自预设，不需要改' : ''}
+            </span>
           </label>
         </div>
         <div className="col-md-6 d-flex align-items-end pb-2">
