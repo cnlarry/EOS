@@ -110,7 +110,8 @@ public sealed class AssistantRuntimeRegistry(
 
         try
         {
-            _active = await catalog.GetActiveAsync(token);
+            // 按用途取：这张快照服务的是**对话**（嵌入模型的当前值由知识库那条链路自己取，ADR-031 §3.1）
+            _active = await catalog.GetActiveAsync(AssistantModelKind.Chat, token);
         }
         catch (Exception ex)
         {

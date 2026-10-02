@@ -144,7 +144,15 @@ public sealed class AssistantAdminController(
         bool? SupportsTools,
         bool? Enabled,
         int? SortIdx,
-        string? Remark);
+        string? Remark,
+        /// <summary>
+        /// 用途：<c>CHAT</c> / <c>EMBEDDING</c>。**不传 = 沿用原值**（新建时按对话）——
+        /// 老客户端与"只改单价"这类编辑不该被迫回传用途，而缺省成对话会让一次编辑把嵌入模型
+        /// 变成对话模型（接着因为"对话模型不能有维度"被拒，或更糟：静默改了用途）。
+        /// </summary>
+        string? Kind,
+        /// <summary>嵌入维度（仅嵌入模型）；对话模型必须留空。</summary>
+        int? Dimension);
 
     /// <summary>写入密钥的入参。只进不出——任何端点都不会把它读回来。</summary>
     public sealed record AssistantModelKeyRequest(string? ApiKey);
@@ -411,6 +419,16 @@ public sealed class AssistantAdminController(
         var snapshot = registry.Current;
         var active = snapshot.Model;
 
+        // 嵌入侧的"当前"直接从行上取，并沿用与对话侧同一条口径：**供应商被停用 = 名下模型一起下线**。
+        // 两条路取法不同是暂时的（对话那份还要带解析后的设置与密钥状态），但判定口径必须一致，
+        // 否则会出现"界面上还在用、实际已下发不出去"。
+        var currentEmbedding = models.FirstOrDefault(row =>
+            row.IsActive && row.Kind == AssistantModelKind.Embedding && row.Enabled
+            && providers.Any(item => item.ProviderId == row.ProviderId && item.Enabled));
+        var currentEmbeddingProvider = currentEmbedding is null
+            ? null
+            : providers.First(item => item.ProviderId == currentEmbedding.ProviderId);
+
         return Ok(new
         {
             providers = providers.Select(provider => new
@@ -444,6 +462,10 @@ public sealed class AssistantAdminController(
                     enabled = row.Enabled,
                     sortIdx = row.SortIdx,
                     remark = row.Remark,
+                    // 用途与维度：界面按它分区（对话 / 嵌入），没有它就只能靠模型名猜——
+                    // 猜错的后果是把嵌入模型当成对话模型去"设为当前"
+                    kind = row.Kind.ToString(),
+                    dimension = row.Dimension,
                 }),
             }),
             current = active is null ? null : new
@@ -458,6 +480,20 @@ public sealed class AssistantAdminController(
                 timeoutSeconds = snapshot.Settings.TimeoutSeconds,
                 supportsTools = snapshot.Settings.SupportsTools,
                 apiKeyConfigured = snapshot.IsConfigured,
+            },
+            // 嵌入模型另给一条"当前"：迁移 307 之后两个用途各至多一条当前，
+            // 而 chat 那份走的是运行时快照（它带着解析后的设置）。嵌入目前只从行上读——
+            // 它的调用链（批次 B）还没落地，先让界面能如实显示"配了没有"。
+            currentEmbedding = currentEmbedding is null ? null : new
+            {
+                modelId = currentEmbedding.ModelId,
+                displayName = currentEmbedding.DisplayName,
+                modelCode = currentEmbedding.ModelCode,
+                providerId = currentEmbedding.ProviderId,
+                providerCode = currentEmbeddingProvider!.Code,
+                providerDisplayName = currentEmbeddingProvider.DisplayName,
+                dimension = currentEmbedding.Dimension,
+                apiKeyConfigured = modelSecrets.IsConfigured(currentEmbeddingProvider.ApiKeyEnvVar),
             },
         });
     }
@@ -614,6 +650,15 @@ public sealed class AssistantAdminController(
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
         }
 
+        // 无凭据端点（变量名为空）：这里没有"密钥"可写，说清而不是写到一个空变量名上
+        if (string.IsNullOrWhiteSpace(provider.ApiKeyEnvVar))
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "PROVIDER_WITHOUT_KEY",
+                $"供应商「{provider.DisplayName}」没有配置密钥环境变量名，说明它是一个**不需要凭据**的端点，"
+                + "无需设置密钥。"));
+        }
+
         if (string.IsNullOrWhiteSpace(request?.ApiKey))
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "密钥不能为空。"));
@@ -683,14 +728,14 @@ public sealed class AssistantAdminController(
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
         }
 
-        var error = ValidateModel(request);
+        var error = ValidateModel(request, row.Kind);
         if (error is not null)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
         }
 
         var updated = await modelCatalog.UpdateModelAsync(
-            modelId, ToModelWrite(request, providerId), userContext.UserId, token);
+            modelId, ToModelWrite(request, providerId, row.Kind), userContext.UserId, token);
         if (!updated)
         {
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
@@ -729,7 +774,11 @@ public sealed class AssistantAdminController(
                 row.Enabled ? "该模型所属的供应商已停用，请先启用供应商。" : "已停用的模型不能设为当前，请先启用它。"));
         }
 
-        if (!modelSecrets.IsConfigured(provider.ApiKeyEnvVar))
+        // 有密钥变量名就必须已配置；变量名为空表示**这个端点不需要凭据**（自建嵌入服务，
+        // 迁移 307 放宽的那一格），那种情况没有"还没配"可言——不加这一句会把合法的无密钥端点
+        // 永远挡在"设为当前"之外
+        if (!string.IsNullOrWhiteSpace(provider.ApiKeyEnvVar)
+            && !modelSecrets.IsConfigured(provider.ApiKeyEnvVar))
         {
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "MODEL_KEY_NOT_CONFIGURED",
@@ -737,7 +786,7 @@ public sealed class AssistantAdminController(
                 + "请先用「设置密钥」填一次，再设为当前——否则整个助手的模型调用会立刻失败。"));
         }
 
-        if (!await modelCatalog.ActivateModelAsync(modelId, userContext.UserId, token))
+        if (!await modelCatalog.ActivateModelAsync(modelId, row.Kind, userContext.UserId, token))
         {
             return Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "ACTIVATE_FAILED", "切换失败，请刷新后重试。"));
         }
@@ -746,12 +795,27 @@ public sealed class AssistantAdminController(
         return NoContent();
     }
 
-    /// <summary>取消当前模型：助手回到**未配置**状态（供应商与模型都留着，只是没有"当前"）。</summary>
+    /// <summary>
+    /// 取消当前模型：该**用途**回到"未配置"（供应商与模型都留着，只是没有"当前"）。
+    ///
+    /// <para>
+    /// 用途必须显式给：默认对话会让"取消嵌入模型"的请求悄悄把对话模型清掉——两个用途共用这条端点，
+    /// 而清错的那一个不会有任何报错。
+    /// </para>
+    /// </summary>
     [HttpPost("models/active/clear")]
-    public async Task<IActionResult> ClearActiveModel(CancellationToken token)
+    public async Task<IActionResult> ClearActiveModel(
+        [FromQuery] string? kind, CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        await modelCatalog.ClearActiveModelAsync(token);
+        var target = ParseModelKind(kind);
+        if (target is null)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "用途只能是 CHAT 或 EMBEDDING。"));
+        }
+
+        await modelCatalog.ClearActiveModelAsync(target.Value, token);
         await registry.RefreshAsync(token);
         return NoContent();
     }
@@ -1151,10 +1215,14 @@ public sealed class AssistantAdminController(
             return "端点必须是完整 URL（含 http/https）。";
         }
 
+        // 留空 = **无凭据端点**（自建嵌入服务），是合法值而不是漏填：库里的列在迁移 307 已放宽，
+        // 校验却还要求非空的话，"换回本地只改数据、不再改 schema"（ADR-031 §5）就做不到
         var envVar = request.ApiKeyEnvVar?.Trim() ?? string.Empty;
-        if (envVar.Length == 0) return "密钥环境变量名不能为空——库里只存变量名，不存密钥。";
         if (envVar.Length > 100) return "环境变量名不能超过 100 个字符。";
-        if (!IsValidEnvVarName(envVar)) return "环境变量名只能由字母、数字与下划线组成，且不能以数字开头。";
+        if (envVar.Length > 0 && !IsValidEnvVarName(envVar))
+        {
+            return "环境变量名只能由字母、数字与下划线组成，且不能以数字开头（留空表示这个端点不需要凭据）。";
+        }
 
         if (request.TimeoutSeconds is { } timeout && timeout is < 10 or > 3600)
         {
@@ -1174,8 +1242,35 @@ public sealed class AssistantAdminController(
     /// 用全局兜底价），所以这里只校验"传了的那个值"，不把留空当成 0。
     /// </para>
     /// </summary>
-    internal static string? ValidateModel(AssistantModelRequest request)
+    internal static string? ValidateModel(
+        AssistantModelRequest request, AssistantModelKind fallbackKind = AssistantModelKind.Chat)
     {
+        // 用途先定下来：后面的维度校验取决于它是对话还是嵌入。不传 = 沿用原值（编辑）或对话（新建）
+        var kind = ParseModelKind(request.Kind) ?? fallbackKind;
+        if (request.Kind is { Length: > 0 } raw && ParseModelKind(raw) is null)
+        {
+            return "用途只能是 CHAT 或 EMBEDDING。";
+        }
+
+        if (kind == AssistantModelKind.Embedding)
+        {
+            // 维度不是可选项：没有它，集合写入与检索都无从判断"这个向量能不能存"
+            if (request.Dimension is not { } dimension)
+            {
+                return "嵌入模型必须给维度（例如 1024）——它与知识库集合登记的维度必须一致，"
+                    + "否则入库会被拒。";
+            }
+
+            if (dimension is < 1 or > 20000)
+            {
+                return "嵌入维度需要在 1–20000 之间（与库里的检查约束同源）。";
+            }
+        }
+        else if (request.Dimension is not null)
+        {
+            return "对话模型没有维度，请留空（要配嵌入模型请把用途选成 EMBEDDING）。";
+        }
+
         var modelCode = request.ModelCode?.Trim() ?? string.Empty;
         if (modelCode.Length == 0) return "模型名不能为空（厂商侧的标识，例如 deepseek-reasoner）。";
         if (modelCode.Length > 100) return "模型名不能超过 100 个字符。";
@@ -1227,26 +1322,53 @@ public sealed class AssistantAdminController(
         request.Code!.Trim().ToLowerInvariant(),
         request.DisplayName!.Trim(),
         request.BaseUrl!.Trim(),
-        request.ApiKeyEnvVar!.Trim(),
+        // 空串归一成 null：库里那一列可空，但**仍不许空串**（空串是脏数据，不是"没有密钥"）
+        string.IsNullOrWhiteSpace(request.ApiKeyEnvVar) ? null : request.ApiKeyEnvVar.Trim(),
         request.TimeoutSeconds ?? 300,
         request.Enabled ?? true,
         request.SortIdx ?? 0,
         string.IsNullOrWhiteSpace(request.Remark) ? null : request.Remark.Trim());
 
-    private static AssistantModelWrite ToModelWrite(AssistantModelRequest request, int providerId) => new(
-        providerId,
-        request.ModelCode!.Trim(),
-        request.DisplayName!.Trim(),
-        request.ContextWindow,
-        request.MaxOutputTokens,
-        request.DefaultTemperature,
-        request.TimeoutSeconds,
-        request.InputPerMillionYuan,
-        request.OutputPerMillionYuan,
-        request.SupportsTools ?? true,
-        request.Enabled ?? true,
-        request.SortIdx ?? 0,
-        string.IsNullOrWhiteSpace(request.Remark) ? null : request.Remark.Trim());
+    /// <summary>
+    /// 解析用途字符串。**不认就返回 <c>null</c>**，而不是悄悄当成对话：
+    /// 调用方一处要报错（校验），一处要沿用原值（写入），两种处理都不是"当成对话"。
+    /// </summary>
+    internal static AssistantModelKind? ParseModelKind(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrEmpty(text)) return null;
+        if (text.Equals("CHAT", StringComparison.OrdinalIgnoreCase)) return AssistantModelKind.Chat;
+        if (text.Equals("EMBEDDING", StringComparison.OrdinalIgnoreCase)) return AssistantModelKind.Embedding;
+        return null;
+    }
+
+    /// <summary>
+    /// 拼写入对象。<paramref name="fallbackKind"/> 是"请求没带用途时用哪个"——
+    /// 编辑时必须传**原行的用途**：缺省成对话会让一次"只改单价"的编辑把嵌入模型变成对话模型。
+    /// </summary>
+    private static AssistantModelWrite ToModelWrite(
+        AssistantModelRequest request, int providerId,
+        AssistantModelKind fallbackKind = AssistantModelKind.Chat)
+    {
+        var kind = ParseModelKind(request.Kind) ?? fallbackKind;
+        return new(
+            providerId,
+            request.ModelCode!.Trim(),
+            request.DisplayName!.Trim(),
+            request.ContextWindow,
+            request.MaxOutputTokens,
+            request.DefaultTemperature,
+            request.TimeoutSeconds,
+            request.InputPerMillionYuan,
+            request.OutputPerMillionYuan,
+            // 嵌入模型"支持工具调用"没有意义：与其存一个真假未定的值，不如统一为否
+            kind == AssistantModelKind.Embedding ? false : request.SupportsTools ?? true,
+            request.Enabled ?? true,
+            request.SortIdx ?? 0,
+            string.IsNullOrWhiteSpace(request.Remark) ? null : request.Remark.Trim(),
+            kind,
+            kind == AssistantModelKind.Embedding ? request.Dimension : null);
+    }
 
     private async Task<bool> CanBrowseModels(CancellationToken token) =>
         (await rightsRepository.GetAsync(

@@ -1,3 +1,4 @@
+using EOS.API.Features.Assistant.ModelAccess;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
@@ -12,6 +13,8 @@ namespace EOS.API.Data;
 ///
 /// <para>
 /// <see cref="ApiKeyEnvVar"/> 存的是环境变量**名**，不是密钥（ADR-030 §3）。
+/// **可以为 null**：那表示这个端点不需要凭据（自建嵌入服务），而不是"还没配"——
+/// 迁移 307 放宽了这一列，正是为了让"换回本地"只改数据、不再改 schema（ADR-031 §5）。
 /// </para>
 /// </summary>
 public sealed record AssistantProviderRow(
@@ -19,7 +22,7 @@ public sealed record AssistantProviderRow(
     string Code,
     string DisplayName,
     string BaseUrl,
-    string ApiKeyEnvVar,
+    string? ApiKeyEnvVar,
     int TimeoutSeconds,
     bool Enabled,
     int SortIdx,
@@ -32,7 +35,7 @@ public sealed record AssistantProviderWrite(
     string Code,
     string DisplayName,
     string BaseUrl,
-    string ApiKeyEnvVar,
+    string? ApiKeyEnvVar,
     int TimeoutSeconds,
     bool Enabled,
     int SortIdx,
@@ -63,7 +66,11 @@ public sealed record AssistantModelRow(
     int SortIdx,
     string? Remark,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    /// <summary>用途：对话 / 嵌入（ADR-031 §3.1）。同表同目录，靠它区分。</summary>
+    AssistantModelKind Kind = AssistantModelKind.Chat,
+    /// <summary>嵌入维度；对话模型为 null。**必须与集合登记一致**，否则写入被拒。</summary>
+    int? Dimension = null);
 
 /// <summary>新增 / 修改模型的可写字段（不含"是否为当前"，那是单独的动作）。</summary>
 public sealed record AssistantModelWrite(
@@ -79,7 +86,9 @@ public sealed record AssistantModelWrite(
     bool SupportsTools,
     bool Enabled,
     int SortIdx,
-    string? Remark);
+    string? Remark,
+    AssistantModelKind Kind = AssistantModelKind.Chat,
+    int? Dimension = null);
 
 /// <summary>当前生效的模型 + 它所属的供应商。解析模型配置需要同时拿到这两级。</summary>
 public sealed record AssistantActiveModel(AssistantModelRow Model, AssistantProviderRow Provider);
@@ -121,9 +130,15 @@ public interface IAssistantModelCatalog
     Task<AssistantModelRow?> GetModelAsync(int modelId, CancellationToken token);
 
     /// <summary>
-    /// 当前生效的模型（含其供应商）。至多一条（筛选唯一索引保证），且**供应商被停用则视同没有当前模型**。
+    /// 某个用途下当前生效的模型（含其供应商）。**按用途各至多一条**（筛选唯一索引
+    /// `UX_ASSISTANT_MODEL_ACTIVE_KIND` 保证），且**供应商被停用则视同没有当前模型**。
+    ///
+    /// <para>
+    /// 必须给用途：迁移 307 之前全表至多一条"当前"，所以取当前只有一个答案；现在对话与嵌入
+    /// 各有一条——不带用途去取，返回值取决于 `MODEL_ID` 谁小，那是个随建表顺序变化的答案。
+    /// </para>
     /// </summary>
-    Task<AssistantActiveModel?> GetActiveAsync(CancellationToken token);
+    Task<AssistantActiveModel?> GetActiveAsync(AssistantModelKind kind, CancellationToken token);
 
     Task<int> CreateModelAsync(AssistantModelWrite write, string actor, CancellationToken token);
 
@@ -135,11 +150,18 @@ public interface IAssistantModelCatalog
     /// <summary>删除模型。**当前模型删不掉**（<c>IS_ACTIVE = 1</c> 的行受影响行数为 0）。</summary>
     Task<bool> DeleteModelAsync(int modelId, CancellationToken token);
 
-    /// <summary>设为当前模型：先清空其他行的"当前"，再置位这一行；只接受**已启用且所属供应商已启用**的行。</summary>
-    Task<bool> ActivateModelAsync(int modelId, string actor, CancellationToken token);
+    /// <summary>
+    /// 设为当前模型：先清空**同一用途**其他行的"当前"，再置位这一行；只接受**已启用且所属供应商已启用**的行。
+    ///
+    /// <para>
+    /// 清空范围必须按用途收窄：清全表会把另一用途的"当前"一起抹掉——换一个对话模型，
+    /// 嵌入模型就悄悄下线（知识库随即不可用，而界面上两处各自显示"正常"）。
+    /// </para>
+    /// </summary>
+    Task<bool> ActivateModelAsync(int modelId, AssistantModelKind kind, string actor, CancellationToken token);
 
-    /// <summary>取消当前（回到"未配置模型"）。</summary>
-    Task ClearActiveModelAsync(CancellationToken token);
+    /// <summary>取消某个用途的当前模型（回到该用途"未配置"；另一用途不受影响）。</summary>
+    Task ClearActiveModelAsync(AssistantModelKind kind, CancellationToken token);
 }
 
 /// <summary>模型配置两级的 SQL Server 实现。</summary>
@@ -150,10 +172,12 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
         ENABLED, SORT_IDX, REMARK, CREATED_AT, UPDATED_AT
         """;
 
+    // 列清单**新增列一律追加到末尾**：读数按位置（ReadModel 的 offset + n），插在中间会让所有偏移
+    // 悄悄错位一格——那是"字段串了行"而不是"少读一列"，编译与运行都不会报错。
     private const string ModelColumns = """
         MODEL_ID, PROVIDER_ID, MODEL_CODE, DISPLAY_NAME, CONTEXT_WINDOW, MAX_OUTPUT_TOKENS,
         DEFAULT_TEMPERATURE, TIMEOUT_SECONDS, INPUT_PER_MILLION_YUAN, OUTPUT_PER_MILLION_YUAN,
-        SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_AT, UPDATED_AT
+        SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_AT, UPDATED_AT, KIND, DIMENSION
         """;
 
     // 联查用的列清单写成两段**带别名的字面量**，而不是把上面的字面量做字符串替换：
@@ -161,8 +185,12 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     private const string ActiveModelColumns = """
         m.MODEL_ID, m.PROVIDER_ID, m.MODEL_CODE, m.DISPLAY_NAME, m.CONTEXT_WINDOW, m.MAX_OUTPUT_TOKENS,
         m.DEFAULT_TEMPERATURE, m.TIMEOUT_SECONDS, m.INPUT_PER_MILLION_YUAN, m.OUTPUT_PER_MILLION_YUAN,
-        m.SUPPORTS_TOOLS, m.IS_ACTIVE, m.ENABLED, m.SORT_IDX, m.REMARK, m.CREATED_AT, m.UPDATED_AT
+        m.SUPPORTS_TOOLS, m.IS_ACTIVE, m.ENABLED, m.SORT_IDX, m.REMARK, m.CREATED_AT, m.UPDATED_AT,
+        m.KIND, m.DIMENSION
         """;
+
+    /// <summary>模型列数（`ActiveModelColumns` 之后紧跟供应商列，偏移量按它算）。</summary>
+    private const int ModelColumnCount = 19;
 
     private const string ActiveProviderColumns = """
         p.PROVIDER_ID, p.CODE, p.DISPLAY_NAME, p.BASE_URL, p.API_KEY_ENV_VAR, p.TIMEOUT_SECONDS,
@@ -300,7 +328,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     }
 
     /// <inheritdoc />
-    public async Task<AssistantActiveModel?> GetActiveAsync(CancellationToken token)
+    public async Task<AssistantActiveModel?> GetActiveAsync(AssistantModelKind kind, CancellationToken token)
     {
         // 供应商被停用 = 它的模型一律不可用：停用一家供应商应当立刻让整家下线，
         // 而不是要管理员再去逐个停用模型
@@ -308,12 +336,13 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
             SELECT TOP (1) {ActiveModelColumns}, {ActiveProviderColumns}
             FROM dbo.ASSISTANT_MODEL m
             INNER JOIN dbo.ASSISTANT_PROVIDER p ON p.PROVIDER_ID = m.PROVIDER_ID
-            WHERE m.IS_ACTIVE = 1 AND m.ENABLED = 1 AND p.ENABLED = 1
+            WHERE m.IS_ACTIVE = 1 AND m.ENABLED = 1 AND p.ENABLED = 1 AND m.KIND = @Kind
             ORDER BY m.MODEL_ID;
             """;
         await using var conn = connections.Create();
         await conn.OpenAsync(token);
         await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@Kind", KindCode(kind));
         await using var reader = await cmd.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
         {
@@ -321,7 +350,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
         }
 
         var model = ReadModel(reader, 0);
-        var provider = ReadProvider(reader, 17);
+        var provider = ReadProvider(reader, ModelColumnCount);
         return new AssistantActiveModel(model, provider);
     }
 
@@ -368,6 +397,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
                 DEFAULT_TEMPERATURE = @Temperature, TIMEOUT_SECONDS = @Timeout,
                 INPUT_PER_MILLION_YUAN = @InputPrice, OUTPUT_PER_MILLION_YUAN = @OutputPrice,
                 SUPPORTS_TOOLS = @SupportsTools, ENABLED = @Enabled, SORT_IDX = @SortIdx, REMARK = @Remark,
+                KIND = @Kind, DIMENSION = @Dimension,
                 UPDATED_AT = SYSUTCDATETIME(), UPDATED_BY = @Actor
             WHERE MODEL_ID = @Id;
             """;
@@ -393,16 +423,19 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     }
 
     /// <inheritdoc />
-    public async Task<bool> ActivateModelAsync(int modelId, string actor, CancellationToken token)
+    public async Task<bool> ActivateModelAsync(
+        int modelId, AssistantModelKind kind, string actor, CancellationToken token)
     {
-        // 一个事务里"先清后置"：中途失败不会留下两条当前模型
+        // 一个事务里"先清后置"：中途失败不会留下两条同一用途的当前模型。
+        // 清空按 KIND 收窄——清全表会顺手抹掉另一用途的当前模型（换对话模型会让嵌入模型下线）
         await using var conn = connections.Create();
         await conn.OpenAsync(token);
         await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(token);
 
         await using (var clear = new SqlCommand(
-            "UPDATE dbo.ASSISTANT_MODEL SET IS_ACTIVE = 0 WHERE IS_ACTIVE = 1;", conn, tx))
+            "UPDATE dbo.ASSISTANT_MODEL SET IS_ACTIVE = 0 WHERE IS_ACTIVE = 1 AND KIND = @Kind;", conn, tx))
         {
+            clear.Parameters.AddWithValue("@Kind", KindCode(kind));
             await clear.ExecuteNonQueryAsync(token);
         }
 
@@ -412,10 +445,11 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
             SET m.IS_ACTIVE = 1, m.UPDATED_AT = SYSUTCDATETIME(), m.UPDATED_BY = @Actor
             FROM dbo.ASSISTANT_MODEL m
             INNER JOIN dbo.ASSISTANT_PROVIDER p ON p.PROVIDER_ID = m.PROVIDER_ID
-            WHERE m.MODEL_ID = @Id AND m.ENABLED = 1 AND p.ENABLED = 1;
+            WHERE m.MODEL_ID = @Id AND m.ENABLED = 1 AND p.ENABLED = 1 AND m.KIND = @Kind;
             """, conn, tx))
         {
             set.Parameters.AddWithValue("@Id", modelId);
+            set.Parameters.AddWithValue("@Kind", KindCode(kind));
             set.Parameters.AddWithValue("@Actor", actor);
             affected = await set.ExecuteNonQueryAsync(token);
         }
@@ -425,12 +459,13 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     }
 
     /// <inheritdoc />
-    public async Task ClearActiveModelAsync(CancellationToken token)
+    public async Task ClearActiveModelAsync(AssistantModelKind kind, CancellationToken token)
     {
         await using var conn = connections.Create();
         await conn.OpenAsync(token);
         await using var cmd = new SqlCommand(
-            "UPDATE dbo.ASSISTANT_MODEL SET IS_ACTIVE = 0 WHERE IS_ACTIVE = 1;", conn);
+            "UPDATE dbo.ASSISTANT_MODEL SET IS_ACTIVE = 0 WHERE IS_ACTIVE = 1 AND KIND = @Kind;", conn);
+        cmd.Parameters.AddWithValue("@Kind", KindCode(kind));
         await cmd.ExecuteNonQueryAsync(token);
     }
 
@@ -445,12 +480,14 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
             INSERT INTO dbo.ASSISTANT_MODEL
                 (PROVIDER_ID, MODEL_CODE, DISPLAY_NAME, CONTEXT_WINDOW, MAX_OUTPUT_TOKENS,
                  DEFAULT_TEMPERATURE, TIMEOUT_SECONDS, INPUT_PER_MILLION_YUAN, OUTPUT_PER_MILLION_YUAN,
-                 SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_BY, UPDATED_BY)
+                 SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_BY, UPDATED_BY,
+                 KIND, DIMENSION)
             OUTPUT INSERTED.MODEL_ID
             VALUES
                 (@ProviderId, @ModelCode, @DisplayName, @ContextWindow, @MaxOutput,
                  @Temperature, @Timeout, @InputPrice, @OutputPrice,
-                 @SupportsTools, 0, @Enabled, @SortIdx, @Remark, @Actor, @Actor);
+                 @SupportsTools, 0, @Enabled, @SortIdx, @Remark, @Actor, @Actor,
+                 @Kind, @Dimension);
             """;
         await using var cmd = tx is null ? new SqlCommand(sql, conn) : new SqlCommand(sql, conn, tx);
         BindModel(cmd, write);
@@ -485,14 +522,31 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
         cmd.Parameters.AddWithValue("@Enabled", write.Enabled ? 1 : 0);
         cmd.Parameters.AddWithValue("@SortIdx", write.SortIdx);
         cmd.Parameters.AddWithValue("@Remark", (object?)write.Remark ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@Kind", KindCode(write.Kind));
+        cmd.Parameters.AddWithValue("@Dimension", (object?)write.Dimension ?? DBNull.Value);
     }
+
+    /// <summary>库里的用途编码。**只有这两个值**（检查约束 `CK_ASSISTANT_MODEL_KIND` 兜着）。</summary>
+    internal static string KindCode(AssistantModelKind kind) =>
+        kind == AssistantModelKind.Embedding ? "EMBEDDING" : "CHAT";
+
+    /// <summary>
+    /// 反向解析。非 <c>EMBEDDING</c> 一律按对话处理：列上有检查约束，出现第三个值是
+    /// 数据被人从库外改过——那种情况在这里猜没有意义，按默认值走并在界面上照样看得见用途。
+    /// </summary>
+    internal static AssistantModelKind ParseKind(string? value) =>
+        string.Equals(value, "EMBEDDING", StringComparison.OrdinalIgnoreCase)
+            ? AssistantModelKind.Embedding
+            : AssistantModelKind.Chat;
 
     private static AssistantProviderRow ReadProvider(SqlDataReader reader, int offset = 0) => new(
         reader.GetInt32(offset),
         reader.GetString(offset + 1),
         reader.GetString(offset + 2),
         reader.GetString(offset + 3),
-        reader.GetString(offset + 4),
+        // 变量名可空（迁移 307 放宽）：null 表示这个端点不需要凭据，不是"配漏了"。
+        // 这里原本是 GetString，遇到无凭据端点会抛 SqlNullValueException——而那一行本该是合法的
+        reader.IsDBNull(offset + 4) ? null : reader.GetString(offset + 4),
         reader.GetInt32(offset + 5),
         reader.GetBoolean(offset + 6),
         reader.GetInt32(offset + 7),
@@ -517,7 +571,10 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
         reader.GetInt32(offset + 13),
         reader.IsDBNull(offset + 14) ? null : reader.GetString(offset + 14),
         ToUtc(reader.GetDateTime(offset + 15)),
-        ToUtc(reader.GetDateTime(offset + 16)));
+        ToUtc(reader.GetDateTime(offset + 16)),
+        // 用途与维度在末尾（列清单新增一律追加）：偏移量是按位置算的，插进中间会整体错位
+        ParseKind(reader.GetString(offset + 17)),
+        reader.IsDBNull(offset + 18) ? null : reader.GetInt32(offset + 18));
 
     private static DateTimeOffset ToUtc(DateTime value) =>
         new(DateTime.SpecifyKind(value, DateTimeKind.Utc));

@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Features.Assistant.ModelAccess;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Xunit;
@@ -93,7 +94,9 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
         return providerId;
     }
 
-    private async Task<int> NewModelAsync(int providerId, string modelCode, CancellationToken token, bool enabled = true)
+    private async Task<int> NewModelAsync(
+        int providerId, string modelCode, CancellationToken token, bool enabled = true,
+        AssistantModelKind kind = AssistantModelKind.Chat, int? dimension = null)
     {
         var modelId = await _catalog.CreateModelAsync(new AssistantModelWrite(
             ProviderId: providerId,
@@ -108,7 +111,9 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
             SupportsTools: true,
             Enabled: enabled,
             SortIdx: 900,
-            Remark: "集成测试创建"), "eosdev-test", token);
+            Remark: "集成测试创建",
+            Kind: kind,
+            Dimension: dimension), "eosdev-test", token);
         _modelIds.Add(modelId);
         return modelId;
     }
@@ -209,18 +214,19 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
         var chat = await NewModelAsync(providerId, "deepseek-chat", token);
         var reasoner = await NewModelAsync(providerId, "deepseek-reasoner", token);
 
-        Assert.True(await _catalog.ActivateModelAsync(chat, "eosdev-test", token));
-        var active = await _catalog.GetActiveAsync(token);
+        Assert.True(await _catalog.ActivateModelAsync(chat, AssistantModelKind.Chat, "eosdev-test", token));
+        var active = await _catalog.GetActiveAsync(AssistantModelKind.Chat, token);
         Assert.Equal(chat, active!.Model.ModelId);
         // 解析模型配置要同时拿到两级：端点在供应商、窗口与单价在模型
         Assert.Equal(providerId, active.Provider.ProviderId);
         Assert.Equal(65536, active.Model.ContextWindow);
         Assert.Equal(1.5m, active.Model.InputPerMillionYuan);
 
-        // 切到第二个：第一个必须自动让位，数据库里至多一条 IS_ACTIVE = 1
-        Assert.True(await _catalog.ActivateModelAsync(reasoner, "eosdev-test", token));
-        Assert.Equal(reasoner, (await _catalog.GetActiveAsync(token))!.Model.ModelId);
-        Assert.Single(await _catalog.ListModelsAsync(token), item => item.IsActive);
+        // 切到第二个：第一个必须自动让位，数据库里**同一用途**至多一条 IS_ACTIVE = 1
+        Assert.True(await _catalog.ActivateModelAsync(reasoner, AssistantModelKind.Chat, "eosdev-test", token));
+        Assert.Equal(reasoner, (await _catalog.GetActiveAsync(AssistantModelKind.Chat, token))!.Model.ModelId);
+        Assert.Single(await _catalog.ListModelsAsync(token),
+            item => item.IsActive && item.Kind == AssistantModelKind.Chat);
 
         // 当前模型删不掉——删掉它会让助手在无人察觉的情况下变成"未配置"
         Assert.False(await _catalog.DeleteModelAsync(reasoner, token));
@@ -236,16 +242,59 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
             Enabled: false,
             SortIdx: 900,
             Remark: null), "eosdev-test", token));
-        Assert.Null(await _catalog.GetActiveAsync(token));
+        Assert.Null(await _catalog.GetActiveAsync(AssistantModelKind.Chat, token));
         // 模型行本身没被改动："停用"是供应商层面的状态，不是把模型也改了
         Assert.True((await _catalog.GetModelAsync(reasoner, token))!.IsActive);
 
         // 供应商停用期间也不能把它设为当前
-        Assert.False(await _catalog.ActivateModelAsync(reasoner, "eosdev-test", token));
+        Assert.False(await _catalog.ActivateModelAsync(reasoner, AssistantModelKind.Chat, "eosdev-test", token));
 
         // 取消当前后就没有"当前模型"了（助手回到未配置）
-        await _catalog.ClearActiveModelAsync(token);
-        Assert.Null(await _catalog.GetActiveAsync(token));
+        await _catalog.ClearActiveModelAsync(AssistantModelKind.Chat, token);
+        Assert.Null(await _catalog.GetActiveAsync(AssistantModelKind.Chat, token));
+    }
+
+    /// <summary>
+    /// 对话与嵌入**各有各的"当前"**（迁移 307 把筛选唯一索引改成按用途各一条）。
+    ///
+    /// <para>
+    /// 这里钉的是激活的**清空范围**：清全表那版实现下，切一个对话模型会把嵌入模型的"当前"一起抹掉——
+    /// 界面两处仍各自显示"正常"，直到有人提问才发现知识库不再可用。所以断言不只是"两条都在"，
+    /// 还包含"**换对话模型后嵌入的那条仍在**"这一步。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Chat_And_Embedding_Keep_Their_Own_Active_Model()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+
+        var providerId = await NewProviderAsync(token);
+        var chat = await NewModelAsync(providerId, "deepseek-chat", token);
+        var chatPro = await NewModelAsync(providerId, "deepseek-reasoner", token);
+        var embed = await NewModelAsync(
+            providerId, "text-embedding-v4", token,
+            kind: AssistantModelKind.Embedding, dimension: 1024);
+
+        Assert.True(await _catalog.ActivateModelAsync(chat, AssistantModelKind.Chat, "eosdev-test", token));
+        Assert.True(await _catalog.ActivateModelAsync(embed, AssistantModelKind.Embedding, "eosdev-test", token));
+
+        Assert.Equal(chat, (await _catalog.GetActiveAsync(AssistantModelKind.Chat, token))!.Model.ModelId);
+        var embedding = await _catalog.GetActiveAsync(AssistantModelKind.Embedding, token);
+        Assert.Equal(embed, embedding!.Model.ModelId);
+        // 维度是嵌入模型自己的列：读回来必须还是它，否则"向量能不能存"就无从判断
+        Assert.Equal(AssistantModelKind.Embedding, embedding.Model.Kind);
+        Assert.Equal(1024, embedding.Model.Dimension);
+
+        // 关键一步：换对话模型，嵌入模型的"当前"必须不受影响
+        Assert.True(await _catalog.ActivateModelAsync(chatPro, AssistantModelKind.Chat, "eosdev-test", token));
+        Assert.Equal(chatPro, (await _catalog.GetActiveAsync(AssistantModelKind.Chat, token))!.Model.ModelId);
+        Assert.Equal(embed, (await _catalog.GetActiveAsync(AssistantModelKind.Embedding, token))!.Model.ModelId);
+
+        // 取消也只取消指定用途：对话回到未配置，嵌入那条还在
+        await _catalog.ClearActiveModelAsync(AssistantModelKind.Chat, token);
+        Assert.Null(await _catalog.GetActiveAsync(AssistantModelKind.Chat, token));
+        Assert.Equal(embed, (await _catalog.GetActiveAsync(AssistantModelKind.Embedding, token))!.Model.ModelId);
     }
 
     /// <summary>批量添加（界面上"从预设勾选几个模型一次添加"）：一次事务，要么都进去要么都不进。</summary>
