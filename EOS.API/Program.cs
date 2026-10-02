@@ -417,6 +417,10 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantRecordLocat
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IRecordHistoryGateway,
     EOS.API.Features.Assistant.Tools.WorkflowRecordHistoryGateway>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.RecordHistoryTool>();
+// 附件清单：与附件端点同一道权限位（CanBrowse + FILE_VIEW），只取元数据不碰文件二进制
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IAttachmentGateway,
+    EOS.API.Features.Assistant.Tools.AttachmentGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AttachmentListTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IFieldRelationRepository,
     EOS.API.Features.Assistant.Metrics.FieldRelationRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>();
@@ -460,6 +464,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListReportsTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RunReportTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RecordHistoryTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.AttachmentListTool>(),
         ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

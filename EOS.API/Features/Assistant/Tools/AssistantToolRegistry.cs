@@ -90,6 +90,8 @@ public sealed class AssistantToolRegistry
         RecordHistoryTool.ToolName =>
             $" 输出上限：审批历史与最近操作各最多 {_limits.RecordHistoryMax} 条；"
             + $"最近操作只看最近 {_limits.RecordActivityDays} 天。",
+        AttachmentListTool.ToolName =>
+            $" 输出上限：最多列出 {_limits.AttachmentListMax} 个附件（只给文件元数据，不含内容）。",
         _ => string.Empty,
     };
 

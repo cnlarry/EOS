@@ -545,6 +545,9 @@ public sealed class AssistantParameterResolver(
             case "TOOL_LIMIT_RECORD_ACTIVITY_DAYS":
                 builder.ToolLimits.RecordActivityDays = Number();
                 break;
+            case "TOOL_LIMIT_ATTACHMENT_LIST_MAX":
+                builder.ToolLimits.AttachmentListMax = Number();
+                break;
         }
     }
 

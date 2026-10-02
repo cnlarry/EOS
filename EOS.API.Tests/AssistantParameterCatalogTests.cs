@@ -202,6 +202,7 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH"] = "41",
             ["TOOL_LIMIT_RECORD_HISTORY_MAX"] = "21",
             ["TOOL_LIMIT_RECORD_ACTIVITY_DAYS"] = "91",
+            ["TOOL_LIMIT_ATTACHMENT_LIST_MAX"] = "22",
         };
 
         // 工具开关与动作族开关：键名由各自的清单机械生成，所以探针也按同一份清单生成——
@@ -299,6 +300,25 @@ public sealed class AssistantParameterCatalogTests
         Assert.Contains("最多 11 行", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
         Assert.Contains("每行 13 列", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
         Assert.Contains("17 字符", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
+    }
+
+    /// <summary>附件清单工具的上限同理：条数与"只给元数据"这句都要出现在声明文本里。</summary>
+    [Fact]
+    public void Attachment_Tool_Declaration_Text_Carries_The_Parameter_Values()
+    {
+        var policy = AssistantPolicyValues.Default with
+        {
+            ToolLimits = new AssistantToolLimitsOptions { AttachmentListMax = 8 },
+        };
+
+        var registry = new AssistantToolRegistry(
+            [new StubTool(AttachmentListTool.ToolName)],
+            AssistantTestRuntime.Fixed(new AssistantSettings(), policy));
+
+        var description = Assert.Single(registry.Definitions).Description;
+
+        Assert.Contains("最多列出 8 个附件", description, StringComparison.Ordinal);
+        Assert.Contains("不含内容", description, StringComparison.Ordinal);
     }
 
     /// <summary>单据历史工具的上限同理：条数与时间窗都要出现在发给模型的声明文本里。</summary>
