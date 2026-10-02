@@ -505,6 +505,10 @@ public static class AssistantParameterCatalog
         IntParameter("KB_SEARCH_MAX_CONTENT_LENGTH", "命中片段的字符上限", "KB", "字符",
             "命中片段进模型前截断到多少字符。",
             KbDefaults.SearchMaxContentLength, ["SearchMaxContentLength"], min: 1, max: 10_000),
+        IntParameter("KB_SEARCH_RELEVANCE_MARGIN_PCT", "检索相关性截断幅度", "KB", "百分点",
+            "只注入与**最佳命中**的相似度相差不超过这个幅度的片段（相对口径，换嵌入模型不失效）。"
+            + "0 = 只留最佳命中，100 = 基本不截断；最佳命中永远保留，所以配错也不会让知识通道整体失声。",
+            KbDefaults.RelevanceMarginPct, ["RelevanceMarginPct"], min: 0, max: 100),
         IntParameter("KB_CHUNK_MAX_CHARS", "入库切块的块长", "KB", "字符",
             "文档入库时的切块长度。**必须大于重叠长度**，否则切块原地打转——不成立时本轮退回默认值。",
             KbDefaults.ChunkMaxChars, ["ChunkMaxChars"], min: 1, max: 10_000),

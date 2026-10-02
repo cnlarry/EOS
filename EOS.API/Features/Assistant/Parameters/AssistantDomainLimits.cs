@@ -83,7 +83,7 @@ public sealed class AssistantMemoryLimitsOptions
 }
 
 /// <summary>
-/// 域 `KB`（知识库）的运行时取值：检索侧 2 项 + 入库切块 2 项。
+/// 域 `KB`（知识库）的运行时取值：检索侧 3 项 + 入库切块 2 项 + 端点 1 项。
 ///
 /// <para>
 /// 切块参数（块长与重叠）之所以可配：块长直接决定"检索回来的片段够不够回答一个问题"，
@@ -98,6 +98,20 @@ public sealed class AssistantKbLimitsOptions
 
     /// <summary>命中片段截断的字符上限（进模型前的护栏）。</summary>
     public int SearchMaxContentLength { get; set; } = 300;
+
+    /// <summary>
+    /// 相关性截断幅度（百分点）：只注入与**最佳命中**的相似度相差不超过这个幅度的片段。
+    ///
+    /// <para>
+    /// 用相对口径而不是绝对相似度下限，是因为 cosine 的分值分布逐模型逐厂商不同——写死一个绝对下限，
+    /// 换嵌入模型那天会**静默失效**（表现成"某天开始答得变差"或"什么都检索不到"），不会有任何报错。
+    /// 相对截断还有一条性质：**永远保留最佳命中**，所以通道不会因为阈值配错而整体失声
+    /// （代价是"整批都不相关"时仍会带一条，由工具输出里那句"以下是检索结果"交给模型判断）。
+    /// </para>
+    ///
+    /// <para>0 = 只留最佳命中（最严）；100 = 相似度差不超过整整 1.0，实践中等于不截断。</para>
+    /// </summary>
+    public int RelevanceMarginPct { get; set; } = 15;
 
     /// <summary>入库切块的块长（字符）。</summary>
     public int ChunkMaxChars { get; set; } = 700;

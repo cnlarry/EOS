@@ -175,6 +175,7 @@ public sealed class AssistantParameterCatalogTests
             ["MEM_INJECTION_TOP_K"] = "7",
             ["KB_SEARCH_MAX_HITS"] = "7",
             ["KB_SEARCH_MAX_CONTENT_LENGTH"] = "311",
+            ["KB_SEARCH_RELEVANCE_MARGIN_PCT"] = "37",
             ["KB_CHUNK_MAX_CHARS"] = "801",
             ["KB_CHUNK_OVERLAP_CHARS"] = "121",
             ["KB_ENDPOINT_MAX_HITS"] = "33",
