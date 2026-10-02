@@ -318,8 +318,18 @@ public sealed class AssistantAdminController(
             suggestedApiKeyEnvVar = provider.SuggestedApiKeyEnvVar,
             timeoutSeconds = provider.TimeoutSeconds,
             remark = provider.Remark,
+            // 端点、协议、认证头是"能不能发出去"的三件套：前两件是数据（用户可改），
+            // 认证头样式由目录给定（它是代码认识的东西）——界面据它决定发哪种头
+            authStyle = provider.AuthStyle.ToString(),
+            // 能力三态随预设下发：界面据此说"这家没有嵌入端点 / 不支持列出型号"，
+            // 而不是让管理员在一个注定失败的端点上反复试
+            embedding = provider.Embedding.ToString(),
+            modelListing = provider.ModelListing.ToString(),
             models = provider.Models.Select(model => new
             {
+                // 用途与维度：嵌入模型不给维度，等于把"尺寸对不对"推迟到运行时才暴露
+                kind = model.Kind.ToString(),
+                dimension = model.Dimension,
                 modelCode = model.ModelCode,
                 displayName = model.DisplayName,
                 contextWindow = model.ContextWindow,
