@@ -12,11 +12,18 @@ namespace EOS.API.Features.Assistant.ModelAccess;
 /// </summary>
 public interface IAssistantSecretStore
 {
-    /// <summary>读取密钥。**只在服务端内部使用**（注入 Authorization 头），绝不下发前端。</summary>
-    string? Read(string envVarName);
+    /// <summary>
+    /// 读取密钥。**只在服务端内部使用**（注入 Authorization 头），绝不下发前端。
+    ///
+    /// <para>
+    /// 变量名可空：供应商的"密钥环境变量名"本身可以为 <c>null</c>（无凭据端点，迁移 307 放宽），
+    /// 那种情况一律当作"没有密钥"，而不是抛异常——否则读一个合法的供应商行就会炸。
+    /// </para>
+    /// </summary>
+    string? Read(string? envVarName);
 
     /// <summary>是否已配置（未配置时助手会以"未配置"快速失败，而不是发一次注定 401 的请求）。</summary>
-    bool IsConfigured(string envVarName);
+    bool IsConfigured(string? envVarName);
 
     /// <summary>
     /// 写入密钥。返回是否也写进了**用户级**环境变量（即重启后是否还在）。
@@ -30,18 +37,18 @@ public interface IAssistantSecretStore
     (bool ProcessUpdated, bool Persisted) Write(string envVarName, string secret);
 
     /// <summary>仅用于界面显示：形如 <c>****abcd</c> 的掩码（只露末四位）。</summary>
-    string? MaskedTail(string envVarName);
+    string? MaskedTail(string? envVarName);
 }
 
 /// <summary>基于环境变量的实现。</summary>
 public sealed class EnvironmentSecretStore(ILogger<EnvironmentSecretStore> logger) : IAssistantSecretStore
 {
     /// <inheritdoc />
-    public string? Read(string envVarName) =>
+    public string? Read(string? envVarName) =>
         string.IsNullOrWhiteSpace(envVarName) ? null : Environment.GetEnvironmentVariable(envVarName);
 
     /// <inheritdoc />
-    public bool IsConfigured(string envVarName) => !string.IsNullOrWhiteSpace(Read(envVarName));
+    public bool IsConfigured(string? envVarName) => !string.IsNullOrWhiteSpace(Read(envVarName));
 
     /// <inheritdoc />
     public (bool ProcessUpdated, bool Persisted) Write(string envVarName, string secret)
@@ -66,7 +73,7 @@ public sealed class EnvironmentSecretStore(ILogger<EnvironmentSecretStore> logge
     }
 
     /// <inheritdoc />
-    public string? MaskedTail(string envVarName)
+    public string? MaskedTail(string? envVarName)
     {
         var value = Read(envVarName);
         if (string.IsNullOrWhiteSpace(value))
