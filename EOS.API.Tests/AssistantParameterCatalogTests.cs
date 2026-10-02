@@ -200,6 +200,8 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_REPORT_MAX_ROWS"] = "6",
             ["TOOL_LIMIT_REPORT_MAX_COLUMNS"] = "13",
             ["TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH"] = "41",
+            ["TOOL_LIMIT_RECORD_HISTORY_MAX"] = "21",
+            ["TOOL_LIMIT_RECORD_ACTIVITY_DAYS"] = "91",
         };
 
         // 工具开关与动作族开关：键名由各自的清单机械生成，所以探针也按同一份清单生成——
@@ -263,6 +265,40 @@ public sealed class AssistantParameterCatalogTests
         Assert.Contains("最多 7 行", description, StringComparison.Ordinal);
         Assert.Contains("每行 9 列", description, StringComparison.Ordinal);
         Assert.Contains("41 字符", description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 报表工具的上限同样必须**同时**出现在两处：执行时按它截断，以及在发给模型的声明文本里。
+    ///
+    /// <para>
+    /// 单独一条而不是并进上一条：报表是两个工具、四个数字，且 <c>list_reports</c> 只有"几个报表"
+    /// 一个上限——合在一起断言时，漏接一个工具会被另一条的命中盖过去。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Report_Tool_Declaration_Text_Carries_The_Parameter_Values()
+    {
+        var policy = AssistantPolicyValues.Default with
+        {
+            ToolLimits = new AssistantToolLimitsOptions
+            {
+                ReportListMax = 7,
+                ReportMaxRows = 11,
+                ReportMaxColumns = 13,
+                ReportMaxValueLength = 17,
+            },
+        };
+
+        var registry = new AssistantToolRegistry(
+            [new StubTool(ListReportsTool.ToolName), new StubTool(RunReportTool.ToolName)],
+            AssistantTestRuntime.Fixed(new AssistantSettings(), policy));
+
+        var definitions = registry.Definitions.ToDictionary(item => item.Name, item => item.Description);
+
+        Assert.Contains("最多列出 7 个报表", definitions[ListReportsTool.ToolName], StringComparison.Ordinal);
+        Assert.Contains("最多 11 行", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
+        Assert.Contains("每行 13 列", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
+        Assert.Contains("17 字符", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
     }
 
     /// <summary>只为验证声明的上限句而存在的假工具：名字用真工具的常量，于是会命中同一分支。</summary>
