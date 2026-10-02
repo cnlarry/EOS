@@ -63,10 +63,13 @@ EOS.API/Data/WorkbenchScopeFilter.cs
 EOS.API/Data/WorkbenchSql.cs
 EOS.API/Data/WorkflowEngine.cs
 EOS.API/Features/Assistant/Admin/ChangeSetService.cs
+EOS.API/Features/Assistant/Diagnosis/RecordDiagnosisReader.cs
 EOS.API/Features/Assistant/Memory/AssistantMemoryStore.cs
 EOS.API/Features/Assistant/Metrics/MetricPlanCompiler.cs
 EOS.API/Features/Assistant/Metrics/MetricRepository.cs
 EOS.API/Features/Assistant/Metrics/FieldRelationRepository.cs
+EOS.API/Features/Assistant/Parameters/AssistantParameterScopeStore.cs
+EOS.API/Features/Assistant/Situation/SituationFactsReader.cs
 EOS.API/Features/Assistant/Tools/EnumMetricsTool.cs
-EOS.API/Features/Assistant/Tools/GetMyDigestTool.cs
 EOS.API/Features/Assistant/Tools/ModuleFlowGateway.cs
+EOS.API/Features/Assistant/Tools/RecordHistoryTool.cs

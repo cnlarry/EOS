@@ -102,6 +102,12 @@ public sealed class WorkbenchIdempotency
     /// <summary>
     /// 只读查一次既有结果（自开连接）：用于**没有共享事务**的一批操作在开始前判"这一批做过没有"。
     /// 它不作写入依据——真正防重的仍是写入路径内的事务内抢占。
+    ///
+    /// <para>
+    /// **这条查询不加"读不加锁"提示**（此前有一条，已去掉）：它读出来的正是"这一批做过没有"的
+    /// 判断依据，而脏读可能读到一笔随后回滚的插入——那一批操作会被永久跳过（既没做过、也不会再做）。
+    /// 这张表按主键取单行，读锁的争用可以忽略，省不下什么。
+    /// </para>
     /// </summary>
     public static async Task<WorkbenchIdempotencyRecord?> TryReadAsync(
         DbConnectionFactory connections, string key, CancellationToken token)
@@ -110,7 +116,7 @@ public sealed class WorkbenchIdempotency
         await connection.OpenAsync(token);
         const string sql = """
             SELECT RESULT_KEY, FLOW_STARTED
-            FROM dbo.WORKBENCH_IDEMPOTENCY WITH (NOLOCK)
+            FROM dbo.WORKBENCH_IDEMPOTENCY
             WHERE IDEMPOTENCY_KEY=@Key;
             """;
         await using var command = new SqlCommand(sql, connection);
