@@ -1,5 +1,5 @@
 import {
-  IconAlertTriangle, IconCloudDownload, IconKey, IconPlus, IconRefresh, IconTrash,
+  IconAlertTriangle, IconCircleCheck, IconCloudDownload, IconEdit, IconKey, IconPlus, IconRefresh, IconTrash,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
@@ -284,7 +284,8 @@ export function ModelAdminPage() {
     {
       id: 'timeout',
       header: '默认超时',
-      enableSorting: false,
+      // 单一数值列：可排序（供应商不多，但"哪家超时设得最长"是个会被问的问题）
+      accessorFn: (row) => row.timeoutSeconds,
       meta: { className: 'text-nowrap', minWidth: 96 },
       cell: ({ row }) => <span className="text-secondary small">{row.original.timeoutSeconds} 秒</span>,
     },
@@ -293,15 +294,25 @@ export function ModelAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap text-end', truncate: false, minWidth: 200, minWidthFloor: true, resizable: false },
+      // frozenRight：操作列钉在右侧（电子表口径，与 2305/2306 一致）——横向滚动时
+      // 不用来回拉才能点到"这一行的操作"
+      meta: {
+        className: 'text-nowrap text-end', frozenRight: true,
+        truncate: false, minWidth: 200, minWidthFloor: true, resizable: false,
+      },
       cell: ({ row }) => {
         const provider = row.original
         return (
+          // 行内按钮一律 ghost + 14px 图标 + 文字（图标不是装饰：一列四五个纯文字按钮
+          // 在读的人眼里是一排等宽的字，扫起来比图标慢）。
+          // **不再另加 aria-label**：可见文字已经是可访问名，再加一层会与对话框里同名的
+          // 输入框撞车（"密钥"那条按钮会让 find 到两个"密钥"，把页签/弹窗的定位查询弄歧义）
           <div className="d-flex gap-1 justify-content-end">
             <Button size="sm" variant="ghost" icon={<IconKey size={14} />}
               title="设置密钥（写入环境变量，不入库、不回显）"
               onClick={() => setKeyProvider(provider)}>密钥</Button>
-            <Button size="sm" variant="ghost" title="编辑供应商" onClick={() => setEditProvider(provider)}>编辑</Button>
+            <Button size="sm" variant="ghost" icon={<IconEdit size={14} />}
+              title="编辑供应商" onClick={() => setEditProvider(provider)}>编辑</Button>
             <Button size="sm" variant="ghost" icon={<IconTrash size={14} />}
               title={provider.models.length > 0 ? '名下还有模型，需先删除它们' : '删除供应商'}
               disabled={provider.models.length > 0}
@@ -344,19 +355,25 @@ export function ModelAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap text-end', truncate: false, minWidth: 210, minWidthFloor: true, resizable: false },
+      // frozenRight 同供应商表：横向滚动时操作列始终在右侧
+      meta: {
+        className: 'text-nowrap text-end', frozenRight: true,
+        truncate: false, minWidth: 240, minWidthFloor: true, resizable: false,
+      },
       cell: ({ row }) => {
         const model = row.original
         return (
           <div className="d-flex gap-1 justify-content-end">
             {/* 密钥没配就不给点：把一个没有密钥的模型设成当前，会让所有人的助手立刻不可用 */}
-            <Button size="sm" variant="ghost"
+            <Button size="sm" variant="ghost" icon={<IconCircleCheck size={14} />}
               title={model.isActive ? '已经是当前模型' : '设为当前模型（立即生效，无需重启）'}
               disabled={model.isActive || !model.enabled || activate.isPending}
               onClick={() => activate.mutate(model.modelId)}>设为当前</Button>
-            <Button size="sm" variant="ghost" title="编辑（不含密钥）"
+            <Button size="sm" variant="ghost" icon={<IconEdit size={14} />}
+              title="编辑（不含密钥）"
               onClick={() => setEditModel({ model, provider: items.find(p => p.providerId === model.providerId)! })}>编辑</Button>
-            <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} title="删除（当前模型不可删）"
+            <Button size="sm" variant="ghost" icon={<IconTrash size={14} />}
+              title="删除（当前模型不可删）"
               disabled={model.isActive || removeModel.isPending}
               onClick={() => confirmRemoveModel(model)}>删除</Button>
           </div>
@@ -374,7 +391,10 @@ export function ModelAdminPage() {
       {
         id: 'window',
         header: '窗口 / 最大输出',
-        enableSorting: false,
+        // 按**窗口**排：这一列摆了两个值，排序只能认一个。认窗口而不是最大输出——窗口决定
+        // "历史裁到哪"，是这个格子里唯一会被消费的语义。未知窗口给 -1，去处确定（升序在最前），
+        // 而不是让 null 参与比较得到一个随引擎实现变化的位置
+        accessorFn: (row) => row.contextWindow ?? -1,
         meta: { className: 'text-nowrap', minWidth: 150 },
         // 窗口会被真的用来裁剪历史，所以它不是装饰性字段
         cell: ({ row }) => (
@@ -388,6 +408,8 @@ export function ModelAdminPage() {
       {
         id: 'params',
         header: '温度 / 超时',
+        // **不开排序**：两个值都不分主次（温度与超时没有"谁先"，也不可比），
+        // 按其中一个排出来的顺序看着像有依据，其实没有。宁可不出这个菜单项
         enableSorting: false,
         meta: { className: 'text-nowrap', minWidth: 130 },
         cell: ({ row }) => (
@@ -401,6 +423,7 @@ export function ModelAdminPage() {
       {
         id: 'price',
         header: '单价（入 / 出）',
+        // 同 params：入/出两个价并列，排序说不出按哪个（理由同上）
         enableSorting: false,
         meta: { className: 'text-nowrap', minWidth: 140 },
         cell: ({ row }) => (
@@ -419,7 +442,9 @@ export function ModelAdminPage() {
       {
         id: 'dimension',
         header: '维度',
-        enableSorting: false,
+        // 可排序——"哪条维度与集合登记的不一致"正是这一列要回答的问题。
+        // 缺维度给 -1：升序时它排在最前（要修的排最前），而不是让 null 参与比较
+        accessorFn: (row) => row.dimension ?? -1,
         meta: { className: 'text-nowrap', minWidth: 110 },
         // 维度决定向量能不能存进集合：与集合登记不一致时入库会被拒，所以它得显示出来
         cell: ({ row }) => (
@@ -431,7 +456,8 @@ export function ModelAdminPage() {
       {
         id: 'timeout',
         header: '超时',
-        enableSorting: false,
+        // "用供应商默认"给 -1 同 dimension：去处确定
+        accessorFn: (row) => row.timeoutSeconds ?? -1,
         meta: { className: 'text-nowrap', minWidth: 110 },
         cell: ({ row }) => (
           <span className="text-secondary small">
@@ -442,7 +468,8 @@ export function ModelAdminPage() {
       {
         id: 'inputPrice',
         header: '输入单价',
-        enableSorting: false,
+        // 留空 = 用全局兜底价，给 -1：升序时"兜底"排在最前
+        accessorFn: (row) => row.inputPerMillionYuan ?? -1,
         meta: { className: 'text-nowrap', minWidth: 110 },
         cell: ({ row }) => unitPrice(row.original.inputPerMillionYuan),
       },
@@ -468,17 +495,19 @@ export function ModelAdminPage() {
               ariaLabel="助手模型供应商"
               actions={<>
                 {current && (
-                  <Button size="sm" variant="secondary" icon={<IconAlertTriangle size={14} />}
+                  <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
                     title="取消当前对话模型：助手回到未配置状态（供应商与模型都留着）"
                     disabled={clearActive.isPending} onClick={() => clearActive.mutate('CHAT')}>取消对话当前</Button>
                 )}
                 {currentEmbedding && (
-                  <Button size="sm" variant="secondary" icon={<IconAlertTriangle size={14} />}
+                  <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
                     title="取消当前嵌入模型：知识库回到未配置状态（供应商与模型都留着）"
                     disabled={clearActive.isPending} onClick={() => clearActive.mutate('EMBEDDING')}>取消嵌入当前</Button>
                 )}
-                <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setAdding(true)}>添加供应商</Button>
-                <Button size="sm" icon={<IconRefresh size={16} />} onClick={refresh}>刷新</Button>
+                <Button size="sm" className="erp-command-btn" icon={<IconPlus size={16} />}
+                  onClick={() => setAdding(true)}>添加供应商</Button>
+                <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />}
+                  onClick={refresh}>刷新</Button>
               </>}
               header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
                 <h2 className="card-title mb-0">模型管理</h2>
@@ -518,6 +547,9 @@ export function ModelAdminPage() {
                     getRowId={(row) => String(row.providerId)}
                     empty={<EmptyState title="还没有供应商" description="点「添加供应商」建立第一个接入点。" />}
                     resizable storageKey="assistant-admin-providers"
+                    // 电子表默认能力：排序（本地）+ 列宽拖拽 + 复制 + 键盘导航 + 吸顶表头。
+                    // 排序不传 clientSideSorting 就没有表头菜单——数据全在这一页，本地排即可
+                    clientSideSorting
                     rowClickSingleSelect
                     rowSelection={providerSelection}
                     onRowSelectionChange={handleProviderSelectionChange} />
@@ -542,11 +574,11 @@ export function ModelAdminPage() {
                   ))}
                 </div>
                 <span className="ms-auto d-flex gap-1">
-                  <Button size="sm" variant="ghost" icon={<IconCloudDownload size={14} />}
+                  <Button size="sm" variant="ghost" className="erp-command-btn" icon={<IconCloudDownload size={16} />}
                     disabled={!selectedProvider}
                     title="向厂商拉取可用型号，勾选后落库（拉取失败会说明原因，不会退回预设清单）"
                     onClick={() => selectedProvider && setDiscoverProvider(selectedProvider)}>拉取型号</Button>
-                  <Button size="sm" variant="ghost" icon={<IconPlus size={14} />}
+                  <Button size="sm" variant="ghost" className="erp-command-btn" icon={<IconPlus size={16} />}
                     disabled={!selectedProvider}
                     title="手工新增一个模型（厂商拉不到的型号、自建端点走这里）"
                     onClick={() => selectedProvider && setAddModelProvider(selectedProvider)}>新增模型</Button>
@@ -560,7 +592,7 @@ export function ModelAdminPage() {
                     description={kind === 'CHAT'
                       ? '用「拉取型号」从厂商拉取后勾选落库，或用「新增模型」手工填。'
                       : '嵌入模型供知识库使用：拉取型号时把用途选成"嵌入"并给维度，或用「新增模型」手工填。'} />}
-                  resizable
+                  resizable clientSideSorting
                   storageKey={`assistant-admin-models-${kind}-${selectedProvider.providerId}`} />
               ) : (
                 <EmptyState title="还没有供应商" description="先在上表添加供应商，再维护它的模型。" />
@@ -621,7 +653,8 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
   const trend = usage.data?.trend ?? []
 
   return (
-    <div className="erp-workbench-page erp-model-admin-page">
+    // erp-workbench-even：上下两块**等分**（模型那页签是"主表按内容、子表占满"，这里不是）
+    <div className="erp-workbench-page erp-workbench-even">
       <ErpListCard
         ariaLabel="助手用量"
         actions={<>
@@ -631,7 +664,8 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
             <option value={30}>近 30 天</option>
             <option value={90}>近 90 天</option>
           </select>
-          <Button size="sm" icon={<IconRefresh size={16} />} onClick={onRefresh}>刷新</Button>
+          <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />}
+            onClick={onRefresh}>刷新</Button>
         </>}
         header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
           <h2 className="card-title mb-0">用量</h2>
@@ -654,7 +688,8 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
             <EmptyState title="这段时间还没有模型调用记录" description="有回复之后这里会出现按模型的用量。" />
           ) : (
             <ErpTable columns={USAGE_COLUMNS} data={models}
-              getRowId={(row) => row.modelName} resizable storageKey="assistant-admin-usage-models" />
+              getRowId={(row) => row.modelName} resizable clientSideSorting
+              storageKey="assistant-admin-usage-models" />
           )}
         </div>
       </ErpListCard>
@@ -668,7 +703,8 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
         ) : (
           // 倒序：最近的一天在上面（按天的表默认是升序，读的人第一眼想看今天）
           <ErpTable columns={TREND_COLUMNS} data={[...trend].reverse()}
-            getRowId={(row) => row.day} resizable storageKey="assistant-admin-usage-trend" />
+            getRowId={(row) => row.day} resizable clientSideSorting
+            storageKey="assistant-admin-usage-trend" />
         )}
       </section>
     </div>

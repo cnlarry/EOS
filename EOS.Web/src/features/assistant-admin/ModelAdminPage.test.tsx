@@ -550,4 +550,80 @@ describe('ModelAdminPage', () => {
     expect(await screen.findByText('无需凭据')).toBeInTheDocument()
     expect(screen.queryByText('未配置')).toBeNull()
   })
+
+  it('命令栏按钮是图标 + 文字（.erp-command-btn），不会被压成方块', async () => {
+    installFetchMock()
+
+    renderPage()
+
+    // 工作台命令栏的 CSS 会把**没挂 .erp-command-btn** 的按钮压成 28×28 方块（文字被裁）。
+    // 这两条断言就是那个坑的哨兵：类名丢了不会有任何报错，只会让按钮变成一排看不懂的图标
+    const add = await screen.findByRole('button', { name: '添加供应商' })
+    expect(add).toHaveClass('erp-command-btn')
+    expect(add.querySelector('svg')).not.toBeNull()
+    expect(add.textContent).toBe('添加供应商')
+
+    const refresh = screen.getByRole('button', { name: '刷新' })
+    expect(refresh).toHaveClass('erp-command-btn')
+    expect(refresh.querySelector('svg')).not.toBeNull()
+  })
+
+  it('行内动作按钮同样是图标 + 文字（纯文字按钮在读的人眼里是一排等宽的字）', async () => {
+    installFetchMock()
+
+    renderPage()
+
+    const row = await waitFor(() => rowOf('deepseek-chat'), { timeout: 10_000 })
+    for (const name of ['设为当前', '编辑', '删除']) {
+      const button = within(row).getByRole('button', { name })
+      expect(button.querySelector('svg')).not.toBeNull()
+      // 文字还在（图标是补充而不是替代）
+      expect(button.textContent).toBe(name)
+    }
+  })
+
+  it('用量页签两块等分；模型页签不等分（那边是主表按内容、子表占满）', async () => {
+    installFetchMock()
+
+    const { container } = renderPage()
+
+    expect(await screen.findByText('模型管理')).toBeInTheDocument()
+    const modelsPane = container.querySelector('.erp-tabbed-panel-body > .erp-workbench-page')!
+    expect(modelsPane.className).toContain('erp-model-admin-page')
+    // 等分是给"两张表地位相同"的场景（按模型 / 按天）；模型页签不是这种场景
+    expect(modelsPane.className).not.toContain('erp-workbench-even')
+
+    fireEvent.click(screen.getByRole('tab', { name: '用量' }))
+
+    await waitFor(() => expect(container.querySelector('.erp-tabbed-panel-body > .erp-workbench-page'))
+      .toHaveClass('erp-workbench-even'))
+  })
+
+  it('表格按电子表口径：表头可排序（真的重排）、操作列冻结、列宽可拖、右键可复制', async () => {
+    installFetchMock({ providers: [providerRow(), secondProviderRow()] })
+
+    renderPage()
+
+    const table = (await screen.findByText('DeepSeek 开放平台')).closest('table')!
+    const firstColumn = () => [...table.querySelectorAll('tbody tr')]
+      .map(row => row.querySelector('td')?.textContent?.trim() ?? '')
+    const before = firstColumn()
+
+    // 排序：表头那个小菜单（默认/升序/降序）。**不传 clientSideSorting 时它根本不渲染**——
+    // 也就是说"表头能排序"这件事在页面上只有一个开关，丢了不会有任何报错
+    fireEvent.click(within(table).getByLabelText('表头操作供应商'))
+    fireEvent.click(screen.getByRole('button', { name: '降序' }))
+
+    await waitFor(() => expect(firstColumn()[0]).not.toBe(before[0]))
+    // 只是换了序，没丢行
+    expect([...firstColumn()].sort()).toEqual([...before].sort())
+
+    // 操作列冻结在右侧：横向滚动时不必来回拉才能点到"这一行的操作"
+    expect(within(table).getByRole('columnheader', { name: /操作/ })).toHaveClass('erp-frozen-right')
+    // 列宽可拖（拖拽把手由 resizable 带出）
+    expect(table.querySelectorAll('.erp-col-resizer').length).toBeGreaterThan(0)
+    // 复制：单元格右键菜单（ErpTable 默认能力，页面不必额外开）
+    fireEvent.contextMenu(within(table).getAllByRole('cell')[0])
+    expect(await screen.findByRole('button', { name: '复制单元格' })).toBeInTheDocument()
+  })
 })
