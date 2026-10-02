@@ -49,26 +49,36 @@ function renderPage() {
   return renderWithProviders(<ReportAdminPage />)
 }
 
+/**
+ * 等首屏数据到位。超时给足：满量跑（上千条用例并行）时这一页的数据要几秒才到，
+ * 默认 1s 会偶发失败——而那条失败的报错是"找不到 RPT_A"，看着像渲染错了，其实只是慢
+ * （手册 06：这类用例断言的是**行为**而不是速度）。
+ */
 async function loaded() {
-  await screen.findByText('RPT_A')
+  await screen.findByText('RPT_A', {}, { timeout: 10_000 })
 }
 
 function rowOf(reportId: string) {
   return screen.getByText(reportId).closest('tr')!
 }
 
-/** 打开新增报表弹窗并通过通用选择器选中 1305 库存日志 */
+/**
+ * 打开新增报表弹窗并通过通用选择器选中 1305 库存日志。
+ *
+ * <p>这是本文件里最重的一条链路（开弹窗 → 选择器取数 → 回填后再取字段选项），
+ * 所以两处等待都给足超时：满量跑时它比单跑慢一个数量级，默认的 1s / 5s 都顶不住。</p>
+ */
 async function openNewReportWithModule() {
   fireEvent.click(screen.getByRole('button', { name: '新增报表' }))
   fireEvent.click(screen.getByRole('button', { name: '选择模块…' }))
   const dialogs = screen.getAllByRole('dialog')
   const chooser = dialogs[dialogs.length - 1]
-  const moduleRow = await within(chooser).findByText('库存日志')
+  const moduleRow = await within(chooser).findByText('库存日志', {}, { timeout: 10_000 })
   fireEvent.click(moduleRow.closest('tr')!)
   fireEvent.click(screen.getByRole('button', { name: '确认' }))
   await waitFor(() => {
     expect(apiClientMock.get).toHaveBeenCalledWith('/report-admin/field-options?moduleId=1305')
-  })
+  }, { timeout: 10_000 })
 }
 
 describe('ReportAdminPage', () => {
@@ -139,6 +149,9 @@ describe('ReportAdminPage', () => {
     expect(screen.getByText('排序/分组方案（REPORT_SORT）——报表：RPT_B')).toBeInTheDocument()
   })
 
+  // 第三条参数是**整条用例**的上限（全局 testTimeout 已是 20 秒，这里显式写一遍标明
+  // "这条链路最重"）：它要走"开弹窗 → 选择器取数 → 回填 → 提交"，满量跑时会顶到上限，
+  // 报的是 "Test timed out"，看着像死锁其实只是慢。内部每处等待另有 10 秒（见上面两个辅助函数）
   it('新增报表弹窗：通用选择器选所属模块后 POST', async () => {
     renderPage()
     await loaded()
@@ -150,7 +163,7 @@ describe('ReportAdminPage', () => {
       '/report-admin/reports',
       expect.objectContaining({ reportId: 'RPT_NEW', reportName: '新报表', moduleId: 1305 }),
     ))
-  })
+  }, 20_000)
 
   it('报表过滤支持构建辅助输入', async () => {
     renderPage()
@@ -163,7 +176,7 @@ describe('ReportAdminPage', () => {
     fireEvent.change(screen.getByLabelText('条件1值'), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: '应用查询' }))
     expect((screen.getByLabelText(/^报表过滤/) as HTMLInputElement).value).toBe("SYSQR_DA.F_TYPE>'1'")
-  })
+  }, 20_000)
 
   it('行「编辑」打开报表编辑弹窗并预填（所属模块/编号禁改）', async () => {
     renderPage()
