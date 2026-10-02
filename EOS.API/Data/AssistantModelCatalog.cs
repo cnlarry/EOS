@@ -526,7 +526,15 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
         cmd.Parameters.AddWithValue("@Dimension", (object?)write.Dimension ?? DBNull.Value);
     }
 
-    /// <summary>库里的用途编码。**只有这两个值**（检查约束 `CK_ASSISTANT_MODEL_KIND` 兜着）。</summary>
+    /// <summary>
+    /// 用途编码：**只有这两个值**（检查约束 `CK_ASSISTANT_MODEL_KIND` 兜着），
+    /// 而且是**库与接口共用的同一份字面量**。
+    ///
+    /// <para>
+    /// 接口下发也必须用它，不能用枚举默认的 `ToString()`——那是 "Chat"/"Embedding"，
+    /// 前端与库都是全大写，两边对不上时不会有任何编译错误，只会让列表静默变空。
+    /// </para>
+    /// </summary>
     internal static string KindCode(AssistantModelKind kind) =>
         kind == AssistantModelKind.Embedding ? "EMBEDDING" : "CHAT";
 

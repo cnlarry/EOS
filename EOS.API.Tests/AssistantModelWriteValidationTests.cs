@@ -1,4 +1,5 @@
 using EOS.API.Controllers;
+using EOS.API.Data;
 using EOS.API.Features.Assistant.ModelAccess;
 using Xunit;
 
@@ -104,5 +105,35 @@ public sealed class AssistantModelWriteValidationTests
         Assert.Null(AssistantAdminController.ValidateModel(Request(), AssistantModelKind.Chat));
         Assert.NotNull(AssistantAdminController.ValidateModel(
             Request(dimension: 1024), AssistantModelKind.Chat));
+    }
+
+    /// <summary>
+    /// 用途的**线上字符串**只有一份：`'CHAT'` / `'EMBEDDING'`——库里、接口下发、前端比对全用它。
+    ///
+    /// <para>
+    /// 这条用例是为一个真实故障写的：接口曾用枚举默认的 `ToString()` 下发（"Chat"/"Embedding"），
+    /// 而库与前端都是全大写。前端按 `'CHAT'` 过滤，于是**列表里所有模型都被静默过滤掉**——
+    /// 界面显示"这家还没有模型"，库里却明明有；从预设加型号时又因为服务端解析不区分大小写而
+    /// 一切正常，所以两边各自测都是绿的。跨边界写两遍字面量，错的那天不会有编译错误。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Kind_Token_Is_The_Single_Wire_And_Database_Spelling()
+    {
+        Assert.Equal("CHAT", AssistantModelCatalog.KindCode(AssistantModelKind.Chat));
+        Assert.Equal("EMBEDDING", AssistantModelCatalog.KindCode(AssistantModelKind.Embedding));
+
+        foreach (var kind in new[] { AssistantModelKind.Chat, AssistantModelKind.Embedding })
+        {
+            var token = AssistantModelCatalog.KindCode(kind);
+
+            // 下发的 token 必须能被自己的解析读回来（大小写不敏感，容错 HTTP 上来的写法）
+            Assert.Equal(kind, AssistantAdminController.ParseModelKind(token));
+            Assert.Equal(kind, AssistantAdminController.ParseModelKind(token.ToLowerInvariant()));
+
+            // 并且**不能**等于枚举默认序列化出来的那种写法——否则"改回 ToString()"这件事
+            // 又会悄悄发生一次，而这次是靠断言在看住它
+            Assert.NotEqual(kind.ToString(), token);
+        }
     }
 }

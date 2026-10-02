@@ -336,8 +336,11 @@ public sealed class AssistantAdminController(
             modelListing = provider.ModelListing.ToString(),
             models = provider.Models.Select(model => new
             {
-                // 用途与维度：嵌入模型不给维度，等于把"尺寸对不对"推迟到运行时才暴露
-                kind = model.Kind.ToString(),
+                // 用途与维度：嵌入模型不给维度，等于把"尺寸对不对"推迟到运行时才暴露。
+                // 用途**必须走 KindCode**（与库里、与前端同一份字面量）：枚举 ToString() 给的是
+                // "Chat"，而前端按 'CHAT' 筛。写错过一次，代价是列表里所有模型被静默过滤掉——
+                // 界面显示"这家还没有模型"，而库里明明有
+                kind = AssistantModelCatalog.KindCode(model.Kind),
                 dimension = model.Dimension,
                 modelCode = model.ModelCode,
                 displayName = model.DisplayName,
@@ -463,8 +466,9 @@ public sealed class AssistantAdminController(
                     sortIdx = row.SortIdx,
                     remark = row.Remark,
                     // 用途与维度：界面按它分区（对话 / 嵌入），没有它就只能靠模型名猜——
-                    // 猜错的后果是把嵌入模型当成对话模型去"设为当前"
-                    kind = row.Kind.ToString(),
+                    // 猜错的后果是把嵌入模型当成对话模型去"设为当前"。
+                    // 同样走 KindCode：这里下发的是 'CHAT'/'EMBEDDING'，不是枚举名
+                    kind = AssistantModelCatalog.KindCode(row.Kind),
                     dimension = row.Dimension,
                 }),
             }),
