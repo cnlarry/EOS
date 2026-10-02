@@ -301,6 +301,25 @@ public sealed class AssistantParameterCatalogTests
         Assert.Contains("17 字符", definitions[RunReportTool.ToolName], StringComparison.Ordinal);
     }
 
+    /// <summary>单据历史工具的上限同理：条数与时间窗都要出现在发给模型的声明文本里。</summary>
+    [Fact]
+    public void Record_History_Tool_Declaration_Text_Carries_The_Parameter_Values()
+    {
+        var policy = AssistantPolicyValues.Default with
+        {
+            ToolLimits = new AssistantToolLimitsOptions { RecordHistoryMax = 9, RecordActivityDays = 31 },
+        };
+
+        var registry = new AssistantToolRegistry(
+            [new StubTool(RecordHistoryTool.ToolName)],
+            AssistantTestRuntime.Fixed(new AssistantSettings(), policy));
+
+        var description = Assert.Single(registry.Definitions).Description;
+
+        Assert.Contains("各最多 9 条", description, StringComparison.Ordinal);
+        Assert.Contains("最近 31 天", description, StringComparison.Ordinal);
+    }
+
     /// <summary>只为验证声明的上限句而存在的假工具：名字用真工具的常量，于是会命中同一分支。</summary>
     private sealed class StubTool(string name) : AssistantToolBase
     {
