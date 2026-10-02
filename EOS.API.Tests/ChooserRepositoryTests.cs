@@ -19,6 +19,7 @@ public sealed class ChooserRepositoryTests
     [InlineData("report-admin.modules", true)]
     [InlineData("user-admin.employees", true)]
     [InlineData("form-designer.fields", true)]
+    [InlineData("assistant-admin.modules", true)]
     [InlineData("MENU-ADMIN.TABLES", true)]
     [InlineData("unknown.source", false)]
     [InlineData("", false)]
@@ -38,6 +39,8 @@ public sealed class ChooserRepositoryTests
     [InlineData("report-admin.fields", 2201)]
     [InlineData("report-admin.modules", 2201)]
     [InlineData("user-admin.employees", 2306)]
+    // 助手作用域的模块候选集：门挂 3105（助手设置），与写覆盖的端点同一道门
+    [InlineData("assistant-admin.modules", 3105)]
     [InlineData("unknown.source", null)]
     public void PermissionModuleId_ReturnsPermissionGate(string sourceKey, int? expected)
     {
@@ -63,6 +66,8 @@ public sealed class ChooserRepositoryTests
     [InlineData("report-admin.fields", null, null, "T_ID", "ASC")]
     [InlineData("report-admin.fields", "F_ID", "desc", "F_ID", "DESC")]
     [InlineData("report-admin.fields", "NOT_A_COLUMN", null, "T_ID", "ASC")]
+    [InlineData("assistant-admin.modules", null, null, "M_IDX", "ASC")]
+    [InlineData("assistant-admin.modules", "M_DESC", "desc", "M_DESC", "DESC")]
     public void ResolveSort_UsesWhitelistWithFallback(string sourceKey, string? sortField, string? sortDirection, string expectedColumn, string expectedDirection)
     {
         var (column, direction) = ChooserRepository.ResolveSort(sourceKey, sortField, sortDirection);
@@ -186,6 +191,17 @@ public sealed class ChooserRepositoryTests
     public void IsFormDesignerFieldPool_OnlyMatchesDesignerPoolSource(string sourceKey, bool expected)
     {
         Assert.Equal(expected, ChooserRepository.IsFormDesignerFieldPool(sourceKey));
+    }
+
+    /// <summary>
+    /// 新增数据源要在四张表里登记齐（列清单 / 排序白名单 / 关键字白名单 / 列表达式）。
+    /// 漏一处的表现是运行期才炸，而这四张表都是按 sourceKey 直接取下标用的。
+    /// </summary>
+    [Theory]
+    [InlineData("assistant-admin.modules")]
+    public void RegisteredSource_IsCompleteAcrossTheFourTables(string sourceKey)
+    {
+        Assert.Empty(ChooserRepository.MissingRegistrations(sourceKey));
     }
 }
 
