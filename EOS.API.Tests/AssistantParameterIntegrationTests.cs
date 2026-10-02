@@ -153,7 +153,11 @@ public sealed class AssistantParameterIntegrationTests
 
         var module = await PickModuleWithNameAsync();
         var user = await PickUserWithNameAsync();
-        if (module is null || user is null) return; // 这台库里没有带名字的主档时不硬造
+        // 前置是**数据事实**（这台库里每个模块都有名字、账号都登记了姓名），不是"环境缺失"：
+        // 拿不到就当场红。写成 return 会让"根本没跑到断言"与"断言通过"长得一模一样——
+        // 这条用例的第一次运行就是靠手工查库才确认它真的跑了。
+        Assert.True(module.HasValue, "库里应当有带名字的模块（MODULES.M_DESC 非空）。");
+        Assert.True(user.HasValue, "库里应当有登记了姓名的账号（SYSDN.EMP_NAME 非空）。");
 
         var moduleKey = module.Value.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var ghostModuleKey = Random.Shared.Next(9_000_000, 9_999_999)
