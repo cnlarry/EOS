@@ -27,7 +27,7 @@ public static class AssistantToolKeys
     /// 于是新工具一律追加在组末——就像新增参数一律追加在各自域的末尾一样。
     /// </para>
     /// </summary>
-    public static IReadOnlyList<string> AppendedToolNames { get; } = ["list_reports", "run_report"];
+    public static IReadOnlyList<string> AppendedToolNames { get; } = ["list_reports", "run_report", "get_record_history"];
 
     /// <summary>工具名（与各工具类的 <c>ToolName</c> 常量逐一对应）。</summary>
     public static IReadOnlyList<string> ToolNames { get; } =
@@ -106,6 +106,7 @@ public static class AssistantToolKeys
             // 报表（只读）
             ["list_reports"] = "列出模块报表",
             ["run_report"] = "取报表数据",
+            ["get_record_history"] = "查看单据历史",
             // 试算与执行（风险由低到高）
             ["draft_record"] = "试算：起草单据",
             ["apply_changeset"] = "试算：应用变更集",

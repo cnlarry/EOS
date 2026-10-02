@@ -87,6 +87,9 @@ public sealed class AssistantToolRegistry
         RunReportTool.ToolName =>
             $" 输出上限：最多 {_limits.ReportMaxRows} 行、每行 {_limits.ReportMaxColumns} 列、"
             + $"单值 {_limits.ReportMaxValueLength} 字符。",
+        RecordHistoryTool.ToolName =>
+            $" 输出上限：审批历史与最近操作各最多 {_limits.RecordHistoryMax} 条；"
+            + $"最近操作只看最近 {_limits.RecordActivityDays} 天。",
         _ => string.Empty,
     };
 
@@ -144,6 +147,13 @@ public static class AssistantToolExtensions
             : string.Empty;
 
     public static ToolExecutionResult DenyBrowse(this IAssistantTool _, string moduleLabel) =>
+        DenyBrowseFor(moduleLabel);
+
+    /// <summary>
+    /// 与 <see cref="DenyBrowse"/> 同一句话，但不需要工具实例——供**没有工具实例的共用组件**
+    /// （如 <see cref="AssistantRecordLocator"/>）复用。分成两处写文案，就会在改口径时漏掉一处。
+    /// </summary>
+    public static ToolExecutionResult DenyBrowseFor(string moduleLabel) =>
         ToolExecutionResult.Deny($"用户没有模块「{moduleLabel}」的浏览权限，无法查询该模块数据。");
 
     /// <summary>
