@@ -162,7 +162,7 @@ export function PresetPickerDialog({ usedCodes, onClose, onSaved }: {
           </div>
 
           <div className="row">
-            <div className="col-md-8">
+            <div className="col-md-6">
               <Field label="密钥环境变量名"
                 hint={custom
                   ? '自定义供应商必须自己填一个变量名；密钥稍后由「设置密钥」写入。'
@@ -171,7 +171,7 @@ export function PresetPickerDialog({ usedCodes, onClose, onSaved }: {
                   onChange={(event) => setForm({ ...form, apiKeyEnvVar: event.target.value })} />
               </Field>
             </div>
-            <div className="col-md-4">
+            <div className="col-md-6">
               <Field label="默认超时（秒）">
                 <input type="number" className="form-control" value={form.timeoutSeconds} aria-label="默认超时"
                   onChange={(event) => setForm({ ...form, timeoutSeconds: Number(event.target.value) })} />
@@ -278,42 +278,53 @@ export function ProviderEditorDialog({ provider, usedCodes, onClose, onSaved }: 
         <Button variant="secondary" onClick={onClose}>取消</Button>
         <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>保存</Button>
       </>}>
-      <Field label="供应商类型" hint="它决定用哪个客户端实现，所以只能从目录里选。">
-        <select className="form-select" value={form.code} aria-label="供应商类型"
-          onChange={(event) => setForm({ ...form, code: event.target.value })}>
-          {codes.map(item => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </Field>
-      <Field label="显示名">
-        <input className="form-control" value={form.displayName} aria-label="显示名"
-          onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
-      </Field>
-      <Field label="端点" hint="不含 /chat/completions 的根地址。改它会让正在用的模型换一个发请求的地方。">
-        <input className="form-control font-monospace" value={form.baseUrl} aria-label="端点"
-          onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} />
-      </Field>
+      {/* 与"编辑模型"同一口径：一律两列等宽、按语义两两配对 */}
       <div className="row">
-        <div className="col-md-8">
+        <div className="col-md-6">
+          <Field label="供应商类型" hint="它决定用哪个客户端实现，所以只能从目录里选。">
+            <select className="form-select" value={form.code} aria-label="供应商类型"
+              onChange={(event) => setForm({ ...form, code: event.target.value })}>
+              {codes.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="col-md-6">
+          <Field label="显示名">
+            <input className="form-control" value={form.displayName} aria-label="显示名"
+              onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
+          </Field>
+        </div>
+      </div>
+      <div className="row">
+        <div className="col-md-6">
+          <Field label="端点" hint="不含 /chat/completions 的根地址。改它会让正在用的模型换一个发请求的地方。">
+            <input className="form-control font-monospace" value={form.baseUrl} aria-label="端点"
+              onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} />
+          </Field>
+        </div>
+        <div className="col-md-6">
           <Field label="密钥环境变量名" hint="改这个只是换一个变量名，值要用「设置密钥」重新写一次。">
             <input className="form-control font-monospace" value={form.apiKeyEnvVar} aria-label="密钥环境变量名"
               onChange={(event) => setForm({ ...form, apiKeyEnvVar: event.target.value })} />
           </Field>
         </div>
-        <div className="col-md-4">
+      </div>
+      <div className="row">
+        <div className="col-md-6">
           <Field label="默认超时（秒）" hint="模型可以单独覆盖。">
             <input type="number" className="form-control" value={form.timeoutSeconds} aria-label="默认超时"
               onChange={(event) => setForm({ ...form, timeoutSeconds: Number(event.target.value) })} />
           </Field>
         </div>
-      </div>
-      <div className="row">
-        <div className="col-md-4">
+        <div className="col-md-6">
           <Field label="排序号">
             <input type="number" className="form-control" value={form.sortIdx} aria-label="排序号"
               onChange={(event) => setForm({ ...form, sortIdx: Number(event.target.value) })} />
           </Field>
         </div>
-        <div className="col-md-8 d-flex align-items-end pb-2">
+      </div>
+      <div className="row">
+        <div className="col-md-6 d-flex align-items-end pb-2">
           <label className="form-check">
             <input type="checkbox" className="form-check-input" checked={form.enabled} aria-label="启用"
               onChange={(event) => setForm({ ...form, enabled: event.target.checked })} />
@@ -433,60 +444,74 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
         <Button variant="secondary" onClick={onClose}>取消</Button>
         <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>保存</Button>
       </>}>
-      <Field label="所属供应商">
-        <select className="form-select" value={form.providerId} aria-label="所属供应商"
-          onChange={(event) => setForm({ ...form, providerId: Number(event.target.value) })}>
-          {providers.map(item => <option key={item.providerId} value={item.providerId}>{item.displayName}</option>)}
-        </select>
-      </Field>
+      {/* 一律两列等宽：字段按语义两两配对（身份 / 展示 / 量与行为 / 价钱 / 开关），
+          不再出现"三个一组"（那会让第三项独占一行的左半边，看起来像没对齐）。 */}
       <div className="row">
+        <div className="col-md-6">
+          <Field label="所属供应商">
+            <select className="form-select" value={form.providerId} aria-label="所属供应商"
+              onChange={(event) => setForm({ ...form, providerId: Number(event.target.value) })}>
+              {providers.map(item => <option key={item.providerId} value={item.providerId}>{item.displayName}</option>)}
+            </select>
+          </Field>
+        </div>
         <div className="col-md-6">
           <Field label="模型标识" hint="真正发给厂商的那个字符串，例如 deepseek-reasoner。">
             <input className="form-control font-monospace" value={form.modelCode} aria-label="模型标识"
               onChange={(event) => setForm({ ...form, modelCode: event.target.value })} />
           </Field>
         </div>
+      </div>
+      <div className="row">
         <div className="col-md-6">
           <Field label="显示名">
             <input className="form-control" value={form.displayName} aria-label="显示名"
               onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
           </Field>
         </div>
+        <div className="col-md-6">
+          <Field label="排序号" hint="列表里的先后顺序。">
+            <input type="number" className="form-control" value={form.sortIdx} aria-label="排序号"
+              onChange={(event) => setForm({ ...form, sortIdx: Number(event.target.value) })} />
+          </Field>
+        </div>
       </div>
       <div className="row">
-        <div className="col-md-4">
+        <div className="col-md-6">
           <Field label="上下文窗口（token）" hint="会被用来裁剪历史；留空按保守默认 16384 处理。">
             <input className="form-control" inputMode="numeric" value={texts.contextWindow} aria-label="上下文窗口"
               placeholder="留空 = 未知" onChange={(event) => set('contextWindow', event.target.value)} />
           </Field>
         </div>
-        <div className="col-md-4">
+        <div className="col-md-6">
           <Field label="最大输出（token）" hint="留空 = 不传该参数。">
             <input className="form-control" inputMode="numeric" value={texts.maxOutputTokens} aria-label="最大输出"
               placeholder="留空 = 厂商默认" onChange={(event) => set('maxOutputTokens', event.target.value)} />
           </Field>
         </div>
-        <div className="col-md-4">
+      </div>
+      <div className="row">
+        <div className="col-md-6">
           <Field label="默认温度" hint="0–2；留空 = 不传该参数。">
             <input className="form-control" inputMode="decimal" value={texts.defaultTemperature} aria-label="默认温度"
               placeholder="留空 = 厂商默认" onChange={(event) => set('defaultTemperature', event.target.value)} />
           </Field>
         </div>
-      </div>
-      <div className="row">
-        <div className="col-md-4">
+        <div className="col-md-6">
           <Field label="超时覆盖（秒）" hint="留空 = 用供应商的默认超时。">
             <input className="form-control" inputMode="numeric" value={texts.timeoutSeconds} aria-label="超时覆盖"
               placeholder="留空 = 用供应商默认" onChange={(event) => set('timeoutSeconds', event.target.value)} />
           </Field>
         </div>
-        <div className="col-md-4">
+      </div>
+      <div className="row">
+        <div className="col-md-6">
           <Field label="输入单价（元/百万 token）" hint="留空 = 用全局兜底价。">
             <input className="form-control" inputMode="decimal" value={texts.inputPerMillionYuan} aria-label="输入单价"
               placeholder="留空 = 全局兜底" onChange={(event) => set('inputPerMillionYuan', event.target.value)} />
           </Field>
         </div>
-        <div className="col-md-4">
+        <div className="col-md-6">
           <Field label="输出单价（元/百万 token）" hint="留空 = 用全局兜底价。">
             <input className="form-control" inputMode="decimal" value={texts.outputPerMillionYuan} aria-label="输出单价"
               placeholder="留空 = 全局兜底" onChange={(event) => set('outputPerMillionYuan', event.target.value)} />
@@ -494,18 +519,14 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
         </div>
       </div>
       <div className="row">
-        <div className="col-md-4">
-          <Field label="排序号">
-            <input type="number" className="form-control" value={form.sortIdx} aria-label="排序号"
-              onChange={(event) => setForm({ ...form, sortIdx: Number(event.target.value) })} />
-          </Field>
-        </div>
-        <div className="col-md-8 d-flex flex-column justify-content-end pb-2">
+        <div className="col-md-6 d-flex align-items-end pb-2">
           <label className="form-check">
             <input type="checkbox" className="form-check-input" checked={form.supportsTools} aria-label="支持工具调用"
               onChange={(event) => setForm({ ...form, supportsTools: event.target.checked })} />
             <span className="form-check-label">支持工具调用（不支持时不会带 tools 去请求）</span>
           </label>
+        </div>
+        <div className="col-md-6 d-flex align-items-end pb-2">
           <label className="form-check">
             <input type="checkbox" className="form-check-input" checked={form.enabled} aria-label="启用"
               onChange={(event) => setForm({ ...form, enabled: event.target.checked })} />
