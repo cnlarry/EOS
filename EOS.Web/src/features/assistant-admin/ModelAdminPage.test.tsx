@@ -96,7 +96,6 @@ function installFetchMock(options: {
   current?: Record<string, unknown> | null
   currentEmbedding?: Record<string, unknown> | null
   presets?: unknown[]
-  discovered?: unknown[]
   presetEmbedding?: string
 } = {}) {
   const calls: FetchCall[] = []
@@ -131,15 +130,6 @@ function installFetchMock(options: {
       }
       return new Response(null, { status: 204 })
     }
-    if (url.includes('/admin/assistant/models/discover')) {
-      return jsonResponse({
-        providerId: 1,
-        models: options.discovered ?? [
-          { modelCode: 'deepseek-chat', displayName: 'DeepSeek Chat', contextWindow: 65536, maxOutputTokens: 8192 },
-          { modelCode: 'qwen-embedding', displayName: '通义嵌入', contextWindow: null, maxOutputTokens: null },
-        ],
-      })
-    }
     if (url.includes('/admin/assistant/models/active/clear')) {
       return new Response(null, { status: 204 })
     }
@@ -163,6 +153,13 @@ function installFetchMock(options: {
               kind: 'CHAT', dimension: null,
               modelCode: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner', contextWindow: 65536,
               maxOutputTokens: 8192, supportsTools: true, inputPerMillionYuan: null,
+              outputPerMillionYuan: null, defaultTemperature: null, remark: null,
+            },
+            {
+              // 目录里的嵌入型号**带着维度**：选中即落库，不需要用户填
+              kind: 'EMBEDDING', dimension: 1024,
+              modelCode: 'text-embedding-v4', displayName: '通义 text-embedding-v4', contextWindow: null,
+              maxOutputTokens: null, supportsTools: false, inputPerMillionYuan: 0.5,
               outputPerMillionYuan: null, defaultTemperature: null, remark: null,
             },
           ],
@@ -303,7 +300,7 @@ describe('ModelAdminPage', () => {
     // 超时给足：满量跑（上千条用例并行）时这一页的数据要一两秒才到位，默认 1s 会偶发失败；
     // 这条用例要断言的是"锁定"这件事，不是加载有多快
     const row = await waitFor(() => rowOf('deepseek-chat'), { timeout: 10_000 })
-    fireEvent.click(within(row).getByRole('button', { name: '编辑' }))
+    fireEvent.click(within(row).getByRole('button', { name: '参数' }))
 
     // 预设清单是**异步**拉的：字段先渲染出来、锁定状态随后才到，所以要 waitFor
     // （直接断言会读到"还没锁"的那一帧——这正是本仓库记过的"跨渲染帧竞态"）
@@ -323,7 +320,7 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     const row = await waitFor(() => rowOf('my-own-model'), { timeout: 10_000 })
-    fireEvent.click(within(row).getByRole('button', { name: '编辑' }))
+    fireEvent.click(within(row).getByRole('button', { name: '参数' }))
 
     expect(await screen.findByLabelText('上下文窗口', {}, { timeout: 10_000 })).not.toHaveAttribute('readonly')
     expect(screen.getByLabelText('支持工具调用')).not.toBeDisabled()
@@ -382,9 +379,10 @@ describe('ModelAdminPage', () => {
     // 用 waitFor：回填发生在 effect 里，比"下拉框出现"晚一帧，直接断言会撞上竞态
     await waitFor(() => expect(screen.getByLabelText('端点')).toHaveValue('https://api.deepseek.com'))
     expect(screen.getByLabelText('密钥环境变量名')).toHaveValue('EOS_ASSISTANT_KEY_DEEPSEEK')
-    // 两个可用模型默认勾选
+    // 目录里这家的型号默认全勾上（含嵌入那条，它带着维度）
     expect(screen.getByLabelText('deepseek-chat')).toBeChecked()
     expect(screen.getByLabelText('deepseek-reasoner')).toBeChecked()
+    expect(screen.getByLabelText('text-embedding-v4')).toBeChecked()
 
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
 
@@ -393,7 +391,10 @@ describe('ModelAdminPage', () => {
     ).toBe(true))
     const posted = JSON.parse(harness.calls.find(call => call.method === 'POST')!.body!)
     expect(posted.code).toBe('deepseek')
-    expect(posted.models).toHaveLength(2)
+    expect(posted.models).toHaveLength(3)
+    // 嵌入型号的维度也是目录带来的：不带它，落库的行等于"尺寸待定"
+    expect(posted.models.find((item: { modelCode: string }) => item.modelCode === 'text-embedding-v4').dimension)
+      .toBe(1024)
     // 密钥不在这个 body 里：密钥只能走单独的「设置密钥」那条路，那条路不进库
     expect(Object.keys(posted)).not.toContain('apiKey')
     expect(Object.keys(posted.models[0])).not.toContain('apiKey')
@@ -468,49 +469,63 @@ describe('ModelAdminPage', () => {
     expect(screen.queryByText('2026-10-01T00:00:00')).toBeNull()
   })
 
-  it('拉取型号：厂商给的清单里排除已在库的，勾选后按所选用途与维度落库', async () => {
+  it('添加模型：列出目录里这家支持的型号（排除已在库的），选中后连同参考参数一起落库', async () => {
     const harness = installFetchMock()
+    const postedModels = () => harness.calls
+      .filter(call => call.method === 'POST' && call.url.includes('/admin/assistant/models'))
+      .map(call => JSON.parse(call.body!))
 
     renderPage()
-    // 「拉取型号 / 新增模型」在没选中供应商时是**禁用**的（详情区还没有上下文）；
+    // 「添加模型」在没选中供应商时是**禁用**的（详情区还没有上下文）；
     // 点一个禁用按钮不会报错，只会什么都不发生——所以要等它变成可用再点
-    await waitFor(() => expect(screen.getByRole('button', { name: '拉取型号' })).not.toBeDisabled(), { timeout: 10_000 })
-    fireEvent.click(screen.getByRole('button', { name: '拉取型号' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
 
-    // 厂商给了两条，库里已有 deepseek-chat → 只列另一条
-    // （勾了也会被唯一约束拒，而拒在逐条提交的中途会留下半截结果）
-    expect(await screen.findByLabelText('qwen-embedding', {}, { timeout: 10_000 })).toBeInTheDocument()
+    // 目录里这家的型号：deepseek-chat 已在库 → 不列（勾了也会被唯一约束拒，
+    // 而拒在逐条提交的中途会留下半截结果）；其余两条可选
+    expect(await screen.findByLabelText('deepseek-reasoner', {}, { timeout: 10_000 })).toBeInTheDocument()
     expect(screen.queryByLabelText('deepseek-chat')).toBeNull()
 
-    fireEvent.click(screen.getByLabelText('qwen-embedding'))
-    fireEvent.change(screen.getByLabelText('qwen-embedding 的用途'), { target: { value: 'EMBEDDING' } })
-    fireEvent.change(screen.getByLabelText('qwen-embedding 的维度'), { target: { value: '1024' } })
-    fireEvent.click(screen.getByRole('button', { name: /落库/ }))
+    // 用途与维度**由目录带出来、不必人选也不必填**——这一步本来就只是"选"。
+    // 断言落在整行的文本上：这行由多段拼成，逐段查容易随文案调整误报
+    const embedRow = screen.getByLabelText('text-embedding-v4').closest('label')!
+    expect(embedRow.textContent).toContain('嵌入（1024 维）')
+    expect(embedRow.textContent).toContain('参考单价 入 ¥0.5')
 
-    await waitFor(() => expect(harness.calls.some(
-      call => call.method === 'POST' && call.url.includes('/admin/assistant/models'),
-    )).toBe(true))
-    const posted = JSON.parse(
-      harness.calls.find(call => call.method === 'POST' && call.url.includes('/admin/assistant/models'))!.body!)
-    expect(posted.kind).toBe('EMBEDDING')
-    expect(posted.dimension).toBe(1024)
+    fireEvent.click(screen.getByLabelText('deepseek-reasoner'))
+    fireEvent.click(screen.getByLabelText('text-embedding-v4'))
+    fireEvent.click(screen.getByRole('button', { name: '添加（2 个）' }))
+
+    await waitFor(() => expect(postedModels()).toHaveLength(2))
+    const chat = postedModels().find(item => item.modelCode === 'deepseek-reasoner')!
+    const embed = postedModels().find(item => item.modelCode === 'text-embedding-v4')!
+
+    // 落库的是**目录里的参考值**，不是留空等用户回来补
+    expect(chat.kind).toBe('CHAT')
+    expect(chat.contextWindow).toBe(65536)
+    expect(chat.maxOutputTokens).toBe(8192)
+    expect(chat.supportsTools).toBe(true)
+    expect(embed.kind).toBe('EMBEDDING')
+    expect(embed.dimension).toBe(1024)
+    expect(embed.inputPerMillionYuan).toBe(0.5)
     // 嵌入模型不带窗口/输出与工具调用：它用不上这些值，带过去就是没人会读的垃圾数据
-    expect(posted.contextWindow).toBeNull()
-    expect(posted.maxOutputTokens).toBeNull()
-    expect(posted.supportsTools).toBe(false)
+    expect(embed.contextWindow).toBeNull()
+    expect(embed.maxOutputTokens).toBeNull()
+    expect(embed.supportsTools).toBe(false)
+    expect(postedModels().every(item => item.providerId === 1)).toBe(true)
   })
 
-  it('手工新增模型：用途选嵌入后自动带出维度，并以新增（而不是修改）提交', async () => {
+  it('目录里没有的型号：从「添加模型」里的次要出口转手工填，仍以新增提交', async () => {
     const harness = installFetchMock()
 
     renderPage()
     // 同上：等选中供应商（按钮从禁用变可用）再点，否则弹窗根本不会打开
-    await waitFor(() => expect(screen.getByRole('button', { name: '新增模型' })).not.toBeDisabled(), { timeout: 10_000 })
-    fireEvent.click(screen.getByRole('button', { name: '新增模型' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
+    fireEvent.click(await screen.findByRole('button', { name: '目录里没有，手工填' }, { timeout: 10_000 }))
 
-    // 对话模型的字段先摆出来（默认用途是对话）
-    expect(await screen.findByLabelText('用途', {}, { timeout: 10_000 })).toBeInTheDocument()
-    // 手工新增时**不带** isActive/enabled 之类的默认判断，先都填上
+    // 手填表单（目录里没有的型号 / 自建端点走这条）：默认用途是对话
+    expect(await screen.findByLabelText('用途')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('模型标识'), { target: { value: 'local-bge-m3' } })
     fireEvent.change(screen.getByLabelText('显示名'), { target: { value: '本地嵌入服务' } })
     // 换用途后：维度出现且给了 1024 这个初值（现成集合就是它），窗口那几项消失
@@ -586,7 +601,7 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     const row = await waitFor(() => rowOf('deepseek-chat'), { timeout: 10_000 })
-    for (const name of ['设为当前', '编辑', '删除']) {
+    for (const name of ['设为当前', '参数', '删除']) {
       const button = within(row).getByRole('button', { name })
       expect(button.querySelector('svg')).not.toBeNull()
       // 文字还在（图标是补充而不是替代）

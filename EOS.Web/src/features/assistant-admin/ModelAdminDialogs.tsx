@@ -1,13 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
 import {
-  createModel, createProvider, discoverModels, listPresets, setProviderKey, updateModel, updateProvider,
+  createModel, createProvider, listPresets, setProviderKey, updateModel, updateProvider,
 } from './api'
 import type {
   AssistantModelItem, AssistantModelKind, AssistantModelPreset,
@@ -523,13 +523,26 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
   })
 
   return (
-    <Modal title={model ? `编辑模型：${model.displayName}` : '新增模型'} ariaLabel={model ? '编辑模型' : '新增模型'}
+    <Modal
+      title={model ? `模型参数：${model.displayName}` : '新增模型：目录里没有的型号'}
+      ariaLabel={model ? '模型参数' : '新增模型'}
       size="lg" onClose={onClose}
       footer={<>
         <Button variant="secondary" onClick={onClose}>取消</Button>
         <Button variant="primary" loading={save.isPending} disabled={!canSave}
           onClick={() => save.mutate()}>保存</Button>
       </>}>
+      {/* 改参数是**高阶操作**：加模型时参数已按目录落库（用途 / 维度 / 窗口 / 输出 / 单价），
+          这里只给极个别情况——某条要单独调大超时、某个型号的价格与目录不同之类。
+          所以先说清"一般不用改"，再让人自己决定要不要动 */}
+      {model && (
+        <div className="alert alert-info py-2">
+          <div className="small">
+            一般不需要改：添加模型时这些参数已按目录落库。这里调的是<strong>这一条模型</strong>的取值，
+            改错不会立刻报错，但会影响历史裁剪与计费口径（用途与维度还决定这条模型能不能用）。
+          </div>
+        </div>
+      )}
       {/* 一律两列等宽：字段按语义两两配对（身份 / 展示 / 量与行为 / 价钱 / 开关），
           不再出现"三个一组"（那会让第三项独占一行的左半边，看起来像没对齐）。 */}
       <div className="row">
@@ -688,223 +701,184 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
   )
 }
 
-/** 一条待落库的型号及其用途/维度。 */
-interface DiscoverPick {
-  kind: AssistantModelKind
-  dimension: string
-}
-
 /**
- * 从厂商**拉取**可用型号，勾选后落库（ADR-030 §12.3）。
+ * 从**目录**里挑型号加进来——不是让人填表。
  *
  * <p>
- * **拉失败不退回预设清单**：那会把一次失败伪装成一次成功的列表，而管理员会拿着过期的型号去落库。
- * 失败按原因如实显示（密钥没配 / 被拒 / 这家没有该端点 / 网络超时各有各的说明），并指出下一步。
- * 所以这里 <c>retry: false</c>——自动重试会把"密钥不对"刷成"网络不稳定"，恰好把最有用的那条信息抹掉。
+ * 供应商配好之后，"这家提供哪些型号、各自什么用途、多少维、窗口多大、参考单价多少"都是已知的
+ * （预设目录就是为这件事存在的）。所以这一步只需要**选**：选中的连同这些参数一起落库，
+ * 落地即可用。默认参数不该由人一个个填——那是把已知信息又推回去问一遍。
  * </p>
  *
  * <p>
- * **用途与维度逐条指定**：厂商的 <c>/models</c> 多数把对话与嵌入混在一起给，靠型号名猜用途
- * 会得到一个永远打不通的行（嵌入模型还要给维度，它决定向量能不能存）。
+ * 手填表单只剩一个出口："目录里还没有的型号"（厂商刚出的、自建端点），作为**次要动作**放在
+ * 底栏，不在主路径上。
+ * </p>
+ *
+ * <p>
+ * **库里已有的型号不再列出**：勾了也会被唯一约束拒，而拒在逐条提交的中途会留下半截结果。
  * </p>
  */
-export function DiscoverModelsDialog({ provider, onClose, onSaved }: {
+export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
   provider: AssistantProviderItem
   onClose: () => void
   onSaved: () => void
+  /** 目录里没有这个型号时的出口：转手工新增（复用模型编辑器）。 */
+  onManual: () => void
 }) {
   const toast = useToast()
   const presets = useQuery({ queryKey: ['assistant-admin-presets'], queryFn: listPresets })
   const preset = presets.data?.find(item => item.code === provider.code)
 
-  const discovered = useQuery({
-    queryKey: ['assistant-admin-discover', provider.providerId],
-    queryFn: () => discoverModels(provider.providerId),
-    retry: false,
-  })
-
   const [keyword, setKeyword] = useState('')
-  const [picks, setPicks] = useState<Record<string, DiscoverPick>>({})
+  const [selected, setSelected] = useState<string[]>([])
 
-  /** 库里已有的型号不再列出：勾了也会被唯一约束拒，而拒在批量提交的中途会留下半截结果。 */
+  /** 库里已有的型号不再列出（理由见上面那段注释）。 */
   const existing = useMemo(
     () => new Set(provider.models.map(item => item.modelCode)),
     [provider.models])
 
   const rows = useMemo(() => {
-    const all = discovered.data?.models ?? []
+    const all = (preset?.models ?? []).filter(item => !existing.has(item.modelCode))
     const text = keyword.trim().toLowerCase()
-    return all.filter(item => !existing.has(item.modelCode)).filter(item =>
-      text.length === 0
-      || item.modelCode.toLowerCase().includes(text)
+    return text.length === 0 ? all : all.filter(item =>
+      item.modelCode.toLowerCase().includes(text)
       || item.displayName.toLowerCase().includes(text))
-  }, [discovered.data, existing, keyword])
+  }, [preset, existing, keyword])
 
-  const toggle = (modelCode: string) => {
-    setPicks(previous => {
-      if (previous[modelCode]) {
-        const next = { ...previous }
-        delete next[modelCode]
-        return next
-      }
-      return { ...previous, [modelCode]: { kind: 'CHAT', dimension: '' } }
-    })
-  }
+  const toggle = (modelCode: string) => setSelected(previous =>
+    previous.includes(modelCode)
+      ? previous.filter(item => item !== modelCode)
+      : [...previous, modelCode])
 
-  const setPick = (modelCode: string, patch: Partial<DiscoverPick>) => {
-    setPicks(previous => ({ ...previous, [modelCode]: { ...previous[modelCode], ...patch } }))
-  }
-
-  const count = Object.keys(picks).length
-  const missingDimension = Object.entries(picks)
-    .some(([, pick]) => pick.kind === 'EMBEDDING' && (Number(pick.dimension) || 0) <= 0)
+  const allSelected = rows.length > 0 && rows.every(item => selected.includes(item.modelCode))
+  // 全选/清空只作用于**当前列出的**那些：筛选之后"全选"却把看不见的也选上，
+  // 落库时会多出一批没人确认过的行
+  const toggleAll = () => setSelected(allSelected ? [] : rows.map(item => item.modelCode))
 
   const save = useMutation({
-    // 逐条顺序创建：没有"批量加到已有供应商"的端点。中途失败时**如实说清已建成几个**——
+    // 逐条顺序创建：没有"批量加到已有供应商"的端点。中途失败时如实说清已建成几个——
     // 报一句"保存失败"会让管理员重来一次，然后撞在唯一约束上
     mutationFn: async () => {
       let created = 0
-      for (const [modelCode, pick] of Object.entries(picks)) {
-        const found = discovered.data?.models.find(item => item.modelCode === modelCode)
-        const isEmbedding = pick.kind === 'EMBEDDING'
-        await createModel({
-          providerId: provider.providerId,
-          modelCode,
-          displayName: found?.displayName || modelCode,
-          // 厂商给了窗口与最大输出就带上（DeepSeek 给，多数厂商不给），其余留空由人补
-          contextWindow: isEmbedding ? null : found?.contextWindow ?? null,
-          maxOutputTokens: isEmbedding ? null : found?.maxOutputTokens ?? null,
-          defaultTemperature: null,
-          timeoutSeconds: null,
-          inputPerMillionYuan: null,
-          outputPerMillionYuan: null,
-          supportsTools: !isEmbedding,
-          enabled: true,
-          sortIdx: 0,
-          remark: null,
-          kind: pick.kind,
-          dimension: isEmbedding ? Number(pick.dimension) : null,
-        })
+      for (const item of (preset?.models ?? []).filter(one => selected.includes(one.modelCode))) {
+        // **连同目录里的参考参数一起落库**：用途 / 维度 / 窗口 / 最大输出 / 工具能力 / 参考单价。
+        // 落库之后真要调，走行内的「参数」——那是极个别情况，不该是加模型时的必经步骤
+        await createModel({ ...toPresetModelWrite(item), providerId: provider.providerId })
         created++
       }
       return created
     },
     onSuccess: (created) => {
-      toast.notify({ message: `已新增 ${created} 个模型。接下来在需要的那一条上点「设为当前」。`, variant: 'success' })
+      toast.notify({
+        message: `已添加 ${created} 个模型（用途 / 维度 / 窗口 / 单价按目录落库）。`
+          + '接下来在需要的那一条上点「设为当前」。',
+        variant: 'success',
+      })
       onSaved()
     },
     onError: (error) => toast.notify({
-      message: `新增中断：${describeApiError(error, '新增模型失败。')}——已成功落库的那些会保留，可关闭后刷新查看。`,
+      message: `添加中断：${describeApiError(error, '添加模型失败。')}——已成功落库的那些会保留，可关闭后刷新查看。`,
       variant: 'danger',
     }),
   })
 
   return (
-    <Modal title={`从厂商拉取型号：${provider.displayName}`} ariaLabel="从厂商拉取型号" size="lg" onClose={onClose}
+    <Modal title={`添加模型：${provider.displayName}`} ariaLabel="添加模型" size="lg" onClose={onClose}
       footer={<>
-        <Button variant="secondary" onClick={onClose}>关闭</Button>
-        <Button variant="primary" loading={save.isPending} disabled={count === 0 || missingDimension}
+        <Button variant="secondary" onClick={onClose}>取消</Button>
+        {/* 目录里没有的型号（厂商刚出的 / 自建端点）从这条次要出口走手填 */}
+        <Button variant="ghost" onClick={onManual}>目录里没有，手工填</Button>
+        <Button variant="primary" loading={save.isPending} disabled={selected.length === 0}
           onClick={() => save.mutate()}>
-          落库{count > 0 ? `（${count} 个）` : ''}
+          添加{selected.length > 0 ? `（${selected.length} 个）` : ''}
         </Button>
       </>}>
-      {/* 能力三态：明确说"这家没有嵌入端点"或"没核过"，而不是让人在一个注定失败的端点上反复试 */}
+      {/* 说明这一步只需要"选"：参数不用人填 */}
+      <div className="alert alert-info py-2">
+        <div className="small">
+          下面是<strong>这家支持的型号</strong>（来自预设目录）。选中即可——用途、维度、窗口、最大输出、
+          工具能力与参考单价会一起落库，落地就能用。个别模型的参数要单独调（比如某条要更大超时），
+          加好之后用行内的「参数」按钮改。
+        </div>
+      </div>
+      {/* 能力三态：明确说"这家没有嵌入端点"或"没核过"，而不是等人配出一个注定 404 的行 */}
       {preset?.embedding === 'Unsupported' && (
         <div className="alert alert-warning py-2">
           <div className="small">
-            这家已核实<strong>没有嵌入端点</strong>：勾选对话模型没问题，但把它当嵌入模型用会发不出去。
+            这家已核实<strong>没有嵌入端点</strong>，所以下面只有对话模型——知识库要用的嵌入模型得换一家。
           </div>
         </div>
       )}
       {preset?.embedding === 'Unknown' && (
         <div className="alert alert-info py-2">
           <div className="small">
-            这家<strong>有没有嵌入端点还没核实</strong>：要用嵌入的话，落库后建议先试一次知识库入库再定。
-          </div>
-        </div>
-      )}
-      {preset?.modelListing === 'Unsupported' && (
-        <div className="alert alert-warning py-2">
-          <div className="small">
-            这家<strong>没有列出型号的端点</strong>：这一页拿不到清单。请关掉它，用「新增模型」手工填型号标识。
+            这家<strong>有没有嵌入端点还没核实</strong>：目录里现在只有对话模型。要用嵌入的话，
+            落库后先试一次知识库入库再定。
           </div>
         </div>
       )}
 
-      {discovered.isPending ? <LoadingState label="正在向厂商拉取型号…" /> : discovered.isError ? (
-        <ErrorState
-          message={describeApiError(discovered.error, '拉取型号失败。请检查端点与密钥，或稍后重试。')}
-          onRetry={() => void discovered.refetch()} />
+      {presets.isPending ? <LoadingState label="正在读取预设目录…" /> : presets.isError ? (
+        <ErrorState message={describeApiError(presets.error, '读取预设目录失败。')}
+          onRetry={() => void presets.refetch()} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title={preset ? '目录里的型号都加过了' : '目录里没有这家的型号'}
+          description={preset
+            ? '要再加一个目录外的型号，用下面的「目录里没有，手工填」。'
+            : '这家是自定义 / 自建端点，目录里没有它的型号表。请用下面的「目录里没有，手工填」，'
+              + '按厂商给的型号标识录入。'} />
       ) : (
         <>
           <div className="row g-2 align-items-end mb-2">
             <div className="col-md-6">
-              <label className="form-label small mb-1" htmlFor="discover-keyword">筛选</label>
-              <input id="discover-keyword" className="form-control form-control-sm font-monospace"
-                value={keyword} placeholder="按型号名筛选（厂商可能给几百条）"
+              <label className="form-label small mb-1" htmlFor="add-models-keyword">筛选</label>
+              <input id="add-models-keyword" className="form-control form-control-sm font-monospace"
+                value={keyword} placeholder="按型号名筛选"
                 onChange={(event) => setKeyword(event.target.value)} />
             </div>
             <div className="col-md-6 text-secondary small">
-              厂商这次给了 {discovered.data?.models.length ?? 0} 条，其中 {rows.length} 条还没落库。
+              目录里还有 {rows.length} 个型号没加；已选 {selected.length} 个。
             </div>
           </div>
 
-          {rows.length === 0 ? (
-            <div className="text-secondary small p-2">
-              {existing.size > 0 && (discovered.data?.models.length ?? 0) > 0
-                ? '厂商给的型号都已经在库里了。'
-                : '这家这次没有给出可落库的型号。'}
-            </div>
-          ) : (
-            <div className="d-flex flex-column gap-1" style={{ maxHeight: 360, overflowY: 'auto' }}>
-              {rows.map(item => {
-                const pick = picks[item.modelCode]
-                return (
-                  <div key={item.modelCode} className="border rounded p-2">
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <label className="form-check mb-0">
-                        <input type="checkbox" className="form-check-input" checked={pick !== undefined}
-                          aria-label={item.modelCode}
-                          onChange={() => toggle(item.modelCode)} />
-                        <span className="form-check-label">
-                          <span className="font-monospace">{item.modelCode}</span>
-                          <span className="text-secondary small ms-2">
-                            {item.displayName}
-                            {item.contextWindow ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}` : ''}
-                            {item.maxOutputTokens ? ` · 最大输出 ${item.maxOutputTokens.toLocaleString('zh-CN')}` : ''}
-                          </span>
-                        </span>
-                      </label>
+          <label className="form-check mb-2">
+            <input type="checkbox" className="form-check-input" checked={allSelected}
+              aria-label="全选" onChange={toggleAll} />
+            <span className="form-check-label small">全选（当前列出的 {rows.length} 个）</span>
+          </label>
 
-                      {pick && (
-                        <span className="d-flex align-items-center gap-1 ms-auto">
-                          <select className="form-select form-select-sm" style={{ width: 110 }}
-                            aria-label={`${item.modelCode} 的用途`} value={pick.kind}
-                            onChange={(event) => setPick(item.modelCode, {
-                              kind: event.target.value as AssistantModelKind,
-                            })}>
-                            <option value="CHAT">对话</option>
-                            <option value="EMBEDDING">嵌入</option>
-                          </select>
-                          {pick.kind === 'EMBEDDING' && (
-                            <input className="form-control form-control-sm" style={{ width: 110 }}
-                              inputMode="numeric" placeholder="维度" aria-label={`${item.modelCode} 的维度`}
-                              value={pick.dimension}
-                              onChange={(event) => setPick(item.modelCode, { dimension: event.target.value })} />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    {pick?.kind === 'EMBEDDING' && (
-                      <div className="form-hint">
-                        维度必须与知识库集合登记的一致（现有集合登记为 {KNOWN_COLLECTION_DIMENSION}），否则入库会被拒。
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <div className="d-flex flex-column gap-1" style={{ maxHeight: 340, overflowY: 'auto' }}>
+            {rows.map(item => (
+              <div key={item.modelCode} className="border rounded p-2">
+                <label className="form-check mb-0">
+                  <input type="checkbox" className="form-check-input" checked={selected.includes(item.modelCode)}
+                    aria-label={item.modelCode}
+                    onChange={() => toggle(item.modelCode)} />
+                  <span className="form-check-label">
+                    <span className="font-monospace">{item.modelCode}</span>
+                    <span className="text-secondary small ms-2">
+                      {item.displayName}
+                      {/* 用途与维度都要标出来：它们决定这条模型能不能用（嵌入还得与集合维度一致）。
+                          这些值就是从目录带过来的，落库时照原样写进去 */}
+                      {' · '}{KIND_LABEL[item.kind]}
+                      {item.dimension ? `（${item.dimension} 维）` : ''}
+                      {item.kind === 'CHAT' && item.contextWindow
+                        ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}`
+                        : ''}
+                      {item.kind === 'CHAT' ? (item.supportsTools ? ' · 支持工具' : ' · 不支持工具') : ''}
+                      {item.inputPerMillionYuan != null ? ` · 参考单价 入 ¥${item.inputPerMillionYuan}` : ''}
+                      {item.kind === 'CHAT' && item.outputPerMillionYuan != null
+                        ? ` / 出 ¥${item.outputPerMillionYuan}`
+                        : ''}
+                    </span>
+                  </span>
+                </label>
+                {item.remark && <div className="form-hint">{item.remark}</div>}
+              </div>
+            ))}
+          </div>
         </>
       )}
     </Modal>
