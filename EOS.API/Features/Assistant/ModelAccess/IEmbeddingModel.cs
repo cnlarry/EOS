@@ -18,7 +18,8 @@ public interface IEmbeddingModel
 }
 
 /// <summary>
-/// Placeholder until ops wires the production local model (BGE- ONNX weights).
+/// Placeholder until the real embedding endpoint is wired (ADR-031: an OpenAI-compatible
+/// <c>/v1/embeddings</c> service, cloud by default, self-hosted optional).
 /// Fails closed with a readable code instead of silently returning junk vectors.
 /// </summary>
 public sealed class PendingEmbeddingModel : IEmbeddingModel
