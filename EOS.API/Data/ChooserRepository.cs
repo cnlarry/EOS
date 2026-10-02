@@ -30,6 +30,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
             ["menu-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
             ["menu-admin.modules"] = ["M_IDX", "M_DESC"],
+            // 助手参数作用域（ADR-030 §6.2）：候选集 = MODULES 全表，与服务端的键校验同源
+            ["assistant-admin.modules"] = ["M_IDX", "M_DESC"],
             ["field-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
@@ -59,6 +61,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.columns"] = ["COLUMN_NAME"],
             ["menu-admin.columns"] = ["COLUMN_NAME"],
             ["menu-admin.modules"] = ["M_IDX"],
+            ["assistant-admin.modules"] = ["M_IDX"],
             ["field-admin.fields"] = ["F_ID"],
             ["menu-admin.fields"] = ["F_ID"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
@@ -104,6 +107,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name)) LIKE @Keyword",
             },
             ["menu-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
+            },
+            ["assistant-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
@@ -200,6 +208,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["M_IDX"] = "m.M_IDX",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
             },
+            ["assistant-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "m.M_IDX",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
+            },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
@@ -258,6 +271,28 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     public static bool IsRegistered(string? sourceKey) =>
         !string.IsNullOrWhiteSpace(sourceKey) && RegisteredSources.ContainsKey(sourceKey.Trim());
 
+    /// <summary>
+    /// 某个数据源在登记表里缺了哪几处（空 = 齐全）。
+    ///
+    /// <para>
+    /// 四张表是同一件事的四个侧面，漏一处**不会编译报错**，只在运行期表现成"一查就 500"
+    /// （列表达式与排序白名单是按 sourceKey 直接取下标用的）或"搜索框没作用"。所以让新增数据源
+    /// 能逐条断言——但**不做"全部注册源都齐全"的普适断言**：少数源有意不走通用路径
+    /// （`menu-admin.records` 的列随模块主表解析、`user-admin.employees` 的显示列来自字段元数据），
+    /// 那种断言会写成假的。
+    /// </para>
+    /// </summary>
+    internal static IReadOnlyList<string> MissingRegistrations(string sourceKey)
+    {
+        var key = sourceKey.Trim().ToLowerInvariant();
+        var missing = new List<string>();
+        if (!RegisteredSources.ContainsKey(key)) missing.Add("RegisteredSources（列清单）");
+        if (!StableSortColumns.ContainsKey(key)) missing.Add("StableSortColumns（排序白名单）");
+        if (!KeywordExpressions.ContainsKey(key)) missing.Add("KeywordExpressions（关键字白名单）");
+        if (!ColumnExpressions.ContainsKey(key)) missing.Add("ColumnExpressions（列表达式）");
+        return missing;
+    }
+
     /// <summary>注册数据源键清单（稳定的只读视图，供能力目录列出"有哪些来源可选"）。</summary>
     public static IReadOnlyList<string> RegisteredSourceKeys { get; } =
         [.. RegisteredSources.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase)];
@@ -268,6 +303,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" or "menu-admin.columns" or "menu-admin.modules" or "menu-admin.records" => MenuAdminModuleId,
         "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
+        // 助手作用域要按模块配置：门挂在 3105（助手设置），与写覆盖的端点同一道门——
+        // 能看候选集的正是能改它的人，不必另开一个"只读模块表"的口子
+        "assistant-admin.modules" => PermissionModules.AssistantAdmin.Settings,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
         "user-admin.employees" => PermissionModules.SystemManagement,
         // 库位主档：权限门挂 110309（库位主档模块）
@@ -380,6 +418,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
             "report-admin.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
             "report-admin.modules" => await QueryModulesAsync(request, token),
+            "assistant-admin.modules" => await QueryAssistantAdminModulesAsync(request, token),
             "rights-admin.users" => await QueryUsersAsync(request, token),
             "rights-admin.groups" => await QueryGroupsAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
@@ -823,6 +862,61 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         await reader.NextResultAsync(token);
         var rows = ReadRows(reader, ["M_IDX", "M_DESC"]);
         logger.LogInformation("统一选择器模块源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
+            page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
+                new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// `assistant-admin.modules`：助手**参数作用域**按模块配置时的候选集（ADR-030 §6.2）。
+    ///
+    /// <para>
+    /// 候选集**刻意等于服务端校验的那张表**——`AssistantParameterScopeStore.ScopeKeyExistsAsync`
+    /// 查的就是 `MODULES.M_IDX`，不带任何过滤。既不是"有报表的模块"（`report-admin.modules`），
+    /// 也不是"配过业务动作的模块"（`menu-admin.modules`）：选择器比校验严，会出现"这个模块明明存在
+    /// 却选不到"；比校验松则选中了会被服务端拒绝的值。两处同源，界面与拒绝理由才不会互相打脸。
+    /// </para>
+    ///
+    /// <para>权限门 3105（助手设置），与写覆盖的端点同一道门。</para>
+    /// </summary>
+    private async Task<UnifiedChooserResult> QueryAssistantAdminModulesAsync(
+        UnifiedChooserQueryRequest request,
+        CancellationToken token)
+    {
+        const string sourceKey = "assistant-admin.modules";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var sql = $"""
+            SELECT COUNT_BIG(1) FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))) AS M_DESC
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["M_IDX", "M_DESC"]);
+        logger.LogInformation("统一选择器助手作用域模块源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
             page, pageSize, total, rows.Count);
         return new UnifiedChooserResult(
             [
