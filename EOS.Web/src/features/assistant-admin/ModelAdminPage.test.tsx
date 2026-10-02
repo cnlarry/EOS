@@ -226,6 +226,9 @@ describe('ModelAdminPage', () => {
     // 主子表：上（供应商表）与下（模型表）各是一个独立的滚动区
     expect(container.querySelector('.erp-master-table-region')).not.toBeNull()
     expect(container.querySelector('.erp-detail-card')).not.toBeNull()
+    // 页签**紧挨着**内容面板：工作台是面板的直接子元素，中间不夹提示条之类的东西
+    // （夹一层横幅会把页签与内容在视觉上割开）
+    expect(container.querySelector('.erp-tabbed-panel-body > .erp-workbench-page')).not.toBeNull()
 
     fireEvent.click(screen.getByRole('tab', { name: '用量' }))
 
@@ -326,7 +329,7 @@ describe('ModelAdminPage', () => {
     expect(screen.getByLabelText('支持工具调用')).not.toBeDisabled()
   })
 
-  it('未配置时顶部直说"助手不可用"并给出下一步，而不是等人去点聊天才发现', async () => {
+  it('两个用途各说一句，缺哪个说哪个——并进卡片头，不再用横幅', async () => {
     installFetchMock({
       providers: [providerRow({ apiKeyConfigured: false, apiKeyMaskedTail: null })],
       current: null,
@@ -334,32 +337,26 @@ describe('ModelAdminPage', () => {
 
     renderPage()
 
-    // 先等数据到位再断言告警：告警在首帧就会出现（那时 providers 还没回来），
-    // 文案会从"还没有供应商"那一支换成"密钥没配"那一支
     await screen.findByText('EOS_ASSISTANT_KEY_DEEPSEEK')
-    // 直接断言告警整段的文本：里面的文案是分句拼的，逐句查容易因为断句变化而误报。
-    // 两个用途各有一条告警，所以按"哪一条在说对话模型"挑出来
-    const alerts = await screen.findAllByRole('alert')
-    const chatAlert = alerts.find(item => item.textContent?.includes('对话模型'))!
-    expect(chatAlert.textContent).toContain('尚未配置对话模型')
-    expect(chatAlert.textContent).toContain('工作助手当前不可用')
-    expect(chatAlert.textContent).toContain('设置密钥')
+    // 两个用途各有自己的一条"尚未配置"（对话与嵌入坏掉的表现完全不同：一个是"助手不回话"，
+    // 一个是"问制度类问题没答案"），合成一句会让人去查错方向。
+    // 断言落在徽标上：它被包成一个 span 之后"对话：尚未配置"已经跨元素，getByText 匹配不到
+    expect(screen.getAllByText('尚未配置')).toHaveLength(2)
+    // 横幅已移除：它是"提醒"而不是内容，夹在页签与表格之间会把两者割开；
+    // 而这两条状态本来就在同一行上，且贴着各自的"当前"值
+    expect(screen.queryAllByRole('alert')).toHaveLength(0)
     expect(screen.getByText('未配置')).toBeInTheDocument()
   })
 
-  it('嵌入模型没配时也直说，且说清坏的是知识库而不是助手', async () => {
+  it('对话配好了也说清嵌入还没配（两种状态各报各的）', async () => {
     installFetchMock()
 
     renderPage()
 
-    await screen.findByText('EOS_ASSISTANT_KEY_DEEPSEEK')
-    // 嵌入缺失在界面上必须与"助手不可用"分开说：它坏掉时用户看到的是"问制度没答案"，
-    // 不会想到是模型没配
-    const alerts = await screen.findAllByRole('alert')
-    const embeddingAlert = alerts.find(item => item.textContent?.includes('嵌入模型'))!
-    expect(embeddingAlert.textContent).toContain('尚未配置嵌入模型')
-    expect(embeddingAlert.textContent).toContain('知识库当前不可用')
-    expect(embeddingAlert.textContent).toContain('KB_EMBEDDING_NOT_CONFIGURED')
+    // 默认 mock：对话已配、嵌入没配。嵌入那条必须出现，否则"知识库为什么不好用"
+    // 在界面上没有落点——用户只会看到助手本身一切正常
+    expect(await screen.findByText(/对话：DeepSeek 开放平台 \/ deepseek-chat/)).toBeInTheDocument()
+    expect(screen.getByText('尚未配置')).toBeInTheDocument()
   })
 
   it('完全没有供应商时给出下一步，而不是一个空表格', async () => {
@@ -368,11 +365,8 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     expect(await screen.findByText('还没有供应商')).toBeInTheDocument()
-    // 告警与空状态都会提到"预设目录"，所以限定在告警里断言
-    const alerts = await screen.findAllByRole('alert')
-    const chatAlert = alerts.find(item => item.textContent?.includes('对话模型'))!
-    expect(chatAlert.textContent).toContain('尚未配置对话模型')
-    expect(chatAlert.textContent).toContain('添加供应商')
+    // 两个用途都还没有配置：两条徽标都在（此时右上角还有「添加供应商」可点）
+    expect(await screen.findAllByText('尚未配置')).toHaveLength(2)
   })
 
   it('添加供应商：选预设后带出端点与可用模型，一次提交（请求体里没有密钥）', async () => {
