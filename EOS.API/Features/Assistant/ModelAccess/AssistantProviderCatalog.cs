@@ -116,7 +116,17 @@ public sealed record AssistantProviderPreset(
     AssistantModelProtocol Protocol = AssistantModelProtocol.OpenAiCompatible,
     AssistantAuthStyle AuthStyle = AssistantAuthStyle.Bearer,
     AssistantCapability Embedding = AssistantCapability.Unknown,
-    AssistantCapability ModelListing = AssistantCapability.Unknown);
+    AssistantCapability ModelListing = AssistantCapability.Unknown,
+    /// <summary>
+    /// 嵌入端点**单请求最多几条文本**（分批是客户端的职责，见 <c>OpenAiCompatibleEmbeddingModel</c>）。
+    ///
+    /// <para>
+    /// 它是**厂商事实**，与认证头样式同类，所以落在预设数据里：写死在客户端会让"换一家"
+    /// 变成改代码，而抄错一家的上限会直接在第一次真入库时撞限流。默认值取保守的 10
+    /// （核过的两家上限是 10 与 64），分批多几次只影响速度，不影响正确性。
+    /// </para>
+    /// </summary>
+    int EmbeddingBatchMax = 10);
 
 /// <summary>
 /// 主流供应商与模型的**参考目录**（代码内置，不进数据库）。
@@ -169,12 +179,20 @@ public static class AssistantProviderCatalog
             TimeoutSeconds: 300,
             Embedding: AssistantCapability.Supported,
             ModelListing: AssistantCapability.Supported,
+            // 官方没有公布单请求条数上限（文档只说数组形式可用），取保守值：分批多几次只慢一点
+            EmbeddingBatchMax: 64,
             Remark: "对话与嵌入都有；嵌入模型可用 `dimensions` 对齐到现有集合的维度。",
             Models:
             [
                 new("gpt-4o", "GPT-4o", ContextWindow: 131072, MaxOutputTokens: 16384, SupportsTools: true),
                 new("gpt-4o-mini", "GPT-4o mini", ContextWindow: 131072, MaxOutputTokens: 16384, SupportsTools: true,
                     Remark: "便宜且够用，适合工具调用密集的场景。"),
+                new("text-embedding-3-small", "text-embedding-3-small", ContextWindow: null, MaxOutputTokens: null,
+                    SupportsTools: false, Kind: AssistantModelKind.Embedding, Dimension: 1024,
+                    Remark: "原生 1536 维；本系统在请求里带 dimensions=1024，与现有集合对齐。"),
+                new("text-embedding-3-large", "text-embedding-3-large", ContextWindow: null, MaxOutputTokens: null,
+                    SupportsTools: false, Kind: AssistantModelKind.Embedding, Dimension: 1024,
+                    Remark: "原生 3072 维；本系统在请求里带 dimensions=1024，与现有集合对齐。"),
             ]),
         new(
             Code: "dashscope",
@@ -183,6 +201,8 @@ public static class AssistantProviderCatalog
             SuggestedApiKeyEnvVar: "EOS_ASSISTANT_KEY_DASHSCOPE",
             TimeoutSeconds: 300,
             Embedding: AssistantCapability.Supported,
+            // 核过的上限：v3/v4 每次 10 条（qwen3.7 系列 20 条）——取小的那个
+            EmbeddingBatchMax: 10,
             Remark: "走百炼的 OpenAI 兼容模式端点（新文档改用带业务空间的 host："
                 + "{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1，两者都可用，端点可改）。"
                 + "嵌入端点确认为 /compatible-mode/v1/embeddings。",
@@ -190,6 +210,12 @@ public static class AssistantProviderCatalog
             [
                 new("qwen-plus", "通义千问 Plus", ContextWindow: 131072, MaxOutputTokens: 8192, SupportsTools: true),
                 new("qwen-max", "通义千问 Max", ContextWindow: 32768, MaxOutputTokens: 8192, SupportsTools: true),
+                new("text-embedding-v4", "通义 text-embedding-v4", ContextWindow: null, MaxOutputTokens: null,
+                    SupportsTools: false, Kind: AssistantModelKind.Embedding, Dimension: 1024,
+                    Remark: "默认 1024 维，可选 256–2560；本系统显式带 dimensions。单请求上限 10 条。"),
+                new("text-embedding-v3", "通义 text-embedding-v3", ContextWindow: null, MaxOutputTokens: null,
+                    SupportsTools: false, Kind: AssistantModelKind.Embedding, Dimension: 1024,
+                    Remark: "默认 1024 维。单请求上限 10 条。"),
             ]),
         new(
             Code: "zhipu",
@@ -198,12 +224,20 @@ public static class AssistantProviderCatalog
             SuggestedApiKeyEnvVar: "EOS_ASSISTANT_KEY_ZHIPU",
             TimeoutSeconds: 300,
             Embedding: AssistantCapability.Supported,
+            // 核过的上限：嵌入每次 ≤64 条且单条 ≤3072 token
+            EmbeddingBatchMax: 64,
             Remark: "嵌入端点确认为 /api/paas/v4/embeddings（embedding-3 默认 2048 维，可指定 1024）。",
             Models:
             [
                 new("glm-4-plus", "GLM-4 Plus", ContextWindow: 131072, MaxOutputTokens: 8192, SupportsTools: true),
                 new("glm-4-flash", "GLM-4 Flash", ContextWindow: 131072, MaxOutputTokens: 8192, SupportsTools: true,
                     Remark: "轻量版。"),
+                new("embedding-3", "embedding-3", ContextWindow: null, MaxOutputTokens: null,
+                    SupportsTools: false, Kind: AssistantModelKind.Embedding, Dimension: 1024,
+                    Remark: "默认 2048 维，可选 256/512/1024/2048；本系统显式带 dimensions=1024。单请求 ≤64 条。"),
+                new("embedding-2", "embedding-2", ContextWindow: null, MaxOutputTokens: null,
+                    SupportsTools: false, Kind: AssistantModelKind.Embedding, Dimension: 1024,
+                    Remark: "固定 1024 维。单请求 ≤64 条。"),
             ]),
         new(
             Code: "moonshot",
@@ -287,6 +321,13 @@ public static class AssistantProviderCatalog
     /// <summary>目录外的 CODE 按主流形态（Bearer）处理，理由同 <see cref="ProtocolOf"/>。</summary>
     public static AssistantAuthStyle AuthStyleOf(string? code) =>
         Find(code)?.AuthStyle ?? AssistantAuthStyle.Bearer;
+
+    /// <summary>
+    /// 嵌入单请求条数上限。目录外的 CODE 与"自定义"取保守的 10：
+    /// 分批多几次只是慢一点，而报多了会在第一次真入库时被厂商限流拒掉。
+    /// </summary>
+    public static int EmbeddingBatchMaxOf(string? code) =>
+        Find(code)?.EmbeddingBatchMax ?? 10;
 
     /// <summary>允许的 CODE 清单（用于校验失败时给出可选项）。</summary>
     public static IReadOnlyList<string> SupportedCodes { get; } = [.. All.Select(item => item.Code)];

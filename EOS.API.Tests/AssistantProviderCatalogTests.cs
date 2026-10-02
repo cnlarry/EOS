@@ -152,6 +152,53 @@ public sealed class AssistantProviderCatalogTests
         Assert.Contains(AssistantProviderCatalog.EmbeddingCandidates, provider => provider.Code == "zhipu");
     }
 
+    /// <summary>
+    /// 三家能嵌入的供应商，预设里**必须**有至少一个嵌入模型，且维度落在现有集合的 1024 上。
+    ///
+    /// <para>
+    /// 维度这条是"交付数据"的关键：现有集合（`KB_COLLECTION`）登记的维度都是 1024，
+    /// 预设给一个对齐不了的维度，管理员照着加就会在第一次入库时被拒——而那时他看到的
+    /// 只是"维度不符"，不一定会想到是预设给的值。将来某家只能给别的维度，这条会红，
+    /// 那时该做的是**做决定**（重建集合还是换一家），而不是把断言改掉。
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("dashscope")]
+    [InlineData("zhipu")]
+    [InlineData("openai")]
+    public void Embedding_Capable_Vendors_Offer_A_Usable_Embedding_Model(string code)
+    {
+        var provider = AssistantProviderCatalog.Find(code);
+        Assert.NotNull(provider);
+
+        var embedding = provider.Models.Where(model => model.Kind == AssistantModelKind.Embedding).ToList();
+        Assert.NotEmpty(embedding);
+        Assert.All(embedding, model =>
+        {
+            Assert.Equal(1024, model.Dimension);
+            // 嵌入没有上下文窗口与最大输出的概念：填了会误导"这两个数会被消费"
+            Assert.Null(model.ContextWindow);
+            Assert.Null(model.MaxOutputTokens);
+        });
+
+        // 单请求条数上限必须是个正数：0 会让客户端切出空批次（分批逻辑按 1 兜底，但那是兜底）
+        Assert.True(provider.EmbeddingBatchMax >= 1, $"{code} 的嵌入批量为 {provider.EmbeddingBatchMax}");
+    }
+
+    /// <summary>
+    /// 核过的两家批量上限要按真值写：抄大了会在第一次真入库时被厂商限流拒掉，
+    /// 而报出来的原因是 429，读的人不会联想到"预设里的批量写错了"。
+    /// </summary>
+    [Fact]
+    public void Verified_Embedding_Batch_Limits_Are_Pinned()
+    {
+        Assert.Equal(10, AssistantProviderCatalog.Find("dashscope")!.EmbeddingBatchMax);
+        Assert.Equal(64, AssistantProviderCatalog.Find("zhipu")!.EmbeddingBatchMax);
+        // 目录外的 CODE 与"自定义"取保守值
+        Assert.Equal(10, AssistantProviderCatalog.EmbeddingBatchMaxOf("unknown-vendor"));
+        Assert.Equal(10, AssistantProviderCatalog.EmbeddingBatchMaxOf(null));
+    }
+
     [Fact]
     public void Verified_Vendor_Facts_Are_Pinned()
     {

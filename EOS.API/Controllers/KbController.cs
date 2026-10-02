@@ -16,7 +16,7 @@ namespace EOS.API.Controllers;
 [ApiController, Authorize, Route("api/v1/assistant/kb")]
 public sealed class KbController(
     IKnowledgeRepository repository,
-    IEmbeddingModel embedding,
+    IAssistantEmbeddingResolver embeddingResolver,
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     WorkbenchAuditWriter auditWriter,
@@ -74,15 +74,26 @@ public sealed class KbController(
         var chunks = new List<(string Content, float[] Vector)>();
         try
         {
-            foreach (var text in texts)
+            var embedding = await embeddingResolver.ResolveAsync(token);
+            // 一次批量：厂商对单请求条数有上限，分批在客户端做（百炼 10 条、智谱 ≤64 条）。
+            // 逐块一次请求的写法在一篇百余块的文档上就是一百次出网，第一次真入库就会撞限流
+            var vectors = await embedding.EmbedManyAsync(texts, token);
+            for (var i = 0; i < texts.Count; i++)
             {
-                chunks.Add((text, await embedding.EmbedAsync(text, token)));
+                chunks.Add((texts[i], vectors[i]));
             }
         }
-        catch (InvalidOperationException ex)
+        catch (EmbeddingNotConfiguredException ex)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, "KB_EMBEDDING_NOT_CONFIGURED", ex.Message));
+        }
+        catch (AssistantModelException ex)
+        {
+            // 厂商侧的失败要带**它自己的原因码**：把"密钥被拒"混进"未配置"里，
+            // 管理员会去 3102 反复确认模型配好了没有，而问题在密钥
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, ex.Code, ex.UserMessage));
         }
 
         try
@@ -126,14 +137,22 @@ public sealed class KbController(
         if (request is null || string.IsNullOrWhiteSpace(request.Query))
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "检索关键字不能为空。"));
         float[] queryVector;
+        int dimension;
         try
         {
+            var embedding = await embeddingResolver.ResolveAsync(token);
+            dimension = embedding.Dimension;
             queryVector = await embedding.EmbedAsync(request.Query.Trim(), token);
         }
-        catch (InvalidOperationException ex)
+        catch (EmbeddingNotConfiguredException ex)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, "KB_EMBEDDING_NOT_CONFIGURED", ex.Message));
+        }
+        catch (AssistantModelException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, ex.Code, ex.UserMessage));
         }
 
         // TopK 由调用方给，但**必须有上界**：不然一句请求就能让检索返回任意条数（内存与出网检索成本）。
@@ -142,7 +161,7 @@ public sealed class KbController(
         // 管理员为省 token 调小工具上限时会把检索页一起缩水，而他从界面上看不出这层关联。
         var topK = Math.Clamp(request.TopK, 1, runtime.Current.Policy.Kb.EndpointMaxHits);
         var hits = await repository.SearchAsync(EmbeddingJson.ToJson(queryVector),
-            embedding.Dimension, topK, await AllowedVisibilitiesAsync(token), token);
+            dimension, topK, await AllowedVisibilitiesAsync(token), token);
         // R2:与 kb_search 工具同口径——命中片段含业务引用时逐条复核，失败片段不返回。
         hits = await KbReferenceVerifier.FilterHitsAsync(
             userContext.UserId, hits, VerifyReferencesAsync, token);

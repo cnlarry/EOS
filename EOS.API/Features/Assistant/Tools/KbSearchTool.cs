@@ -15,7 +15,7 @@ namespace EOS.API.Features.Assistant.Tools;
 /// </summary>
 public sealed class KbSearchTool(
     IKnowledgeRepository repository,
-    IEmbeddingModel embedding,
+    IAssistantEmbeddingResolver embeddingResolver,
     IPermissionService permissions,
     IWorkbenchSearchGateway gateway,
     // 容器会把运行期配置注进来；离线构造（单测）不传时退回参数默认值——这两项是长度与条数上限，
@@ -43,13 +43,24 @@ public sealed class KbSearchTool(
         var query = arguments.GetStringArg("query").Trim();
         if (query.Length == 0) return ToolExecutionResult.Deny("检索关键字不能为空。");
         float[] queryVector;
+        int dimension;
         try
         {
+            var embedding = await embeddingResolver.ResolveAsync(token);
+            dimension = embedding.Dimension;
             queryVector = await embedding.EmbedAsync(query, token);
         }
-        catch (InvalidOperationException ex)
+        catch (EmbeddingNotConfiguredException ex)
         {
+            // 「没配」与「服务坏了」分开说：前者管理员一改就好，后者只能等。
+            // 两句都说成"知识库不可用"时，用户唯一能做的就是来找我们
             return ToolExecutionResult.Deny(ex.Message);
+        }
+        catch (AssistantModelException ex)
+        {
+            // 如实说不可用、并**让回答继续**（不是把整轮对话打断）：机制类问题不受影响，
+            // 用户也知道了"这次没查到"而不是"系统没有相关内容"
+            return ToolExecutionResult.Deny($"知识库检索暂不可用：{ex.UserMessage}");
         }
 
         // 命中条数与片段长度取自参数目录的 KB 域：它们是运维真想调的数字
@@ -58,7 +69,7 @@ public sealed class KbSearchTool(
         var consultant = (await permissions.GetAsync(userId, 2302, token)).CanSetup;
         var ops = (await permissions.GetAsync(userId, 2306, token)).CanSetup;
         var hits = await repository.SearchAsync(EmbeddingJson.ToJson(queryVector),
-            embedding.Dimension, kb.SearchMaxHits, KbVisibility.AllowedFor(consultant, ops), token);
+            dimension, kb.SearchMaxHits, KbVisibility.AllowedFor(consultant, ops), token);
         if (hits.Count == 0) return ToolExecutionResult.Success("知识库中没有相关内容。");
 
         var sb = new StringBuilder();
