@@ -1,4 +1,6 @@
-import { IconAlertTriangle, IconKey, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
+import {
+  IconAlertTriangle, IconCloudDownload, IconKey, IconPlus, IconRefresh, IconTrash,
+} from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
@@ -11,11 +13,34 @@ import { describeApiError } from '../../lib/errors'
 import {
   activateModel, clearActiveModel, deleteModel, deleteProvider, getModelUsage, listProviders,
 } from './api'
-import type { AssistantModelItem, AssistantModelUsageRow, AssistantProviderItem, AssistantUsageTrendRow } from './api'
-import { ModelEditorDialog, PresetPickerDialog, ProviderEditorDialog, ProviderKeyDialog } from './ModelAdminDialogs'
+import type {
+  AssistantModelItem, AssistantModelKind, AssistantModelUsageRow, AssistantProviderItem,
+  AssistantUsageTrendRow,
+} from './api'
+import {
+  DiscoverModelsDialog, ModelEditorDialog, PresetPickerDialog, ProviderEditorDialog, ProviderKeyDialog,
+} from './ModelAdminDialogs'
 
 /** 数字可空时显示"默认"，避免把"没配"看成"配成了 0"。 */
 const orDash = (value: number | null | undefined) => (value == null ? '默认' : String(value))
+
+/**
+ * 两个用途各一句话：助手能不能聊天看对话模型，知识库能不能用看嵌入模型。
+ *
+ * <p>分开说而不是笼统说"模型未配置"：两者坏掉的表现完全不同（前者是"助手不回话"，
+ * 后者是"问制度类问题没答案、入库被拒"），合起来说会让人去查错方向。</p>
+ */
+const KIND_SECTION: Record<AssistantModelKind, { title: string; missing: string }> = {
+  CHAT: {
+    title: '对话模型',
+    missing: '尚未配置对话模型：工作助手当前不可用（发消息会失败）。',
+  },
+  EMBEDDING: {
+    title: '嵌入模型',
+    missing: '尚未配置嵌入模型：知识库当前不可用——检索取不到内容，文档入库会被拒'
+      + '（报 KB_EMBEDDING_NOT_CONFIGURED 家族的原因）。',
+  },
+}
 
 /**
  * 工作助手管理 → **模型与用量**（菜单组 31 / 模块 3102，路由 `/admin/assistant/models`）。
@@ -39,6 +64,8 @@ export function ModelAdminPage() {
   const [editProvider, setEditProvider] = useState<AssistantProviderItem | null>(null)
   const [keyProvider, setKeyProvider] = useState<AssistantProviderItem | null>(null)
   const [editModel, setEditModel] = useState<{ model: AssistantModelItem; provider: AssistantProviderItem } | null>(null)
+  const [discoverProvider, setDiscoverProvider] = useState<AssistantProviderItem | null>(null)
+  const [addModelProvider, setAddModelProvider] = useState<AssistantProviderItem | null>(null)
 
   const providers = useQuery({ queryKey: ['assistant-admin-providers'], queryFn: listProviders })
   const usage = useQuery({
@@ -48,6 +75,7 @@ export function ModelAdminPage() {
 
   const items = useMemo(() => providers.data?.providers ?? [], [providers.data])
   const current = providers.data?.current ?? null
+  const currentEmbedding = providers.data?.currentEmbedding ?? null
   const usedCodes = useMemo(() => items.map(item => item.code), [items])
 
   const refresh = useCallback(() => {
@@ -66,8 +94,15 @@ export function ModelAdminPage() {
   })
 
   const clearActive = useMutation({
-    mutationFn: () => clearActiveModel(),
-    onSuccess: () => { refresh(); toast.notify({ message: '已取消当前模型：助手回到未配置状态。', variant: 'success' }) },
+    // 用途必传：不传的话服务端按对话处理，"取消嵌入模型"会静默把对话模型清掉
+    mutationFn: (kind: AssistantModelKind) => clearActiveModel(kind),
+    onSuccess: (_result, kind) => {
+      refresh()
+      toast.notify({
+        message: `${KIND_SECTION[kind].title}已取消当前：该用途回到未配置状态（供应商与模型都还留着）。`,
+        variant: 'success',
+      })
+    },
     onError: (error) => fail(error, '取消失败。'),
   })
 
@@ -99,8 +134,13 @@ export function ModelAdminPage() {
     }
   }, [removeProvider])
 
-  const modelColumns = useMemo<ColumnDef<AssistantModelItem, unknown>[]>(() => [
-    {
+  /**
+   * 列**按用途各一套**。不共用一套的理由很实际：嵌入模型没有"最大输出"与"输出单价"，
+   * 摆在那里只能是空白或误导；而对话模型没有维度。共用的那套会出现"一列里一半的行是空的"，
+   * 读的人分不清"这项没有"与"这项没填"。
+   */
+  const modelColumnsByKind = useMemo(() => {
+    const identity: ColumnDef<AssistantModelItem, unknown> = {
       accessorKey: 'modelCode',
       header: '模型',
       meta: { minWidth: 220 },
@@ -112,55 +152,16 @@ export function ModelAdminPage() {
               <span className="font-monospace">{model.modelCode}</span>
               {model.isActive && <span className="badge bg-green-lt text-success">当前</span>}
               {!model.enabled && <span className="badge bg-secondary-lt">已停用</span>}
-              {!model.supportsTools && <span className="badge bg-orange-lt">不支持工具</span>}
+              {/* "不支持工具"只对对话模型有意义：嵌入模型一律不支持，标出来是噪声 */}
+              {model.kind === 'CHAT' && !model.supportsTools && <span className="badge bg-orange-lt">不支持工具</span>}
             </span>
             <span className="text-secondary small">{model.displayName}</span>
           </span>
         )
       },
-    },
-    {
-      id: 'window',
-      header: '窗口 / 最大输出',
-      enableSorting: false,
-      meta: { className: 'text-nowrap', minWidth: 150 },
-      // 窗口会被真的用来裁剪历史，所以它不是装饰性字段
-      cell: ({ row }) => (
-        <span className="text-secondary small">
-          {row.original.contextWindow == null ? '未知' : row.original.contextWindow.toLocaleString('zh-CN')}
-          {' / '}
-          {row.original.maxOutputTokens == null ? '默认' : row.original.maxOutputTokens.toLocaleString('zh-CN')}
-        </span>
-      ),
-    },
-    {
-      id: 'params',
-      header: '温度 / 超时',
-      enableSorting: false,
-      meta: { className: 'text-nowrap', minWidth: 130 },
-      cell: ({ row }) => (
-        <span className="text-secondary small">
-          {orDash(row.original.defaultTemperature)}
-          {' / '}
-          {row.original.timeoutSeconds == null ? '用供应商' : `${row.original.timeoutSeconds} 秒`}
-        </span>
-      ),
-    },
-    {
-      id: 'price',
-      header: '单价（入 / 出）',
-      enableSorting: false,
-      meta: { className: 'text-nowrap', minWidth: 140 },
-      // 留空 = 用 3105 里的全局兜底价；不能显示成 0，那会让人以为"免费"
-      cell: ({ row }) => (
-        <span className="text-secondary small">
-          {row.original.inputPerMillionYuan == null ? '兜底' : row.original.inputPerMillionYuan}
-          {' / '}
-          {row.original.outputPerMillionYuan == null ? '兜底' : row.original.outputPerMillionYuan}
-        </span>
-      ),
-    },
-    {
+    }
+
+    const actions: ColumnDef<AssistantModelItem, unknown> = {
       id: 'actions',
       header: '操作',
       enableSorting: false,
@@ -183,8 +184,98 @@ export function ModelAdminPage() {
           </div>
         )
       },
-    },
-  ], [activate, confirmRemoveModel, items, removeModel])
+    }
+
+    const unitPrice = (value: number | null | undefined) => (
+      // 留空 = 用 3105 里的全局兜底价；不能显示成 0，那会让人以为"免费"
+      <span className="text-secondary small">{value == null ? '兜底' : value}</span>
+    )
+
+    const chatColumns: ColumnDef<AssistantModelItem, unknown>[] = [
+      identity,
+      {
+        id: 'window',
+        header: '窗口 / 最大输出',
+        enableSorting: false,
+        meta: { className: 'text-nowrap', minWidth: 150 },
+        // 窗口会被真的用来裁剪历史，所以它不是装饰性字段
+        cell: ({ row }) => (
+          <span className="text-secondary small">
+            {row.original.contextWindow == null ? '未知' : row.original.contextWindow.toLocaleString('zh-CN')}
+            {' / '}
+            {row.original.maxOutputTokens == null ? '默认' : row.original.maxOutputTokens.toLocaleString('zh-CN')}
+          </span>
+        ),
+      },
+      {
+        id: 'params',
+        header: '温度 / 超时',
+        enableSorting: false,
+        meta: { className: 'text-nowrap', minWidth: 130 },
+        cell: ({ row }) => (
+          <span className="text-secondary small">
+            {orDash(row.original.defaultTemperature)}
+            {' / '}
+            {row.original.timeoutSeconds == null ? '用供应商' : `${row.original.timeoutSeconds} 秒`}
+          </span>
+        ),
+      },
+      {
+        id: 'price',
+        header: '单价（入 / 出）',
+        enableSorting: false,
+        meta: { className: 'text-nowrap', minWidth: 140 },
+        cell: ({ row }) => (
+          <span className="text-secondary small">
+            {unitPrice(row.original.inputPerMillionYuan)}
+            {' / '}
+            {unitPrice(row.original.outputPerMillionYuan)}
+          </span>
+        ),
+      },
+      actions,
+    ]
+
+    const embeddingColumns: ColumnDef<AssistantModelItem, unknown>[] = [
+      identity,
+      {
+        id: 'dimension',
+        header: '维度',
+        enableSorting: false,
+        meta: { className: 'text-nowrap', minWidth: 110 },
+        // 维度决定向量能不能存进集合：与集合登记不一致时入库会被拒，所以它得显示出来
+        cell: ({ row }) => (
+          <span className={row.original.dimension == null ? 'text-danger small' : 'text-secondary small'}>
+            {row.original.dimension == null ? '缺维度' : `${row.original.dimension} 维`}
+          </span>
+        ),
+      },
+      {
+        id: 'timeout',
+        header: '超时',
+        enableSorting: false,
+        meta: { className: 'text-nowrap', minWidth: 110 },
+        cell: ({ row }) => (
+          <span className="text-secondary small">
+            {row.original.timeoutSeconds == null ? '用供应商' : `${row.original.timeoutSeconds} 秒`}
+          </span>
+        ),
+      },
+      {
+        id: 'inputPrice',
+        header: '输入单价',
+        enableSorting: false,
+        meta: { className: 'text-nowrap', minWidth: 110 },
+        cell: ({ row }) => unitPrice(row.original.inputPerMillionYuan),
+      },
+      actions,
+    ]
+
+    return {
+      CHAT: chatColumns,
+      EMBEDDING: embeddingColumns,
+    } as Record<AssistantModelKind, ColumnDef<AssistantModelItem, unknown>[]>
+  }, [activate, confirmRemoveModel, items, removeModel])
 
   const usageColumns = useMemo<ColumnDef<AssistantModelUsageRow, unknown>[]>(() => [
     { accessorKey: 'modelName', header: '模型', cell: (info) => <span className="font-monospace">{String(info.getValue())}</span> },
@@ -244,18 +335,32 @@ export function ModelAdminPage() {
         actions={<>
           {current && (
             <Button size="sm" variant="secondary" icon={<IconAlertTriangle size={14} />}
-              title="取消当前模型：助手回到未配置状态（供应商与模型都留着）"
-              disabled={clearActive.isPending} onClick={() => clearActive.mutate()}>取消当前</Button>
+              title="取消当前对话模型：助手回到未配置状态（供应商与模型都留着）"
+              disabled={clearActive.isPending} onClick={() => clearActive.mutate('CHAT')}>取消对话当前</Button>
+          )}
+          {currentEmbedding && (
+            <Button size="sm" variant="secondary" icon={<IconAlertTriangle size={14} />}
+              title="取消当前嵌入模型：知识库回到未配置状态（供应商与模型都留着）"
+              disabled={clearActive.isPending} onClick={() => clearActive.mutate('EMBEDDING')}>取消嵌入当前</Button>
           )}
           <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setAdding(true)}>添加供应商</Button>
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={refresh}>刷新</Button>
         </>}
         header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
           <h2 className="card-title mb-0">模型管理</h2>
+          {/* 两个用途各说一句：它们坏掉的表现完全不同（"助手不回话"对"问制度没答案"），
+              合成一句"模型未配置"会让人去查错方向 */}
           <span className="text-secondary small">
-            当前生效：
+            对话：
             {current
               ? `${current.providerDisplayName} / ${current.modelCode}（${current.displayName}）`
+              : '尚未配置'}
+          </span>
+          <span className="text-secondary small">
+            嵌入：
+            {currentEmbedding
+              ? `${currentEmbedding.providerDisplayName} / ${currentEmbedding.modelCode}`
+                + `${currentEmbedding.dimension ? `（${currentEmbedding.dimension} 维）` : ''}`
               : '尚未配置'}
           </span>
           <span className="ms-auto text-secondary small">
@@ -264,19 +369,24 @@ export function ModelAdminPage() {
         </div>}
       >
         {/* 「未配置」是**正常且必须显眼**的状态：此时助手不可用，而用户看到的是"助手不好用"。
-            所以在这里直说、并给出下一步，而不是等有人去点聊天才发现。 */}
-        {current === null && (
-          <div className="alert alert-warning mb-0 rounded-0 border-0 border-bottom py-2" role="alert">
-            <div className="fw-semibold">尚未配置模型：工作助手当前不可用</div>
-            <div className="small">
-              {items.length === 0
-                ? '先「添加供应商」（可从预设目录选一家，自动带出端点与可用模型），再设置密钥，最后在某个模型上点「设为当前」。'
-                : current === null && items.some(item => !item.apiKeyConfigured)
-                  ? '下面的供应商还有没配密钥的。请先「设置密钥」，再在某个模型上点「设为当前」。'
-                  : '请在下面某个模型上点「设为当前」。'}
+            所以在这里直说、并给出下一步，而不是等有人去点聊天才发现。嵌入那条同理：
+            它坏掉时用户看到的是"问制度没答案"，而不会想到是模型没配。 */}
+        {(['CHAT', 'EMBEDDING'] as const).map(kind => {
+          const missing = kind === 'CHAT' ? current === null : currentEmbedding === null
+          if (!missing) return null
+          return (
+            <div key={kind} className="alert alert-warning mb-0 rounded-0 border-0 border-bottom py-2" role="alert">
+              <div className="fw-semibold">{KIND_SECTION[kind].missing}</div>
+              <div className="small">
+                {items.length === 0
+                  ? '先「添加供应商」（可从预设目录选一家，自动带出端点与可用模型），再设置密钥，最后在某个模型上点「设为当前」。'
+                  : items.some(item => !item.apiKeyConfigured)
+                    ? '下面的供应商还有没配密钥的。请先「设置密钥」，再在需要的那条模型上点「设为当前」。'
+                    : '请在下面相应分区里点「设为当前」。'}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })}
 
         {providers.isPending ? <LoadingState label="正在加载模型配置…" /> : providers.isError ? (
           <ErrorState message={describeApiError(providers.error, '加载模型配置失败，请稍后重试。')}
@@ -289,11 +399,14 @@ export function ModelAdminPage() {
               <ProviderSection
                 key={provider.providerId}
                 provider={provider}
-                isCurrentProvider={current?.providerId === provider.providerId}
-                columns={modelColumns}
+                isCurrentChatProvider={current?.providerId === provider.providerId}
+                isCurrentEmbeddingProvider={currentEmbedding?.providerId === provider.providerId}
+                columnsByKind={modelColumnsByKind}
                 onSetKey={() => setKeyProvider(provider)}
                 onEdit={() => setEditProvider(provider)}
                 onDelete={() => confirmRemoveProvider(provider)}
+                onDiscover={() => setDiscoverProvider(provider)}
+                onAddModel={() => setAddModelProvider(provider)}
               />
             ))}
           </div>
@@ -364,37 +477,71 @@ export function ModelAdminPage() {
           onClose={() => setEditModel(null)}
           onSaved={() => { setEditModel(null); refresh() }} />
       )}
+      {discoverProvider && (
+        <DiscoverModelsDialog provider={discoverProvider}
+          onClose={() => setDiscoverProvider(null)}
+          onSaved={() => { setDiscoverProvider(null); refresh() }} />
+      )}
+      {/* 同一个对话框的"新增"形态：厂商拉不到的型号（自建端点、刚出的新型号）从这里手工加 */}
+      {addModelProvider && (
+        <ModelEditorDialog model={null} providerId={addModelProvider.providerId} providers={items}
+          onClose={() => setAddModelProvider(null)}
+          onSaved={() => { setAddModelProvider(null); refresh() }} />
+      )}
     </div>
   )
 }
 
-/** 一个供应商（接入点）及其名下的模型。 */
-function ProviderSection({ provider, isCurrentProvider, columns, onSetKey, onEdit, onDelete }: {
+/**
+ * 一个供应商（接入点）及其名下的模型，**按用途分成两段**。
+ *
+ * <p>分区而不是加一列"用途"：两个用途的列根本不一样（嵌入看维度、对话看窗口与输出），
+ * 混在一张表里必然有一半的行在某些列上是空的，读的人分不清"这项没有"与"这项没填"。</p>
+ */
+function ProviderSection({
+  provider, isCurrentChatProvider, isCurrentEmbeddingProvider, columnsByKind,
+  onSetKey, onEdit, onDelete, onDiscover, onAddModel,
+}: {
   provider: AssistantProviderItem
-  isCurrentProvider: boolean
-  columns: ColumnDef<AssistantModelItem, unknown>[]
+  isCurrentChatProvider: boolean
+  isCurrentEmbeddingProvider: boolean
+  columnsByKind: Record<AssistantModelKind, ColumnDef<AssistantModelItem, unknown>[]>
   onSetKey: () => void
   onEdit: () => void
   onDelete: () => void
+  onDiscover: () => void
+  onAddModel: () => void
 }) {
   return (
     <section className="border rounded">
       <div className="d-flex align-items-center gap-2 flex-wrap p-2 border-bottom bg-light">
         <span className="fw-semibold">{provider.displayName}</span>
         <span className="badge bg-blue-lt">{provider.code}</span>
-        {isCurrentProvider && <span className="badge bg-green-lt text-success">当前生效</span>}
+        {isCurrentChatProvider && <span className="badge bg-green-lt text-success">当前对话</span>}
+        {isCurrentEmbeddingProvider && <span className="badge bg-green-lt text-success">当前嵌入</span>}
         {!provider.enabled && <span className="badge bg-secondary-lt">已停用（名下模型一起下线）</span>}
         <span className="text-secondary small font-monospace">{provider.baseUrl}</span>
         <span className="text-secondary small">默认超时 {provider.timeoutSeconds} 秒</span>
-        {/* 密钥只显示"变量名 + 是否已配置 + 掩码末四位"：库里本来就没有密钥可显示 */}
+        {/* 密钥只显示"变量名 + 是否已配置 + 掩码末四位"：库里本来就没有密钥可显示。
+            变量名为空是**合法**的（无凭据端点，如本机嵌入服务），那种情况不该显示成"未配置" */}
         <span className="small">
-          <span className="font-monospace">{provider.apiKeyEnvVar}</span>
-          {' '}
-          {provider.apiKeyConfigured
-            ? <span className="text-secondary">已配置 {provider.apiKeyMaskedTail}</span>
-            : <span className="text-danger">未配置</span>}
+          {provider.apiKeyEnvVar
+            ? <>
+                <span className="font-monospace">{provider.apiKeyEnvVar}</span>
+                {' '}
+                {provider.apiKeyConfigured
+                  ? <span className="text-secondary">已配置 {provider.apiKeyMaskedTail}</span>
+                  : <span className="text-danger">未配置</span>}
+              </>
+            : <span className="text-secondary">无需凭据（未设密钥变量名）</span>}
         </span>
         <span className="ms-auto d-flex gap-1">
+          <Button size="sm" variant="ghost" icon={<IconCloudDownload size={14} />}
+            title="向厂商拉取可用型号，勾选后落库（拉取失败会说明原因，不会退回预设清单）"
+            onClick={onDiscover}>拉取型号</Button>
+          <Button size="sm" variant="ghost" icon={<IconPlus size={14} />}
+            title="手工新增一个模型（厂商拉不到的型号、自建端点走这里）"
+            onClick={onAddModel}>新增模型</Button>
           <Button size="sm" variant="ghost" icon={<IconKey size={14} />}
             title="设置密钥（写入环境变量，不入库、不回显）" onClick={onSetKey}>密钥</Button>
           <Button size="sm" variant="ghost" title="编辑供应商" onClick={onEdit}>编辑</Button>
@@ -403,13 +550,29 @@ function ProviderSection({ provider, isCurrentProvider, columns, onSetKey, onEdi
             disabled={provider.models.length > 0} onClick={onDelete}>删除</Button>
         </span>
       </div>
-      {provider.models.length === 0 ? (
-        <div className="p-2 text-secondary small">这家供应商下还没有模型。</div>
-      ) : (
-        <ErpTable columns={columns} data={provider.models}
-          getRowId={(row) => String(row.modelId)}
-          resizable storageKey={`assistant-admin-models-${provider.providerId}`} />
-      )}
+      {(['CHAT', 'EMBEDDING'] as const).map(kind => {
+        const rows = provider.models.filter(model => model.kind === kind)
+        return (
+          <div key={kind} className="border-top">
+            <div className="px-2 py-1 d-flex align-items-center gap-2 bg-light-subtle">
+              <span className="fw-semibold small">{KIND_SECTION[kind].title}</span>
+              <span className="text-secondary small">{rows.length} 个</span>
+              {kind === 'EMBEDDING' && rows.length === 0 && (
+                <span className="text-secondary small">
+                  （知识库检索用它：从厂商拉取时把用途选成"嵌入"并给维度）
+                </span>
+              )}
+            </div>
+            {rows.length === 0 ? (
+              <div className="px-2 pb-2 text-secondary small">这个用途下还没有模型。</div>
+            ) : (
+              <ErpTable columns={columnsByKind[kind]} data={rows}
+                getRowId={(row) => String(row.modelId)}
+                resizable storageKey={`assistant-admin-models-${kind}-${provider.providerId}`} />
+            )}
+          </div>
+        )
+      })}
     </section>
   )
 }

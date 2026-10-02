@@ -35,6 +35,8 @@ function modelRow(overrides: Partial<Record<string, unknown>> = {}) {
     enabled: true,
     sortIdx: 0,
     remark: null,
+    kind: 'CHAT',
+    dimension: null,
     ...overrides,
   }
 }
@@ -57,10 +59,29 @@ function providerRow(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+/** 一条嵌入模型：用途、维度与"不摆窗口/输出"都是它区别于对话模型的地方。 */
+function embeddingRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return modelRow({
+    modelId: 21,
+    modelCode: 'text-embedding-v4',
+    displayName: '通义 text-embedding-v4',
+    contextWindow: null,
+    maxOutputTokens: null,
+    supportsTools: false,
+    isActive: false,
+    kind: 'EMBEDDING',
+    dimension: 1024,
+    ...overrides,
+  })
+}
+
 function installFetchMock(options: {
   providers?: unknown[]
   current?: Record<string, unknown> | null
+  currentEmbedding?: Record<string, unknown> | null
   presets?: unknown[]
+  discovered?: unknown[]
+  presetEmbedding?: string
 } = {}) {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -88,22 +109,42 @@ function installFetchMock(options: {
               contextWindow: 65536, timeoutSeconds: 300, supportsTools: true, apiKeyConfigured: true,
             }
             : options.current,
+          // 嵌入那条**默认没有**：与真实情况一致（要用户自己配出来）
+          currentEmbedding: options.currentEmbedding ?? null,
         })
       }
       return new Response(null, { status: 204 })
+    }
+    if (url.includes('/admin/assistant/models/discover')) {
+      return jsonResponse({
+        providerId: 1,
+        models: options.discovered ?? [
+          { modelCode: 'deepseek-chat', displayName: 'DeepSeek Chat', contextWindow: 65536, maxOutputTokens: 8192 },
+          { modelCode: 'qwen-embedding', displayName: '通义嵌入', contextWindow: null, maxOutputTokens: null },
+        ],
+      })
+    }
+    if (url.includes('/admin/assistant/models/active/clear')) {
+      return new Response(null, { status: 204 })
+    }
+    if (url.includes('/admin/assistant/models') && method === 'POST') {
+      return jsonResponse({ modelId: 99 })
     }
     if (url.includes('/admin/assistant/presets')) {
       return jsonResponse(options.presets ?? [
         {
           code: 'deepseek', displayName: 'DeepSeek 开放平台', baseUrl: 'https://api.deepseek.com',
           suggestedApiKeyEnvVar: 'EOS_ASSISTANT_KEY_DEEPSEEK', timeoutSeconds: 300, remark: null,
+          authStyle: 'Bearer', embedding: options.presetEmbedding ?? 'Unsupported', modelListing: 'Supported',
           models: [
             {
+              kind: 'CHAT', dimension: null,
               modelCode: 'deepseek-chat', displayName: 'DeepSeek Chat', contextWindow: 65536,
               maxOutputTokens: 8192, supportsTools: true, inputPerMillionYuan: null,
               outputPerMillionYuan: null, defaultTemperature: null, remark: null,
             },
             {
+              kind: 'CHAT', dimension: null,
               modelCode: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner', contextWindow: 65536,
               maxOutputTokens: 8192, supportsTools: true, inputPerMillionYuan: null,
               outputPerMillionYuan: null, defaultTemperature: null, remark: null,
@@ -197,7 +238,7 @@ describe('ModelAdminPage', () => {
     expect(screen.getByText(/已配置 \*\*\*\*abcd/)).toBeInTheDocument()
     // 模型名在"模型表"与下面的"用量表"里各出现一次，所以按数量断言（两处都渲染了才算对）
     expect(screen.getAllByText('deepseek-chat').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('当前生效')).toBeInTheDocument()
+    expect(screen.getByText('当前对话')).toBeInTheDocument()
     // 窗口要显示出来：它会被真的用来裁剪历史，不是装饰
     expect(screen.getByText('65,536 / 8,192')).toBeInTheDocument()
   })
@@ -213,12 +254,29 @@ describe('ModelAdminPage', () => {
     // 先等数据到位再断言告警：告警在首帧就会出现（那时 providers 还没回来），
     // 文案会从"还没有供应商"那一支换成"密钥没配"那一支
     await screen.findByText('EOS_ASSISTANT_KEY_DEEPSEEK')
-    // 直接断言告警整段的文本：里面的文案是分句拼的，逐句查容易因为断句变化而误报
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('尚未配置模型')
-    expect(alert.textContent).toContain('工作助手当前不可用')
-    expect(alert.textContent).toContain('请先「设置密钥」')
+    // 直接断言告警整段的文本：里面的文案是分句拼的，逐句查容易因为断句变化而误报。
+    // 两个用途各有一条告警，所以按"哪一条在说对话模型"挑出来
+    const alerts = await screen.findAllByRole('alert')
+    const chatAlert = alerts.find(item => item.textContent?.includes('对话模型'))!
+    expect(chatAlert.textContent).toContain('尚未配置对话模型')
+    expect(chatAlert.textContent).toContain('工作助手当前不可用')
+    expect(chatAlert.textContent).toContain('请先「设置密钥」')
     expect(screen.getByText('未配置')).toBeInTheDocument()
+  })
+
+  it('嵌入模型没配时也直说，且说清坏的是知识库而不是助手', async () => {
+    installFetchMock()
+
+    renderPage()
+
+    await screen.findByText('EOS_ASSISTANT_KEY_DEEPSEEK')
+    // 这条是本轮新增分区的关键：嵌入缺失在界面上必须与"助手不可用"分开说——
+    // 它坏掉时用户看到的是"问制度没答案"，不会想到是模型没配
+    const alerts = await screen.findAllByRole('alert')
+    const embeddingAlert = alerts.find(item => item.textContent?.includes('嵌入模型'))!
+    expect(embeddingAlert.textContent).toContain('尚未配置嵌入模型')
+    expect(embeddingAlert.textContent).toContain('知识库当前不可用')
+    expect(embeddingAlert.textContent).toContain('KB_EMBEDDING_NOT_CONFIGURED')
   })
 
   it('完全没有供应商时给出下一步，而不是一个空表格', async () => {
@@ -228,9 +286,10 @@ describe('ModelAdminPage', () => {
 
     expect(await screen.findByText('还没有供应商')).toBeInTheDocument()
     // 告警与空状态都会提到"预设目录"，所以限定在告警里断言
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('尚未配置模型')
-    expect(alert.textContent).toContain('添加供应商')
+    const alerts = await screen.findAllByRole('alert')
+    const chatAlert = alerts.find(item => item.textContent?.includes('对话模型'))!
+    expect(chatAlert.textContent).toContain('尚未配置对话模型')
+    expect(chatAlert.textContent).toContain('添加供应商')
   })
 
   it('添加供应商：选预设后带出端点与可用模型，一次提交（请求体里没有密钥）', async () => {
@@ -314,5 +373,122 @@ describe('ModelAdminPage', () => {
     expect(await screen.findByText('按模型（近 30 天）')).toBeInTheDocument()
     expect(screen.getByText('按天（近 30 天）')).toBeInTheDocument()
     expect(screen.getByText(/上限：每人 ¥5\/天、全局 ¥50\/天/)).toBeInTheDocument()
+  })
+
+  it('按用途分区：嵌入与对话各成一段，嵌入段显示维度', async () => {
+    installFetchMock({ providers: [providerRow({ models: [modelRow(), embeddingRow()] })] })
+
+    renderPage()
+
+    // 两段标题都在：混在一张表里必然有一半的行在某些列上是空的，
+    // 读的人分不清"这项没有"与"这项没填"
+    expect(await screen.findByText('对话模型')).toBeInTheDocument()
+    expect(screen.getByText('嵌入模型')).toBeInTheDocument()
+    // 维度必须显示：它决定向量能不能存进集合（与集合登记不一致时入库会被拒）
+    expect(screen.getByText('1024 维')).toBeInTheDocument()
+    // 嵌入模型不摆窗口/输出那一列，所以对话模型的数字只出现一次
+    expect(screen.getAllByText('65,536 / 8,192')).toHaveLength(1)
+  })
+
+  it('缺维度的嵌入模型要标出来，而不是显示成"维度空着"', async () => {
+    installFetchMock({
+      providers: [providerRow({ models: [modelRow(), embeddingRow({ dimension: null })] })],
+    })
+
+    renderPage()
+
+    await screen.findByText('嵌入模型')
+    // 缺维度是**入库会被拒**的状态，得在列表里就能看见
+    expect(screen.getByText('缺维度')).toBeInTheDocument()
+  })
+
+  it('拉取型号：厂商给的清单里排除已在库的，勾选后按所选用途与维度落库', async () => {
+    const harness = installFetchMock()
+
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: '拉取型号' }))
+
+    // 厂商给了两条，库里已有 deepseek-chat → 只列另一条
+    // （勾了也会被唯一约束拒，而拒在逐条提交的中途会留下半截结果）
+    expect(await screen.findByLabelText('qwen-embedding')).toBeInTheDocument()
+    expect(screen.queryByLabelText('deepseek-chat')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('qwen-embedding'))
+    fireEvent.change(screen.getByLabelText('qwen-embedding 的用途'), { target: { value: 'EMBEDDING' } })
+    fireEvent.change(screen.getByLabelText('qwen-embedding 的维度'), { target: { value: '1024' } })
+    fireEvent.click(screen.getByRole('button', { name: /落库/ }))
+
+    await waitFor(() => expect(harness.calls.some(
+      call => call.method === 'POST' && call.url.includes('/admin/assistant/models'),
+    )).toBe(true))
+    const posted = JSON.parse(
+      harness.calls.find(call => call.method === 'POST' && call.url.includes('/admin/assistant/models'))!.body!)
+    expect(posted.kind).toBe('EMBEDDING')
+    expect(posted.dimension).toBe(1024)
+    // 嵌入模型不带窗口/输出与工具调用：它用不上这些值，带过去就是没人会读的垃圾数据
+    expect(posted.contextWindow).toBeNull()
+    expect(posted.maxOutputTokens).toBeNull()
+    expect(posted.supportsTools).toBe(false)
+  })
+
+  it('手工新增模型：用途选嵌入后自动带出维度，并以新增（而不是修改）提交', async () => {
+    const harness = installFetchMock()
+
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: '新增模型' }))
+
+    // 对话模型的字段先摆出来（默认用途是对话）
+    expect(await screen.findByLabelText('用途')).toBeInTheDocument()
+    // 手工新增时**不带** isActive/enabled 之类的默认判断，先都填上
+    fireEvent.change(screen.getByLabelText('模型标识'), { target: { value: 'local-bge-m3' } })
+    fireEvent.change(screen.getByLabelText('显示名'), { target: { value: '本地嵌入服务' } })
+    // 换用途后：维度出现且给了 1024 这个初值（现成集合就是它），窗口那几项消失
+    fireEvent.change(screen.getByLabelText('用途'), { target: { value: 'EMBEDDING' } })
+    expect(screen.getByLabelText('维度')).toHaveValue('1024')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(harness.calls.some(
+      call => call.method === 'POST' && call.url.includes('/admin/assistant/models'),
+    )).toBe(true))
+    const posted = JSON.parse(
+      harness.calls.find(call => call.method === 'POST' && call.url.includes('/admin/assistant/models'))!.body!)
+    expect(posted.kind).toBe('EMBEDDING')
+    expect(posted.dimension).toBe(1024)
+    expect(posted.providerId).toBe(1)
+    expect(posted.modelCode).toBe('local-bge-m3')
+  })
+
+  it('嵌入当前独立显示，且取消时带上用途（不会连带清掉对话那条）', async () => {
+    const harness = installFetchMock({
+      providers: [providerRow({ models: [modelRow(), embeddingRow({ isActive: true })] })],
+      currentEmbedding: {
+        modelId: 21, displayName: '通义 text-embedding-v4', modelCode: 'text-embedding-v4',
+        providerId: 1, providerCode: 'deepseek', providerDisplayName: 'DeepSeek 开放平台',
+        dimension: 1024, apiKeyConfigured: true,
+      },
+    })
+
+    renderPage()
+    expect(await screen.findByText(/嵌入：.*text-embedding-v4/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '取消嵌入当前' }))
+
+    await waitFor(() => expect(harness.calls.some(call =>
+      call.method === 'POST'
+      && call.url.includes('/models/active/clear')
+      && call.url.includes('kind=EMBEDDING'))).toBe(true))
+  })
+
+  it('无凭据端点：变量名为空是"无需凭据"，不是"未配置"', async () => {
+    installFetchMock({
+      providers: [providerRow({ apiKeyEnvVar: null, apiKeyConfigured: false, apiKeyMaskedTail: null })],
+    })
+
+    renderPage()
+
+    // 把合法的"无凭据端点"显示成红色"未配置"，会让管理员去找一把根本不存在的密钥
+    expect(await screen.findByText('无需凭据（未设密钥变量名）')).toBeInTheDocument()
+    expect(screen.queryByText('未配置')).toBeNull()
   })
 })

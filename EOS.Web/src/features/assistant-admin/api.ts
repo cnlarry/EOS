@@ -134,8 +134,23 @@ export function deleteKbDocument(docId: string) {
 // 3102 模型与用量（见 ADR-030 §3）：密钥只写不读，库里只有环境变量名。
 // ---------------------------------------------------------------------------
 
+/**
+ * 模型用途。对话与嵌入同表同目录，靠它区分（ADR-031 §3.1）。
+ *
+ * <p>取值与服务端字符串一一对应，**不在前端另立映射**：多一层映射就多一处"某天加了第三种用途、
+ * 界面却把它当对话"的静默错配。</p>
+ */
+export type AssistantModelKind = 'CHAT' | 'EMBEDDING'
+
+/** 能力三态：已核实支持 / 已核实不支持 / 未核实（界面据此说不同的话）。 */
+export type AssistantCapability = 'Supported' | 'Unsupported' | 'Unknown'
+
 /** 预设目录里的一个模型：系统"知道"的参考参数（价格留空 = 用全局兜底价）。 */
 export interface AssistantModelPreset {
+  /** 用途：嵌入模型在目录里也带着维度，落库时直接带上，不靠型号名猜。 */
+  kind: AssistantModelKind
+  /** 仅嵌入模型有值（如 1024），对话模型为 null。 */
+  dimension: number | null
   modelCode: string
   displayName: string
   contextWindow: number | null
@@ -155,6 +170,17 @@ export interface AssistantProviderPreset {
   suggestedApiKeyEnvVar: string
   timeoutSeconds: number
   remark: string | null
+  /** 认证头样式（`Bearer` / `ApiKeyHeader` / `None`）：由目录给定，客户端不写死。 */
+  authStyle: string
+  /**
+   * 这家有没有嵌入端点、能不能列出型号。
+   *
+   * <p>三态而不是 bool：「核实过做不到」与「还没核实」是两件事——前者该说"这家没有嵌入端点"，
+   * 后者该说"没核过，试了失败请手工填"。压成一个 false，界面就只能含糊其辞，
+   * 而含糊会让管理员反复试一个注定失败的端点。</p>
+   */
+  embedding: AssistantCapability
+  modelListing: AssistantCapability
   models: AssistantModelPreset[]
 }
 
@@ -180,6 +206,10 @@ export interface AssistantModelItem {
   enabled: boolean
   sortIdx: number
   remark: string | null
+  /** 用途：界面按它分区（对话 / 嵌入），没有它就只能靠模型名猜。 */
+  kind: AssistantModelKind
+  /** 仅嵌入模型有值。 */
+  dimension: number | null
 }
 
 /** 一个供应商（**接入点**）：端点 + 密钥环境变量名 + 默认超时 + 它名下的模型。 */
@@ -213,9 +243,30 @@ export interface AssistantModelCurrent {
   apiKeyConfigured: boolean
 }
 
+/**
+ * "现在在用哪个**嵌入**模型"。`null` = 没配。
+ *
+ * <p>与 {@link AssistantModelCurrent} 分开给：迁移 307 之后两个用途**各有一条当前**，
+ * 合成一个字段就会出现"到底是哪一条"的含糊。嵌入这条没有"工具能力"可言，
+ * 多的是**维度**——它决定知识库能不能写入。</p>
+ */
+export interface AssistantModelCurrentEmbedding {
+  modelId: number
+  displayName: string
+  modelCode: string
+  providerId: number
+  providerCode: string
+  providerDisplayName: string
+  dimension: number | null
+  apiKeyConfigured: boolean
+}
+
 export interface AssistantProviderList {
   providers: AssistantProviderItem[]
+  /** 当前**对话**模型（助手能不能聊天看它）。 */
   current: AssistantModelCurrent | null
+  /** 当前**嵌入**模型（知识库检索看它）。 */
+  currentEmbedding: AssistantModelCurrentEmbedding | null
 }
 
 /** 新增 / 修改模型的入参（**不含密钥**：密钥挂在供应商上，走 setProviderKey 那条单独的路）。 */
@@ -233,6 +284,13 @@ export interface AssistantModelWriteInput {
   enabled: boolean
   sortIdx: number
   remark: string | null
+  /**
+   * 用途。**不传 = 沿用原值**（新建时按对话）——所以编辑表单里它始终带上当前值，
+   * 不依赖服务端缺省：缺省成对话会让一次"只改单价"的编辑把嵌入模型变成对话模型。
+   */
+  kind: AssistantModelKind
+  /** 维度：嵌入模型必填，对话模型必须为 null（服务端两边都校验）。 */
+  dimension: number | null
 }
 
 /**
@@ -317,6 +375,26 @@ export function deleteProvider(providerId: number) {
   return apiClient.delete<void>(`/admin/assistant/providers/${providerId}`)
 }
 
+/** 厂商拉回来的一个型号。**窗口与最大输出拿不到就是 null**（多数厂商不给），界面留空由人补，不猜。 */
+export interface AssistantDiscoveredModel {
+  modelCode: string
+  displayName: string
+  contextWindow: number | null
+  maxOutputTokens: number | null
+}
+
+/**
+ * 向厂商**拉取可用模型清单**（型号清单不硬编码，ADR-030 §12.3）。
+ *
+ * <p>失败**如实回报**、不退回预设里的旧型号：那会把一次失败伪装成一次成功的列表，
+ * 而管理员会拿着过期的型号去落库。失败原因（密钥没配 / 被拒 / 这家没有该端点 / 网络超时）
+ * 由服务端给出各自的 code 与说明，界面照原样显示。</p>
+ */
+export function discoverModels(providerId: number) {
+  return apiClient.get<{ providerId: number; models: AssistantDiscoveredModel[] }>(
+    '/admin/assistant/models/discover', { query: { providerId } })
+}
+
 export function createModel(input: AssistantModelWriteInput) {
   return apiClient.post<{ modelId: number }>('/admin/assistant/models', input)
 }
@@ -333,9 +411,14 @@ export function activateModel(modelId: number) {
   return apiClient.post<void>(`/admin/assistant/models/${modelId}/activate`)
 }
 
-/** 取消当前模型：助手回到**未配置**状态（供应商与模型都留着，只是没有"当前"）。 */
-export function clearActiveModel() {
-  return apiClient.post<void>('/admin/assistant/models/active/clear')
+/**
+ * 取消某个**用途**的当前模型：该用途回到"未配置"（供应商与模型都留着）。
+ *
+ * <p>用途必传：服务端默认对话，而"取消嵌入模型"的请求如果没带用途，会把对话模型清掉——
+ * 两个用途共用这条端点，清错的那一个不会有任何报错。</p>
+ */
+export function clearActiveModel(kind: AssistantModelKind) {
+  return apiClient.post<void>('/admin/assistant/models/active/clear', undefined, { query: { kind } })
 }
 
 /** 删除模型。**当前模型删不掉**。 */
