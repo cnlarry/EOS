@@ -21,6 +21,8 @@ public sealed class ChooserRepositoryIntegrationTests
 
     private readonly ChooserRepository _repository;
 
+    private readonly DbConnectionFactory _connections;
+
     public ChooserRepositoryIntegrationTests()
     {
         var config = new ConfigurationBuilder()
@@ -29,7 +31,62 @@ public sealed class ChooserRepositoryIntegrationTests
                 ["ConnectionStrings:ErpDatabase"] = ConnectionString.Value,
             })
             .Build();
-        _repository = new ChooserRepository(new DbConnectionFactory(config), NullLogger<ChooserRepository>.Instance);
+        _connections = new DbConnectionFactory(config);
+        _repository = new ChooserRepository(_connections, NullLogger<ChooserRepository>.Instance);
+    }
+
+    /// <summary>
+    /// 助手作用域的模块候选集要**恰好**是 `MODULES` 全表——服务端校验作用域键时查的就是这张表，
+    /// 且不带任何过滤（`AssistantParameterScopeStore.ScopeKeyExistsAsync`）。
+    ///
+    /// <para>
+    /// 两边钉在同一张表上：选择器比校验严会出现"这个模块明明存在却选不到"；比校验松则"选中了却被拒"。
+    /// 所以这里拿同一个库里的行数做等值断言，而不是断言"返回了若干行"——后者对两种偏移都是绿的。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task QueryAssistantAdminModules_CoversExactlyTheModulesTable()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var result = await _repository.QueryAsync(
+            new UnifiedChooserQueryRequest("assistant-admin.modules", Page: 1, PageSize: 50),
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(["M_IDX", "M_DESC"], result!.Columns.Select(column => column.Key));
+        Assert.True(result.Total > 0);
+        Assert.All(result.Rows, row => Assert.True(Convert.ToInt32(row["M_IDX"]) > 0));
+        Assert.Equal(await CountModulesAsync(), result.Total);
+    }
+
+    [Fact]
+    public async Task QueryAssistantAdminModules_KeywordFiltersOnIdOrName()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var result = await _repository.QueryAsync(
+            new UnifiedChooserQueryRequest("assistant-admin.modules", Keyword: "客户", Page: 1, PageSize: 50),
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.All(result!.Rows, row => Assert.True(
+            Convert.ToString(row["M_IDX"])?.Contains("客户", StringComparison.OrdinalIgnoreCase) == true
+            || Convert.ToString(row["M_DESC"])?.Contains("客户", StringComparison.OrdinalIgnoreCase) == true));
+    }
+
+    private async Task<int> CountModulesAsync()
+    {
+        await using var connection = _connections.Create();
+        await using var command = new SqlCommand("SELECT COUNT(1) FROM dbo.MODULES;", connection);
+        await connection.OpenAsync();
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
     [Fact]
