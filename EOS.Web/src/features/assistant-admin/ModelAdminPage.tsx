@@ -28,21 +28,15 @@ import {
 const orDash = (value: number | null | undefined) => (value == null ? '默认' : String(value))
 
 /**
- * 两个用途各一句话：助手能不能聊天看对话模型，知识库能不能用看嵌入模型。
+ * 两个用途的中文名（区块标题 / 通知文案共用一份，免得同一个词在两处各写一遍）。
  *
- * <p>分开说而不是笼统说"模型未配置"：两者坏掉的表现完全不同（前者是"助手不回话"，
- * 后者是"问制度类问题没答案、入库被拒"），合起来说会让人去查错方向。</p>
+ * <p>两个用途在界面上始终分开说：助手能不能聊天看对话模型，知识库能不能用看嵌入模型。
+ * 合成一句"模型未配置"会让人去查错方向——它们坏掉的表现完全不同（"助手不回话"
+ * 对"问制度类问题没答案"）。</p>
  */
-const KIND_SECTION: Record<AssistantModelKind, { title: string; missing: string }> = {
-  CHAT: {
-    title: '对话模型',
-    missing: '尚未配置对话模型：工作助手当前不可用（发消息会失败）。',
-  },
-  EMBEDDING: {
-    title: '嵌入模型',
-    missing: '尚未配置嵌入模型：知识库当前不可用——检索取不到内容，文档入库会被拒'
-      + '（报 KB_EMBEDDING_NOT_CONFIGURED 家族的原因）。',
-  },
+const KIND_TITLE: Record<AssistantModelKind, string> = {
+  CHAT: '对话模型',
+  EMBEDDING: '嵌入模型',
 }
 
 /** 用途切换器上的短标签（详情区工具栏要放下"标签 + 条数 + 两个动作按钮"）。 */
@@ -180,37 +174,6 @@ export function ModelAdminPage() {
     () => (selectedProvider?.models ?? []).filter(model => model.kind === kind),
     [selectedProvider, kind])
 
-  /** 两个用途里还没有"当前"的那些：缺失要按用途分开说，因为坏掉的表现与处置都不同。 */
-  const missingKinds = useMemo(
-    () => (['CHAT', 'EMBEDDING'] as const).filter(
-      target => (target === 'CHAT' ? current === null : currentEmbedding === null)),
-    [current, currentEmbedding])
-
-  /**
-   * 每个缺失用途各自的"下一步"：按**卡在哪一步**给，而不是一句万能话。
-   *
-   * <p>顺序不能颠倒——一个模型都没有时说"去点设为当前"，等于把人指到一个不存在的按钮上；
-   * 两个用途各有各的卡点（对话缺模型 / 嵌入缺密钥），所以**不合并成一句**。</p>
-   */
-  const stepFor = useCallback((target: AssistantModelKind) => {
-    if (items.length === 0) {
-      return '先「添加供应商」（可从预设目录选一家），再在模型上点「设为当前」'
-    }
-
-    const noModel = !items.some(item => item.models.some(model => model.kind === target))
-    if (noModel) {
-      return target === 'CHAT'
-        ? '选中一家供应商 → 「拉取型号」或「新增模型」→ 点「设为当前」'
-        : '选中一家供应商 → 拉取型号时把用途选成"嵌入"并给维度（或用「新增模型」）→ 点「设为当前」'
-    }
-
-    if (items.some(item => !item.apiKeyConfigured)) {
-      return '先在那一行点「密钥」完成设置密钥，再点「设为当前」'
-    }
-
-    return '在下面的模型表里点需要那条的「设为当前」'
-  }, [items])
-
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['assistant-admin-providers'] })
     void queryClient.invalidateQueries({ queryKey: ['assistant-admin-model-usage'] })
@@ -232,7 +195,7 @@ export function ModelAdminPage() {
     onSuccess: (_result, target) => {
       refresh()
       toast.notify({
-        message: `${KIND_SECTION[target].title}已取消当前：该用途回到未配置状态（供应商与模型都还留着）。`,
+        message: `${KIND_TITLE[target]}已取消当前：该用途回到未配置状态（供应商与模型都还留着）。`,
         variant: 'success',
       })
     },
@@ -498,26 +461,9 @@ export function ModelAdminPage() {
         tabs={PAGE_TABS} activeKey={tab} onActiveKeyChange={setTab}>
         {tab === 'models' ? (
           <div className="erp-workbench-page erp-model-admin-page">
-            {/* 「未配置」是**正常且必须显眼**的状态：此时助手不可用，而用户看到的是"助手不好用"。
-                所以在这里直说、并给出下一步，而不是等有人去点聊天才发现。嵌入那条同理：
-                它坏掉时用户看到的是"问制度没答案"，而不会想到是模型没配。
-
-                两个用途都缺时**合成一块**，不是叠两个告警：告警是提醒不是内容，
-                而矮窗口里两块告警能把正文挤掉一半（实测 1024×560 下正是如此）。 */}
-            {missingKinds.length > 0 && (
-              <div className="alert alert-warning mb-0 py-2" role="alert">
-                {/* 每个缺失用途一行：标题 + 它自己的下一步。压成一行并用 title 补全——
-                    告警不是内容，长句换三四行会把下面的表格挤出窗口 */}
-                {missingKinds.map(target => (
-                  <div key={target} className="small text-truncate">
-                    <span className="fw-semibold">{KIND_SECTION[target].missing}</span>
-                    {' '}
-                    <span>下一步：{stepFor(target)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
+            {/* 「未配置」不再用一条横幅提醒，而是**并进卡片头那两行**（"对话：尚未配置 / 嵌入：尚未配置"）：
+                横幅把页签与内容隔开，视觉上像贴了一块膏药；而这两行本来就在说同一件事，
+                且贴着各自的"当前"值，读起来是一句话而不是两条消息。 */}
             <ErpListCard
               ariaLabel="助手模型供应商"
               actions={<>
@@ -537,19 +483,22 @@ export function ModelAdminPage() {
               header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
                 <h2 className="card-title mb-0">模型管理</h2>
                 {/* 两个用途各说一句：它们坏掉的表现完全不同（"助手不回话"对"问制度没答案"），
-                    合成一句"模型未配置"会让人去查错方向 */}
-                <span className="text-secondary small">
+                    合成一句"模型未配置"会让人去查错方向。
+                    "尚未配置"用徽标而不是灰字：它是**正常但必须一眼看见**的状态
+                    （此时助手/知识库不可用，而用户看到的是"这功能不好用"），
+                    灰字混在标题行里没人会读。 */}
+                <span className="text-secondary small d-inline-flex align-items-center gap-1">
                   对话：
                   {current
                     ? `${current.providerDisplayName} / ${current.modelCode}（${current.displayName}）`
-                    : '尚未配置'}
+                    : <span className="badge bg-warning-lt">尚未配置</span>}
                 </span>
-                <span className="text-secondary small">
+                <span className="text-secondary small d-inline-flex align-items-center gap-1">
                   嵌入：
                   {currentEmbedding
                     ? `${currentEmbedding.providerDisplayName} / ${currentEmbedding.modelCode}`
                       + `${currentEmbedding.dimension ? `（${currentEmbedding.dimension} 维）` : ''}`
-                    : '尚未配置'}
+                    : <span className="badge bg-warning-lt">尚未配置</span>}
                 </span>
                 <span className="ms-auto text-secondary small">
                   密钥不入库：库里只存环境变量名，密钥只写不读
