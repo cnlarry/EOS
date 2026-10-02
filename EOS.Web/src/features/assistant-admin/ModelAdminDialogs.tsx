@@ -113,7 +113,11 @@ export function PresetPickerDialog({ usedCodes, onClose, onSaved }: {
     }),
     onSuccess: (result) => {
       toast.notify({
-        message: `已添加供应商，并创建 ${result.modelsCreated} 个模型。接下来用「设置密钥」填一次密钥，再「设为当前」。`,
+        // 只说事实（建了几个模型）：下一步该点什么，页面上那几个按钮就摆在那里，
+      // 再在提示里复述一遍就是噪声
+      message: result.modelsCreated > 0
+        ? `已添加供应商，并创建 ${result.modelsCreated} 个模型。`
+        : '已添加供应商（没有随附型号，可以「添加模型」补）。',
         variant: 'success',
       })
       onSaved()
@@ -229,12 +233,6 @@ export function PresetPickerDialog({ usedCodes, onClose, onSaved }: {
             </Field>
           )}
 
-          <div className="alert alert-info py-2 mb-0">
-            <div className="small">
-              添加后还差两步才能用：①「设置密钥」填一次密钥（只写不读，写进环境变量）；
-              ② 在某个模型上点「设为当前」。两步都不需要重启服务。
-            </div>
-          </div>
         </>
       )}
     </Modal>
@@ -532,17 +530,8 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
         <Button variant="primary" loading={save.isPending} disabled={!canSave}
           onClick={() => save.mutate()}>保存</Button>
       </>}>
-      {/* 改参数是**高阶操作**：加模型时参数已按目录落库（用途 / 维度 / 窗口 / 输出 / 单价），
-          这里只给极个别情况——某条要单独调大超时、某个型号的价格与目录不同之类。
-          所以先说清"一般不用改"，再让人自己决定要不要动 */}
-      {model && (
-        <div className="alert alert-info py-2">
-          <div className="small">
-            一般不需要改：添加模型时这些参数已按目录落库。这里调的是<strong>这一条模型</strong>的取值，
-            改错不会立刻报错，但会影响历史裁剪与计费口径（用途与维度还决定这条模型能不能用）。
-          </div>
-        </div>
-      )}
+      {/* 改参数是**高阶操作**（加模型时参数已按目录落库），但这件事不必在对话框里写一段话——
+          会点开它的人已经在做高阶操作了。字段本身就说明能改什么 */}
       {/* 一律两列等宽：字段按语义两两配对（身份 / 展示 / 量与行为 / 价钱 / 开关），
           不再出现"三个一组"（那会让第三项独占一行的左半边，看起来像没对齐）。 */}
       <div className="row">
@@ -794,30 +783,8 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
           添加{selected.length > 0 ? `（${selected.length} 个）` : ''}
         </Button>
       </>}>
-      {/* 说明这一步只需要"选"：参数不用人填 */}
-      <div className="alert alert-info py-2">
-        <div className="small">
-          下面是<strong>这家支持的型号</strong>（来自预设目录）。选中即可——用途、维度、窗口、最大输出、
-          工具能力与参考单价会一起落库，落地就能用。个别模型的参数要单独调（比如某条要更大超时），
-          加好之后用行内的「参数」按钮改。
-        </div>
-      </div>
-      {/* 能力三态：明确说"这家没有嵌入端点"或"没核过"，而不是等人配出一个注定 404 的行 */}
-      {preset?.embedding === 'Unsupported' && (
-        <div className="alert alert-warning py-2">
-          <div className="small">
-            这家已核实<strong>没有嵌入端点</strong>，所以下面只有对话模型——知识库要用的嵌入模型得换一家。
-          </div>
-        </div>
-      )}
-      {preset?.embedding === 'Unknown' && (
-        <div className="alert alert-info py-2">
-          <div className="small">
-            这家<strong>有没有嵌入端点还没核实</strong>：目录里现在只有对话模型。要用嵌入的话，
-            落库后先试一次知识库入库再定。
-          </div>
-        </div>
-      )}
+      {/* 不放说明性横幅：列表已经写清每条的用途与参数，对话框标题写清"添加模型"，
+          再说一遍"选中即可、参数会一起落库"只是把页面上看得见的事复述一遍 */}
 
       {presets.isPending ? <LoadingState label="正在读取预设目录…" /> : presets.isError ? (
         <ErrorState message={describeApiError(presets.error, '读取预设目录失败。')}

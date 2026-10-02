@@ -551,9 +551,6 @@ export function ModelAdminPage() {
                       + `${currentEmbedding.dimension ? `（${currentEmbedding.dimension} 维）` : ''}`
                     : <span className="badge bg-warning-lt">尚未配置</span>}
                 </span>
-                <span className="ms-auto text-secondary small">
-                  密钥不入库：库里只存环境变量名，密钥只写不读
-                </span>
               </div>}
             >
               {/* 主表：供应商。选中一行决定下面那张模型表看谁 */}
@@ -610,9 +607,11 @@ export function ModelAdminPage() {
                   getRowId={(row) => String(row.modelId)}
                   empty={<EmptyState
                     title={kind === 'CHAT' ? '这家还没有对话模型' : '这家还没有嵌入模型'}
+                    // 空态只说"去哪儿点"：型号与参数下个对话框里都看得见，
+                    // 在这里再解释一遍"参数会一起落库"就是复述
                     description={kind === 'CHAT'
-                      ? '点上方「添加模型」——这家支持的型号会列出来，选中即可（参数按目录一起落库）。'
-                      : '嵌入模型供知识库使用：点上方「添加模型」，目录里的嵌入型号带着维度，选中即可。'} />}
+                      ? '点上方「添加模型」，从这家的型号里选。'
+                      : '嵌入模型供知识库使用：点上方「添加模型」，嵌入型号带着维度。'} />}
                   resizable clientSideSorting
                   storageKey={`assistant-admin-models-${kind}-${selectedProvider.providerId}`} />
               ) : (
