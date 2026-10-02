@@ -460,6 +460,9 @@ public sealed class AssistantParameterResolver(
             case "KB_SEARCH_MAX_CONTENT_LENGTH":
                 builder.Kb.SearchMaxContentLength = Number();
                 break;
+            case "KB_SEARCH_RELEVANCE_MARGIN_PCT":
+                builder.Kb.RelevanceMarginPct = Number();
+                break;
             case "KB_CHUNK_MAX_CHARS":
                 builder.Kb.ChunkMaxChars = Number();
                 break;

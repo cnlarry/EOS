@@ -228,6 +228,70 @@ public sealed class KnowledgeBaseTests
     }
 
     [Fact]
+    public async Task KbSearch_Cuts_The_LowRelevance_Tail_And_Says_So()
+    {
+        var hits = new[]
+        {
+            new KbHit(1, "送审规则", null, 1, "送审后不得重复送审。", 0.5),
+            new KbHit(2, "另一段条款", null, 1, "与提问关系很远的一段。", 1.0),
+        };
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new StubEmbeddingResolver(new FakeEmbeddingModel()),
+            new FakePermissions(false, false), new RecheckGatewayStub([]),
+            AssistantTestRuntime.Fixed(settings: null, policy: AssistantPolicyValues.Default with
+            {
+                Kb = new AssistantKbLimitsOptions { RelevanceMarginPct = 25 },
+            }));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { query = "送审" }), CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("送审规则", result.ContentForModel);
+        Assert.DoesNotContain("另一段条款", result.ContentForModel);
+        // 尾巴被切过要**说出来**：让模型知道"没看到的是刻意丢的"，而不是"检索到的就这些"
+        Assert.Contains("另有 1 条相关性明显更低未列出", result.ContentForModel);
+        // 开头那句"未必都与问题相关"是相对截断的必要配套：最佳命中永远保留，
+        // 所以"整批都不相关"时也会带一条回来
+        Assert.Contains("未必都与问题相关", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task KbSearch_Without_Embedding_Says_Unavailable_And_Keeps_Answering()
+    {
+        var tool = new KbSearchTool(new FakeKnowledge([]),
+            new NotConfiguredEmbeddingResolver("未配置嵌入模型（KB_EMBEDDING_NOT_CONFIGURED）——…"),
+            new FakePermissions(false, false), new RecheckGatewayStub([]));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { query = "送审" }), CancellationToken.None);
+
+        // 拒答而不是抛异常：Deny 的正文会回喂模型，所以它是一句**给模型的指令**——
+        // 如实告知、照常回答其余问题、不让用户去重试一个重试不好的动作
+        Assert.False(result.Ok);
+        Assert.Contains("知识库当前不可用", result.ContentForModel);
+        Assert.Contains("如实告诉用户", result.ContentForModel);
+        Assert.Contains("不要让用户反复重试", result.ContentForModel);
+        Assert.Contains("给管理员的原因", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task KbSearch_Vendor_Failure_Carries_Its_Own_Reason_Code()
+    {
+        var tool = new KbSearchTool(new FakeKnowledge([]),
+            new StubEmbeddingResolver(new FailingEmbeddingModel(
+                new AssistantModelException(AssistantModelErrorKind.Unauthorized, "密钥被拒"))),
+            new FakePermissions(false, false), new RecheckGatewayStub([]));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { query = "送审" }), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        // 原因码要带上：混进"未配置"里，管理员会去 3102 反复确认模型配好了没有，而问题在密钥
+        Assert.Contains("AI_MODEL_UNAUTHORIZED", result.ContentForModel);
+        Assert.Contains("如实告诉用户", result.ContentForModel);
+    }
+
+    [Fact]
     public async Task FilterHits_DropsFragment_WithDeniedReferences()
     {
         var hits = new[]
