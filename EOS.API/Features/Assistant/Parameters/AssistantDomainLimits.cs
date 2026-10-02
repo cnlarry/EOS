@@ -188,4 +188,7 @@ public sealed class AssistantToolLimitsOptions
 
     /// <summary>get_record_history 最近操作的时间窗（天）。</summary>
     public int RecordActivityDays { get; set; } = 90;
+
+    /// <summary>list_attachments 一次最多列出几个附件。</summary>
+    public int AttachmentListMax { get; set; } = 20;
 }

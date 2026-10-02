@@ -333,6 +333,9 @@ public static class AssistantParameterCatalog
         IntParameter("TOOL_LIMIT_RECORD_ACTIVITY_DAYS", "单据历史的时间窗", "TOOL_LIMIT", "天",
             "get_record_history 只看最近多少天的操作记录（窗口越大越慢、越贵）。",
             ToolLimitDefaults.RecordActivityDays, ["RecordActivityDays"], min: 1, max: 3_650),
+        IntParameter("TOOL_LIMIT_ATTACHMENT_LIST_MAX", "附件清单条数上限", "TOOL_LIMIT", "个",
+            "list_attachments 一次最多列出几个附件；同时写进发给模型的工具说明。",
+            ToolLimitDefaults.AttachmentListMax, ["AttachmentListMax"], min: 1, max: 200),
 
         // ---- 域 CHAT（对话行为）----
         // 默认值一律取自 AssistantChatLimitsOptions 的属性初始值（ChatDefaults），不写第二遍数字
