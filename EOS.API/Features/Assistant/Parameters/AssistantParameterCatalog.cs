@@ -327,6 +327,12 @@ public static class AssistantParameterCatalog
         IntParameter("TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH", "报表取数单值字符上限", "TOOL_LIMIT", "字符",
             "run_report 每个单元格截断到多少字符。",
             ToolLimitDefaults.ReportMaxValueLength, ["ReportMaxValueLength"], min: 1, max: 1_000),
+        IntParameter("TOOL_LIMIT_RECORD_HISTORY_MAX", "单据历史条数上限", "TOOL_LIMIT", "条",
+            "get_record_history 的审批历史与最近操作各最多带回几条；同时写进发给模型的工具说明。",
+            ToolLimitDefaults.RecordHistoryMax, ["RecordHistoryMax"], min: 1, max: 200),
+        IntParameter("TOOL_LIMIT_RECORD_ACTIVITY_DAYS", "单据历史的时间窗", "TOOL_LIMIT", "天",
+            "get_record_history 只看最近多少天的操作记录（窗口越大越慢、越贵）。",
+            ToolLimitDefaults.RecordActivityDays, ["RecordActivityDays"], min: 1, max: 3_650),
 
         // ---- 域 CHAT（对话行为）----
         // 默认值一律取自 AssistantChatLimitsOptions 的属性初始值（ChatDefaults），不写第二遍数字

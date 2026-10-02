@@ -412,6 +412,11 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IReportGateway,
     EOS.API.Features.Assistant.Tools.ReportGateway>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListReportsTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.RunReportTool>();
+// 单据历史：定位口径共用 AssistantRecordLocator；审批历史转发工作流引擎，操作历史查审计摘要
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantRecordLocator>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IRecordHistoryGateway,
+    EOS.API.Features.Assistant.Tools.WorkflowRecordHistoryGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.RecordHistoryTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IFieldRelationRepository,
     EOS.API.Features.Assistant.Metrics.FieldRelationRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>();
@@ -454,6 +459,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Catalog.DescribeMechanismTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListReportsTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RunReportTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RecordHistoryTool>(),
         ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

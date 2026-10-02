@@ -539,6 +539,12 @@ public sealed class AssistantParameterResolver(
             case "TOOL_LIMIT_REPORT_MAX_VALUE_LENGTH":
                 builder.ToolLimits.ReportMaxValueLength = Number();
                 break;
+            case "TOOL_LIMIT_RECORD_HISTORY_MAX":
+                builder.ToolLimits.RecordHistoryMax = Number();
+                break;
+            case "TOOL_LIMIT_RECORD_ACTIVITY_DAYS":
+                builder.ToolLimits.RecordActivityDays = Number();
+                break;
         }
     }
 

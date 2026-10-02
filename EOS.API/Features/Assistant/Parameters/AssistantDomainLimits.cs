@@ -182,4 +182,10 @@ public sealed class AssistantToolLimitsOptions
 
     /// <summary>run_report 每个单元格截断到多少字符。</summary>
     public int ReportMaxValueLength { get; set; } = 40;
+
+    /// <summary>get_record_history 审批历史与最近操作各最多带回几条。</summary>
+    public int RecordHistoryMax { get; set; } = 20;
+
+    /// <summary>get_record_history 最近操作的时间窗（天）。</summary>
+    public int RecordActivityDays { get; set; } = 90;
 }
