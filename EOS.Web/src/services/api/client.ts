@@ -11,8 +11,11 @@ export class ApiClient {
     return this.transport.request<TResponse>({ method: 'GET', path, ...options })
   }
 
-  post<TResponse, TBody = unknown>(path: string, body?: TBody, options?: { headers?: Record<string, string>; signal?: AbortSignal }) {
-    return this.transport.request<TResponse>({ method: 'POST', path, body, headers: options?.headers, signal: options?.signal })
+  // query 与 get/postFile 对称：有些动作类端点用一个查询参数区分"对哪一类做这件事"
+  // （如"取消当前模型"要说明是对话还是嵌入），而把这种标志塞进 body 会让 GET 与 POST 两种写法
+  // 的服务端读法不一致——同一个参数在两处要用两种方式读，早晚有一处读漏
+  post<TResponse, TBody = unknown>(path: string, body?: TBody, options?: { query?: Record<string, string | number | undefined>; headers?: Record<string, string>; signal?: AbortSignal }) {
+    return this.transport.request<TResponse>({ method: 'POST', path, body, query: options?.query, headers: options?.headers, signal: options?.signal })
   }
 
   postFile<TBody = unknown>(path: string, body?: TBody, options?: { query?: Record<string, string | number | undefined>; signal?: AbortSignal }) {
