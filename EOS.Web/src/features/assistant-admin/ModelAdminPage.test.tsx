@@ -18,6 +18,14 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
+/** 服务端的失败形状：`{ code, message }`（客户端按 code 归类、按 message 显示原因）。 */
+function errorResponse(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ code, message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 function modelRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     modelId: 11,
@@ -97,6 +105,10 @@ function installFetchMock(options: {
   currentEmbedding?: Record<string, unknown> | null
   presets?: unknown[]
   presetEmbedding?: string
+  /** 厂商清单这次拉回来的内容（默认含一条目录里**没有**的型号，用来验"要人选用途"那条路）。 */
+  discovered?: unknown[]
+  /** 让拉取失败，用来验"降级到目录、并说明原因"。 */
+  discoverFails?: boolean
 } = {}) {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -129,6 +141,21 @@ function installFetchMock(options: {
         })
       }
       return new Response(null, { status: 204 })
+    }
+    if (url.includes('/admin/assistant/models/discover')) {
+      if (options.discoverFails) {
+        return errorResponse(503, 'MODEL_DISCOVERY_FAILED',
+          '连不上 DeepSeek 开放平台（https://api.deepseek.com）：连接超时。')
+      }
+      return jsonResponse({
+        providerId: 1,
+        models: options.discovered ?? [
+          { modelCode: 'deepseek-chat', displayName: 'DeepSeek Chat', contextWindow: 65536, maxOutputTokens: 8192 },
+          { modelCode: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner', contextWindow: 65536, maxOutputTokens: 8192 },
+          // 目录里没有它 → 必须由人选用途才能加
+          { modelCode: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', contextWindow: 131072, maxOutputTokens: 16384 },
+        ],
+      })
     }
     if (url.includes('/admin/assistant/models/active/clear')) {
       return new Response(null, { status: 204 })
@@ -485,6 +512,8 @@ describe('ModelAdminPage', () => {
     // 而拒在逐条提交的中途会留下半截结果）；其余两条可选
     expect(await screen.findByLabelText('deepseek-reasoner', {}, { timeout: 10_000 })).toBeInTheDocument()
     expect(screen.queryByLabelText('deepseek-chat')).toBeNull()
+    // 打开就**自动拉了一次**厂商清单（不需要用户先点一个"拉取"）
+    expect(harness.calls.filter(call => call.url.includes('/models/discover'))).toHaveLength(1)
 
     // 用途与维度**由目录带出来、不必人选也不必填**——这一步本来就只是"选"。
     // 断言落在整行的文本上：这行由多段拼成，逐段查容易随文案调整误报
@@ -515,16 +544,16 @@ describe('ModelAdminPage', () => {
     expect(postedModels().every(item => item.providerId === 1)).toBe(true)
   })
 
-  it('目录里没有的型号：从「添加模型」里的次要出口转手工填，仍以新增提交', async () => {
+  it('清单里没有的型号：从「添加模型」里的次要出口转手工填，仍以新增提交', async () => {
     const harness = installFetchMock()
 
     renderPage()
     // 同上：等选中供应商（按钮从禁用变可用）再点，否则弹窗根本不会打开
     await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
     fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
-    fireEvent.click(await screen.findByRole('button', { name: '目录里没有，手工填' }, { timeout: 10_000 }))
+    fireEvent.click(await screen.findByRole('button', { name: '清单里没有，手工填' }, { timeout: 10_000 }))
 
-    // 手填表单（目录里没有的型号 / 自建端点走这条）：默认用途是对话
+    // 手填表单（自建端点 / 清单里都没有的型号走这条）：默认用途是对话
     expect(await screen.findByLabelText('用途')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('模型标识'), { target: { value: 'local-bge-m3' } })
     fireEvent.change(screen.getByLabelText('显示名'), { target: { value: '本地嵌入服务' } })
@@ -543,6 +572,64 @@ describe('ModelAdminPage', () => {
     expect(posted.dimension).toBe(1024)
     expect(posted.providerId).toBe(1)
     expect(posted.modelCode).toBe('local-bge-m3')
+  })
+
+  it('厂商清单里目录没有的型号：要人选用途才给加（信息客观上不存在，不猜）', async () => {
+    const harness = installFetchMock()
+    const postedModels = () => harness.calls
+      .filter(call => call.method === 'POST' && call.url.includes('/admin/assistant/models'))
+      .map(call => JSON.parse(call.body!))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
+
+    // deepseek-v4-pro 只出现在厂商清单里（目录还没有它）：它也在列表里，但只有型号名
+    const row = await screen.findByLabelText('deepseek-v4-pro', {}, { timeout: 10_000 })
+    fireEvent.click(row)
+
+    // 勾上了但没选用途 → 不能提交（不猜用途：猜错会得到一个永远打不通的行）
+    expect(screen.getByRole('button', { name: /添加（1 个）/ })).toBeDisabled()
+    expect(screen.getByText(/还没有用途/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('deepseek-v4-pro 的用途'), { target: { value: 'CHAT' } })
+    expect(screen.getByRole('button', { name: /添加（1 个）/ })).not.toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /添加（1 个）/ }))
+
+    await waitFor(() => expect(postedModels()).toHaveLength(1))
+    const posted = postedModels()[0]
+    expect(posted.modelCode).toBe('deepseek-v4-pro')
+    expect(posted.kind).toBe('CHAT')
+    // 厂商顺手给的窗口与最大输出带上（这条是厂商的数据，不猜）
+    expect(posted.contextWindow).toBe(131072)
+    expect(posted.maxOutputTokens).toBe(16384)
+    // 目录里没有参考单价 → 留空（= 用全局兜底价），不按 0 元算
+    expect(posted.inputPerMillionYuan).toBeNull()
+  })
+
+  it('厂商清单没拉到时：仍能加目录里的型号，并说明原因且可重试', async () => {
+    const harness = installFetchMock({ discoverFails: true })
+
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
+
+    // 拉取失败是**降级**而不是阻断：目录里的型号照样可选、可加
+    expect(await screen.findByLabelText('deepseek-reasoner', {}, { timeout: 10_000 })).toBeInTheDocument()
+    expect(screen.getByText(/厂商清单这次没拉到/)).toBeInTheDocument()
+    expect(screen.getByText(/连接超时/)).toBeInTheDocument()
+
+    // 「重试」真的会再拉一次（失败之后还能自救）。
+    // 放在"添加"之前点：加成功会关掉对话框，之后再点就点了个已经卸掉的按钮
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await waitFor(() => expect(harness.calls.filter(call => call.url.includes('/models/discover')).length)
+      .toBeGreaterThan(1))
+
+    // 降级状态下仍能把目录里的型号加进来
+    fireEvent.click(screen.getByLabelText('deepseek-reasoner'))
+    fireEvent.click(screen.getByRole('button', { name: /添加（1 个）/ }))
+    await waitFor(() => expect(harness.calls.some(call =>
+      call.method === 'POST' && call.url.includes('/admin/assistant/models'))).toBe(true))
   })
 
   it('嵌入当前独立显示，且取消时带上用途（不会连带清掉对话那条）', async () => {

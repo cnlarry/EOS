@@ -375,6 +375,34 @@ export function deleteProvider(providerId: number) {
   return apiClient.delete<void>(`/admin/assistant/providers/${providerId}`)
 }
 
+/** 厂商拉回来的一个候选型号：厂商给多少填多少，给不出的就是 null（不猜）。 */
+export interface AssistantDiscoveredModel {
+  modelCode: string
+  displayName: string | null
+  contextWindow: number | null
+  maxOutputTokens: number | null
+}
+
+/**
+ * 向厂商**拉取可用模型清单**（OpenAI 兼容的 `GET /models`；认证头按供应商预设的样式发）。
+ *
+ * <p>
+ * 与"目录"分工不同：目录给**参数**（用途 / 维度 / 窗口 / 单价——这些厂商接口里根本没有），
+ * 拉取给**存在性**（这家现在到底有哪些型号，包括目录里还没收录的新型号）。
+ * 两者合并才是"这家能加什么"，见 `AddModelsDialog`。
+ * </p>
+ *
+ * <p>
+ * 失败**如实回报**、不假装成空清单：服务端把原因分成"密钥没配 / 密钥被拒 / 这家没有该端点 /
+ * 网络超时 / 读不懂响应"，界面按原因说下一步。**失败也不阻止加目录里的型号**——
+ * 拉取只是补一份更新，不该成为加模型的前置条件。
+ * </p>
+ */
+export function discoverModels(providerId: number) {
+  return apiClient.get<{ providerId: number; models: AssistantDiscoveredModel[] }>(
+    '/admin/assistant/models/discover', { query: { providerId } })
+}
+
 export function createModel(input: AssistantModelWriteInput) {
   return apiClient.post<{ modelId: number }>('/admin/assistant/models', input)
 }

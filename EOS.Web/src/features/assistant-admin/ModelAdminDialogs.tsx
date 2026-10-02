@@ -7,7 +7,7 @@ import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
 import {
-  createModel, createProvider, listPresets, setProviderKey, updateModel, updateProvider,
+  createModel, createProvider, discoverModels, listPresets, setProviderKey, updateModel, updateProvider,
 } from './api'
 import type {
   AssistantModelItem, AssistantModelKind, AssistantModelPreset,
@@ -131,7 +131,9 @@ export function PresetPickerDialog({ usedCodes, onClose, onSaved }: {
   const canSave = form.displayName.trim().length > 0 && form.baseUrl.trim().length > 0
 
   return (
-    <Modal title="添加供应商" ariaLabel="添加供应商" size="lg" onClose={onClose}
+    // scrollable：字段 + 模型清单一起有 600 多 px，矮窗口里整窗会高过视口——
+    // 滚动收进 body 之后，页脚的「添加 / 取消」始终在屏幕内
+    <Modal title="添加供应商" ariaLabel="添加供应商" size="lg" scrollable onClose={onClose}
       footer={<>
         <Button variant="secondary" onClick={onClose}>取消</Button>
         <Button variant="primary" loading={save.isPending} disabled={!canSave}
@@ -524,6 +526,10 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
     <Modal
       title={model ? `模型参数：${model.displayName}` : '新增模型：目录里没有的型号'}
       ariaLabel={model ? '模型参数' : '新增模型'}
+      // scrollable：字段多（对话模型 10 个控件），矮窗口里整窗会高过视口——
+      // 那时只能滚外层，而滚外层会把「保存 / 取消」一起推出屏幕。
+      // 交给它把滚动收进 body：内容在窗口内滚，页脚始终钉在底部
+      scrollable
       size="lg" onClose={onClose}
       footer={<>
         <Button variant="secondary" onClick={onClose}>取消</Button>
@@ -691,77 +697,160 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
 }
 
 /**
- * 从**目录**里挑型号加进来——不是让人填表。
+ * 加模型：打开就**自动拉厂商清单**，与**目录**合并成"这家能加什么"。
  *
  * <p>
- * 供应商配好之后，"这家提供哪些型号、各自什么用途、多少维、窗口多大、参考单价多少"都是已知的
- * （预设目录就是为这件事存在的）。所以这一步只需要**选**：选中的连同这些参数一起落库，
- * 落地即可用。默认参数不该由人一个个填——那是把已知信息又推回去问一遍。
+ * 两者分工不同，缺一不可：
+ * </p>
+ *
+ * <ul>
+ * <li>**厂商清单**（`GET /models`，进对话框就拉）回答"这家现在有哪些型号"——
+ * 包括目录里还没收录的新型号。型号名的拼写以厂商为准，那才是真正会发出去的字符串；</li>
+ * <li>**目录**给**参数**：用途、维度、窗口、参考单价——这些厂商接口里根本没有
+ * （`/models` 只报标识，个别厂商顺手给窗口与最大输出）。所以目录里收录过的型号
+ * **选中即落库**，参数一起进去。</li>
+ * </ul>
+ *
+ * <p>
+ * 拉取失败**不阻止加模型**：清单降级成"目录里的型号"，并在筛选行下用一句话说明原因、可重试。
+ * 加目录里的型号本来是本地动作，不该被一次出网失败卡住。
  * </p>
  *
  * <p>
- * 手填表单只剩一个出口："目录里还没有的型号"（厂商刚出的、自建端点），作为**次要动作**放在
- * 底栏，不在主路径上。
+ * 厂商列了、目录里没有的型号（厂商刚出的新型号）需要人选**用途**（嵌入还要给维度）——
+ * 这不是"让人填表"，而是这条信息客观上不存在，只能由人指定。不选就不给加。
  * </p>
  *
  * <p>
  * **库里已有的型号不再列出**：勾了也会被唯一约束拒，而拒在逐条提交的中途会留下半截结果。
+ * 手填表单只剩一个出口（自建端点 / 清单里都没有的型号），作为**次要动作**放在底栏。
  * </p>
  */
 export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
   provider: AssistantProviderItem
   onClose: () => void
   onSaved: () => void
-  /** 目录里没有这个型号时的出口：转手工新增（复用模型编辑器）。 */
+  /** 清单里没有的型号时的出口：转手工新增（复用模型编辑器）。 */
   onManual: () => void
 }) {
   const toast = useToast()
   const presets = useQuery({ queryKey: ['assistant-admin-presets'], queryFn: listPresets })
   const preset = presets.data?.find(item => item.code === provider.code)
 
+  // 进对话框就拉。**关掉自动重试**：重试会把"密钥不对"刷成"网络不稳定"，恰好抹掉最有用的那条信息
+  const discovered = useQuery({
+    queryKey: ['assistant-admin-discover', provider.providerId],
+    queryFn: () => discoverModels(provider.providerId),
+    retry: false,
+  })
+
   const [keyword, setKeyword] = useState('')
   const [selected, setSelected] = useState<string[]>([])
+  /** 厂商列了、目录里没有的型号：用途（嵌入还有维度）由人选；没选就不给加。 */
+  const [picks, setPicks] = useState<Record<string, { kind: AssistantModelKind | ''; dimension: string }>>({})
 
   /** 库里已有的型号不再列出（理由见上面那段注释）。 */
   const existing = useMemo(
     () => new Set(provider.models.map(item => item.modelCode)),
     [provider.models])
 
-  const rows = useMemo(() => {
-    const all = (preset?.models ?? []).filter(item => !existing.has(item.modelCode))
+  /** 目录里收录过的：参数齐全，选中即落库。 */
+  const catalogRows = useMemo(
+    () => (preset?.models ?? [])
+      .filter(item => !existing.has(item.modelCode))
+      .sort((left, right) => left.modelCode.localeCompare(right.modelCode)),
+    [preset, existing])
+
+  /** 厂商列了、目录里没有的：只有型号名（厂商顺带给的窗口与最大输出也留着），用途要人选。 */
+  const vendorOnlyRows = useMemo(() => {
+    const known = new Set((preset?.models ?? []).map(item => item.modelCode))
+    return (discovered.data?.models ?? [])
+      .filter(item => !existing.has(item.modelCode) && !known.has(item.modelCode))
+  }, [discovered.data, preset, existing])
+
+  const visibleCatalog = useMemo(() => {
     const text = keyword.trim().toLowerCase()
-    return text.length === 0 ? all : all.filter(item =>
-      item.modelCode.toLowerCase().includes(text)
+    return catalogRows.filter(item => text.length === 0
+      || item.modelCode.toLowerCase().includes(text)
       || item.displayName.toLowerCase().includes(text))
-  }, [preset, existing, keyword])
+  }, [catalogRows, keyword])
+
+  const visibleVendorOnly = useMemo(() => {
+    const text = keyword.trim().toLowerCase()
+    return vendorOnlyRows.filter(item => text.length === 0
+      || item.modelCode.toLowerCase().includes(text)
+      || (item.displayName ?? '').toLowerCase().includes(text))
+  }, [vendorOnlyRows, keyword])
+
+  const visibleCodes = [
+    ...visibleCatalog.map(item => item.modelCode),
+    ...visibleVendorOnly.map(item => item.modelCode),
+  ]
 
   const toggle = (modelCode: string) => setSelected(previous =>
     previous.includes(modelCode)
       ? previous.filter(item => item !== modelCode)
       : [...previous, modelCode])
 
-  const allSelected = rows.length > 0 && rows.every(item => selected.includes(item.modelCode))
+  const allSelected = visibleCodes.length > 0 && visibleCodes.every(code => selected.includes(code))
   // 全选/清空只作用于**当前列出的**那些：筛选之后"全选"却把看不见的也选上，
-  // 落库时会多出一批没人确认过的行
-  const toggleAll = () => setSelected(allSelected ? [] : rows.map(item => item.modelCode))
+  // 落库时会多出一批没人确认过的行；反过来，清空也不该把筛选之外已经勾好的丢掉
+  const toggleAll = () => setSelected(allSelected
+    ? selected.filter(code => !visibleCodes.includes(code))
+    : [...new Set([...selected, ...visibleCodes])])
+
+  const setPick = (modelCode: string, patch: Partial<{ kind: AssistantModelKind | ''; dimension: string }>) =>
+    setPicks(previous => ({
+      ...previous,
+      [modelCode]: { ...(previous[modelCode] ?? { kind: '' as const, dimension: '' }), ...patch },
+    }))
+
+  /** 勾了但还没给用途（嵌入还缺维度）的那些：它们不能提交——参数客观上不存在，不能猜。 */
+  const incomplete = selected.filter(code => {
+    if (!vendorOnlyRows.some(item => item.modelCode === code)) return false
+    const pick = picks[code]
+    if (!pick || pick.kind === '') return true
+    return pick.kind === 'EMBEDDING' && (Number(pick.dimension) || 0) <= 0
+  })
 
   const save = useMutation({
     // 逐条顺序创建：没有"批量加到已有供应商"的端点。中途失败时如实说清已建成几个——
     // 报一句"保存失败"会让管理员重来一次，然后撞在唯一约束上
     mutationFn: async () => {
       let created = 0
-      for (const item of (preset?.models ?? []).filter(one => selected.includes(one.modelCode))) {
-        // **连同目录里的参考参数一起落库**：用途 / 维度 / 窗口 / 最大输出 / 工具能力 / 参考单价。
-        // 落库之后真要调，走行内的「参数」——那是极个别情况，不该是加模型时的必经步骤
+      for (const item of catalogRows.filter(one => selected.includes(one.modelCode))) {
+        // **连同目录里的参考参数一起落库**：用途 / 维度 / 窗口 / 最大输出 / 工具能力 / 参考单价
         await createModel({ ...toPresetModelWrite(item), providerId: provider.providerId })
+        created++
+      }
+      for (const item of vendorOnlyRows.filter(one => selected.includes(one.modelCode))) {
+        const pick = picks[item.modelCode]!
+        const isEmbedding = pick.kind === 'EMBEDDING'
+        await createModel({
+          providerId: provider.providerId,
+          modelCode: item.modelCode,
+          displayName: item.displayName ?? item.modelCode,
+          // 厂商给了窗口与最大输出就带上（实测 DeepSeek 给，多数厂商不给），其余留空
+          contextWindow: isEmbedding ? null : item.contextWindow ?? null,
+          maxOutputTokens: isEmbedding ? null : item.maxOutputTokens ?? null,
+          defaultTemperature: null,
+          timeoutSeconds: null,
+          inputPerMillionYuan: null,
+          outputPerMillionYuan: null,
+          supportsTools: !isEmbedding,
+          enabled: true,
+          sortIdx: 0,
+          remark: null,
+          kind: pick.kind as AssistantModelKind,
+          dimension: isEmbedding ? Number(pick.dimension) : null,
+        })
         created++
       }
       return created
     },
     onSuccess: (created) => {
       toast.notify({
-        message: `已添加 ${created} 个模型（用途 / 维度 / 窗口 / 单价按目录落库）。`
-          + '接下来在需要的那一条上点「设为当前」。',
+        message: `已添加 ${created} 个模型。接下来在需要的那一条上点「设为当前」。`,
         variant: 'success',
       })
       onSaved()
@@ -773,32 +862,32 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
   })
 
   return (
-    <Modal title={`添加模型：${provider.displayName}`} ariaLabel="添加模型" size="lg" onClose={onClose}
+    // scrollable：型号多时整窗会高过视口。滚动交给 body（而不是像原来那样给列表
+    // 自己一个 maxHeight）——一层滚动比"窗口里再套一个小滚动区"清楚，页脚也始终可见
+    <Modal title={`添加模型：${provider.displayName}`} ariaLabel="添加模型" size="lg" scrollable onClose={onClose}
       footer={<>
         <Button variant="secondary" onClick={onClose}>取消</Button>
-        {/* 目录里没有的型号（厂商刚出的 / 自建端点）从这条次要出口走手填 */}
-        <Button variant="ghost" onClick={onManual}>目录里没有，手工填</Button>
-        <Button variant="primary" loading={save.isPending} disabled={selected.length === 0}
+        {/* 清单里都没有的型号（自建端点、厂商还没列出的）从这条次要出口走手填 */}
+        <Button variant="ghost" onClick={onManual}>清单里没有，手工填</Button>
+        <Button variant="primary" loading={save.isPending}
+          disabled={selected.length === 0 || incomplete.length > 0}
           onClick={() => save.mutate()}>
           添加{selected.length > 0 ? `（${selected.length} 个）` : ''}
         </Button>
       </>}>
-      {/* 不放说明性横幅：列表已经写清每条的用途与参数，对话框标题写清"添加模型"，
-          再说一遍"选中即可、参数会一起落库"只是把页面上看得见的事复述一遍 */}
-
       {presets.isPending ? <LoadingState label="正在读取预设目录…" /> : presets.isError ? (
         <ErrorState message={describeApiError(presets.error, '读取预设目录失败。')}
           onRetry={() => void presets.refetch()} />
-      ) : rows.length === 0 ? (
+      ) : catalogRows.length + vendorOnlyRows.length === 0 ? (
         <EmptyState
-          title={preset ? '目录里的型号都加过了' : '目录里没有这家的型号'}
-          description={preset
-            ? '要再加一个目录外的型号，用下面的「目录里没有，手工填」。'
-            : '这家是自定义 / 自建端点，目录里没有它的型号表。请用下面的「目录里没有，手工填」，'
-              + '按厂商给的型号标识录入。'} />
+          title="这家能加的型号都加过了"
+          // 清单没拉到时不说"都加过了"——那只说明**看到**的这些都加过了
+          description={discovered.isError
+            ? '厂商清单这次没拉到，可能还有清单外的型号——用下面的「清单里没有，手工填」。'
+            : '要加清单里没有的型号，用下面的「清单里没有，手工填」。'} />
       ) : (
         <>
-          <div className="row g-2 align-items-end mb-2">
+          <div className="row g-2 align-items-end mb-1">
             <div className="col-md-6">
               <label className="form-label small mb-1" htmlFor="add-models-keyword">筛选</label>
               <input id="add-models-keyword" className="form-control form-control-sm font-monospace"
@@ -806,46 +895,117 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
                 onChange={(event) => setKeyword(event.target.value)} />
             </div>
             <div className="col-md-6 text-secondary small">
-              目录里还有 {rows.length} 个型号没加；已选 {selected.length} 个。
+              共 {catalogRows.length + vendorOnlyRows.length} 个可加；已选 {selected.length} 个。
             </div>
           </div>
 
-          <label className="form-check mb-2">
-            <input type="checkbox" className="form-check-input" checked={allSelected}
-              aria-label="全选" onChange={toggleAll} />
-            <span className="form-check-label small">全选（当前列出的 {rows.length} 个）</span>
-          </label>
+          {/* 拉取状态只在"还没回来"与"失败"时说：成功时说一句"厂商清单 N 条"是把列表本身复述一遍 */}
+          {discovered.isPending && <div className="form-hint">正在读取厂商清单…</div>}
+          {discovered.isError && (
+            <div className="form-hint">
+              厂商清单这次没拉到：{describeApiError(discovered.error, '拉取失败。')}
+              {' '}
+              <Button size="sm" variant="ghost" onClick={() => void discovered.refetch()}>重试</Button>
+            </div>
+          )}
+          {incomplete.length > 0 && (
+            <div className="form-hint">
+              有 {incomplete.length} 个型号还没有用途（嵌入还要给维度）——它们是厂商新列出的，
+              目录里还没有对应参数。
+            </div>
+          )}
 
-          <div className="d-flex flex-column gap-1" style={{ maxHeight: 340, overflowY: 'auto' }}>
-            {rows.map(item => (
-              <div key={item.modelCode} className="border rounded p-2">
-                <label className="form-check mb-0">
-                  <input type="checkbox" className="form-check-input" checked={selected.includes(item.modelCode)}
-                    aria-label={item.modelCode}
-                    onChange={() => toggle(item.modelCode)} />
-                  <span className="form-check-label">
-                    <span className="font-monospace">{item.modelCode}</span>
-                    <span className="text-secondary small ms-2">
-                      {item.displayName}
-                      {/* 用途与维度都要标出来：它们决定这条模型能不能用（嵌入还得与集合维度一致）。
-                          这些值就是从目录带过来的，落库时照原样写进去 */}
-                      {' · '}{KIND_LABEL[item.kind]}
-                      {item.dimension ? `（${item.dimension} 维）` : ''}
-                      {item.kind === 'CHAT' && item.contextWindow
-                        ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}`
-                        : ''}
-                      {item.kind === 'CHAT' ? (item.supportsTools ? ' · 支持工具' : ' · 不支持工具') : ''}
-                      {item.inputPerMillionYuan != null ? ` · 参考单价 入 ¥${item.inputPerMillionYuan}` : ''}
-                      {item.kind === 'CHAT' && item.outputPerMillionYuan != null
-                        ? ` / 出 ¥${item.outputPerMillionYuan}`
-                        : ''}
-                    </span>
-                  </span>
-                </label>
-                {item.remark && <div className="form-hint">{item.remark}</div>}
+          {visibleCodes.length === 0 ? (
+            <div className="text-secondary small p-2">没有匹配「{keyword.trim()}」的型号。</div>
+          ) : (
+            <>
+              <label className="form-check mb-2">
+                <input type="checkbox" className="form-check-input" checked={allSelected}
+                  aria-label="全选" onChange={toggleAll} />
+                <span className="form-check-label small">全选（当前列出的 {visibleCodes.length} 个）</span>
+              </label>
+
+              <div className="d-flex flex-column gap-1">
+                {visibleCatalog.map(item => (
+                  <div key={item.modelCode} className="border rounded p-2">
+                    <label className="form-check mb-0">
+                      <input type="checkbox" className="form-check-input" checked={selected.includes(item.modelCode)}
+                        aria-label={item.modelCode}
+                        onChange={() => toggle(item.modelCode)} />
+                      <span className="form-check-label">
+                        <span className="font-monospace">{item.modelCode}</span>
+                        <span className="text-secondary small ms-2">
+                          {item.displayName}
+                          {/* 用途与维度都要标出来：它们决定这条模型能不能用（嵌入还得与集合维度一致）。
+                              这些值就是从目录带过来的，落库时照原样写进去 */}
+                          {' · '}{KIND_LABEL[item.kind]}
+                          {item.dimension ? `（${item.dimension} 维）` : ''}
+                          {item.kind === 'CHAT' && item.contextWindow
+                            ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}`
+                            : ''}
+                          {item.kind === 'CHAT' ? (item.supportsTools ? ' · 支持工具' : ' · 不支持工具') : ''}
+                          {item.inputPerMillionYuan != null ? ` · 参考单价 入 ¥${item.inputPerMillionYuan}` : ''}
+                          {item.kind === 'CHAT' && item.outputPerMillionYuan != null
+                            ? ` / 出 ¥${item.outputPerMillionYuan}`
+                            : ''}
+                        </span>
+                      </span>
+                    </label>
+                    {item.remark && <div className="form-hint">{item.remark}</div>}
+                  </div>
+                ))}
+
+                {visibleVendorOnly.map(item => {
+                  const pick = picks[item.modelCode]
+                  const chosen = selected.includes(item.modelCode)
+                  return (
+                    <div key={item.modelCode} className="border rounded p-2">
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <label className="form-check mb-0">
+                          <input type="checkbox" className="form-check-input" checked={chosen}
+                            aria-label={item.modelCode}
+                            onChange={() => toggle(item.modelCode)} />
+                          <span className="form-check-label">
+                            <span className="font-monospace">{item.modelCode}</span>
+                            <span className="text-secondary small ms-2">
+                              {item.displayName ?? '厂商新列出的型号'}
+                              {item.contextWindow ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}` : ''}
+                              {item.maxOutputTokens
+                                ? ` · 最大输出 ${item.maxOutputTokens.toLocaleString('zh-CN')}`
+                                : ''}
+                            </span>
+                          </span>
+                        </label>
+
+                        {/* 目录里没有它 → 用途只能由人指定（嵌入还要维度）。
+                            不选就不给加：这两个值猜不出来，猜错会得到一个永远打不通的行 */}
+                        {chosen && (
+                          <span className="d-flex align-items-center gap-1 ms-auto">
+                            <select className="form-select form-select-sm" style={{ width: 120 }}
+                              aria-label={`${item.modelCode} 的用途`} value={pick?.kind ?? ''}
+                              onChange={(event) => setPick(item.modelCode, {
+                                kind: event.target.value as AssistantModelKind | '',
+                              })}>
+                              <option value="">选用途…</option>
+                              <option value="CHAT">对话</option>
+                              <option value="EMBEDDING">嵌入</option>
+                            </select>
+                            {pick?.kind === 'EMBEDDING' && (
+                              <input className="form-control form-control-sm" style={{ width: 110 }}
+                                inputMode="numeric" placeholder="维度"
+                                aria-label={`${item.modelCode} 的维度`}
+                                value={pick.dimension}
+                                onChange={(event) => setPick(item.modelCode, { dimension: event.target.value })} />
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </>
       )}
     </Modal>
