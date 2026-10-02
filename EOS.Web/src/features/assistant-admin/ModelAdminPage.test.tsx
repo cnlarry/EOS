@@ -456,6 +456,18 @@ describe('ModelAdminPage', () => {
     expect(screen.getByText(/上限：每人 ¥5\/天、全局 ¥50\/天/)).toBeInTheDocument()
   })
 
+  it('按天表的日期显示 yyyy-MM-dd（它是日期标签，不是一个时刻）', async () => {
+    installFetchMock()
+
+    renderPage()
+    fireEvent.click(await screen.findByRole('tab', { name: '用量' }))
+
+    // mock 给的是服务端那种 ISO 串（2026-10-01T00:00:00）：直接摆出来会被列宽截成
+    // "2026-10-01T00:0…"，而这一列本来就是个日期
+    expect(await screen.findByText('2026-10-01')).toBeInTheDocument()
+    expect(screen.queryByText('2026-10-01T00:00:00')).toBeNull()
+  })
+
   it('拉取型号：厂商给的清单里排除已在库的，勾选后按所选用途与维度落库', async () => {
     const harness = installFetchMock()
 

@@ -28,6 +28,18 @@ import {
 const orDash = (value: number | null | undefined) => (value == null ? '默认' : String(value))
 
 /**
+ * 用量趋势的"天"：它是一个**日期标签**，不是时刻。
+ *
+ * <p>
+ * 服务端按 UTC 自然日切分（`CAST(CREATED_AT AS date)`），序列化出来是 `2026-10-01T00:00:00`。
+ * 这里取前 10 位，而**不是** `new Date(…)` 再格式化——后者会按本地时区重新解释这个值，
+ * 西半球时区把日期挪到前一天（`T00:00:00` 在西五区是前一天 19:00），于是"10 月 1 日的用量"
+ * 出现在 9 月 30 日那一行。日期标签没有时区可挪，也就不该被时区挪。
+ * </p>
+ */
+const dayLabel = (value: string) => value.slice(0, 10)
+
+/**
  * 两个用途的中文名（区块标题 / 通知文案共用一份，免得同一个词在两处各写一遍）。
  *
  * <p>两个用途在界面上始终分开说：助手能不能聊天看对话模型，知识库能不能用看嵌入模型。
@@ -75,7 +87,12 @@ const USAGE_COLUMNS: ColumnDef<AssistantModelUsageRow, unknown>[] = [
 
 /** 用量：按天聚合的列。 */
 const TREND_COLUMNS: ColumnDef<AssistantUsageTrendRow, unknown>[] = [
-  { accessorKey: 'day', header: '日期', meta: { className: 'text-nowrap', minWidth: 110 } },
+  {
+    accessorKey: 'day', header: '日期',
+    meta: { className: 'text-nowrap', minWidth: 110 },
+    // 显示 yyyy-MM-dd，排序仍用原始值（ISO 串按字典序排 = 按时间排，不会因为显示改了而排错）
+    cell: (info) => <span className="text-secondary">{dayLabel(String(info.getValue() ?? ''))}</span>,
+  },
   {
     accessorKey: 'requests', header: '回复数',
     meta: { className: 'text-end text-nowrap', minWidth: 84 },
