@@ -1,5 +1,5 @@
 import {
-  IconAlertTriangle, IconCircleCheck, IconCloudDownload, IconEdit, IconKey, IconPlus, IconRefresh, IconTrash,
+  IconAdjustments, IconAlertTriangle, IconCircleCheck, IconEdit, IconKey, IconPlus, IconRefresh, IconTrash,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
@@ -21,7 +21,7 @@ import type {
   AssistantProviderItem, AssistantUsageTrendRow,
 } from './api'
 import {
-  DiscoverModelsDialog, ModelEditorDialog, PresetPickerDialog, ProviderEditorDialog, ProviderKeyDialog,
+  AddModelsDialog, ModelEditorDialog, PresetPickerDialog, ProviderEditorDialog, ProviderKeyDialog,
 } from './ModelAdminDialogs'
 
 /** 数字可空时显示"默认"，避免把"没配"看成"配成了 0"。 */
@@ -145,9 +145,12 @@ export function ModelAdminPage() {
   const [adding, setAdding] = useState(false)
   const [editProvider, setEditProvider] = useState<AssistantProviderItem | null>(null)
   const [keyProvider, setKeyProvider] = useState<AssistantProviderItem | null>(null)
-  const [editModel, setEditModel] = useState<{ model: AssistantModelItem; provider: AssistantProviderItem } | null>(null)
-  const [discoverProvider, setDiscoverProvider] = useState<AssistantProviderItem | null>(null)
-  const [addModelProvider, setAddModelProvider] = useState<AssistantProviderItem | null>(null)
+  /** 调参数（极个别情况）：某一条模型的窗口 / 输出 / 温度 / 超时 / 单价要单独改。 */
+  const [paramsModel, setParamsModel] = useState<{ model: AssistantModelItem; provider: AssistantProviderItem } | null>(null)
+  /** 从目录里挑型号加进来（主路径）。 */
+  const [addModelsProvider, setAddModelsProvider] = useState<AssistantProviderItem | null>(null)
+  /** 手工新增（目录里没有的型号）：由「添加模型」对话框里的次要出口进来。 */
+  const [manualModelProvider, setManualModelProvider] = useState<AssistantProviderItem | null>(null)
 
   const providers = useQuery({ queryKey: ['assistant-admin-providers'], queryFn: listProviders })
   const usage = useQuery({
@@ -386,9 +389,11 @@ export function ModelAdminPage() {
               title={model.isActive ? '已经是当前模型' : '设为当前模型（立即生效，无需重启）'}
               disabled={model.isActive || !model.enabled || activate.isPending}
               onClick={() => activate.mutate(model.modelId)}>设为当前</Button>
-            <Button size="sm" variant="ghost" icon={<IconEdit size={14} />}
-              title="编辑（不含密钥）"
-              onClick={() => setEditModel({ model, provider: items.find(p => p.providerId === model.providerId)! })}>编辑</Button>
+            {/* 「参数」而不是「编辑」：加模型时参数已按目录落库，这里只给极个别情况用
+                （某条要单独调大超时之类）。名字摆对了，人就不会以为加模型还得先填一遍 */}
+            <Button size="sm" variant="ghost" icon={<IconAdjustments size={14} />}
+              title="调整该模型的参数（窗口 / 最大输出 / 温度 / 超时 / 单价 / 用途与维度）——一般不需要改"
+              onClick={() => setParamsModel({ model, provider: items.find(p => p.providerId === model.providerId)! })}>参数</Button>
             <Button size="sm" variant="ghost" icon={<IconTrash size={14} />}
               title="删除（当前模型不可删）"
               disabled={model.isActive || removeModel.isPending}
@@ -591,14 +596,13 @@ export function ModelAdminPage() {
                   ))}
                 </div>
                 <span className="ms-auto d-flex gap-1">
-                  <Button size="sm" variant="ghost" className="erp-command-btn" icon={<IconCloudDownload size={16} />}
-                    disabled={!selectedProvider}
-                    title="向厂商拉取可用型号，勾选后落库（拉取失败会说明原因，不会退回预设清单）"
-                    onClick={() => selectedProvider && setDiscoverProvider(selectedProvider)}>拉取型号</Button>
+                  {/* 只有一个入口：从目录里**选**这家支持的型号（选中的连同参考参数一起落库）。
+                      目录里没有的型号从那个对话框里的次要出口手工填——不再摆一条并列的"拉取"，
+                      那是让同一件事走两条路，还逼着人给每条型号手填用途与维度 */}
                   <Button size="sm" variant="ghost" className="erp-command-btn" icon={<IconPlus size={16} />}
                     disabled={!selectedProvider}
-                    title="手工新增一个模型（厂商拉不到的型号、自建端点走这里）"
-                    onClick={() => selectedProvider && setAddModelProvider(selectedProvider)}>新增模型</Button>
+                    title="从目录里选这家支持的模型（用途 / 维度 / 窗口 / 单价一并落库，落地即用）"
+                    onClick={() => selectedProvider && setAddModelsProvider(selectedProvider)}>添加模型</Button>
                 </span>
               </div>
               {selectedProvider ? (
@@ -607,8 +611,8 @@ export function ModelAdminPage() {
                   empty={<EmptyState
                     title={kind === 'CHAT' ? '这家还没有对话模型' : '这家还没有嵌入模型'}
                     description={kind === 'CHAT'
-                      ? '用「拉取型号」从厂商拉取后勾选落库，或用「新增模型」手工填。'
-                      : '嵌入模型供知识库使用：拉取型号时把用途选成"嵌入"并给维度，或用「新增模型」手工填。'} />}
+                      ? '点上方「添加模型」——这家支持的型号会列出来，选中即可（参数按目录一起落库）。'
+                      : '嵌入模型供知识库使用：点上方「添加模型」，目录里的嵌入型号带着维度，选中即可。'} />}
                   resizable clientSideSorting
                   storageKey={`assistant-admin-models-${kind}-${selectedProvider.providerId}`} />
               ) : (
@@ -637,21 +641,27 @@ export function ModelAdminPage() {
           onClose={() => setKeyProvider(null)}
           onSaved={() => { setKeyProvider(null); refresh() }} />
       )}
-      {editModel && (
-        <ModelEditorDialog model={editModel.model} providerId={editModel.provider.providerId} providers={items}
-          onClose={() => setEditModel(null)}
-          onSaved={() => { setEditModel(null); refresh() }} />
+      {paramsModel && (
+        <ModelEditorDialog model={paramsModel.model} providerId={paramsModel.provider.providerId} providers={items}
+          onClose={() => setParamsModel(null)}
+          onSaved={() => { setParamsModel(null); refresh() }} />
       )}
-      {discoverProvider && (
-        <DiscoverModelsDialog provider={discoverProvider}
-          onClose={() => setDiscoverProvider(null)}
-          onSaved={() => { setDiscoverProvider(null); refresh() }} />
+      {addModelsProvider && (
+        <AddModelsDialog provider={addModelsProvider}
+          onClose={() => setAddModelsProvider(null)}
+          onSaved={() => { setAddModelsProvider(null); refresh() }}
+          // 目录里没有这个型号：关掉"选"的那层，换成手填表单（同一家供应商，上下文不丢）
+          onManual={() => {
+            const target = addModelsProvider
+            setAddModelsProvider(null)
+            setManualModelProvider(target)
+          }} />
       )}
       {/* 同一个对话框的"新增"形态：厂商拉不到的型号（自建端点、刚出的新型号）从这里手工加 */}
-      {addModelProvider && (
-        <ModelEditorDialog model={null} providerId={addModelProvider.providerId} providers={items}
-          onClose={() => setAddModelProvider(null)}
-          onSaved={() => { setAddModelProvider(null); refresh() }} />
+      {manualModelProvider && (
+        <ModelEditorDialog model={null} providerId={manualModelProvider.providerId} providers={items}
+          onClose={() => setManualModelProvider(null)}
+          onSaved={() => { setManualModelProvider(null); refresh() }} />
       )}
     </div>
   )

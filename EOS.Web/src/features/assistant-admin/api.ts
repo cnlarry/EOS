@@ -375,26 +375,6 @@ export function deleteProvider(providerId: number) {
   return apiClient.delete<void>(`/admin/assistant/providers/${providerId}`)
 }
 
-/** 厂商拉回来的一个型号。**窗口与最大输出拿不到就是 null**（多数厂商不给），界面留空由人补，不猜。 */
-export interface AssistantDiscoveredModel {
-  modelCode: string
-  displayName: string
-  contextWindow: number | null
-  maxOutputTokens: number | null
-}
-
-/**
- * 向厂商**拉取可用模型清单**（型号清单不硬编码，ADR-030 §12.3）。
- *
- * <p>失败**如实回报**、不退回预设里的旧型号：那会把一次失败伪装成一次成功的列表，
- * 而管理员会拿着过期的型号去落库。失败原因（密钥没配 / 被拒 / 这家没有该端点 / 网络超时）
- * 由服务端给出各自的 code 与说明，界面照原样显示。</p>
- */
-export function discoverModels(providerId: number) {
-  return apiClient.get<{ providerId: number; models: AssistantDiscoveredModel[] }>(
-    '/admin/assistant/models/discover', { query: { providerId } })
-}
-
 export function createModel(input: AssistantModelWriteInput) {
   return apiClient.post<{ modelId: number }>('/admin/assistant/models', input)
 }
