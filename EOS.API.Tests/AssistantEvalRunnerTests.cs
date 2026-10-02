@@ -138,14 +138,6 @@ public sealed class AssistantEvalRunnerTests
             Task.FromResult(new RecordStateInfo(true, false, false));
     }
 
-    private sealed class FakeEmbedding : IEmbeddingModel
-    {
-        public string ModelId => "test@1";
-        public int Dimension => 4;
-        public Task<float[]> EmbedAsync(string text, CancellationToken token) =>
-            Task.FromResult(new float[] { 1, 0, 0, 0 });
-    }
-
     private sealed class FilteringKnowledge : IKnowledgeRepository
     {
         public IReadOnlyList<string>? SeenVisibilities { get; private set; }
@@ -293,7 +285,8 @@ public sealed class AssistantEvalRunnerTests
             ["list_views"] = new ListViewsTool(new SchemaGatewayStub(), deny),
             ["list_procedures"] = new ListProceduresTool(new SchemaGatewayStub(), deny),
             ["get_module_flow"] = new GetModuleFlowTool(searchGateway, new FlowGatewayStub(), deny),
-            ["kb_search"] = new KbSearchTool(knowledge, new FakeEmbedding(), deny, new RecheckGatewayStub()),
+            ["kb_search"] = new KbSearchTool(
+                knowledge, new StubEmbeddingResolver(new FakeEmbeddingModel()), deny, new RecheckGatewayStub()),
             ["diagnose_module"] = new DiagnoseModuleTool(new PlanCatalogStub(), deny),
             ["apply_changeset"] = new ApplyChangeSetTool(new ChangeSetService(new PlanCatalogStub(), new WriterStub()), deny),
             ["get_my_digest"] = new GetMyDigestTool(new DigestStoreStub()),

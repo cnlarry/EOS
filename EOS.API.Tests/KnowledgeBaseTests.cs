@@ -54,14 +54,6 @@ public sealed class KnowledgeBaseTests
         Assert.Equal("[1,2.5]", json);
     }
 
-    private sealed class FakeEmbedding : IEmbeddingModel
-    {
-        public string ModelId => "test@1";
-        public int Dimension => 4;
-        public Task<float[]> EmbedAsync(string text, CancellationToken token) =>
-            Task.FromResult(new float[] { 1, 0, 0, 0 });
-    }
-
     private sealed class FakePermissions(bool consultant, bool ops, IReadOnlySet<int>? deniedModules = null) : IPermissionService
     {
         private ModulePermission Permission(int moduleId, bool canSetup) =>
@@ -161,7 +153,7 @@ public sealed class KnowledgeBaseTests
     {
         var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2, "送审后不得重复送审。", 0.1) };
         var knowledge = new FakeKnowledge(hits);
-        var tool = new KbSearchTool(knowledge, new FakeEmbedding(),
+        var tool = new KbSearchTool(knowledge, new StubEmbeddingResolver(new FakeEmbeddingModel()),
             new FakePermissions(consultant: true, ops: false),
             new RecheckGatewayStub([new Dictionary<string, object?>()]));
 
@@ -179,7 +171,7 @@ public sealed class KnowledgeBaseTests
     {
         var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2,
             "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.1) };
-        var tool = new KbSearchTool(new FakeKnowledge(hits), new FakeEmbedding(),
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new StubEmbeddingResolver(new FakeEmbeddingModel()),
             new FakePermissions(false, false, deniedModules: new HashSet<int> { 1405 }),
             new RecheckGatewayStub([new Dictionary<string, object?>()]));
 
@@ -195,7 +187,7 @@ public sealed class KnowledgeBaseTests
     {
         var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2,
             "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.1) };
-        var tool = new KbSearchTool(new FakeKnowledge(hits), new FakeEmbedding(),
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new StubEmbeddingResolver(new FakeEmbeddingModel()),
             new FakePermissions(false, false),
             new RecheckGatewayStub([]));
 
@@ -211,7 +203,7 @@ public sealed class KnowledgeBaseTests
     {
         var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2,
             "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.1) };
-        var tool = new KbSearchTool(new FakeKnowledge(hits), new FakeEmbedding(),
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new StubEmbeddingResolver(new FakeEmbeddingModel()),
             new FakePermissions(false, false),
             new RecheckGatewayStub([new Dictionary<string, object?> { ["ORDER_NO"] = "26080001" }]));
 
@@ -225,7 +217,7 @@ public sealed class KnowledgeBaseTests
     [Fact]
     public async Task KbSearch_EmptyKnowledge_AdmitsNoContent()
     {
-        var tool = new KbSearchTool(new FakeKnowledge([]), new FakeEmbedding(), new FakePermissions(false, false),
+        var tool = new KbSearchTool(new FakeKnowledge([]), new StubEmbeddingResolver(new FakeEmbeddingModel()), new FakePermissions(false, false),
             new RecheckGatewayStub([]));
 
         var result = await tool.ExecuteAsync("u1",

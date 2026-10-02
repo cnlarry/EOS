@@ -388,8 +388,10 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigDiagnosisServ
 builder.Services.AddScoped<EOS.API.Features.Assistant.Catalog.SystemCapabilityCatalog>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Catalog.DescribeMechanismTool>();
 builder.Services.AddScoped<EOS.API.Data.IKnowledgeRepository, EOS.API.Data.KnowledgeRepository>();
-builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IEmbeddingModel,
-    EOS.API.Features.Assistant.ModelAccess.PendingEmbeddingModel>();
+// 嵌入模型：**当前该用哪个**由解析器按库里的"嵌入当前模型"决定（ADR-031 §3.1）。
+// 没配时它抛 EmbeddingNotConfiguredException（fail-closed），不退化成空向量、也不说"没有相关内容"
+builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IAssistantEmbeddingResolver,
+    EOS.API.Features.Assistant.ModelAccess.AssistantEmbeddingResolver>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.KbSearchTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ModuleFlowGateway>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IModuleFlowGateway>(sp =>
