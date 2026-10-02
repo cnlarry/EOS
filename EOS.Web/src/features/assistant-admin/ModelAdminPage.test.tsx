@@ -154,6 +154,37 @@ describe('ModelAdminPage', () => {
     vi.unstubAllGlobals()
   })
 
+  it('预设里有的型号：窗口与最大输出来自厂商公开值，不给改', async () => {
+    installFetchMock()
+    renderPage()
+
+    // 供应商行与模型行各有一个「编辑」，模型在供应商之下，所以取最后一个
+    const edits = await screen.findAllByRole('button', { name: '编辑' })
+    fireEvent.click(edits[edits.length - 1])
+
+    // 预设清单是**异步**拉的：字段先渲染出来、锁定状态随后才到，所以要 waitFor
+    // （直接断言会读到"还没锁"的那一帧——这正是本仓库记过的"跨渲染帧竞态"）
+    expect(await screen.findByLabelText('上下文窗口')).toBeInTheDocument()
+    // mock 的预设里正好有这个型号（deepseek-chat）→ 两个字段锁上：
+    // 这两个数改错了不报错，只会让助手被厂商拒（算大了）或白丢历史（算小了）
+    await waitFor(() => expect(screen.getByLabelText('上下文窗口')).toHaveAttribute('readonly'))
+    expect(screen.getByLabelText('最大输出')).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('支持工具调用')).toBeDisabled()
+  })
+
+  it('预设里没有的型号：这些字段仍可改（自建端点与新型号要自己填）', async () => {
+    installFetchMock({
+      providers: [providerRow({ models: [modelRow({ modelCode: 'my-own-model' })] })],
+    })
+    renderPage()
+
+    const edits = await screen.findAllByRole('button', { name: '编辑' })
+    fireEvent.click(edits[edits.length - 1])
+
+    expect(await screen.findByLabelText('上下文窗口')).not.toHaveAttribute('readonly')
+    expect(screen.getByLabelText('支持工具调用')).not.toBeDisabled()
+  })
+
   it('两级渲染：供应商带出端点与密钥状态，其下挂模型', async () => {
     installFetchMock()
 

@@ -1174,7 +1174,7 @@ public sealed class AssistantAdminController(
     /// 用全局兜底价），所以这里只校验"传了的那个值"，不把留空当成 0。
     /// </para>
     /// </summary>
-    private static string? ValidateModel(AssistantModelRequest request)
+    internal static string? ValidateModel(AssistantModelRequest request)
     {
         var modelCode = request.ModelCode?.Trim() ?? string.Empty;
         if (modelCode.Length == 0) return "模型名不能为空（厂商侧的标识，例如 deepseek-reasoner）。";
@@ -1189,9 +1189,12 @@ public sealed class AssistantAdminController(
             return "上下文窗口需要在 1000–20000000 之间（留空表示未知，按保守默认处理）。";
         }
 
-        if (request.MaxOutputTokens is { } maxOutput && maxOutput is < 1 or > 200000)
+        // 上界与库里的检查约束**同源**（迁移 307：1–1000000）。厂商现在的最大输出已经到 393216，
+        // 这里还卡 200000 的话，**从预设添加模型会直接失败**——边界散在三处（库约束 / 目录初值 /
+        // 服务端校验），漏一处的表现就是"预设值存不进去"。改这里时先看 `CK_ASSISTANT_MODEL_MAXOUT`。
+        if (request.MaxOutputTokens is { } maxOutput && maxOutput is < 1 or > 1_000_000)
         {
-            return "最大输出 token 需要在 1–200000 之间（留空表示用厂商默认）。";
+            return "最大输出 token 需要在 1–1000000 之间（留空表示用厂商默认）。";
         }
 
         if (request.DefaultTemperature is { } temperature && (temperature < 0 || temperature > 2))
