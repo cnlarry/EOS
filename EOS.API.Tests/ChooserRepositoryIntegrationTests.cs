@@ -43,6 +43,13 @@ public sealed class ChooserRepositoryIntegrationTests
     /// 两边钉在同一张表上：选择器比校验严会出现"这个模块明明存在却选不到"；比校验松则"选中了却被拒"。
     /// 所以这里拿同一个库里的行数做等值断言，而不是断言"返回了若干行"——后者对两种偏移都是绿的。
     /// </para>
+    ///
+    /// <para>
+    /// **夹逼而不是等值**：全量跑时（上千条用例共用一个库）别的用例会在这个窗口里增删模块，
+    /// 两次独立读到的计数本来就可能不同——等值断言会随机变红，而那种红与"候选集同源"无关。
+    /// 所以取调用**前后**两次计数做闭区间：真同源时 Total 必落在区间内；带了过滤（如按 TAG）
+    /// 则会明显掉到区间之外。区间窄到一两条，松弛量不足以掩盖任何有意义的偏移。
+    /// </para>
     /// </summary>
     [Fact]
     public async Task QueryAssistantAdminModules_CoversExactlyTheModulesTable()
@@ -52,15 +59,17 @@ public sealed class ChooserRepositoryIntegrationTests
             return;
         }
 
+        var before = await CountModulesAsync();
         var result = await _repository.QueryAsync(
             new UnifiedChooserQueryRequest("assistant-admin.modules", Page: 1, PageSize: 50),
             CancellationToken.None);
+        var after = await CountModulesAsync();
 
         Assert.NotNull(result);
         Assert.Equal(["M_IDX", "M_DESC"], result!.Columns.Select(column => column.Key));
         Assert.True(result.Total > 0);
         Assert.All(result.Rows, row => Assert.True(Convert.ToInt32(row["M_IDX"]) > 0));
-        Assert.Equal(await CountModulesAsync(), result.Total);
+        Assert.InRange(result.Total, Math.Min(before, after), Math.Max(before, after));
     }
 
     [Fact]
