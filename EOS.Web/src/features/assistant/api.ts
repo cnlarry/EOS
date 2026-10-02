@@ -62,6 +62,16 @@ export function renameSession(sessionId: string, title: string) {
   return apiClient.put<void>(`/assistant/sessions/${sessionId}/rename`, { title })
 }
 
+/**
+ * 给一条助手回复记反馈（1 赞 / -1 踩 / 传 null 取消）。
+ *
+ * 它是**用户自己的标注**，不改变回答内容、不构成授权；服务端只允许对助手消息（ROLE=2）记录，
+ * 且按 USER_ID 校验归属——别人的消息既评不了，也看不出存在。
+ */
+export function setMessageFeedback(messageId: number, feedback: 1 | -1 | null, reason?: string) {
+  return apiClient.put<void>(`/assistant/messages/${messageId}/feedback`, { feedback, reason })
+}
+
 /** 归档 / 取消归档。归档不是删除：默认列表看不到，历史完整保留，可随时取消。 */
 export function archiveSession(sessionId: string, archived = true) {
   return apiClient.put<void>(`/assistant/sessions/${sessionId}/archive`, { archived })

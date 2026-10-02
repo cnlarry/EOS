@@ -11,16 +11,35 @@ using Microsoft.Extensions.Options;
 
 namespace EOS.API.Features.Assistant;
 
-/// <summary>SSE 流事件：控制器按此映射为 event: delta|done|error。</summary>
+/// <summary>SSE 流事件：控制器按此映射为 event: delta|reasoning|tool_start|tool_result|done|error。</summary>
 public abstract record ChatStreamEvent
 {
     public sealed record Delta(string Text) : ChatStreamEvent;
 
-    /// <summary>回复已落库；ToolCalls 为本次回复使用的工具摘要；Drafts 为表单草稿（前端渲染确认卡片）。</summary>
+    /// <summary>
+    /// 推理内容增量（模型有则透传）。它**不落库、不回喂**：只用于界面在回答旁展示思考过程，
+    /// 落库只会占空间，回喂则会把上一轮的思考再算一次 token。
+    /// </summary>
+    public sealed record Reasoning(string Text) : ChatStreamEvent;
+
+    /// <summary>
+    /// 开始执行一个工具调用。工具轮里模型常常一次给好几个调用，而**执行期间界面上原本什么都没有**——
+    /// 几秒到十几秒的空白会被读成"卡死了"。这条事件让界面能立刻显示"正在调用 X"。
+    /// </summary>
+    public sealed record ToolStarted(string Name) : ChatStreamEvent;
+
+    /// <summary>一个工具调用返回：Digest 与最终 done 里的工具摘要同源，Ok 供界面区分"查到"与"没查到"。</summary>
+    public sealed record ToolFinished(string Name, string Digest, bool Ok) : ChatStreamEvent;
+
+    /// <summary>
+    /// 回复已落库；ToolCalls 为本次回复使用的工具摘要；Drafts 为表单草稿（前端渲染确认卡片）；
+    /// FinishReason 为最后一轮的完成原因（<c>length</c> = 被输出上限截断，要如实告诉用户）。
+    /// </summary>
     public sealed record Completed(
         AssistantMessageDto Message,
         IReadOnlyList<ToolCallSummary>? ToolCalls,
-        IReadOnlyList<object>? Drafts = null) : ChatStreamEvent;
+        IReadOnlyList<object>? Drafts = null,
+        string? FinishReason = null) : ChatStreamEvent;
 
     public sealed record Failed(string Code, string Message) : ChatStreamEvent;
 }
@@ -128,15 +147,25 @@ public sealed class ChatService(
     // 一条长回复就能把窗口顶穿，厂商返回的还是模糊的参数错误。
 
     /// <summary>
-    /// 估算 token 的**上界**系数：按"1 个字符 ≈ 1 个 token"算。
+    /// 估算 token 用的两个系数（**上界**，不引入 tokenizer）。
     ///
     /// <para>
-    /// 没有引入 tokenizer：各家算法不同、还得跟着模型版本更新，而这里只需要一个安全的保守值。
-    /// 中文一个汉字通常不到 1 个 token、英文更少，所以这个系数高估——**估多了只是少带些历史，
-    /// 估少了会被厂商直接拒绝**，两边的代价不对称，所以取高估的那一侧。
+    /// 各家分词算法不同、还得跟着模型版本更新，所以这里只要求一个安全的保守值。但"保守"不等于
+    /// "一律按 1 字 = 1 token"：那个口径对中文是对的，对拉丁字母与数字却高估约三倍——
+    /// 于是英文问法与单号、编码、SQL 片段密集的会话会被**过早裁掉历史**，用户看到的是"助手失忆"，
+    /// 而窗口其实还有富余。按字符类别分开算，既保住了"估多了只是少带些历史"的不对称，
+    /// 又不白白丢上下文。
+    /// </para>
+    ///
+    /// <para>
+    /// 反方向的代价不对称：估少了会被厂商直接拒绝（模糊的参数错误，用户完全无法自救），
+    /// 所以 ASCII 取 0.35 而不是实测的 ~0.25，留出余量。
     /// </para>
     /// </summary>
-    private const int CharsPerTokenUpperBound = 1;
+    private const int CjkTokenHundredths = 100;
+
+    /// <inheritdoc cref="CjkTokenHundredths" />
+    private const int AsciiTokenHundredths = 35;
 
     // 这里原有五个常量（历史条数上限 / 默认上下文窗口 / 上下文预留 / 单条消息长度上限 /
     // 工具参数长度上限），现已全部搬进参数目录（域 CHAT，见 AssistantChatLimitsOptions）：
@@ -285,7 +314,8 @@ public sealed class ChatService(
             var textBuilder = new StringBuilder();
             var callMap = new SortedDictionary<int, ToolCallAccumulator>();
             ModelAccess.ChatUsage? usage = null;
-            string? errorCode = null;
+            string? finishReason = null;
+            Exception? streamError = null;
 
             var enumerator = model.StreamAsync(
                 messages,
@@ -294,27 +324,28 @@ public sealed class ChatService(
             while (true)
             {
                 ChatDelta? delta = null;
-                Exception? streamError = null;
                 try
                 {
                     if (!await enumerator.MoveNextAsync()) break;
                     delta = enumerator.Current;
                 }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    // 调用方没取消，而这里被取消：只有模型层的超时 CTS 会这么做（两者的 token 是链接的）。
+                    // 把它并入"用户主动停止"是错的——那会静默丢掉一次本该说出口的超时。
+                    streamError = new AssistantModelException(
+                        AssistantModelErrorKind.Timeout, "模型服务响应超时。");
+                    break;
+                }
                 catch (OperationCanceledException)
                 {
-                    // 客户端断开/超时：半截回复不落库；已预留额度按 0 释放（取消不计失败）。
+                    // 客户端断开/主动停止：半截回复不落库；已预留额度按 0 释放（取消不计失败）。
                     await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
                     throw;
                 }
                 catch (Exception ex)
                 {
                     streamError = ex;
-                }
-
-                if (streamError is not null)
-                {
-                    logger.LogWarning(streamError, "助手模型调用失败（session={SessionId} round={Round}）", sessionId, round);
-                    errorCode = "AI_MODEL_ERROR";
                     break;
                 }
 
@@ -326,10 +357,21 @@ public sealed class ChatService(
                     continue;
                 }
 
+                // 推理内容只透传展示，不落库也不回喂（见 ChatStreamEvent.Reasoning 的说明）
+                if (!string.IsNullOrEmpty(delta.ReasoningDelta))
+                {
+                    yield return new ChatStreamEvent.Reasoning(delta.ReasoningDelta!);
+                }
+
                 if (!string.IsNullOrEmpty(delta.ContentDelta))
                 {
                     textBuilder.Append(delta.ContentDelta);
                     yield return new ChatStreamEvent.Delta(delta.ContentDelta!);
+                }
+
+                if (!string.IsNullOrEmpty(delta.FinishReason))
+                {
+                    finishReason = delta.FinishReason;
                 }
 
                 if (delta.ToolCallDeltas is not null)
@@ -349,11 +391,17 @@ public sealed class ChatService(
                 }
             }
 
-            if (errorCode is not null)
+            if (streamError is not null)
             {
-                breaker?.RecordFailure(userId);
+                var failure = AssistantModelException.From(streamError);
+                logger.LogWarning(streamError,
+                    "助手模型调用失败（session={SessionId} round={Round} kind={Kind}）",
+                    sessionId, round, failure.Kind);
+                // 只有"需等待"类计入熔断：密钥、余额、上下文这类问题重试多少次都不会好，
+                // 把它们算成技术性抖动，只会在冷却期里把账号挡住，而问题一个字都没变。
+                if (!failure.SelfServiceable) breaker?.RecordFailure(userId);
                 await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
-                yield return new ChatStreamEvent.Failed(errorCode, "模型调用失败，请稍后重试。");
+                yield return new ChatStreamEvent.Failed(failure.Code, failure.UserMessage);
                 yield break;
             }
 
@@ -379,7 +427,7 @@ public sealed class ChatService(
                 else
                 {
                     anyEstimated = true;
-                    var (prompt, completion) = EstimateUsage(EstimatePromptChars(messages), text.Length);
+                    var (prompt, completion) = EstimateUsage(EstimatePromptTokens(messages), text);
                     totalPromptTokens += prompt;
                     totalCompletionTokens += completion;
                 }
@@ -391,23 +439,66 @@ public sealed class ChatService(
                 // 工具轮：assistant-with-tool-calls 与 tool 结果只存在于本轮内存上下文，
                 // 不落库；摘要随最终回复行落库供审计与前端展示。
                 messages.Add(new ChatMessage(ChatRole.Assistant, text, calls));
+                var outcomes = new ToolOutcome[calls.Count];
+                // 这里用 try/finally 而不是 try/catch：finally 里要结算预留额度，而**迭代器不允许
+                // 在带 catch 的 try 里 yield**。工具轮被取消时预留必须释放，否则当日额度会被锁死。
+                var roundFinished = false;
                 try
                 {
-                    foreach (var call in calls)
+                    if (CanRunInParallel(calls))
                     {
-                        var result = await ExecuteToolSafelyAsync(userId, call, pageContext, sessionId, toolLog, chat, token);
-                        if (result.Draft is not null)
+                        // 只读且互不重名：并行执行。串行只是把延迟相加，而这些调用之间没有依赖。
+                        var pending = new List<Task<ToolOutcome>>(calls.Count);
+                        for (var index = 0; index < calls.Count; index++)
                         {
-                            drafts.Add(result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
+                            yield return new ChatStreamEvent.ToolStarted(calls[index].Name);
+                            pending.Add(ExecuteToolSafelyAsync(
+                                userId, calls[index], index, pageContext, sessionId, chat, token));
                         }
 
-                        messages.Add(new ChatMessage(ChatRole.Tool, result.ContentForModel, ToolCallId: call.Id));
+                        while (pending.Count > 0)
+                        {
+                            var finished = await Task.WhenAny(pending);
+                            pending.Remove(finished);
+                            var outcome = await finished;
+                            outcomes[outcome.Index] = outcome;
+                            yield return new ChatStreamEvent.ToolFinished(outcome.Name, outcome.Digest, outcome.Result.Ok);
+                        }
+                    }
+                    else
+                    {
+                        // 含写类动作或同一工具被调用多次：按模型给出的顺序逐个执行。
+                        // 写类需要顺序；重名工具则是因为实例在请求内承载"这次调用是谁"的上下文。
+                        for (var index = 0; index < calls.Count; index++)
+                        {
+                            yield return new ChatStreamEvent.ToolStarted(calls[index].Name);
+                            outcomes[index] = await ExecuteToolSafelyAsync(
+                                userId, calls[index], index, pageContext, sessionId, chat, token);
+                            yield return new ChatStreamEvent.ToolFinished(
+                                outcomes[index].Name, outcomes[index].Digest, outcomes[index].Result.Ok);
+                        }
+                    }
+
+                    roundFinished = true;
+                }
+                finally
+                {
+                    if (!roundFinished)
+                    {
+                        await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
                     }
                 }
-                catch (OperationCanceledException)
+
+                for (var index = 0; index < outcomes.Length; index++)
                 {
-                    await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
-                    throw;
+                    var outcome = outcomes[index];
+                    toolLog.Add(new ToolCallSummary(outcome.Name, outcome.ArgumentsJson, outcome.Digest));
+                    if (outcome.Result.Draft is not null)
+                    {
+                        drafts.Add(outcome.Result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
+                    }
+
+                    messages.Add(new ChatMessage(ChatRole.Tool, outcome.Result.ContentForModel, ToolCallId: outcome.CallId));
                 }
 
                 continue; // 进入下一轮：模型消费工具结果并生成面向用户的回答（该轮流式给用户）
@@ -429,7 +520,8 @@ public sealed class ChatService(
             AccumulateRoundUsage();
             var saved = await repository.AddAssistantMessageAsync(
                 userId, sessionId, text, model.ModelName,
-                totalPromptTokens, totalCompletionTokens, totalElapsedMs, correlationId, token, anyEstimated);
+                totalPromptTokens, totalCompletionTokens, totalElapsedMs, correlationId, token,
+                anyEstimated, finishReason);
             // 按**当前模型的单价**结算：写进台账的就是钱，而限额熔断判定的也是钱。
             // 用一套全局单价去算所有模型，等于把日上限变成一个与实际花费无关的数字。
             await SettleAsync(userId, dayStart, reserveMicro,
@@ -455,10 +547,19 @@ public sealed class ChatService(
             }
 
             breaker?.RecordSuccess(userId);
+            if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
+            {
+                // 被输出上限截断：不告诉用户的话，他看到的是一段"突然结束"的回答，
+                // 而真相是回答还没写完（这个字段本来就在流里，不用白不用）。
+                logger.LogWarning(
+                    "助手回复被输出上限截断（session={SessionId} message={MessageId}）", sessionId, saved.Id);
+            }
+
             yield return new ChatStreamEvent.Completed(
                 saved,
                 toolLog.Count > 0 ? [.. toolLog] : null,
-                drafts.Count > 0 ? [.. drafts] : null);
+                drafts.Count > 0 ? [.. drafts] : null,
+                finishReason);
             // : done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
             // 提炼自己也是一次模型调用，同样受窗口约束，所以喂裁剪后的历史（它要的本来就是最近几轮）
             await DistillSessionBestEffortAsync(
@@ -474,10 +575,47 @@ public sealed class ChatService(
         public StringBuilder Arguments { get; } = new();
     }
 
-    private async Task<ToolExecutionResult> ExecuteToolSafelyAsync(
-        string userId, CompletedToolCall call, PageContext? pageContext,
-        long sessionId, List<ToolCallSummary> toolLog, AssistantChatLimitsOptions chat, CancellationToken token)
+    /// <summary>
+    /// 一次工具调用的结果。**调用序号与调用标识一起带走**：并行执行时完成顺序与调用顺序无关，
+    /// 而回喂给模型的 tool 消息必须与它发出的调用一一对上（顺序错位会让模型把结果安到别的调用上）。
+    /// </summary>
+    private sealed record ToolOutcome(
+        int Index,
+        string Name,
+        string CallId,
+        string ArgumentsJson,
+        ToolExecutionResult Result,
+        string Digest);
+
+    /// <summary>
+    /// 本轮工具调用能否并行：**全部只读，且没有重名**。
+    ///
+    /// <para>
+    /// 只读工具之间没有依赖也没有副作用，串行执行只是把延迟逐次相加——模型一次给出三四个查询时，
+    /// 用户要等的就是三四次之和。写类动作必须按模型给出的顺序逐个执行。
+    /// </para>
+    ///
+    /// <para>
+    /// 重名的一律退回串行：工具实例是按请求作用域的（<c>Scoped</c>），但它承载"这一次调用是谁"的
+    /// 上下文（<see cref="IToolCallContextTool"/>）。同一实例被并发调用两次，两次身份会互相覆盖，
+    /// 幂等键就可能串到另一次调用上——这是唯一不能靠"只读"放行的情形。
+    /// </para>
+    /// </summary>
+    private bool CanRunInParallel(IReadOnlyList<CompletedToolCall> calls)
     {
+        if (calls.Count < 2) return false;
+        if (calls.Select(call => call.Name).Distinct(StringComparer.Ordinal).Count() != calls.Count) return false;
+        return calls.All(call => toolRegistry.TryGet(call.Name, out var tool) && tool.Risk == AssistantToolRisk.Read);
+    }
+
+    /// <summary>执行一次工具调用。参数非法/未知工具/被关掉/内部异常都在这里转成回喂模型的拒绝，不抛给对话流。</summary>
+    private async Task<ToolOutcome> ExecuteToolSafelyAsync(
+        string userId, CompletedToolCall call, int index, PageContext? pageContext,
+        long sessionId, AssistantChatLimitsOptions chat, CancellationToken token)
+    {
+        ToolOutcome Denied(ToolExecutionResult result, string digest, string argumentsJson) =>
+            new(index, call.Name, call.Id, argumentsJson, result, digest);
+
         try
         {
             using var doc = JsonDocument.Parse(
@@ -490,13 +628,14 @@ public sealed class ChatService(
                 // 混成一句"未知工具"会让前一种情况看起来像系统故障。
                 if (toolRegistry.IsDisabledByParameter(call.Name))
                 {
-                    toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "rejected:disabled_by_admin"));
-                    return ToolExecutionResult.Deny(
-                        $"「{call.Name}」这个能力已被管理员关闭，无法调用；请改用其它方式或在管理界面上确认。");
+                    return Denied(ToolExecutionResult.Deny(
+                            $"「{call.Name}」这个能力已被管理员关闭，无法调用；请改用其它方式或在管理界面上确认。"),
+                        "rejected:disabled_by_admin", call.ArgumentsJson);
                 }
 
-                toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "rejected:unknown_tool"));
-                return ToolExecutionResult.Deny($"未知工具 {call.Name}，请只使用函数列表中的工具。");
+                return Denied(
+                    ToolExecutionResult.Deny($"未知工具 {call.Name}，请只使用函数列表中的工具。"),
+                    "rejected:unknown_tool", call.ArgumentsJson);
             }
 
             // 页面处境由服务端注入（不经模型转述）：用户不必把"当前这张单"再报一遍主键。
@@ -515,22 +654,19 @@ public sealed class ChatService(
 
             var result = await tool.ExecuteAsync(userId, args, token);
             logger.LogInformation("助手工具执行 session={SessionId} tool={Tool} ok={Ok}", sessionId, call.Name, result.Ok);
-            toolLog.Add(new ToolCallSummary(
-                call.Name, call.ArgumentsJson, Truncate(result.ContentForModel, chat.ToolDigestLength)));
-            return result;
+            return Denied(result, Truncate(result.ContentForModel, chat.ToolDigestLength), call.ArgumentsJson);
         }
         catch (JsonException ex)
         {
             logger.LogWarning(ex, "助手工具参数非法 session={SessionId} tool={Tool}", sessionId, call.Name);
-            toolLog.Add(new ToolCallSummary(
-                call.Name, Truncate(call.ArgumentsJson, chat.AuditArgumentLength), "error:invalid_arguments"));
-            return ToolExecutionResult.Deny("工具参数格式错误，请修正后重试。");
+            return Denied(ToolExecutionResult.Deny("工具参数格式错误，请修正后重试。"),
+                "error:invalid_arguments", Truncate(call.ArgumentsJson, chat.AuditArgumentLength));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "助手工具异常 session={SessionId} tool={Tool}", sessionId, call.Name);
-            toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "error:exception"));
-            return ToolExecutionResult.Deny("工具执行出现内部错误，请换一种问法或稍后重试。");
+            return Denied(ToolExecutionResult.Deny("工具执行出现内部错误，请换一种问法或稍后重试。"),
+                "error:exception", call.ArgumentsJson);
         }
     }
 
@@ -562,22 +698,22 @@ public sealed class ChatService(
         var reserve = chat.ContextReserveTokens + (modelSettings.MaxTokens ?? 0);
         // 下限 1024：窗口填得再离谱（或输出上限超过窗口），也要留下最基本的对话预算
         var budgetTokens = Math.Max(1_024, window - reserve);
-        var remainingChars = (long)budgetTokens * CharsPerTokenUpperBound;
+        var remainingTokens = budgetTokens;
 
         var kept = new List<(int Role, string Content)>(history.Count);
         for (var index = history.Count - 1; index >= 0; index--)
         {
             var item = history[index];
-            var cost = item.Content.Length;
+            var cost = EstimateTokens(item.Content);
             // 最老的这一条放不下就停：再往前的一定更老，没有"越过它去拿更早的"的道理
-            if (kept.Count > 0 && cost > remainingChars)
+            if (kept.Count > 0 && cost > remainingTokens)
             {
                 break;
             }
 
             kept.Add(item);
-            remainingChars -= cost;
-            if (remainingChars <= 0)
+            remainingTokens -= cost;
+            if (remainingTokens <= 0)
             {
                 break;
             }
@@ -769,16 +905,56 @@ public sealed class ChatService(
     internal static long ToMicroYuan(double yuan) =>
         (long)Math.Ceiling(yuan * (double)AssistantCost.MicroYuanPerYuan);
 
-    /// <summary>保守估算单轮输入：消息文本与工具参数按 1 字符 = 1 token 计，只多不少。</summary>
-    private static int EstimatePromptChars(IReadOnlyList<ChatMessage> messages) =>
+    /// <summary>保守估算单轮输入：消息文本、工具参数与调用标识都按字符类别折算。</summary>
+    private static int EstimatePromptTokens(IReadOnlyList<ChatMessage> messages) =>
         messages.Sum(message =>
-            (message.Content?.Length ?? 0)
-            + (message.ToolCalls?.Sum(call => call.ArgumentsJson.Length) ?? 0)
-            + (message.ToolCallId?.Length ?? 0));
+            EstimateTokens(message.Content)
+            + (message.ToolCalls?.Sum(call => EstimateTokens(call.ArgumentsJson)) ?? 0)
+            + EstimateTokens(message.ToolCallId));
 
-    /// <summary>保守估算单轮用量：中日韩字符约 1 token/字，按 1 字 = 1 token 只多不少。</summary>
-    internal static (int PromptTokens, int CompletionTokens) EstimateUsage(int promptChars, int completionChars) =>
-        (Math.Max(1, promptChars), Math.Max(1, completionChars));
+    /// <summary>保守估算单轮用量；promptTokens 由 <see cref="EstimatePromptTokens"/> 得出。</summary>
+    internal static (int PromptTokens, int CompletionTokens) EstimateUsage(int promptTokens, string completionText) =>
+        (Math.Max(1, promptTokens), Math.Max(1, EstimateTokens(completionText)));
+
+    /// <summary>
+    /// 按字符类别估算一段文本的 token 上界（系数见 <see cref="CjkTokenTenths"/>）。
+    /// **只估上界**：估多了只是少带些历史，估少了会被厂商直接拒绝。
+    ///
+    /// <para>
+    /// 按**百分之一 token** 的整数累加再向上取整，不用浮点：逐字符累加 0.35 会让 1000 个
+    /// 字母算出 350.00000000000006，向上取整就成了 351——估算口径里出现这种误差没有意义，
+    /// 而整数运算连"要不要相信浮点"这个问题都不存在。
+    /// </para>
+    /// </summary>
+    internal static int EstimateTokens(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var wide = 0;
+        var narrow = 0;
+        foreach (var ch in text)
+        {
+            if (IsWideChar(ch)) wide++;
+            else narrow++;
+        }
+
+        var hundredths = (wide * CjkTokenHundredths) + (narrow * AsciiTokenHundredths);
+        return (hundredths + 99) / 100;
+    }
+
+    /// <summary>
+    /// 宽字符（中日韩、假名、全角标点，以及代理对的一半）按 1 token/字计，其余按 ASCII 系数。
+    /// 代理对（emoji 等）两个 char 都算宽字符，等于按 2 token 估——宁多不少。
+    /// </summary>
+    private static bool IsWideChar(char ch) =>
+        (ch >= 0x1100 && ch <= 0x115F) // 韩文字母
+        || ch is (char)0x2329 or (char)0x232A
+        || (ch >= 0x2E80 && ch <= 0xA4CF) // 中日韩部首、假名、汉字、彝文
+        || (ch >= 0xAC00 && ch <= 0xD7A3) // 韩文音节
+        || (ch >= 0xD800 && ch <= 0xDFFF) // 代理对（BMP 之外的字符成对出现）
+        || (ch >= 0xF900 && ch <= 0xFAFF) // 兼容汉字
+        || (ch >= 0xFE30 && ch <= 0xFE6F) // 中日韩兼容形式
+        || (ch >= 0xFF00 && ch <= 0xFF60) // 全角形式
+        || (ch >= 0xFFE0 && ch <= 0xFFE6);
 
     private async Task SettleAsync(
         string userId, DateTimeOffset day, long reserveMicro, long actualMicro, bool completed)

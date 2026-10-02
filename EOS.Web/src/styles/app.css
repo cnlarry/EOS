@@ -1720,6 +1720,64 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-input textarea { resize: vertical; min-height: 44px; max-height: 140px; }
 .erp-assistant-send { flex: 0 0 auto; }
 
+/* 「处境」开关：隐式外发的东西必须看得见、关得掉 */
+.erp-assistant-context-btn { flex: 0 0 auto; font-size: 11px; }
+.erp-assistant-context-panel {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--tblr-bg-surface-secondary, #f8f9fa);
+}
+.erp-assistant-context-panel-head { font-weight: 600; margin-bottom: 6px; }
+.erp-assistant-context-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.erp-assistant-context-panel-note { margin-top: 6px; color: var(--tblr-secondary, #6c757d); }
+
+/* 回答被输出上限截断：说清"没写完"，不要让用户以为是答完了 */
+.erp-assistant-truncated {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--tblr-warning-lt, #fff3cd);
+  color: var(--tblr-yellow, #997404);
+}
+
+/* 用户消息下方回看"这轮附带了出去什么" */
+.erp-assistant-context {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--tblr-border-color, #e6e7e9);
+  font-size: 12px;
+  color: var(--tblr-secondary, #6c757d);
+}
+.erp-assistant-context-title { display: block; margin-bottom: 2px; }
+.erp-assistant-context ul { margin: 0; padding-left: 16px; }
+
+/* 推理内容：默认收起，展开看思考过程（不落库，刷新后不再显示） */
+.erp-assistant-reasoning { margin-bottom: 6px; }
+.erp-assistant-reasoning-detail {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: var(--tblr-bg-surface-secondary, #f8f9fa);
+  color: var(--tblr-secondary, #6c757d);
+}
+
+.erp-assistant-feedback-reasons { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+
 .erp-assistant-tool-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 
 /* ---- 助手消息的 Markdown 呈现（渲染器见 features/assistant/markdown.tsx） ---- */

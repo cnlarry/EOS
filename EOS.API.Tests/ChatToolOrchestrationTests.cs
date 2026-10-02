@@ -129,7 +129,7 @@ public sealed class ChatToolOrchestrationTests
         public Task<AssistantMessageDto> AddAssistantMessageAsync(
             string userId, long sessionId, string content, string modelName,
             int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-            CancellationToken token, bool estimated = false)
+            CancellationToken token, bool estimated = false, string? finishReason = null)
         {
             AssistantSaved.Add((content, null));
             return Task.FromResult(new AssistantMessageDto(2, sessionId, 2, content, modelName, promptTokens, completionTokens, elapsedMs, correlationId, DateTimeOffset.UtcNow));
@@ -145,6 +145,9 @@ public sealed class ChatToolOrchestrationTests
             ToolCallsJsonUpdates++;
             return Task.CompletedTask;
         }
+
+        public Task<int> SetMessageFeedbackAsync(string userId, long messageId, int? feedback, string? reason, CancellationToken token)
+            => Task.FromResult(0);
     }
 
     private static (ChatService Service, ScriptedChatModel Model, FakeRepository Repo, StubTool Tool) Create(params ModelRound[] rounds)

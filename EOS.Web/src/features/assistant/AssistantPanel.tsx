@@ -11,9 +11,12 @@ import {
   IconPlayerStop,
   IconPlus,
   IconRobot,
+  IconThumbDown,
+  IconThumbUp,
   IconX,
 } from '@tabler/icons-react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { archiveSession, listMessages, renameSession } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
@@ -21,6 +24,13 @@ import { SESSION_ADMIN_PATH, useAssistant, type Bubble } from './assistantContex
 import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { describePending, describeWhere, digestKindLabel } from './assistantText'
 import { buildSessionMarkdown, downloadText } from './sessionExport'
+import {
+  SITUATION_TOGGLE_KEYS,
+  SITUATION_TOGGLE_LABELS,
+  isSituationIncluded,
+  setSituationIncluded,
+  situationPreview,
+} from './situationSource'
 import { ActionCard, ActionResultCard } from './ActionCard'
 import { AdminChangesetCard } from './AdminChangesetCard'
 import { ApprovalRequestCard } from './ApprovalRequestCard'
@@ -48,11 +58,15 @@ interface AssistantPanelProps {
  */
 export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanelProps) {
   const a = useAssistant()
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  // 「处境」开关面板：处境是随每条消息隐式发出的，用户得看得见、也得能逐项关掉。
+  const [contextOpen, setContextOpen] = useState(false)
+  const [contextTick, setContextTick] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -334,12 +348,41 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
         {a.bubbles.map(bubble => (
           <div key={bubble.key} className={`erp-assistant-message ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
             <div className="erp-assistant-bubble">
+              {bubble.role === 2 && bubble.reasoning && <ReasoningBlock text={bubble.reasoning} />}
               {bubble.role === 2 && bubble.text
                 ? <KbSourceText text={bubble.text} onOpen={setOpenDocId} />
                 : (bubble.text || (bubble.streaming ? '' : '(空回复)'))}
               {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
+              {/* 工具轮进行中：模型一次给出多个调用时，这里显示"正在调用 X"。
+                  此前这段执行期界面上什么都没有，几秒到十几秒的空白会被读成卡死。 */}
+              {bubble.streaming && bubble.runningTools && bubble.runningTools.length > 0 && (
+                <div className="erp-assistant-tool-chips" aria-live="polite">
+                  {bubble.runningTools.map((name, index) => (
+                    <span key={`${name}-${index}`} className="erp-assistant-chip">
+                      {TOOL_LABELS[name] ?? name} 正在执行…
+                    </span>
+                  ))}
+                </div>
+              )}
               {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
                 <ToolCalls tools={bubble.tools} />
+              )}
+              {/* 被输出上限截断：回答"突然结束"必须说清是没写完，而不是答完了 */}
+              {!bubble.streaming && bubble.truncated && (
+                <div className="erp-assistant-truncated">
+                  回答达到输出上限被截断，内容可能不完整；可以让助手接着说完。
+                </div>
+              )}
+              {/* 用户侧消息回看"这轮发了什么出去"：隐式上报若连痕迹都没有，用户无从知道助手看到了什么 */}
+              {bubble.role === 1 && bubble.situation && bubble.situation.length > 0 && (
+                <div className="erp-assistant-context">
+                  <span className="erp-assistant-context-title">随这条消息附带</span>
+                  <ul>
+                    {bubble.situation.map(item => (
+                      <li key={item.key}><strong>{item.label}</strong>：{item.detail}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
               {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
                 <div className="erp-assistant-drafts">
@@ -351,6 +394,7 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
             {bubble.text && !bubble.streaming && (
               <div className="erp-assistant-message-actions">
                 {bubble.role === 2 && <CopyButton text={bubble.text} />}
+                {bubble.role === 2 && <FeedbackButtons bubble={bubble} onRate={a.rateMessage} />}
                 {bubble.role === 1 && (
                   <button className="btn btn-sm btn-ghost-secondary" type="button"
                     title="把这句话记下来（仅本人可见）"
@@ -370,11 +414,44 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
         <div className="erp-assistant-error" role="alert">{a.errorText}</div>
       )}
 
+      {contextOpen && (
+        <div className="erp-assistant-context-panel">
+          <div className="erp-assistant-context-panel-head">
+            助手随每条消息附带的处境（关掉即不再发出）
+          </div>
+          {SITUATION_TOGGLE_KEYS.map(key => (
+            <label key={key} className="erp-assistant-context-toggle">
+              <input
+                type="checkbox"
+                checked={isSituationIncluded(key)}
+                onChange={(event) => {
+                  setSituationIncluded(key, event.target.checked)
+                  setContextTick(tick => tick + 1)
+                }}
+              />
+              <span>{SITUATION_TOGGLE_LABELS[key]}</span>
+            </label>
+          ))}
+          <div className="erp-assistant-context-panel-note" data-tick={contextTick}>
+            成本位 / 保密位 / 禁止字段由服务端按模块权限二次剔除；关掉的项不会随任何消息发出。
+          </div>
+        </div>
+      )}
+
       {openDocId && (
         <KbDocDialog docId={openDocId} onClose={() => setOpenDocId(null)} />
       )}
 
       <footer className="erp-assistant-input">
+        <button
+          className="btn btn-sm btn-ghost-secondary erp-assistant-context-btn"
+          type="button"
+          aria-expanded={contextOpen}
+          title="看看助手随消息带了哪些处境，可逐项关掉"
+          onClick={() => setContextOpen(open => !open)}
+        >
+          处境 {situationPreview(location.pathname).length}
+        </button>
         <textarea
           ref={inputRef}
           className="form-control form-control-sm"
@@ -415,6 +492,102 @@ function renderDraft(draft: AssistantDraft, index: number, onOpenForm: (draft: A
     if (draft.kind === 'approval-request-preview') return <ApprovalRequestCard key={index} draft={draft} />
   }
   return <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={onOpenForm} />
+}
+
+/**
+ * 推理内容：默认收起——它是模型的思考过程，不是答案。
+ *
+ * 只有模型真的给出推理内容才渲染（服务端按 `reasoning_content` 透传），且**不落库**：
+ * 它不进后续上下文，刷新会话后不再显示；这让"回复为什么这么写"在当场可查，
+ * 又不为此付一份长期存储与隐私成本。
+ */
+function ReasoningBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="erp-assistant-reasoning">
+      <button
+        type="button"
+        className="erp-assistant-chip"
+        aria-expanded={open}
+        onClick={() => setOpen(value => !value)}
+      >
+        思考过程
+        <span className="erp-assistant-tool-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && <pre className="erp-assistant-reasoning-detail">{text}</pre>}
+    </div>
+  )
+}
+
+/** 踩的原因用**固定选项**：自由文本既没人愿意填，收集回来也没法统计。 */
+const FEEDBACK_REASONS = ['答得不对', '答非所问', '数据查错了', '该说没权限却说没有', '太啰嗦']
+
+/**
+ * 赞 / 踩。点同一个方向第二次即取消（`rateMessage` 里换算成"取消"），
+ * 所以界面上的按钮点得亮也点得灭——没有"点错了改不回来"的死角。
+ */
+function FeedbackButtons({
+  bubble,
+  onRate,
+}: {
+  bubble: Bubble
+  onRate: (bubble: Bubble, feedback: 0 | 1 | -1, reason?: string) => Promise<void>
+}) {
+  const [asking, setAsking] = useState(false)
+  return (
+    <>
+      <button
+        className="btn btn-sm btn-ghost-secondary"
+        type="button"
+        title="这条回答有用"
+        aria-label="赞这条回答"
+        aria-pressed={bubble.feedback === 1}
+        onClick={() => {
+          setAsking(false)
+          void onRate(bubble, 1)
+        }}
+      >
+        <IconThumbUp size={14} />
+      </button>
+      <button
+        className="btn btn-sm btn-ghost-secondary"
+        type="button"
+        title="这条回答有问题"
+        aria-label="踩这条回答"
+        aria-pressed={bubble.feedback === -1}
+        onClick={() => {
+          if (bubble.feedback === -1) {
+            setAsking(false)
+            void onRate(bubble, -1)
+            return
+          }
+          setAsking(true)
+        }}
+      >
+        <IconThumbDown size={14} />
+      </button>
+      {asking && (
+        <span className="erp-assistant-feedback-reasons">
+          {FEEDBACK_REASONS.map(reason => (
+            <button
+              key={reason}
+              className="btn btn-sm btn-ghost-secondary"
+              type="button"
+              onClick={() => {
+                setAsking(false)
+                void onRate(bubble, -1, reason)
+              }}
+            >
+              {reason}
+            </button>
+          ))}
+          <button className="btn btn-sm btn-ghost-secondary" type="button" onClick={() => setAsking(false)}>
+            取消
+          </button>
+        </span>
+      )}
+    </>
+  )
 }
 
 /** 工具名 → 人话；未登记的工具回落到原名，避免新工具上线时芯片变空白。 */

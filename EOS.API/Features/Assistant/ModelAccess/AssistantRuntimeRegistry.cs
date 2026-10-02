@@ -213,7 +213,19 @@ public sealed class ResolvingChatModel(
     /// <summary>本次请求用的配置：取一次就固定，保证同一请求内的一致性与快照语义。</summary>
     private AssistantSettings Settings => _snapshot ??= runtime.Current.Settings;
 
-    private IChatModel Inner => _inner ??= new DeepSeekChatModel(httpClientFactory, Options.Create(Settings));
+    /// <summary>
+    /// 按**协议**构造客户端实现：协议来自供应商 CODE 在预设目录里的声明，
+    /// 所以"换一家 OpenAI 兼容的供应商"是纯数据操作，不必碰代码。
+    /// 新增一种协议时，在这里加一个分支即可——判定入口只有这一处，
+    /// 不会出现"某家供应商偷偷走了别的客户端"。
+    /// </summary>
+    private IChatModel Inner => _inner ??= Create(runtime.Current.Model?.ProviderCode);
+
+    private IChatModel Create(string? providerCode) =>
+        AssistantProviderCatalog.ProtocolOf(providerCode) switch
+        {
+            _ => new OpenAiCompatibleChatModel(httpClientFactory, Options.Create(Settings)),
+        };
 
     /// <inheritdoc />
     public string ModelName => Settings.Model;

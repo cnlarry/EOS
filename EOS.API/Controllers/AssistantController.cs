@@ -67,6 +67,12 @@ public sealed class AssistantController(
     public sealed record ArchiveSessionRequest(bool? Archived);
 
     /// <summary>
+    /// 一条助手回复的反馈：<c>1</c> 赞 / <c>-1</c> 踩 / 省略（null）= 取消。
+    /// <c>Reason</c> 只在踩时有意义，是**受控短文本**（界面给固定选项，服务端仍限长）。
+    /// </summary>
+    public sealed record MessageFeedbackRequest(int? Feedback, string? Reason = null);
+
+    /// <summary>
     /// 分页列会话。<paramref name="state"/> 决定看哪些：<c>active</c>（默认，在列）/ <c>archived</c>
     /// （只看已归档，会话管理页在这里开放删除）/ <c>all</c>；<paramref name="keyword"/> 只搜标题。
     /// 返回 <c>{ items, total }</c>——分页器需要总数。
@@ -162,7 +168,35 @@ public sealed class AssistantController(
             message.CorrelationId,
             message.CreatedAt,
             ToolCalls = ParseToolCallDigests(message.ToolCallsJson),
+            // 反馈与截断原因随历史一起回来：刷新或切回会话后，"我踩过这条"与"这条被截断了"
+            // 都应该还在（只靠当次流式事件的话，刷新一次这些信息就没了）。
+            message.Feedback,
+            message.FeedbackReason,
+            message.FinishReason,
         }));
+    }
+
+    /// <summary>
+    /// 记录 / 取消一条助手回复的反馈（1 赞 / -1 踩 / 省略=取消）。
+    /// 它是**用户自己的标注**，不构成任何授权，也不改变回答内容；只用于评估哪类回答不可信。
+    /// </summary>
+    [HttpPut("messages/{messageId:long}/feedback")]
+    public async Task<IActionResult> SetMessageFeedback(
+        long messageId, [FromBody] MessageFeedbackRequest request, CancellationToken token)
+    {
+        if (request.Feedback is not (null or 1 or -1))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "反馈只能取 1（赞）或 -1（踩），省略表示取消。"));
+        }
+
+        var reason = request.Reason?.Trim();
+        if (reason is { Length: > 200 }) reason = reason[..200];
+        var updated = await repository.SetMessageFeedbackAsync(
+            userContext.UserId, messageId, request.Feedback, reason, token);
+        // 只有助手回复（ROLE = 2）可评，所以"评不到"既可能是消息不存在，也可能是不是助手消息；
+        // 对调用方而言都是"这条不能评"，不必区分（也避免暴露别人的消息是否存在）。
+        return updated > 0 ? NoContent() : NotFound();
     }
 
     /// <summary>读库内工具摘要 JSON 时的选项：命名大小写不敏感——"库里当初怎么写"不该决定"现在还读不读得出来"。</summary>
@@ -220,12 +254,29 @@ public sealed class AssistantController(
                 case ChatStreamEvent.Delta d:
                     await WriteEventAsync(writer, "delta", new { text = d.Text }, token);
                     break;
+                case ChatStreamEvent.Reasoning r:
+                    await WriteEventAsync(writer, "reasoning", new { text = r.Text }, token);
+                    break;
+                case ChatStreamEvent.ToolStarted started:
+                    // 工具轮的"正在调用谁"要立刻发出去：执行期间界面上原本一片空白，
+                    // 那段空白会被读成卡死（见 ChatStreamEvent.ToolStarted 的说明）。
+                    await WriteEventAsync(writer, "tool_start", new { name = started.Name }, token);
+                    break;
+                case ChatStreamEvent.ToolFinished finished:
+                    await WriteEventAsync(writer, "tool_result", new
+                    {
+                        name = finished.Name,
+                        digest = finished.Digest,
+                        ok = finished.Ok,
+                    }, token);
+                    break;
                 case ChatStreamEvent.Completed done:
                     await WriteEventAsync(writer, "done", new
                     {
                         message = done.Message,
                         toolCalls = done.ToolCalls?.Select(t => new { name = t.Name, digest = t.ResultDigest }),
                         drafts = done.Drafts,
+                        finishReason = done.FinishReason,
                     }, token);
                     break;
                 case ChatStreamEvent.Failed fail:

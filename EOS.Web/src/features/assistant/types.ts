@@ -313,4 +313,10 @@ export interface AssistantMessage {
   createdAt: string
   /** 本次回复用过的工具摘要（与 done 事件同一形状）。历史消息也带，工具卡因此不会一刷新就消失。 */
   toolCalls?: Array<{ name: string; digest: string }> | null
+  /** 用户反馈：1 = 赞，-1 = 踩，null = 没反馈。 */
+  feedback?: number | null
+  /** 踩的原因（受控短文本）。 */
+  feedbackReason?: string | null
+  /** 完成原因：`length` = 被输出上限截断。落库后刷新会话仍能看到这条提示。 */
+  finishReason?: string | null
 }
