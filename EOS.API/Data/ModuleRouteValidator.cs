@@ -28,7 +28,7 @@ internal static class ModuleRouteValidator
     [
         "/dashboard",
         "/admin/menus", "/admin/tables", "/admin/field-audit", "/admin/users",
-        "/admin/fields", "/admin/depot-stock-policy", "/admin/logs",
+        "/admin/fields", "/admin/depot-stock-policy", "/admin/logs", "/admin/business-flow",
         "/admin/assistant/sessions", "/admin/assistant/mechanism", "/admin/assistant/kb", "/admin/assistant/models",
         "/admin/assistant/settings",
         "/admin/groups", "/admin/report-setup",

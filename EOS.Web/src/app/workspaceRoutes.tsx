@@ -13,6 +13,7 @@ import {
   JobPage,
   FallbackModulePage,
   LogAdminPage,
+  BusinessFlowPage,
   MyTasksPage,
   FlowDesignPage,
   FlowMonitorPage,
@@ -69,6 +70,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 日志管理（模块 2313，根 23 系统管理 / 父 2311 数据表维护）：读日志与诊断信息；
   // 打包下载由服务端另行要求设置权限
   { element: <RequirePermission permission={moduleReadPermission(2313)} />, children: [{ path: 'admin/logs', element: withSuspense(<LogAdminPage />) }] },
+  // 业务流程图（模块 2314，根 23 系统管理 / 父 2311 数据表维护）：按字段数据来源反推表间引用，只读
+  { element: <RequirePermission permission={moduleReadPermission(2314)} />, children: [
+    { path: 'admin/business-flow', element: withSuspense(<BusinessFlowPage />) },
+  ] },
   { element: <RequirePermission permission={moduleReadPermission(110310)} />, children: [{ path: 'admin/depot-stock-policy', element: withSuspense(<DepotStockPolicyPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
     { path: 'admin/users', element: withSuspense(<UserAdminPage />) },

@@ -159,6 +159,7 @@ builder.Services.AddScoped<AuthenticationRepository>();
 builder.Services.AddScoped<DepotStockPolicyService>();
 builder.Services.AddScoped<UserAdminRepository>();
 builder.Services.AddScoped<FieldAdminRepository>();
+builder.Services.AddScoped<EOS.API.Features.BusinessFlow.BusinessFlowRepository>();
 builder.Services.AddScoped<RestrictedExpressionService>();
 builder.Services.AddScoped<RightsAdminRepository>();
 builder.Services.AddScoped<ModuleRightsRepository>();
