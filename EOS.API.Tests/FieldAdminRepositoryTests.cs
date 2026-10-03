@@ -234,6 +234,36 @@ public sealed class FieldAdminRepositoryTests
     }
 
     [Fact]
+    public void IsNoOpUpdate_SameContent_IsNoOp()
+    {
+        var current = FieldInput();
+        // 客户端保存成功后可能带着保存前的快照再次提交（重复保存/离开确认保存）：
+        // 提交内容与库中一致时必须判为无操作，否则会被乐观锁误报成「内容已被他人修改」
+        Assert.True(FieldAdminRepository.IsNoOpUpdate(current, current));
+    }
+
+    [Fact]
+    public void IsNoOpUpdate_ChangedContent_IsNotNoOp()
+    {
+        var current = FieldInput();
+        Assert.False(FieldAdminRepository.IsNoOpUpdate(current with { DataType = "date" }, current));
+        Assert.False(FieldAdminRepository.IsNoOpUpdate(current with { Label = "新名称" }, current));
+    }
+
+    [Fact]
+    public void IsNoOpUpdate_ComparesOptionsAndSubmittedExpressions()
+    {
+        var current = FieldInput();
+        // 下拉选项不在结构比对里，只在无操作判定里比：只改选项就不是无操作（否则改动会被静默丢弃）
+        Assert.False(FieldAdminRepository.IsNoOpUpdate(current with { Options = "O=外含税" }, current));
+        // 表达式传 null = 本次不改，仍判无操作
+        Assert.True(FieldAdminRepository.IsNoOpUpdate(
+            current with { VirtualExpression = null, ConvertFunction = null }, current));
+        // 表达式给了值就要比对
+        Assert.False(FieldAdminRepository.IsNoOpUpdate(current with { ConvertFunction = "f_get_name" }, current));
+    }
+
+    [Fact]
     public void SystemColumnUpdate_RejectsPermissionAndOptionEnumerationChange()
     {
         var current = FieldInput();
