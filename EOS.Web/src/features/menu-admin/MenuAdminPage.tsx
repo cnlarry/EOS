@@ -23,6 +23,7 @@ import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpTable } from '../../components/common/ErpTable'
+import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Modal } from '../../components/ui/Modal'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
@@ -302,6 +303,8 @@ export function MenuAdminPage() {
   const [fieldPicker, setFieldPicker] = useState<null | { target: 'sortFields' | 'detailNoFields' | 'notBackM' | 'notBack' }>(null)
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false)
   const [formTab, setFormTab] = useState<MenuFormTab>('basic')
+  // 右键菜单视口定位：菜单树贴近屏幕下缘时翻到落点上方，不被窗口裁掉
+  const contextMenuPlacement = useMenuPlacement(contextMenu?.x ?? 0, contextMenu?.y ?? 0, contextMenu !== null)
   // 当前账号在 2301 上的能力：无模块配置权时不渲染配置页签（服务端各端点独立判权，这里只决定是否展示）。
   const capabilitiesQuery = useQuery({
     queryKey: ['menu-admin', 'capabilities'],
@@ -722,11 +725,8 @@ export function MenuAdminPage() {
     event.preventDefault()
     event.stopPropagation()
     selectModule(module)
-    setContextMenu({
-      x: Math.max(4, Math.min(event.clientX, window.innerWidth - 190)),
-      y: Math.max(4, Math.min(event.clientY, window.innerHeight - 170)),
-      module,
-    })
+    // 夹取与翻转交给 useMenuPlacement（按菜单真实尺寸判定），这里只记鼠标落点
+    setContextMenu({ x: event.clientX, y: event.clientY, module })
   }
 
   const startRename = (module: MenuAdminModule) => {
@@ -1084,8 +1084,9 @@ export function MenuAdminPage() {
             </div>
             {contextMenu && (
               <div
+                ref={contextMenuPlacement.ref}
                 className="erp-menu-context-menu"
-                style={{ left: contextMenu.x, top: contextMenu.y }}
+                style={{ left: contextMenuPlacement.left, top: contextMenuPlacement.top }}
                 role="menu"
                 onClick={(event) => event.stopPropagation()}
               >

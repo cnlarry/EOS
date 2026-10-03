@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 
 export interface ContextMenuItem {
   label?: string
@@ -16,6 +17,9 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
+  // 视口定位：贴近屏幕右/下缘时向内收，下方放不下则翻到落点上方
+  const placement = useMenuPlacement(x, y, true)
+
   useEffect(() => {
     const close = () => onClose()
     const keyClose = (event: KeyboardEvent) => {
@@ -33,8 +37,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
 
   return (
     <div
+      ref={placement.ref}
       className="position-fixed bg-white shadow border rounded"
-      style={{ left: Math.min(x, window.innerWidth - 180), top: Math.min(y, window.innerHeight - 260), zIndex: 1200, minWidth: 160 }}
+      style={{ left: placement.left, top: placement.top, zIndex: 1200, minWidth: 160 }}
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >

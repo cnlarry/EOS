@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import type { LayoutDocument } from './types'
 
 interface LayerPanelProps {
@@ -24,6 +25,8 @@ export function LayerPanel({
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  // 右键菜单视口定位：图层列表贴近屏幕下缘时翻到落点上方，不被窗口裁掉
+  const menuPlacement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, menu !== null)
   const sections = (['header', 'content', 'footer'] as const).map((key) => ({
     key,
     label: SECTION_LABELS[key],
@@ -115,8 +118,8 @@ export function LayerPanel({
         ))}
       </div>
       {menu && (
-        <div className="position-fixed bg-white shadow border rounded py-1"
-          style={{ left: Math.min(menu.x, window.innerWidth - 140), top: Math.min(menu.y, window.innerHeight - 100), zIndex: 1300, minWidth: 130 }}
+        <div ref={menuPlacement.ref} className="position-fixed bg-white shadow border rounded py-1"
+          style={{ left: menuPlacement.left, top: menuPlacement.top, zIndex: 1300, minWidth: 130 }}
           onPointerDown={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
