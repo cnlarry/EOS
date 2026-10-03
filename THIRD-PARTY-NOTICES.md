@@ -45,6 +45,8 @@
 | @tabler/icons-react | 3.46.0 | MIT |
 | zod | 4.4.3 | MIT |
 | @dnd-kit/core / @dnd-kit/modifiers | 6.3.1 / 9.0.0 | MIT |
+| @xyflow/react（React Flow） | 12.12.0 | MIT |
+| @dagrejs/dagre | 3.1.1 | MIT |
 
 开发依赖（不随产物分发）：vite、vitest、oxlint、jsdom、@testing-library/*、@vitest/coverage-v8
 均为 **MIT**；typescript 为 **Apache-2.0**。

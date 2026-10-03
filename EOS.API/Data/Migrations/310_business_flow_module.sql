@@ -1,0 +1,111 @@
+-- ============================================================================
+-- EOS.ERP migration 310: 业务流程图模块登记（2314）
+-- ----------------------------------------------------------------------------
+--  新增定制页 /admin/business-flow（模块 2314）：按 FIELD_DATASOURCE（字段数据来源）
+--  反推「来源表 → 字段所属表」的引用关系，按模块业务域聚合为总图与域内明细图。
+--  纯只读元数据浏览，不新增写路径。
+--
+--  为什么挂 2311 数据表维护：它下挂的是运维·数据类页面（2302 数据表字段维护 20、
+--  2303 读写数据表信息 30、2313 日志管理 40、2307 数据库备份 99）；本页同属"看元数据"
+--  这一类，SORT_IDX 取 50 落在 40 与 99 之间。
+--
+--  为什么授权镜像 2302：两者都是数据表维护下的元数据只读页，权限面一致
+--  （能看字段维护的用户，也应该能看数据来源构成的流程图）。
+--
+--  幂等：模块 2314 与授权行均按 (主体, M_IDX) 不存在才插，可重复执行。
+-- ============================================================================
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET ARITHABORT ON;
+
+DECLARE @GuardMessage NVARCHAR(400) = N'本脚本只能在 EOS.ERP 数据库内执行，当前库为 ' + DB_NAME() + N'。';
+IF DB_NAME() <> N'EOS.ERP'
+    THROW 51800, @GuardMessage, 1;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 2311)
+    THROW 51810, N'父模块 2311 数据表维护不存在，迁移中止（业务流程图挂在它下面）。', 1;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 2302)
+    THROW 51811, N'参照模块 2302 数据表、字段维护不存在，迁移中止（授权镜像以它为准）。', 1;
+
+IF EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 2314 AND M_URL <> N'/admin/business-flow')
+    THROW 51812, N'模块 2314 已被占用（URL 不是 /admin/business-flow），迁移中止：编号不回收、不复用。', 1;
+
+BEGIN TRANSACTION;
+
+/* ---------- 1. 模块登记：23 系统管理 → 2311 数据表维护 → 2314 业务流程图 ---------- */
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 2314)
+BEGIN
+    INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_URL, M_P_IDX, M_ROOT_IDX, SORT_IDX, M_TAG, MASTER_TABLE)
+    VALUES (2314, N'业务流程图', N'/admin/business-flow', 2311, 23, 50, 1, NULL);
+    PRINT N'== 新增模块 2314 业务流程图（/admin/business-flow，父 2311、根 23、序 50）==';
+END
+ELSE
+    PRINT N'== 模块 2314 已存在，跳过登记 ==';
+
+/* ---------- 2. 组权限：按 2302 镜像 ---------- */
+INSERT INTO dbo.SYSDH
+    (G_IDX, M_IDX, EXEC_TAG, ADDNEW_TAG, DELETE_TAG, EDIT_TAG, REPORT_TAG, COST_TAG, SETUP_TAG, SECRECY_TAG,
+     ENDCASE_TAG, UNENDCASE_TAG, OTHER1_TAG, OTHER2_TAG, OTHER3_TAG, OTHER4_TAG,
+     DENY_VIEW_FIELD_MASTER, DENY_VIEW_FIELD_DETAIL, DENY_NEW_FIELD_MASTER, DENY_NEW_FIELD_DETAIL,
+     DENY_MODI_FIELD_MASTER, DENY_MODI_FIELD_DETAIL, DATA_FILTER, CI, OPERFLAG,
+     APPROVE_TAG, DEAPPROVE_TAG, FILE_VIEW_TAG, FILE_UPDA_TAG, FILE_EDIT_TAG, FILE_DELE_TAG,
+     FORM_DESIGN_TAG, MODULE_CONFIG_TAG)
+SELECT h.G_IDX, 2314, h.EXEC_TAG, h.ADDNEW_TAG, h.DELETE_TAG, h.EDIT_TAG, h.REPORT_TAG, h.COST_TAG,
+       h.SETUP_TAG, h.SECRECY_TAG, h.ENDCASE_TAG, h.UNENDCASE_TAG, h.OTHER1_TAG, h.OTHER2_TAG,
+       h.OTHER3_TAG, h.OTHER4_TAG, h.DENY_VIEW_FIELD_MASTER, h.DENY_VIEW_FIELD_DETAIL,
+       h.DENY_NEW_FIELD_MASTER, h.DENY_NEW_FIELD_DETAIL, h.DENY_MODI_FIELD_MASTER, h.DENY_MODI_FIELD_DETAIL,
+       h.DATA_FILTER, h.CI, h.OPERFLAG, h.APPROVE_TAG, h.DEAPPROVE_TAG, h.FILE_VIEW_TAG, h.FILE_UPDA_TAG,
+       h.FILE_EDIT_TAG, h.FILE_DELE_TAG, h.FORM_DESIGN_TAG, h.MODULE_CONFIG_TAG
+FROM dbo.SYSDH h
+WHERE h.M_IDX = 2302
+  AND NOT EXISTS (SELECT 1 FROM dbo.SYSDH x WHERE x.G_IDX = h.G_IDX AND x.M_IDX = 2314);
+
+PRINT N'== 已按模块 2302 补组权限 ' + CONVERT(NVARCHAR(10), @@ROWCOUNT) + N' 行 ==';
+
+/* ---------- 3. 个人权限：同口径（个人权限整表覆盖组权限，漏搬会直接少授权）---------- */
+INSERT INTO dbo.SYSDD
+    (USER_ID, M_IDX, EXEC_TAG, ADDNEW_TAG, DELETE_TAG, EDIT_TAG, REPORT_TAG, COST_TAG, SETUP_TAG, SECRECY_TAG,
+     ENDCASE_TAG, UNENDCASE_TAG, OTHER1_TAG, OTHER2_TAG, OTHER3_TAG, OTHER4_TAG,
+     DENY_VIEW_FIELD_MASTER, DENY_VIEW_FIELD_DETAIL, DENY_NEW_FIELD_MASTER, DENY_NEW_FIELD_DETAIL,
+     DENY_MODI_FIELD_MASTER, DENY_MODI_FIELD_DETAIL, DATA_FILTER, CI, OPERFLAG,
+     APPROVE_TAG, DEAPPROVE_TAG, FILE_VIEW_TAG, FILE_UPDA_TAG, FILE_EDIT_TAG, FILE_DELE_TAG,
+     FORM_DESIGN_TAG, MODULE_CONFIG_TAG)
+SELECT d.USER_ID, 2314, d.EXEC_TAG, d.ADDNEW_TAG, d.DELETE_TAG, d.EDIT_TAG, d.REPORT_TAG, d.COST_TAG,
+       d.SETUP_TAG, d.SECRECY_TAG, d.ENDCASE_TAG, d.UNENDCASE_TAG, d.OTHER1_TAG, d.OTHER2_TAG,
+       d.OTHER3_TAG, d.OTHER4_TAG, d.DENY_VIEW_FIELD_MASTER, d.DENY_VIEW_FIELD_DETAIL,
+       d.DENY_NEW_FIELD_MASTER, d.DENY_NEW_FIELD_DETAIL, d.DENY_MODI_FIELD_MASTER, d.DENY_MODI_FIELD_DETAIL,
+       d.DATA_FILTER, d.CI, d.OPERFLAG, d.APPROVE_TAG, d.DEAPPROVE_TAG, d.FILE_VIEW_TAG, d.FILE_UPDA_TAG,
+       d.FILE_EDIT_TAG, d.FILE_DELE_TAG, d.FORM_DESIGN_TAG, d.MODULE_CONFIG_TAG
+FROM dbo.SYSDD d
+WHERE d.M_IDX = 2302
+  AND NOT EXISTS (SELECT 1 FROM dbo.SYSDD x WHERE x.USER_ID = d.USER_ID AND x.M_IDX = 2314);
+
+PRINT N'== 已按模块 2302 补个人权限 ' + CONVERT(NVARCHAR(10), @@ROWCOUNT) + N' 行 ==';
+
+/* ---------- 4. 收口断言 ---------- */
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 2314 AND M_URL = N'/admin/business-flow'
+                 AND M_P_IDX = 2311 AND M_ROOT_IDX = 23 AND ISNULL(M_TAG, 1) = 1)
+    THROW 51813, N'模块 2314 未就位或其层级不是 23/2311，迁移中止。', 1;
+
+IF EXISTS (
+        SELECT h.G_IDX FROM dbo.SYSDH h
+        WHERE h.M_IDX = 2302
+          AND NOT EXISTS (SELECT 1 FROM dbo.SYSDH x WHERE x.G_IDX = h.G_IDX AND x.M_IDX = 2314))
+    THROW 51814, N'模块 2314 的组权限少于参照模块 2302，迁移中止。', 1;
+
+IF EXISTS (
+        SELECT d.USER_ID FROM dbo.SYSDD d
+        WHERE d.M_IDX = 2302
+          AND NOT EXISTS (SELECT 1 FROM dbo.SYSDD x WHERE x.USER_ID = d.USER_ID AND x.M_IDX = 2314))
+    THROW 51815, N'模块 2314 的个人权限少于参照模块 2302，迁移中止。', 1;
+
+COMMIT TRANSACTION;
+
+DECLARE @GroupRows INT = (SELECT COUNT(*) FROM dbo.SYSDH WHERE M_IDX = 2314);
+DECLARE @UserRows INT = (SELECT COUNT(*) FROM dbo.SYSDD WHERE M_IDX = 2314);
+PRINT N'== 收口：业务流程图 2314 已登记（根 23 / 父 2311），授权 '
+    + CONVERT(NVARCHAR(10), @GroupRows) + N' 组 / ' + CONVERT(NVARCHAR(10), @UserRows) + N' 人 ==';

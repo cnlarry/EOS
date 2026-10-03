@@ -12,6 +12,7 @@ export interface PageMeta {
 export const PAGE_META: Record<string, PageMeta> = {
   '/dashboard': { section: '首页', title: '首页' },
   '/admin/tables': { section: '系统管理', title: '数据表维护' },
+  '/admin/business-flow': { section: '系统管理', title: '业务流程图' },
   '/admin/menus': { section: '系统管理', title: '菜单管理' },
   '/admin/groups': { section: '系统管理', title: '用户组管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },

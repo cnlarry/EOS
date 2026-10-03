@@ -1,0 +1,262 @@
+/* 业务流程图（/admin/business-flow）：dagre 分层布局 + React Flow 画布 */
+
+.erp-flow-canvas {
+  /* React Flow 要求容器有确定高度，否则不渲染（"容器需要宽高"）。 */
+  height: calc(100vh - 216px);
+  min-height: 460px;
+  position: relative;
+}
+
+/* 画布 + 连线细节面板：画布占满剩余宽度，面板固定宽、自己滚动 */
+.erp-flow-body {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* 量尺寸用的包裹层：撑满外层，React Flow 仍以它为容器。 */
+.erp-flow-canvas-inner {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+
+.erp-flow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--tblr-border-color, #e6e8eb);
+}
+
+.erp-flow-heading {
+  min-width: 0;
+}
+
+/* 视图开关 + 图例：动作按钮留在命令栏，观察方式（视角/过滤）留在页头 */
+.erp-flow-header-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.erp-flow-toggle {
+  flex: 0 0 auto;
+}
+
+.erp-flow-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.erp-flow-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.erp-flow-legend-line {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px solid #206bc4;
+}
+
+.erp-flow-legend-line--external {
+  border-top: 2px dashed #adb5bd;
+}
+
+/* 总览图：线色表示上游域，用一小段渐变示意"这里是一组不同颜色" */
+.erp-flow-legend-line--multi {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #206bc4, #d63939, #f76707, #2fb344, #ae3ec9);
+}
+
+.erp-flow-legend-line--weak {
+  border-top-color: #cbd5e1;
+}
+
+/* 已登记单据关系：深青粗实线，与域内流程的蓝、跨域引用的灰虚线都拉得开 */
+.erp-flow-legend-line--registered {
+  border-top: 3px solid #0b7285;
+}
+
+/* 尺寸由 flowGraph.ts 的 nodeSize() 按行数算出并传给 React Flow（内边距 8、行高 16、
+   行距 2、上下边框 2）。这里的每个数值都是那个算式的一项——改了就要同步改过去，
+   否则节点高度与实际内容对不上，三行的节点会重新被裁。 */
+.erp-flow-node {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  position: relative;
+  border: 1px solid #d3dbe3;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  font-size: 12px;
+  /* 固定 px 行高（标题 12px、表代码与补充信息 11px 共用此行高）：行高是那套算式的基准 */
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.erp-flow-node-title {
+  overflow: hidden;
+  color: #1f2937;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-flow-node-code {
+  overflow: hidden;
+  color: #6b7280;
+  font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-flow-node-meta {
+  overflow: hidden;
+  color: #9aa4b2;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-flow-node-badge {
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  padding: 1px 6px;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  background: #eef2f7;
+  color: #5b6b7d;
+  font-size: 10px;
+}
+
+.erp-flow-node--domain {
+  border-color: #4299e1;
+  background: linear-gradient(180deg, #f2f8ff 0%, #fff 100%);
+}
+
+.erp-flow-node--table-external {
+  border-style: dashed;
+  background: #fafbfc;
+  opacity: 0.85;
+}
+
+/* 边的连接点：低调的小圆点，不抢节点内容的视觉重心，但保留"线从哪出来"的提示。 */
+.erp-flow-handle {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #fff;
+  background: #9aa4b2;
+}
+
+/* 单域聚焦：与当前聚焦节点无关的节点/连线淡出。 */
+.erp-flow-dimmed {
+  opacity: 0.15;
+  transition: opacity 0.15s ease;
+}
+
+/* 淡出的连线比节点更淡：留一点"这里还有东西"的感知即可，
+   压到几乎看不见才不至于在背景里又织出一张网与高亮部分抢注意力。 */
+.react-flow__edge.erp-flow-dimmed {
+  opacity: 0.06;
+}
+
+/* 画布控件区：纵向排列的图标按钮，尺寸与外观沿用系统工具栏的纯图标按钮。 */
+.erp-flow-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 缩略图统一成系统卡片外观（React Flow 默认是浅灰直角块）。 */
+.erp-flow-canvas .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--tblr-border-color, #e6e8eb);
+  border-radius: 6px;
+}
+
+/* 选中的连线：加一圈浅色描边把它从同色邻居里挑出来（点它才会开右侧细节） */
+.react-flow__edge.erp-flow-edge-selected .react-flow__edge-path {
+  filter: drop-shadow(0 0 3px rgb(32 107 196 / 55%));
+}
+
+/* 连线细节面板：回答"这两张表为什么有一条线"——登记键列与取值来源字段 */
+.erp-flow-detail {
+  flex: 0 0 280px;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 14px;
+  border-left: 1px solid var(--tblr-border-color, #e6e8eb);
+  background: var(--tblr-bg-surface-secondary, #f8f9fa);
+  font-size: 12px;
+}
+
+.erp-flow-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.erp-flow-detail-title {
+  color: #1f2937;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.erp-flow-detail-arrow {
+  padding: 0 6px;
+  color: #9aa4b2;
+}
+
+.erp-flow-detail-section + .erp-flow-detail-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--tblr-border-color, #e6e8eb);
+}
+
+.erp-flow-detail-label {
+  margin-bottom: 6px;
+  color: #5b6b7d;
+  font-weight: 600;
+}
+
+.erp-flow-detail-note {
+  margin: 0 0 6px;
+  color: #9aa4b2;
+}
+
+.erp-flow-detail-list {
+  margin: 0;
+  padding-left: 16px;
+  color: #1f2937;
+}
+
+.erp-flow-detail-list li {
+  margin-bottom: 2px;
+}
+
+.erp-flow-detail-list code {
+  color: #0b7285;
+  word-break: break-all;
+}

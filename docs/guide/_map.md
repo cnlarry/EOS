@@ -18,7 +18,7 @@
 | 05-数据库迁移与建库.md | 已完成 | EOS.API/Data/Migrations, EOS.API/Data/ErpDatabaseInitializer.cs, db |
 | 06-测试与质量门禁.md | 已完成 | EOS.API.Tests |
 | 10-元数据模型.md | 已完成 | - |
-| 11-元数据运维.md | 已完成 | EOS.API/Controllers/FieldAdminController.cs, EOS.API/Controllers/TableDataController.cs, EOS.API/Controllers/ModuleBusinessConfigController.cs, EOS.API/Data/FieldAdminRepository.cs, EOS.API/Data/ModuleBusinessConfigRepository.cs, EOS.Web/src/features/field-admin |
+| 11-元数据运维.md | 已完成 | EOS.API/Controllers/FieldAdminController.cs, EOS.API/Controllers/TableDataController.cs, EOS.API/Controllers/ModuleBusinessConfigController.cs, EOS.API/Controllers/BusinessFlowController.cs, EOS.API/Data/FieldAdminRepository.cs, EOS.API/Data/ModuleBusinessConfigRepository.cs, EOS.API/Features/BusinessFlow, EOS.Web/src/features/field-admin, EOS.Web/src/features/business-flow |
 | 12-元数据消费.md | 已完成 | EOS.API/Data/WorkbenchFieldMetaMapper.cs, EOS.API/Data/WorkbenchDefinitionBuilder.cs, EOS.API/Data/ModuleBusinessMap.cs, EOS.API/Data/ModuleRouteValidator.cs |
 | 20-认证与会话.md | 已完成 | EOS.API/Security, EOS.API/Controllers/AuthenticationController.cs, EOS.API/Data/AuthenticationRepository.cs, EOS.Web/src/features/auth |
 | 21-授权模型.md | 已完成 | EOS.API/Security/PermissionService.cs, EOS.API/Security/IPermissionService.cs, EOS.API/Security/CurrentUserContext.cs, EOS.API/Security/PermissionAction.cs, EOS.API/Security/ModuleIds.cs |

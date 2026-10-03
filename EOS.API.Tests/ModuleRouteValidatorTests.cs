@@ -40,6 +40,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/logs", 2313)]
     [InlineData("/admin/field-audit", 2303)]
     [InlineData("/admin/depot-stock-policy", 110310)]
+    [InlineData("/admin/business-flow", 2314)]
     public void 定制页路由_后端精确路径与前端路由表一致(string url, int moduleId)
     {
         Assert.Equal(url, ModuleRouteValidator.Resolve(url, moduleId));
