@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClientMock } from '../../test/apiMock'
@@ -94,6 +94,12 @@ function rightClickCell(value: string) {
   fireEvent.contextMenu(cell, { clientX: 10, clientY: 10 })
 }
 
+/** 明细表头的列名顺序（= 明细列的版式顺序）。 */
+function detailHeadLabels(): (string | null)[] {
+  return [...document.querySelectorAll('.erp-designer-detail-head .erp-designer-detail-label')]
+    .map(node => node.textContent)
+}
+
 describe('FormDesignerPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockResolvedValue(designState)
@@ -116,16 +122,29 @@ describe('FormDesignerPage', () => {
     vi.unstubAllGlobals()
   })
 
-  it('加载后渲染画布与明细表头，并给出添加字段/添加列入口', async () => {
+  it('加载后渲染画布与明细表头，并给出添加字段/字段管理入口', async () => {
     renderPage()
     expect(await screen.findByText('ORDER_NO')).toBeInTheDocument()
     // 明细列以真实表头横铺（而不是竖排列表）
     expect(screen.getByText(/明细列（COP_ORDER_D）/)).toBeInTheDocument()
     // 表头显示字段名（与运行态明细网格一致），而不是字段代号
     expect(screen.getByText('产品编号')).toBeInTheDocument()
-    // 主表加字段走画布末尾；明细加列走明细面板标题栏右上角
+    // 主表加字段走画布末尾；明细的选列与排序走明细面板标题栏右上角的「字段管理」
     expect(screen.getByRole('button', { name: /添加字段/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /添加列/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /字段管理/ })).toBeInTheDocument()
+  })
+
+  it('明细「字段管理」：已选列可上下排序，确认后明细表头按新顺序重排', async () => {
+    renderPage()
+    await screen.findByText('ORDER_NO')
+    expect(detailHeadLabels()).toEqual(['产品编号', '数量'])
+    fireEvent.click(screen.getByRole('button', { name: /字段管理/ }))
+    const dialog = await screen.findByRole('dialog', { name: '字段管理（COP_ORDER_D）' })
+    // 在「已选字段」里选中「数量」并上移，再确认
+    fireEvent.change(within(dialog).getByLabelText('已选字段'), { target: { value: 'QTY' } })
+    fireEvent.click(within(dialog).getByTitle('上移'))
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(detailHeadLabels()).toEqual(['数量', '产品编号']))
   })
 
   it('虚拟列不挂「虚」角标，改用 is-virtual 样式区分实体列', async () => {

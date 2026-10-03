@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addFromPool,
   addTab,
+  applyDetailColumns,
   deleteTab,
   mergeCompanion,
   moveRow,
@@ -392,5 +393,43 @@ describe('分节与套用来源', () => {
     const rejected = importDraftFile(draft, JSON.stringify(other))
     expect('error' in rejected && rejected.error).toContain('模块 8888')
     expect('error' in importDraftFile(draft, '{ not json')).toBe(true)
+  })
+})
+
+describe('applyDetailColumns', () => {
+  const withPool = toDraft(state({
+    detail: {
+      table: 'COP_ORDER_D',
+      layout: [row('D1', { orderNo: 1 }), row('D2', { orderNo: 2 }), row('D3', { orderNo: 3 })],
+      pool: [pool('D4')],
+    },
+  }))
+
+  it('按清单重排并重排序号，清单里没有的列置为移出表单（不物理删行）', () => {
+    const next = applyDetailColumns(withPool, ['D3', 'D1'])
+    expect(next.detail.map(item => item.key)).toEqual(['D3', 'D1', 'D2'])
+    expect(next.detail.map(item => item.hidden)).toEqual([false, false, true])
+    expect(next.detail.map(item => item.orderNo)).toEqual([1, 2, 3])
+  })
+
+  it('清单里的新列从字段池加入（池里不再保留），其余列移出', () => {
+    const next = applyDetailColumns(withPool, ['D4'])
+    expect(next.detail.map(item => item.key)).toEqual(['D4', 'D1', 'D2', 'D3'])
+    expect(next.detail.find(item => item.key === 'D4')?.hidden).toBe(false)
+    expect(next.detail.filter(item => item.key !== 'D4').every(item => item.hidden)).toBe(true)
+    expect(next.detailPool.map(item => item.key)).toEqual([])
+  })
+
+  it('锁定列不允许移出：不在清单里也仍留在表单上', () => {
+    const locked = toDraft(state({
+      detail: {
+        table: 'COP_ORDER_D',
+        layout: [row('PK', { orderNo: 1, locked: true }), row('D2', { orderNo: 2 })],
+        pool: [],
+      },
+    }))
+    const next = applyDetailColumns(locked, ['D2'])
+    expect(next.detail.map(item => item.key)).toEqual(['D2', 'PK'])
+    expect(next.detail.every(item => item.hidden === false)).toBe(true)
   })
 })

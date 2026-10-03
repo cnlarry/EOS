@@ -175,7 +175,9 @@ export function ErpColumnSelector({
                   const sideSelection = selection[group.id] ?? { available: [], visible: [] }
                   return (
                     <div className="erp-columns-group" key={group.id}>
-                      <h3 className="mb-2">{group.label}</h3>
+                      {/* 组标题只在有组名时渲染：单组场景（如明细「字段管理」）对话框标题已说明对象，
+                          再顶一行同名标题纯属多余 */}
+                      {group.label.trim() ? <h3 className="mb-2">{group.label}</h3> : null}
                       <div className="erp-columns-transfer">
                         <div>
                           <label className="form-label">{group.label}可选字段</label>

@@ -244,6 +244,35 @@ export function addFromPool(draft: DesignDraft, table: DesignTable, key: string)
     : { ...draft, detail: nextRows, detailPool: nextPool }
 }
 
+/**
+ * 明细列管理落地：按给定列键的**有序清单**重建明细版式。
+ *
+ * 清单里没有的列不是物理删除，而是置为「已移出表单」（保留其排版属性，放回时仍在原表头上）；
+ * 锁定列（主键/系统列/必填）不允许移出，仍留在表单里（与 setHidden 同一口径），
+ * 排在清单之后——否则字段会在用户没要求的情况下从表单上消失，或被静默移出。
+ */
+export function applyDetailColumns(draft: DesignDraft, keys: readonly string[]): DesignDraft {
+  let next = draft
+  for (const key of keys) {
+    if (!next.detail.some((row) => row.key.toUpperCase() === key.toUpperCase())) {
+      next = addFromPool(next, 'detail', key)
+    }
+  }
+  const remaining = new Map(next.detail.map((row) => [row.key.toUpperCase(), row]))
+  const ordered: DesignRow[] = []
+  for (const key of keys) {
+    const upper = key.toUpperCase()
+    const row = remaining.get(upper)
+    if (!row) continue
+    remaining.delete(upper)
+    ordered.push({ ...row, hidden: false })
+  }
+  for (const row of remaining.values()) {
+    ordered.push(row.locked ? { ...row, hidden: false } : { ...row, hidden: true })
+  }
+  return { ...next, detail: renumber(ordered, 'detail') }
+}
+
 function toRow(field: PoolField): DesignRow {
   return {
     key: field.key,

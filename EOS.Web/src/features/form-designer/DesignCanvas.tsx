@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { IconPlus } from '@tabler/icons-react'
+import { IconListDetails, IconPlus } from '@tabler/icons-react'
 import { packFormSections } from '../document-workbench/formLayout'
 import { RESIDENT_TAB_NO, tabTitle } from './formDesignerDraft'
 import { dragId, type DropTarget } from './formDesignerDrag'
@@ -28,6 +28,7 @@ interface DesignCanvasProps {
   /** 右键精修菜单（位置用视口坐标，菜单自己定位） */
   onRowContextMenu?: (key: string, x: number, y: number) => void
   onSectionContextMenu?: (sectionId: string, x: number, y: number) => void
+  onTabContextMenu?: (no: number, x: number, y: number) => void
 }
 
 /**
@@ -57,6 +58,7 @@ export default function DesignCanvas({
   onDeleteTab,
   onRowContextMenu,
   onSectionContextMenu,
+  onTabContextMenu,
 }: DesignCanvasProps) {
   const [renaming, setRenaming] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -106,7 +108,11 @@ export default function DesignCanvas({
                   setRenaming(tab.no)
                   setRenameValue(tab.title)
                 }}
-                title="单击切换，双击改名；字段可拖到标签上移动到该页签"
+                onContextMenu={event => {
+                  event.preventDefault()
+                  onTabContextMenu?.(tab.no, event.clientX, event.clientY)
+                }}
+                title="单击切换，双击改名，右键删除页签；字段可拖到标签上移动到该页签"
               >
                 {tabTitle(tab)}
               </button>
@@ -221,7 +227,7 @@ function DroppableTab({
         <button
           type="button"
           className="erp-designer-tab-close"
-          title="删除页签（其中的字段回到默认页签）"
+          title="删除页签"
           onClick={onDelete}
         >
           ×
@@ -345,6 +351,7 @@ function DesignField({ field, table, dragging, onSelect }: DesignFieldProps) {
   if (field.isVirtual) classes.push('is-virtual')
   if (dragging) classes.push('is-dragging')
   const name = `${table}.${field.key}${field.isVirtual ? '（虚拟列）' : ''}`
+  const hasBadges = field.span > 1 || field.rowSpan > 1 || !field.userVisible || field.hidden
   return (
     <div
       className={classes.join(' ')}
@@ -356,12 +363,22 @@ function DesignField({ field, table, dragging, onSelect }: DesignFieldProps) {
       title={field.userVisible ? name : `${name}（当前用户不可见）`}
     >
       <span className="erp-designer-value">{field.key}</span>
-      <span className="erp-designer-badges">
-        {field.span > 1 || field.rowSpan > 1 ? <em>{`▦ ${field.span}×${field.rowSpan}`}</em> : null}
-        {/* 排了也不会出现的字段先说清楚，免得排布白调 */}
-        {!field.userVisible ? <em className="is-denied">运行态不显示</em> : null}
-        {field.hidden ? <em className="is-hidden">已移出表单</em> : null}
-      </span>
+      {/* 挂有数据源的字段在设计态也要看得见选择器：否则排出来的表单看不出哪些是选入的 */}
+      {field.hasChooser ? (
+        <span className="erp-designer-chooser" title={`${field.key} 挂有数据源（运行态经选择器选入）`}>
+          <IconListDetails size={14} />
+        </span>
+      ) : null}
+      {/* 角标只在有话说时才占位：空容器也会吃一份 flex gap，
+          让"字段—选择器按钮—下一个字段"里最后一段距离比前一段多半格 */}
+      {hasBadges ? (
+        <span className="erp-designer-badges">
+          {field.span > 1 || field.rowSpan > 1 ? <em>{`▦ ${field.span}×${field.rowSpan}`}</em> : null}
+          {/* 排了也不会出现的字段先说清楚，免得排布白调 */}
+          {!field.userVisible ? <em className="is-denied">运行态不显示</em> : null}
+          {field.hidden ? <em className="is-hidden">已移出表单</em> : null}
+        </span>
+      ) : null}
     </div>
   )
 }
