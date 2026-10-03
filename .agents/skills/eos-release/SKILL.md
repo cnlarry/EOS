@@ -58,8 +58,10 @@ pwsh scripts/release.ps1 -DryRun -BuildOutput "$env:TEMP\eos-release-build"
 `MSB3027`/`MSB3021`——**那是拷贝产物失败，不是编译失败**。用 `-BuildOutput` 把产物落到仓库外：
 
 ```powershell
-pwsh scripts/release.ps1 -Bump auto -Tag -BuildOutput "$env:TEMP\eos-release-build"
+pwsh scripts/release.ps1 -Bump auto -BuildOutput "$env:TEMP\eos-release-build"
 ```
+
+注意**这一步不打标签**（也就没有 `-Tag`）：它产出的是 CHANGELOG **草稿**，标签留给定稿之后的第二步。
 
 为什么必须这么写而不是 `-SkipBuild`：`-SkipBuild` 会让"编译门禁"整条消失，真正的编译错误就拦不住了；
 `-BuildOutput` 保留判别力。**不要用 `-SkipBuild` 发布**，除非你另行确认过编译通过并在结论里写明。
@@ -101,10 +103,22 @@ git push origin main
 git push origin v0.2.0
 ```
 
-> **关于 `-Tag` 的时机**：脚本的 `-Tag` 会在**门禁通过后**打标签，但那时 CHANGELOG 还是草稿、
-> 工作区还脏（脚本的产物目录 `artifacts/` 已 gitignore，不算脏）。因此**推荐两段式**：
-> 先用 `-Tag` 让脚本走完门禁并把草稿落进 `CHANGELOG.md`，再按本节定稿提交，最后 `git tag -a v<版本> -m "EOS v<版本>"`。
-> 首次发布时脚本的 `-Tag` 分支本身就把版本、节、标签一并处理了，按它提示走即可。
+> **打标签是独立的第二步（`-TagOnly`）**：第一遍（`-Bump auto`）跑门禁、升 `version.json`、
+> 把**草稿**落进 `CHANGELOG.md`——**它不打标签**，因为此刻草稿还没定稿，标签会落在错误的提交上。
+> 定稿并提交之后再跑第二遍：
+>
+> ```powershell
+> pwsh scripts/release.ps1 -TagOnly -Version 0.2.0
+> ```
+>
+> `-TagOnly` 不升版本、不改文件、不重跑编译，但会把该断言的都断言掉：工作区干净、`version.json` 与
+> `-Version` 一致、该版本节**已定稿而非脚本草稿**、标签未被占用、迁移台账仍与代码一致；然后重算产物清单
+> （让 `MANIFEST` 的 `commit` 等于**将要打标签的提交**，而不是构建时的那个）并打附注标签。
+> 加 `-DryRun` 只断言不落标签。
+>
+> **`-Tag` 在「非首次发布」分支只提示、不动作**（旧版会 `git commit` 草稿再给它打标签，正是"标签指向草稿"
+> 那个事故的成因，已修）。**首次发布**（仓库无 `v*` 标签）不同：基线节由人先写好并提交、不存在草稿，
+> 故那边的 `-Tag` 仍然照打，按脚本提示走即可。
 
 网络抖动时推送会失败（本机走代理）。用发布助手重试，它只在第一次成功后继续：
 
@@ -179,7 +193,7 @@ git status --porcelain                    # 应为空
 | 脚本说"本地领先 origin/main N 个提交" | 先 `git push origin main` 再发布（标签要指向远端存在的提交） |
 | 脚本说"台账里有 N 个脚本在仓库中已不存在" | 有人改名/删过已执行迁移（新库会建不起来）。**停下修**，不要跳过门禁 |
 | 脚本说"仓库有 N 个迁移尚未落库" | 让用户重启 `EOS.API` 跑 DbUp，确认落库后再发布 |
-| `git push` / `gh` 报 `EOF`、`SSL connection could not be established` | 本机代理（Clash/mihomo）瞬断，重试即可；发布助手已带重试 |
+| `git push` / `gh` 报 `EOF`、`SSL connection could not be established`、`Connection closed by <ip> port 22` | 本机代理（Clash/mihomo）瞬断，重试即可；发布助手已带重试（这三种形态都在它的重试正则里） |
 | `gh: command not found`（Agent 会话内） | 装 gh 后老进程 PATH 未刷新，用绝对路径 `C:\Program Files\GitHub CLI\gh.exe` |
 | 手册新鲜度报"落后 N 篇" | 见第六节：按本次范围补，不相干的列进结论 |
 | `gh` 报 `error validating token: missing required scope 'read:org'` | `gh auth login` 的校验会读组织列表，**硬性要求 `read:org`**（与有没有组织无关）。令牌补上该 scope 再登录 |

@@ -1,7 +1,9 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 生成 CHANGELOG 节 → 打标签 → 产出清单。
+EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 生成 CHANGELOG 节 → 产出清单；
+定稿提交之后用 -TagOnly 打标签。**分两步是刻意的**：标签必须落在「CHANGELOG 定稿」那一笔上，
+而本节生成的是**草稿**（发给用户的说明还没改写、内部条目还没删），草稿提交不该被标成发布点。
 
 .DESCRIPTION
 按 docs/decisions/ADR-026-版本管理与发布流程.md 执行：仓库根 version.json 是唯一版本真源，
@@ -24,20 +26,26 @@ EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 
 
 流程共 9 步（每步失败即停，退出码 1）：0 仓库前置 → 1 迁移门禁 → 2 编译与静态检查 →
 3 手册新鲜度（默认仅提示）→ 4 版本判定 → 5 CHANGELOG 节 → 6 写 version.json/CHANGELOG →
-7 产物与清单 → 8 打标签。
+7 产物与清单。打标签是**独立的第二步**（-TagOnly），不在本流程里。
 
 .EXAMPLE
 pwsh scripts/release.ps1 -DryRun                 # 只看会怎么涨、会生成什么，不写任何文件
-pwsh scripts/release.ps1 -Bump minor             # 升 MINOR 并生成 CHANGELOG 节
-pwsh scripts/release.ps1 -Bump minor -Tag        # 再打附注标签 v<version>
-# 服务在跑时的常规发布（产物落到仓库外，避开被锁的 bin）：
-pwsh scripts/release.ps1 -Bump auto -Tag -BuildOutput "$env:TEMP\eos-release-build"
+# 第 1 步（服务在跑时产物落到仓库外，避开被锁的 bin）：
+pwsh scripts/release.ps1 -Bump auto -BuildOutput "$env:TEMP\eos-release-build"
+# 第 2 步（人工定稿 CHANGELOG 并提交之后）：
+pwsh scripts/release.ps1 -TagOnly -Version 0.2.0
 pwsh scripts/release.ps1 -DryRun -SkipBuild -SkipMigrationGate   # 只验提交分析与草稿文本
 #>
 param(
     [ValidateSet('auto', 'major', 'minor', 'patch')]
     [string]$Bump = 'auto',
     [switch]$Tag,
+    # 只打标签：给"CHANGELOG 定稿并提交之后"这一步用。不升版本、不改文件，
+    # 但会把该断言的都断言掉（工作区干净 / version.json 与 -Version 一致 /
+    # 该版本节已定稿而非草稿 / 标签未被占用），并重算产物清单让它记下最新提交。
+    [switch]$TagOnly,
+    # 配合 -TagOnly：断言 version.json 就是它，防止把别的版本号打上去。
+    [string]$Version,
     [switch]$DryRun,
     [switch]$SkipBuild,
     [switch]$SkipMigrationGate,
@@ -294,17 +302,81 @@ function Step-Artifacts([string]$version, $repoMigrations) {
         "api: EOS.API 构建产物（含内嵌迁移脚本 / ReportFormats / 字体）"
         "web: EOS.Web 静态产物"
         "db: 迁移由 EOS.API 启动时执行；仓库内嵌迁移 $($repoMigrations.Count) 个（最新编号 $headNumber）；db/bootstrap 基线登记到迁移 268，其后的脚本靠启动时 DbUp 补齐"
-        "note: 制品与清单不含连接串与密钥（配置只写 ${VAR} 环境变量引用，真值只存在于环境变量）"
+        # 单引号：这一行里的 ${VAR} 是给人看的配置写法，写成双引号会被 PowerShell 当变量展开成空串
+        'note: 制品与清单不含连接串与密钥（配置只写 ${VAR} 环境变量引用，真值只存在于环境变量）'
     ) | Set-Content -Path $manifest -Encoding utf8
-    Get-ChildItem $outDir -File | ForEach-Object {
+    # 本步骤会在定稿提交之后再跑一次（-TagOnly 要把 commit 刷成定稿那笔），
+    # 所以校验和清单必须**覆盖**而不是追加，且不把自己算进去。
+    Get-ChildItem $outDir -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | ForEach-Object {
         $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
         "$hash  $($_.Name)"
-    } | Add-Content -Path (Join-Path $outDir 'SHA256SUMS.txt') -Encoding utf8
+    } | Set-Content -Path (Join-Path $outDir 'SHA256SUMS.txt') -Encoding utf8
     Pass "产物清单：$outDir"
 }
 
 try {
     Push-Location $root
+
+    # ==================== -TagOnly：定稿提交之后的第二步 ====================
+    # 只做"打标签"这一件事：不升版本、不改文件、不跑编译（第 1 步已跑过）。
+    # 但把该断言的都断言掉——发布是不可逆动作，宁可停下。
+    if ($TagOnly) {
+        Write-Step '仅打标签（CHANGELOG 定稿提交之后）'
+        $dirty = @(git status --porcelain)
+        if ($dirty.Count -gt 0) { Fail "工作区有未提交改动（$($dirty.Count) 项）——定稿先提交，再打标签" }
+
+        $repoVersion = ([string](Get-Content $versionFile -Raw -Encoding utf8 | ConvertFrom-Json).version).Trim()
+        if ($Version -and $Version -ne $repoVersion) {
+            Fail "version.json 是 $repoVersion，与 -Version $Version 不一致——不要给别的版本号打标签"
+        }
+        # 注意变量名不叫 $tag：PowerShell 变量名大小写不敏感，$tag 会撞上本脚本的 -Tag 开关参数
+        # （[switch]$Tag），往里赋字符串会直接抛"无法把 String 转成 SwitchParameter"。
+        $tagName = "v$repoVersion"
+
+        # 该版本节必须已**定稿**：草稿还留着脚本写的那两行提示，说明人还没做最后一步
+        $lines = @(Get-Content $changelogFile -Encoding utf8)
+        $start = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "^##\s*\[$([regex]::Escape($repoVersion))\]") { $start = $i; break }
+        }
+        if ($start -lt 0) { Fail "CHANGELOG.md 里找不到 [$repoVersion] 节" }
+        else {
+            $end = $lines.Count - 1
+            for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match '^##\s*\[' -or $lines[$i] -match '^\[') { $end = $i - 1; break }
+            }
+            $section = ($lines[$start..$end] -join "`n")
+            if ($section -match '草稿：由提交信息' -or $section -match '人工定稿要求') {
+                Fail "CHANGELOG 的 [$repoVersion] 节还是脚本草稿（仍含「草稿：由提交信息」或「人工定稿要求」）——先定稿并提交，再打标签"
+            }
+        }
+
+        if ($script:exitCode -eq 0) {
+            $occupied = ((& git tag --list $tagName) -join '').Trim()
+            if ($occupied) { Fail "本地标签 $tagName 已存在——版本号不复用、标签不重打（回滚口径见 SKILL.md 第七节）" }
+        }
+
+        # 打标签就是发布动作，ADR-026 §2.3.1 要求此刻库与代码仍然一致
+        if ($script:exitCode -eq 0) {
+            # 只在还没失败时读迁移清单：已经拦下的时候再抛一条"路径不存在"只会盖掉真正的原因
+            $repoMigrations = @(Get-RepoMigrations)
+            if ($SkipMigrationGate) { Skip '按参数跳过迁移门禁' }
+            else { [void](Step-MigrationGate $repoMigrations) }
+        }
+
+        if ($script:exitCode -eq 0 -and -not $DryRun) {
+            # 产物清单记的是"构建时的 HEAD"，而定稿提交在它之后：这里重算一次，
+            # 让 MANIFEST 的 commit 等于**将要打标签的提交**。
+            Step-Artifacts $repoVersion $repoMigrations
+            git tag -a $tagName -m "EOS $tagName" | Out-Host
+            Pass "已打附注标签 $tagName → $((& git rev-parse --short HEAD).Trim())（尚未推送：git push origin main && git push origin $tagName）"
+        }
+        elseif ($script:exitCode -eq 0) {
+            Skip "DryRun：未打标签（$tagName）"
+        }
+        return
+    }
+
     Write-Step '0. 仓库前置'
     $dirty = @(git status --porcelain)
     if ($dirty.Count -gt 0 -and -not $DryRun) { Fail "工作区有未提交改动（$($dirty.Count) 项）——发布必须基于确定的提交" }
@@ -416,13 +488,14 @@ try {
     Step-Artifacts $next $repoMigrations
 
     if ($Tag) {
-        git add $versionFile $changelogFile
-        git commit -m "chore(release): 发布 v$next" | Out-Host
-        git tag -a "v$next" -m "EOS v$next" | Out-Host
-        Pass "已提交并打附注标签 v$next（**尚未推送**：git push && git push origin v$next）"
+        # 不能在这里打标签：此刻 CHANGELOG 只是**草稿**（发给用户的说明还没改写、内部条目还在），
+        # 自动提交再打标签会让标签指向「草稿」那一笔，而 ADR-026 与发布技能都要求标签落在
+        # 「CHANGELOG 定稿」那一笔上。故本分支的 -Tag 只提示、不动作。
+        # （首次发布分支不同：那时节由人先写好并提交，不存在草稿，所以那边 -Tag 仍然照打。）
+        Fail "上面已写入草稿与产物，但**没有**打标签：本分支的 -Tag 会打在草稿提交上。请两步走——① 定稿 CHANGELOG 后 git commit；② pwsh scripts/release.ps1 -TagOnly -Version $next"
     }
     else {
-        Skip '未打标签（需要时加 -Tag）'
+        Skip "未打标签。定稿并提交后跑：pwsh scripts/release.ps1 -TagOnly -Version $next"
     }
 }
 catch {

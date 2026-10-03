@@ -58,8 +58,11 @@ function Skip([string]$text) { Write-Host "SKIP $text" -ForegroundColor Yellow }
 function Fail([string]$text) { Write-Host "FAIL $text" -ForegroundColor Red; $script:failed = $true }
 
 # 代理导致的瞬时网络失败：重试有意义。
+# `connection closed` 是 SSH 走代理时最常见的一种（实测推标签时遇到 `Connection closed by 198.18.0.21 port 22`）：
+# 它读起来像"对端主动断开"、很像确定性失败，但下一次重试往往就通了——不认它会白白把可重试判成失败。
 $transientPattern = 'EOF|SSL connection could not be established|could not resolve host|connection reset|' +
-    'operation timed out|the remote end hung up|TLS|temporarily unavailable|502|503|504'
+    'connection closed|kex_exchange_identification|banner exchange|operation timed out|' +
+    'the remote end hung up|TLS|temporarily unavailable|502|503|504'
 
 function Invoke-WithRetry {
     <#
