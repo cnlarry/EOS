@@ -9,6 +9,7 @@ import { Modal } from '../../components/ui/Modal'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
+import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import { useFormBreadcrumb } from '../../components/layout/FormBreadcrumbContext'
 import { useTabDirty } from '../../components/layout/workspaceDirty'
 import {
@@ -23,12 +24,13 @@ import { parseWorkbenchKey, workbenchAction, workbenchCopy, workbenchEdit, workb
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
-import { FormFieldRenderer } from './FormFieldRenderer'
+import { FormFieldRenderer, type ChooserAnchor } from './FormFieldRenderer'
+import { ChooserSourceMenu } from './ChooserSourceMenu'
 import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { DEFAULT_FORM_COLUMNS, packFormSections } from './formLayout'
 import { fieldVariant } from './formFieldKind'
-import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
+import { validateDetailRows, validateField, validateMasterFields, type FieldErrors } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
 import { useDocumentActionRunner } from './documentActionRunner'
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
@@ -54,6 +56,40 @@ function sortDetailIndices(rows: Record<string, string>[], key: string, dir: 1 |
   return indices
 }
 
+/**
+ * 失焦校验结论：只对**带正则**的字段给结论（其余字段的即时校验在保存时统一做）。
+ * 判定仍是服务端那一份（formValidation.evaluateField）：空值先按必填判，不需要填的空值直接放过，
+ * 有值才比对正则——所以不会出现"前端放过、保存被服务端拒"的两套口径。
+ */
+function blurVerdict(field: FormFieldDefinition, value: string): string | null {
+  return field.regex ? validateField(field, value) : null
+}
+
+/** 错误表增删一条：没有错误就删键（错误表里不留空串，保存前的"有错即拦"据此判定） */
+function withFieldError(errors: FieldErrors, key: string, message: string | null): FieldErrors {
+  const next = { ...errors }
+  if (message) next[key] = message
+  else delete next[key]
+  return next
+}
+
+/** 多来源选择器菜单：条目与高度的估算（每项约 28px + 上下内边距），据此决定从按钮下方还是上方弹出。 */
+const SOURCE_MENU_MARGIN = 8
+function estimateSourceMenuHeight(count: number): number {
+  return 44 + count * 28
+}
+
+/**
+ * 来源菜单的弹出方向：默认从按钮下方弹出；下方放不下（字段贴近屏幕下缘）且上方放得下时改从上方弹出。
+ * 只在打开的那一刻判定——菜单高度与锚点位置此后不再变化。
+ */
+function sourceMenuDirection(anchor: ChooserAnchor, count: number): 'up' | 'down' {
+  const height = estimateSourceMenuHeight(count)
+  if (anchor.bottom + height <= window.innerHeight - SOURCE_MENU_MARGIN) return 'down'
+  if (anchor.top - height >= SOURCE_MENU_MARGIN) return 'up'
+  return 'down'
+}
+
 /** 按单审批历史时间线行（/workflow/{moduleId}/history 返回）：task=审批动作 / confirm=流程完成确认。 */
 interface WorkflowHistoryRow {
   kind: 'task' | 'confirm'
@@ -73,13 +109,17 @@ interface MasterFieldProps {
   viewing: boolean
   canSetup: boolean
   masterAmountLocked: boolean
+  /** 本字段正展开来源菜单时为其字段键（按钮与菜单连成一体） */
+  chooserMenuKey: string | null
+  chooserMenuDirection: 'down' | 'up'
   onFieldChange: (key: string, value: string) => void
-  onOpenChooser: (field: FormFieldDefinition) => void
+  onOpenChooser: (field: FormFieldDefinition, anchor: ChooserAnchor) => void
   onFieldSetup: (field: FormFieldDefinition, x: number, y: number) => void
+  onFieldBlur: (field: FormFieldDefinition, value: string) => void
 }
 
 /** 主表单字段 memo 单元：仅字段值/错误/可见性等变化时才重渲染，阻断键入时无关字段的级联更新 */
-const MasterField = memo(function MasterField({ field, value, error, bare, viewing, canSetup, masterAmountLocked, onFieldChange, onOpenChooser, onFieldSetup }: MasterFieldProps) {
+const MasterField = memo(function MasterField({ field, value, error, bare, viewing, canSetup, masterAmountLocked, chooserMenuKey, chooserMenuDirection, onFieldChange, onOpenChooser, onFieldSetup, onFieldBlur }: MasterFieldProps) {
   const effective = masterAmountLocked && AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase()) ? { ...field, isReadonly: true } : field
   return (
     <FormFieldRenderer
@@ -91,6 +131,9 @@ const MasterField = memo(function MasterField({ field, value, error, bare, viewi
       onChoose={onOpenChooser}
       onFieldSetup={canSetup ? onFieldSetup : undefined}
       bare={bare}
+      chooserMenuKey={chooserMenuKey}
+      chooserMenuDirection={chooserMenuDirection}
+      onFieldBlur={onFieldBlur}
     />
   )
 })
@@ -104,13 +147,17 @@ interface MasterFormGridProps {
   viewing: boolean
   canSetup: boolean
   masterAmountLocked: boolean
+  /** 正展开来源菜单的主表字段键 + 弹出方向（按钮与菜单连成一体） */
+  chooserMenuKey: string | null
+  chooserMenuDirection: 'down' | 'up'
   onFieldChange: (key: string, value: string) => void
-  onOpenChooser: (field: FormFieldDefinition) => void
+  onOpenChooser: (field: FormFieldDefinition, anchor: ChooserAnchor) => void
   onFieldSetup: (field: FormFieldDefinition, x: number, y: number) => void
+  onFieldBlur: (field: FormFieldDefinition, value: string) => void
 }
 
 /** 主表字段网格（memo）：细节随主表值/错误变化时才重渲染，与明细网格相互隔离 */
-const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs, masterValues, fieldErrors, viewing, canSetup, masterAmountLocked, onFieldChange, onOpenChooser, onFieldSetup }: MasterFormGridProps) {
+const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs, masterValues, fieldErrors, viewing, canSetup, masterAmountLocked, chooserMenuKey, chooserMenuDirection, onFieldChange, onOpenChooser, onFieldSetup, onFieldBlur }: MasterFormGridProps) {
   /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截） */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (viewing || event.key !== 'Enter') return
@@ -145,9 +192,12 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
           viewing={viewing}
           canSetup={canSetup}
           masterAmountLocked={masterAmountLocked}
+          chooserMenuKey={chooserMenuKey}
+          chooserMenuDirection={chooserMenuDirection}
           onFieldChange={onFieldChange}
           onOpenChooser={onOpenChooser}
           onFieldSetup={onFieldSetup}
+          onFieldBlur={onFieldBlur}
         />
       )
     }
@@ -171,9 +221,12 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
               viewing={viewing}
               canSetup={canSetup}
               masterAmountLocked={masterAmountLocked}
+              chooserMenuKey={chooserMenuKey}
+              chooserMenuDirection={chooserMenuDirection}
               onFieldChange={onFieldChange}
               onOpenChooser={onOpenChooser}
               onFieldSetup={onFieldSetup}
+              onFieldBlur={onFieldBlur}
             />
           ))}
         </div>
@@ -210,20 +263,26 @@ interface DetailFieldCellProps {
   value: string
   error?: string
   index: number
+  chooserMenuKey: string | null
+  chooserMenuDirection: 'down' | 'up'
   onFieldChange: (index: number, key: string, value: string) => void
-  onChoose: (index: number, field: FormFieldDefinition) => void
+  onChoose: (index: number, field: FormFieldDefinition, anchor: ChooserAnchor) => void
+  onFieldBlur: (index: number, field: FormFieldDefinition, value: string) => void
 }
 
 /** 明细格 memo 单元：输入一个格子时其余行/格不重渲染（仅编辑态使用） */
-const DetailFieldCell = memo(function DetailFieldCell({ field, value, error, index, onFieldChange, onChoose }: DetailFieldCellProps) {
+const DetailFieldCell = memo(function DetailFieldCell({ field, value, error, index, chooserMenuKey, chooserMenuDirection, onFieldChange, onChoose, onFieldBlur }: DetailFieldCellProps) {
   return (
     <FormFieldRenderer
       field={field}
       value={value}
       error={error}
       onChange={next => onFieldChange(index, field.key, next)}
-      onChoose={choosable => onChoose(index, choosable)}
+      onChoose={(choosable, anchor) => onChoose(index, choosable, anchor)}
       bare
+      chooserMenuKey={chooserMenuKey}
+      chooserMenuDirection={chooserMenuDirection}
+      onFieldBlur={(blurred, next) => onFieldBlur(index, blurred, next)}
     />
   )
 })
@@ -242,15 +301,19 @@ interface DetailFormGridProps {
   onAddRow: () => void
   onRemoveRow: (index: number) => void
   onRemoveSelected: () => void
+  /** 正展开来源菜单的明细字段键 + 弹出方向（按钮与菜单连成一体） */
+  chooserMenuKey: string | null
+  chooserMenuDirection: 'down' | 'up'
   onFieldChange: (index: number, key: string, value: string) => void
-  onChoose: (index: number, field: FormFieldDefinition) => void
+  onChoose: (index: number, field: FormFieldDefinition, anchor: ChooserAnchor) => void
+  onFieldBlur: (index: number, field: FormFieldDefinition, value: string) => void
   onSortChange: (next: SortingState) => void
   onSelectionChange: (next: RowSelectionState) => void
   onResize: (fieldKey: string, width: number) => void
 }
 
 /** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染；浏览态只读展示，不提供增删入口 */
-const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, actions, storageKey, onAddRow, onRemoveRow, onRemoveSelected, onFieldChange, onChoose, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
+const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, actions, storageKey, onAddRow, onRemoveRow, onRemoveSelected, chooserMenuKey, chooserMenuDirection, onFieldChange, onChoose, onFieldBlur, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
   /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（浏览态无输入框，直接跳过） */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (viewing || event.key !== 'Enter') return
@@ -362,8 +425,11 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
               value={String(row.original[field.key] ?? '')}
               error={detailErrors[index]?.[field.key]}
               index={index}
+              chooserMenuKey={chooserMenuKey}
+              chooserMenuDirection={chooserMenuDirection}
               onFieldChange={onFieldChange}
               onChoose={onChoose}
+              onFieldBlur={onFieldBlur}
             />
           )
         },
@@ -514,10 +580,10 @@ export function FormEditorPage() {
   const [detailChooser, setDetailChooser] = useState<{ index: number; field: FormFieldDefinition } | null>(null)
   const [detailChooserSerial, setDetailChooserSerial] = useState<number | null>(null)
   const [detailChooserSource, setDetailChooserSource] = useState<FormChooserSource | null>(null)
-  /** 多来源「各是各的入口」：先弹来源菜单。 */
+  /** 多来源「各是各的入口」：在选择器按钮下方（或上方）弹来源菜单，锚点取按钮的视口矩形。 */
   const [sourceMenu, setSourceMenu] = useState<
-    | { kind: 'master'; field: FormFieldDefinition }
-    | { kind: 'detail'; index: number; field: FormFieldDefinition }
+    | { kind: 'master'; field: FormFieldDefinition; anchor: ChooserAnchor; direction: 'up' | 'down' }
+    | { kind: 'detail'; index: number; field: FormFieldDefinition; anchor: ChooserAnchor; direction: 'up' | 'down' }
     | null
   >(null)
   /** 标签右键「字段设置」菜单（仅 canSetup 时触发） */
@@ -957,6 +1023,12 @@ export function FormEditorPage() {
     setDirty(true)
   }, [])
 
+  /** 主表字段失焦校验（稳定回调，供 memo 化主表网格使用） */
+  const blurMasterField = useCallback((field: FormFieldDefinition, value: string) => {
+    const message = blurVerdict(field, value)
+    setFieldErrors(current => withFieldError(current, field.key, message))
+  }, [])
+
   /** 主表是否含金额汇总列：无则明细编辑无需同步预览（避免无意义的状态更新拖累整页渲染） */
   const hasMasterAmountColumns = useMemo(
     () => (formQuery.data?.masterFields ?? []).some(field => AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase())),
@@ -1018,6 +1090,16 @@ export function FormEditorPage() {
   const updateDetailField = useCallback((index: number, key: string, value: string) => {
     updateDetailRowValues(index, { [key]: value })
   }, [updateDetailRowValues])
+
+  /** 明细字段失焦校验（稳定回调，供 memo 化明细网格使用） */
+  const blurDetailField = useCallback((index: number, field: FormFieldDefinition, value: string) => {
+    const message = blurVerdict(field, value)
+    setDetailErrors(current => {
+      const next = current.slice()
+      next[index] = withFieldError(next[index] ?? {}, field.key, message)
+      return next
+    })
+  }, [])
 
   /** 明细列宽拖拽：防抖批量保存到服务端（FIELDS.DISPLAY_LENGTH，与工作台 column-widths 一致）。 */
   const saveDetailWidth = useCallback((fieldKey: string, width: number) => {
@@ -1132,8 +1214,8 @@ export function FormEditorPage() {
     setDirty(true)
   }, [syncMasterPreviewRows])
 
-  /** 多来源「各是各的入口」：1 个直接打开，多个先弹来源菜单。 */
-  const openChooser = useCallback((field: FormFieldDefinition, kind: 'master' | 'detail', detailIndex?: number) => {
+  /** 多来源「各是各的入口」：1 个直接打开，多个在按钮下方（贴近屏幕下缘时改为上方）弹来源菜单。 */
+  const openChooser = useCallback((field: FormFieldDefinition, kind: 'master' | 'detail', detailIndex: number | undefined, anchor: ChooserAnchor) => {
     const sources = field.choosers.filter(item => item.active && item.table)
     if (sources.length === 0) return
     if (sources.length === 1) {
@@ -1148,11 +1230,16 @@ export function FormEditorPage() {
       }
       return
     }
-    setSourceMenu(kind === 'master' ? { kind, field } : { kind, index: detailIndex!, field })
+    const direction = sourceMenuDirection(anchor, sources.length)
+    setSourceMenu(kind === 'master'
+      ? { kind, field, anchor, direction }
+      : { kind, index: detailIndex!, field, anchor, direction })
   }, [])
-  const openMasterChooser = useCallback((field: FormFieldDefinition) => openChooser(field, 'master'), [openChooser])
-  const openDetailChooser = useCallback((index: number, field: FormFieldDefinition) => openChooser(field, 'detail', index), [openChooser])
+  const openMasterChooser = useCallback((field: FormFieldDefinition, anchor: ChooserAnchor) => openChooser(field, 'master', undefined, anchor), [openChooser])
+  const openDetailChooser = useCallback((index: number, field: FormFieldDefinition, anchor: ChooserAnchor) => openChooser(field, 'detail', index, anchor), [openChooser])
   const openFieldSetup = useCallback((field: FormFieldDefinition, x: number, y: number) => setFieldSetupMenu({ field, x, y }), [])
+  /** 字段设置菜单定位：贴近屏幕下缘时翻到落点上方，不被窗口裁掉。 */
+  const fieldSetupPlacement = useMenuPlacement(fieldSetupMenu?.x ?? 0, fieldSetupMenu?.y ?? 0, fieldSetupMenu !== null)
 
   /**
    * 选择器取数来源：服务端下发 `sourceKey` 时走**注册数据源**（列、排序与默认次序都由服务端白名单给出
@@ -1353,9 +1440,12 @@ export function FormEditorPage() {
             viewing={isView}
             canSetup={form.canSetup}
             masterAmountLocked={masterAmountLocked}
+            chooserMenuKey={sourceMenu?.kind === 'master' ? sourceMenu.field.key : null}
+            chooserMenuDirection={sourceMenu?.direction ?? 'down'}
             onFieldChange={changeMasterValue}
             onOpenChooser={openMasterChooser}
             onFieldSetup={openFieldSetup}
+            onFieldBlur={blurMasterField}
           />
         </div>
       </section>
@@ -1388,8 +1478,11 @@ export function FormEditorPage() {
           onAddRow={addDetailRow}
           onRemoveRow={removeDetailRow}
           onRemoveSelected={removeSelectedDetailRows}
+          chooserMenuKey={sourceMenu?.kind === 'detail' ? sourceMenu.field.key : null}
+          chooserMenuDirection={sourceMenu?.direction ?? 'down'}
           onFieldChange={updateDetailField}
           onChoose={openDetailChooser}
+          onFieldBlur={blurDetailField}
           onSortChange={handleDetailSortingChange}
           onSelectionChange={handleDetailRowSelectionChange}
           onResize={saveDetailWidth}
@@ -1427,39 +1520,24 @@ export function FormEditorPage() {
         />
       ) : null}
       {sourceMenu ? (
-        <div className="modal show d-block" tabIndex={-1} role="dialog" onClick={() => setSourceMenu(null)}>
-          <div className="modal-dialog modal-sm modal-dialog-centered" role="document" onClick={event => event.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">选择数据来源：{sourceMenu.field.label}</h5>
-                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setSourceMenu(null)} />
-              </div>
-              <div className="modal-body d-flex flex-column gap-1">
-                {sourceMenu.field.choosers.filter(item => item.active && item.table).map(source => (
-                  <button
-                    key={source.serialNo ?? source.table}
-                    type="button"
-                    className="btn btn-outline-secondary text-start"
-                    onClick={() => {
-                      if (sourceMenu.kind === 'master') {
-                        setChooserField(sourceMenu.field)
-                        setChooserSerial(source.serialNo)
-                        setChooserSource(source)
-                      } else {
-                        setDetailChooser({ index: sourceMenu.index, field: sourceMenu.field })
-                        setDetailChooserSerial(source.serialNo)
-                        setDetailChooserSource(source)
-                      }
-                      setSourceMenu(null)
-                    }}
-                  >
-                    {source.description || source.table}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ChooserSourceMenu
+          anchor={sourceMenu.anchor}
+          direction={sourceMenu.direction}
+          sources={sourceMenu.field.choosers.filter(item => item.active && item.table)}
+          onClose={() => setSourceMenu(null)}
+          onPick={source => {
+            if (sourceMenu.kind === 'master') {
+              setChooserField(sourceMenu.field)
+              setChooserSerial(source.serialNo)
+              setChooserSource(source)
+            } else {
+              setDetailChooser({ index: sourceMenu.index, field: sourceMenu.field })
+              setDetailChooserSerial(source.serialNo)
+              setDetailChooserSource(source)
+            }
+            setSourceMenu(null)
+          }}
+        />
       ) : null}
       {attachOpen && keyParam && (
         <AttachmentDialog
@@ -1554,9 +1632,10 @@ export function FormEditorPage() {
           onContextMenu={event => { event.preventDefault(); setFieldSetupMenu(null) }}
         >
           <div
+            ref={fieldSetupPlacement.ref}
             className="erp-field-setup-menu"
             role="menu"
-            style={{ left: fieldSetupMenu.x, top: fieldSetupMenu.y }}
+            style={{ left: fieldSetupPlacement.left, top: fieldSetupPlacement.top }}
             onClick={event => event.stopPropagation()}
           >
             <div className="erp-field-setup-header">{fieldSetupMenu.field.label}</div>

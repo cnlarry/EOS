@@ -1208,6 +1208,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   --erp-form-group-gap: 10px;
   /* 控件与其附属按钮（选择器）的间距，复合格内按钮两侧统一使用，保证等距 */
   --erp-form-control-gap: 6px;
+  /* 栅格基准行高：ROW_SPAN=1 的格正好这么高（控件 26px + 上下内边距）；
+     行高 >1 的格按这个基准乘出来，否则"行高"只是空的栅格占位、界面上看不出差别 */
+  --erp-form-row-height: 36px;
 }
 
 .erp-form-grid {
@@ -1223,6 +1226,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-row {
   display: grid;
   grid-template-columns: repeat(var(--erp-form-cols, 2), minmax(0, 1fr));
+  /* 行高基准：ROW_SPAN=1 一格 36px；跨 2/3 行的格因此真的占 2/3 行高。
+     minmax 而非定值——内容更高的格（多行文本框、错误提示）仍能把行撑开 */
+  grid-auto-rows: minmax(var(--erp-form-row-height, 36px), auto);
   gap: 1px;
   background: var(--tblr-bg-surface);
 }
@@ -1301,20 +1307,15 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   min-width: 0;
 }
 
-/* 组合字段三件套 [主][选择按钮][从]：
-   按钮两侧间距都取自 --erp-form-control-gap（按钮在主营控件内，按钮右侧即本容器 gap），
-   因此 [主]—按钮—[从] 三段距离相等。
-   宽度上主控件按内容（编号短）不抢占、从控件 flex-grow 占满剩余（描述长）；
-   格子宽度不足时两者按比例收缩（原先固定 64/96 且不可收缩，会溢出格子被表单圆角裁切）。 */
-.erp-form-cell-controls > .erp-form-control { flex: 0 1 auto; min-width: 0; }
-.erp-form-cell-controls > .erp-form-control + .erp-form-control { flex: 1 1 auto; min-width: 0; }
+/* 组合字段（长宽高/分纸尺寸等）等宽：一格内的每个字段（含"带选择器的字段 + 它自己的选择按钮"
+   这一整体，按钮在字段的 erp-control-row 内）各占等分宽度——两组合、三组合、四组合一律均分，
+   不再"主控件按内容、从控件占满"造成一长一短。 */
+.erp-form-cell-controls > .erp-form-control { flex: 1 1 0; min-width: 0; }
 .erp-form-cell-controls .erp-form-control .d-flex { flex-wrap: nowrap; }
 .erp-form-cell-controls .form-control,
 .erp-form-cell-controls .form-select { min-width: 0; }
 .erp-form-cell-controls > .erp-form-control > .erp-control-row > .form-control,
-.erp-form-cell-controls > .erp-form-control > .erp-control-row > .form-select { width: 64px; flex: 0 1 auto; min-width: 44px; }
-.erp-form-cell-controls > .erp-form-control + .erp-form-control > .erp-control-row > .form-control,
-.erp-form-cell-controls > .erp-form-control + .erp-form-control > .erp-control-row > .form-select { width: 96px; flex: 1 1 auto; min-width: 56px; }
+.erp-form-cell-controls > .erp-form-control > .erp-control-row > .form-select { width: 100%; flex: 1 1 auto; min-width: 0; }
 
 .erp-form-field.is-full { grid-column: 1 / -1; }
 
@@ -1414,6 +1415,71 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-chooser-btn:focus-visible {
   border-color: var(--tblr-border-color);
   color: var(--tblr-body-color);
+  background: var(--tblr-bg-surface-secondary);
+}
+
+/* 选择器按钮与多来源菜单融为一体：
+   向下弹出时按钮的下边框与下圆角让位给菜单顶边（菜单左上角为直角，右上角保留——菜单比按钮宽）；
+   字段贴近屏幕下缘时菜单改从上方弹出，上下样式恰好相反。
+
+   接缝处还要三件事才算"一个整体"：
+   ① 按钮与菜单**同底色**（hover 态也要同色——鼠标正停在按钮上，否则按钮变灰而菜单不变）；
+   ② 按钮**不透明 + 抬到菜单之上**（z-index 高于菜单与遮罩），才能盖住菜单朝它的那条边框；
+   ③ 菜单朝按钮那一侧**上提 1px**（见 .erp-source-menu.is-down/is-up），被盖住的正是那 1px 边框。 */
+.erp-chooser-btn.is-menu-open,
+.erp-chooser-btn.is-menu-open-up,
+.erp-chooser-btn.is-menu-open:hover,
+.erp-chooser-btn.is-menu-open-up:hover {
+  position: relative;
+  z-index: 1083;
+  background: var(--tblr-bg-surface);
+}
+.erp-chooser-btn.is-menu-open {
+  border-bottom-width: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.erp-chooser-btn.is-menu-open-up {
+  border-top-width: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* 多来源选择器菜单：从选择器按钮下方（或上方）弹出，与按钮左缘对齐 */
+.erp-source-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1081;
+}
+.erp-source-menu {
+  position: fixed;
+  z-index: 1082;
+  min-width: 168px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+/* 朝按钮的那一侧挪 1px（菜单是按 top 定位的，纵向位移统一用 margin-top 表达，
+   margin-bottom 对 fixed 元素不起作用）：那 1px 的边框正好压在按钮下面
+   —— 向下弹时菜单上移 1px、向上弹时菜单下移 1px，接缝都只剩按钮自己那条边。 */
+.erp-source-menu.is-down { border-top-left-radius: 0; margin-top: -1px; }
+.erp-source-menu.is-up { border-bottom-left-radius: 0; margin-top: 1px; }
+.erp-source-menu-item {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tblr-body-color);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.erp-source-menu-item:hover {
   background: var(--tblr-bg-surface-secondary);
 }
 
