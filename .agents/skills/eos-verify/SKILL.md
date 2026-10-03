@@ -42,9 +42,11 @@ EOS 是元数据驱动的 ERP 重构项目。任何改动落地前必须跑对�
 
 - 一键回归：`scripts/regression.ps1`（单测 + 前端 lint/build/test + E2E 四链 + UI 冒烟），统一报告到 `logs/goal/regression/`。
 - 任何阶段验收前必须回归全绿（基线数字见 `docs/status.md` §2）。
-- 开工前运行 `pwsh scripts/check-docs.ps1`，确认 `docs/status.md` 与 HEAD 对齐、活跃计划未陈旧。
+- 开工前运行 `pwsh scripts/check-docs.ps1`，确认 `docs/status.md` 未长期未刷新（该门禁按"落后多少提交"计，超阈值仅提示）、活跃计划未陈旧。
 
 ## 4. 收尾
 
-- 任务结束必须刷新 `docs/status.md`（基线/收口/待决策/技术债），完成计划移入 `docs/plans/archive/`；拍板事项写入 `docs/plans/业务待定项决策清单.md`。
+- 任务结束按**结论**刷新 `docs/status.md` 的对应节（§2 基线 / §3 收口 / §4 进行中 / §5 待决策 / §6 技术债），
+  **不追加「状态更新」流水条目**（该文件 §8 有明确纪律）；没有结论变化就不动它。
+  完成计划移入 `docs/plans/archive/`；拍板事项写入 `docs/plans/decision-ledger.md`。
 - 提交前先调用 `eos-commit` 技能核对暂存范围。
