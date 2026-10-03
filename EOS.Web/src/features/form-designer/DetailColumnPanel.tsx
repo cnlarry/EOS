@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { IconPlus } from '@tabler/icons-react'
+import { IconColumns, IconListDetails } from '@tabler/icons-react'
 import { dragId, type DropTarget } from './formDesignerDrag'
 import type { DesignRow } from './types'
 
@@ -10,8 +10,8 @@ interface DetailColumnPanelProps {
   draggingKey: string | null
   dropTarget: DropTarget
   onSelect: (key: string) => void
-  /** 标题栏右侧「+ 添加列」：打开统一选择器 */
-  onAddField: () => void
+  /** 标题栏右侧「字段管理」：打开双栏字段管理（选列 + 上下排序） */
+  onManageFields: () => void
   onRowContextMenu: (key: string, x: number, y: number) => void
 }
 
@@ -24,7 +24,7 @@ interface DetailColumnPanelProps {
  * 拖动调整顺序，右键精修（移出表单 / 恢复该列默认排版）。
  *
  * 已移出表单的列**不在表头上显示**（移出后运行态也没有这一列）：它们退在字段池里，
- * 用标题栏右侧的「添加列」再选回来即原位放回。
+ * 用标题栏右侧的「字段管理」再选回来即原位放回（那里也可以直接上下排序，比拖着排更省事）。
  */
 export default function DetailColumnPanel({
   table,
@@ -33,7 +33,7 @@ export default function DetailColumnPanel({
   draggingKey,
   dropTarget,
   onSelect,
-  onAddField,
+  onManageFields,
   onRowContextMenu,
 }: DetailColumnPanelProps) {
   const columns = rows.filter(row => !row.hidden)
@@ -45,11 +45,11 @@ export default function DetailColumnPanel({
           <button
             type="button"
             className="erp-designer-add-col ms-auto"
-            title="添加明细列（打开统一选择器）"
-            onClick={onAddField}
+            title="字段管理：选择明细列并调整顺序"
+            onClick={onManageFields}
           >
-            <IconPlus size={14} />
-            添加列
+            <IconColumns size={14} />
+            字段管理
           </button>
         </div>
       </div>
@@ -134,6 +134,12 @@ function DetailPlaceholderCell({
     >
       <div className={fieldClasses.join(' ')} title={row.userVisible ? name : `${name}（当前用户不可见）`}>
         <span className="erp-designer-value">{row.key}</span>
+        {/* 挂有数据源的列在设计态也要看得见选择器（与主表画布同一口径） */}
+        {row.hasChooser ? (
+          <span className="erp-designer-chooser" title={`${row.key} 挂有数据源（运行态经选择器选入）`}>
+            <IconListDetails size={14} />
+          </span>
+        ) : null}
       </div>
     </td>
   )

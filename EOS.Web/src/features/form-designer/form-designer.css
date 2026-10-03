@@ -165,6 +165,9 @@
 
 .erp-designer-grid {
   display: grid;
+  /* 与运行态同一行高基准：格里的 grid-row: span N 因此看得见（否则行高全是 auto，
+     ROW_SPAN 只会把内容摊薄在几条空行上，"调成 2 行"在画板上没有任何反馈） */
+  grid-auto-rows: minmax(var(--erp-form-row-height, 36px), auto);
   gap: 1px;
   background: var(--tblr-border-color);
 }
@@ -202,22 +205,20 @@
   opacity: 0.45;
 }
 
+/* 字段间距与运行态同一 token：三件套里"字段—选择器按钮—下一个字段"三处距离必须相等，
+   设计态与编辑/新增态看起来才是一回事 */
 .erp-designer-field {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--erp-form-control-gap, 6px);
   min-width: 0;
 }
 
-/* 占位框的宽度 = 编辑态控件的宽度：单字段格铺满控件列，复合格内末位字段（从字段）占满剩余，
-   主字段按内容——而不是"字段代号多长就显示多长" */
+/* 占位框的宽度 = 编辑态控件的宽度：与运行态同一口径——复合格内的各字段**等宽均分**
+   （两组合、三组合、四组合都一样，不因字段代号长短或顺序变成一长一短） */
 .erp-form-cell-controls > .erp-designer-field {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   min-width: 0;
-}
-
-.erp-form-cell-controls > .erp-designer-field:last-child {
-  flex: 1 1 auto;
 }
 
 .erp-designer-field.is-hidden .erp-designer-value {
@@ -255,6 +256,20 @@
   display: inline-flex;
   gap: 4px;
   white-space: nowrap;
+}
+
+/* 设计态的「选择器标记」：与运行态的选择器按钮同形（同一 26×26 图标框），
+   让设计者一眼看出这个字段是通过选择器选入数据的（只是不可点——设计态不取数）。 */
+.erp-designer-chooser {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  color: var(--tblr-secondary);
+  background: var(--tblr-bg-surface);
+  border: 1px dashed var(--tblr-border-color);
+  border-radius: 4px;
 }
 
 .erp-designer-badges em {

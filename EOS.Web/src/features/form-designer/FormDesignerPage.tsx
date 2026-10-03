@@ -27,7 +27,9 @@ import { apiClient } from '../../services/api'
 import { createId } from '../../lib/uuid'
 import { Button } from '../../components/ui/Button'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
+import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
+import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import { applyDrop, parseDragId, zoneOf, type DragSource, type DropTarget } from './formDesignerDrag'
 import DesignCanvas from './DesignCanvas'
 import DetailColumnPanel from './DetailColumnPanel'
@@ -35,6 +37,7 @@ import { useDesignerHistory } from './useDesignerHistory'
 import {
   addFromPool,
   addTab,
+  applyDetailColumns,
   applyTemplateDraft,
   deleteTab,
   exportDraftFile,
@@ -45,6 +48,7 @@ import {
   removeSection,
   renameSection,
   renameTab,
+  RESIDENT_TAB_NO,
   resetRow,
   setHidden,
   setPlacement,
@@ -76,10 +80,11 @@ interface CellGeometry {
   bottom: number
 }
 
-/** 右键精修菜单：作用对象是一格（主表画布或明细表头）或一个分节标题。 */
+/** 右键精修菜单：作用对象是一格（主表画布或明细表头）、一个分节标题或一个页签。 */
 type DesignerMenu =
   | { kind: 'cell'; table: DesignTable; key: string; x: number; y: number }
   | { kind: 'section'; sectionId: string; x: number; y: number }
+  | { kind: 'tab'; no: number; x: number; y: number }
 
 /** 选择器返回的字段行（服务端列键 F_ID / F_DESC / F_TYPE）。 */
 type PickedFieldRow = UnifiedChooserRow & { F_ID?: unknown }
@@ -101,8 +106,10 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   const draft = history.value
   const [activeTabNo, setActiveTabNo] = useState(1)
   const [selected, setSelected] = useState<{ table: DesignTable; key: string } | null>(null)
-  /** 正在用统一选择器补字段的表；null = 选择器关闭。 */
-  const [picker, setPicker] = useState<DesignTable | null>(null)
+  /** 主表「+ 添加字段」的选择器是否打开（明细的选列与排序走「字段管理」，不用这个）。 */
+  const [pickerOpen, setPickerOpen] = useState(false)
+  /** 明细「字段管理」弹窗：选列 + 上下排序（明细拖拽排序的替代入口）。 */
+  const [fieldManagerOpen, setFieldManagerOpen] = useState(false)
   const [compact, setCompact] = useState(true)
   const [busy, setBusy] = useState(false)
   const [issues, setIssues] = useState<string[]>([])
@@ -130,15 +137,14 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   }, [draft, dragging])
 
   /**
-   * 选择器候选按**当前草稿**算：草稿里显示中的行就是"已在表单里"，把它交给服务端排除。
+   * 主表选择器候选按**当前草稿**算：草稿里显示中的行就是"已在表单里"，把它交给服务端排除。
    * 不能按库里的版式行算——草稿里的移出/加入在保存前只存在于前端，按库算会把刚移出表单的字段
    * 当成仍在表单里而排除掉（恰好是用户想选回来的那一个），于是选择器里空无一物、放不回去。
    */
   const placedKeysForPicker = useMemo(() => {
-    if (picker === null || !draft) return ''
-    const rows = picker === 'master' ? draft.master : draft.detail
-    return rows.filter(row => !row.hidden).map(row => row.key).join(',')
-  }, [picker, draft])
+    if (!pickerOpen || !draft) return ''
+    return draft.master.filter(row => !row.hidden).map(row => row.key).join(',')
+  }, [pickerOpen, draft])
 
   const closeMenu = () => setMenu(null)
   const runMenu = (action: () => void) => {
@@ -155,6 +161,38 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         return mergeable.at(mergeable.findIndex(row => row.key === menuRow.key) - 1) ?? null
       })()
     : null
+
+  /** 右键菜单定位：字段贴近屏幕下缘时自动翻到落点上方，不被窗口裁掉。 */
+  const menuPlacement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, menu !== null)
+
+  /** 明细「字段管理」候选：当前明细行（含已移出）+ 字段池，去重后按原次序给出。 */
+  const detailColumnGroups = useMemo<ColumnSelectorGroup[]>(() => {
+    if (!draft) return []
+    const fields: { key: string; label: string }[] = []
+    const seen = new Set<string>()
+    for (const item of [...draft.detail, ...draft.detailPool]) {
+      if (seen.has(item.key)) continue
+      seen.add(item.key)
+      fields.push({ key: item.key, label: item.label })
+    }
+    return [{
+      id: 'detail',
+      // 单组且对话框标题已写明对象：组标题留空，两侧列表标签回落成「可选字段 / 已选字段」
+      label: '',
+      fields,
+      // 已选 = 未移出的明细行（顺序即版式顺序）；默认 = 加载时未移出的明细行
+      visibleKeys: draft.detail.filter(row => !row.hidden).map(row => row.key),
+      defaultKeys: draft.baseline.detail.filter(row => !row.hidden).map(row => row.key),
+    }]
+  }, [draft])
+
+  /** 字段管理落地：按清单重建明细版式（移出/放回 + 排序一并生效，保存后才写库）。 */
+  const applyDetailColumnSelection = (selection: Record<string, string[]>) => {
+    if (!draft) return
+    apply(applyDetailColumns(draft, selection.detail ?? []))
+    setFieldManagerOpen(false)
+    setStatus({ tone: 'ok', text: '明细列已更新，保存后生效。' })
+  }
 
   /** 套用来源：只列共用同一主表的模块（跨主表套用会排出业务上不该出现的字段）。 */
   const loadTemplates = async () => {
@@ -452,7 +490,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           ? { tone: 'warn', text: `已加入 ${added} 个字段；${skipped.join('、')} 已在表单里，未重复加入。` }
           : { tone: 'ok', text: `已加入 ${added} 个字段，保存后生效。` },
     )
-    setPicker(null)
+    setPickerOpen(false)
   }
 
   const moveBy = (table: DesignTable, key: string, delta: number) => apply(moveRow(draft!, table, key, delta))
@@ -466,6 +504,18 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   }
 
   const moveToTab = (key: string, tabNo: number) => apply(moveRowToTab(draft!, key, tabNo))
+
+  /**
+   * 删除页签：其中的字段回到常驻页签（不丢字段），删除前确认。
+   * 1 号页签不可删——版式校验要求常驻页签必须在（服务端同口径，前端先挡一道）。
+   */
+  const removeTab = (no: number) => {
+    if (!draft || no === RESIDENT_TAB_NO) return
+    const label = tabTitle(draft.tabs.find(tab => tab.no === no) ?? { no, title: '' })
+    if (!window.confirm(`删除页签「${label}」？`)) return
+    apply(deleteTab(draft, no))
+    if (activeTabNo === no) setActiveTabNo(RESIDENT_TAB_NO)
+  }
 
   const mergeWith = (mainKey: string, companionKey: string | null) => {
     if (!draft) return
@@ -627,16 +677,13 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
               draggingKey={dragging?.key ?? null}
               ghostKey={previewDraft && dragging?.table === 'master' ? dragging.key : null}
               dropTarget={dropTarget}
-              onAddField={() => setPicker('master')}
+              onAddField={() => setPickerOpen(true)}
               onRowContextMenu={(key, x, y) => setMenu({ kind: 'cell', table: 'master', key, x, y })}
               onSectionContextMenu={(sectionId, x, y) => setMenu({ kind: 'section', sectionId, x, y })}
               onRenameTab={(no, title) => apply(renameTab(draft, no, title))}
               onAddTab={() => apply(addTab(draft, `页签 ${draft.tabs.length + 1}`))}
-              onDeleteTab={no => {
-                if (!window.confirm(`删除页签「${tabTitle(draft.tabs.find(tab => tab.no === no) ?? { no, title: '' })}」？其中的字段会回到默认页签。`)) return
-                apply(deleteTab(draft, no))
-                if (activeTabNo === no) setActiveTabNo(1)
-              }}
+              onDeleteTab={removeTab}
+              onTabContextMenu={(no, x, y) => setMenu({ kind: 'tab', no, x, y })}
             />
 
             {state.detailTable ? (
@@ -647,7 +694,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 draggingKey={dragging?.table === 'detail' ? dragging.key : null}
                 dropTarget={dropTarget}
                 onSelect={key => setSelected({ table: 'detail', key })}
-                onAddField={() => setPicker('detail')}
+                onManageFields={() => setFieldManagerOpen(true)}
                 onRowContextMenu={(key, x, y) => setMenu({ kind: 'cell', table: 'detail', key, x, y })}
               />
             ) : null}
@@ -656,8 +703,9 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         {/* 右键精修：纯拖拽对精细操作不友好，右键给全量动作（与「+」选择器同一批草稿操作） */}
         {menu ? (
           <div
+            ref={menuPlacement.ref}
             className="erp-designer-menu"
-            style={{ left: menu.x, top: menu.y }}
+            style={{ left: menuPlacement.left, top: menuPlacement.top }}
             onMouseLeave={closeMenu}
             onClick={event => event.stopPropagation()}
           >
@@ -754,6 +802,28 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 </button>
               </>
             ) : null}
+            {menu.kind === 'tab' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = draft?.tabs.find(tab => tab.no === menu.no)
+                    const name = window.prompt('页签名称', current ? tabTitle(current) : '')
+                    if (name && name.trim()) runMenu(() => apply(renameTab(draft!, menu.no, name)))
+                  }}
+                >
+                  页签改名…
+                </button>
+                <button
+                  type="button"
+                  disabled={menu.no === RESIDENT_TAB_NO}
+                  title={menu.no === RESIDENT_TAB_NO ? '默认页签不可删除（其余页签删掉后字段都回到这里）' : undefined}
+                  onClick={() => runMenu(() => removeTab(menu.no))}
+                >
+                  删除页签
+                </button>
+              </>
+            ) : null}
             {menu.kind === 'section' ? (
               <>
                 <button
@@ -778,25 +848,34 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         </DragOverlay>
       </DndContext>
 
-      {/* 加字段走系统统一选择器：候选 = 本模块该表的可排字段 − 当前草稿里显示中的字段
+      {/* 主表加字段走系统统一选择器：候选 = 本模块该表的可排字段 − 当前草稿里显示中的字段
           （排除项由 placedKeysForPicker 按草稿给出，已移出表单的字段因此回到候选里） */}
       <UnifiedChooser<PickedFieldRow>
-        open={picker !== null}
+        open={pickerOpen}
         mode="multi"
-        title={picker === 'detail' ? `添加明细列（${state.detailTable ?? ''}）` : `添加字段（${state.masterTable}）`}
+        title={`添加字段（${state.masterTable}）`}
         searchPlaceholder="搜索字段名/描述/类型"
         source={{
           kind: 'sourceKey',
           key: 'form-designer.fields',
-          args: { moduleId: String(moduleId), table: picker ?? 'master', exclude: placedKeysForPicker },
+          args: { moduleId: String(moduleId), table: 'master', exclude: placedKeysForPicker },
         }}
-        emptyText={picker === 'detail'
-          ? '该表明细列都已在表单里；刚移出表单的列会回到这里。运行态不显示的字段不进这里。'
-          : '该表字段都已在表单里；刚移出表单的字段会回到这里（在画布上也可以右键它选「放回表单」）。运行态不显示的字段不进这里。'}
+        emptyText="该表字段都已在表单里；刚移出表单的字段会回到这里（在画布上也可以右键它选「放回表单」）。运行态不显示的字段不进这里。"
         getRowId={row => String(row.F_ID ?? '')}
-        onPick={rows => addPickedFields(picker ?? 'master', rows)}
-        onClose={() => setPicker(null)}
+        onPick={rows => addPickedFields('master', rows)}
+        onClose={() => setPickerOpen(false)}
       />
+
+      {/* 明细「字段管理」：双栏（待选/已选）+ 上下排序，替代明细列的拖拽排序 */}
+      {fieldManagerOpen && state.detailTable ? (
+        <ErpColumnSelector
+          open
+          title={`字段管理（${state.detailTable}）`}
+          groups={detailColumnGroups}
+          onClose={() => setFieldManagerOpen(false)}
+          onSave={applyDetailColumnSelection}
+        />
+      ) : null}
     </div>
   )
 }
