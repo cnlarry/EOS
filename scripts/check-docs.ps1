@@ -1,17 +1,18 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-文档陈旧检查：确认 docs/status.md 与 git HEAD 对齐、README 未复述里程碑、
+文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、
 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链。
 .DESCRIPTION
 维护纪律（docs/status.md §8）：开工前运行本脚本。任一"错误"未修复即退出码 1；
 警告只提示不阻塞。
 .EXAMPLE
 .\scripts\check-docs.ps1
-.\scripts\check-docs.ps1 -PlanStaleDays 14
+.\scripts\check-docs.ps1 -PlanStaleDays 14 -StatusMaxLagCommits 50
 #>
 param(
-    [int]$PlanStaleDays = 30
+    [int]$PlanStaleDays = 30,
+    [int]$StatusMaxLagCommits = 30
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,22 +24,34 @@ $warnings = [System.Collections.Generic.List[string]]::new()
 # 它永远产出字符串（无输入时为空串），是这里唯一可靠的取值方式。
 $head = (git -C $root rev-parse --short HEAD | Out-String).Trim()
 
-# ---- 1. status.md 与 HEAD 对齐（错误） ----
+# ---- 1. status.md 的刷新滞后（警告） ----
+# 这一条原为"status.md 的最后一次提交必须等于 HEAD"，即要求**每个提交都碰一下本文**。
+# 现状纪律已改为「按结论刷新：没有结论变化就不动本文」（docs/status.md §8），两者冲突——
+# status.md 纳入版本控制后，任何不相干的提交都会把它判红，门禁长期红灯等于没有门禁。
+# 故改为按"落后多少个提交"计量：连续超过阈值未刷新才提示，由人确认是真没有变化还是该刷新。
 $statusPath = Join-Path $root 'docs\status.md'
 if (-not (Test-Path $statusPath)) {
     $errors.Add("docs/status.md 不存在——现状事实源缺失，必须先补齐")
 } else {
-    # 先问"这个文件有没有纳入版本控制"：本工作副本用 .git/info/exclude 把 docs/ 整目录排除了，
+    # 先问"这个文件有没有纳入版本控制"：工作副本用 .git/info/exclude 把 docs/ 整目录排除了，
     # 此时 `git log -- docs/status.md` 取到空值，直接 .Trim() 会崩在门禁脚本里——
     # 崩掉的门禁等于没有门禁：后面的规则一条都跑不到，而人只会看到一个空指针报错。
     $statusTracked = (git -C $root ls-files -- docs/status.md | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($statusTracked)) {
         $warnings.Add("docs/ 在本工作副本未纳入版本控制（被 .git/info/exclude 排除），" +
-                      "'status.md 随最新提交更新'这条规则无法判定，已跳过；在纳入版本控制的副本里它会照常校验。")
+                      "'status.md 的刷新滞后'这条规则无法判定，已跳过；在纳入版本控制的副本里它会照常校验。")
     } else {
         $statusLast = (git -C $root log -1 --format=%h -- docs/status.md | Out-String).Trim()
-        if ($statusLast -ne $head) {
-            $errors.Add("docs/status.md 未随最新提交更新（上次更新提交 $statusLast，HEAD $head）——任务收尾必须刷新现状文档")
+        if ([string]::IsNullOrWhiteSpace($statusLast)) {
+            $warnings.Add("docs/status.md 已在版本控制内但没有任何提交记录——请先把它提交入库")
+        } else {
+            $lagText = (git -C $root rev-list --count "$statusLast..HEAD" | Out-String).Trim()
+            $lag = 0
+            if (-not [int]::TryParse($lagText, [ref]$lag)) { $lag = 0 }
+            if ($lag -gt $StatusMaxLagCommits) {
+                $warnings.Add("docs/status.md 已连续 $lag 个提交未刷新（上次更新提交 $statusLast，阈值 $StatusMaxLagCommits）" +
+                              "——请确认是真没有结论变化，还是该按 §8 刷新对应节")
+            }
         }
     }
 }
