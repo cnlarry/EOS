@@ -14,6 +14,7 @@ import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './queryCondition'
 import { rowsToTsv, writeClipboard } from './tableClipboard'
+import { useMenuPlacement } from './useMenuPlacement'
 
 /** 行窗口化阈值：少于该行数的数据直接全量渲染（避免小表/布局测量开销） */
 const VIRTUAL_MIN_ROWS = 80
@@ -135,6 +136,8 @@ export function ErpTable<TData>({
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
   const [cellMenu, setCellMenu] = useState<{ x: number; y: number; rowId: string; columnId: string; text: string } | null>(null)
+  // 单元格右键菜单视口定位：贴近屏幕右/下缘时向内收，下方放不下则翻到落点上方
+  const cellMenuPlacement = useMenuPlacement(cellMenu?.x ?? 0, cellMenu?.y ?? 0, Boolean(cellMenu && copyable))
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
@@ -759,8 +762,9 @@ export function ErpTable<TData>({
       ) : null}
       {cellMenu && copyable && (
         <div
+          ref={cellMenuPlacement.ref}
           className="dropdown-menu show erp-table-context-menu"
-          style={{ position: 'fixed', left: cellMenu.x, top: cellMenu.y, zIndex: 1100 }}
+          style={{ position: 'fixed', left: cellMenuPlacement.left, top: cellMenuPlacement.top, zIndex: 1100 }}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <button className="dropdown-item" onClick={() => { writeClipboard(cellMenu.text); setCellMenu(null) }}>
