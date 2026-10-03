@@ -104,7 +104,8 @@ git push origin v0.2.0
 ```
 
 > **打标签是独立的第二步（`-TagOnly`）**：第一遍（`-Bump auto`）跑门禁、升 `version.json`、
-> 把**草稿**落进 `CHANGELOG.md`——**它不打标签**，因为此刻草稿还没定稿，标签会落在错误的提交上。
+> 把**草稿**落进 `CHANGELOG.md`、并按新版本号改写 `README.md` 项目状态行的版本引用——**它不打标签**，
+> 因为此刻草稿还没定稿，标签会落在错误的提交上。
 > 定稿并提交之后再跑第二遍：
 >
 > ```powershell
@@ -112,7 +113,8 @@ git push origin v0.2.0
 > ```
 >
 > `-TagOnly` 不升版本、不改文件、不重跑编译，但会把该断言的都断言掉：工作区干净、`version.json` 与
-> `-Version` 一致、该版本节**已定稿而非脚本草稿**、标签未被占用、迁移台账仍与代码一致；然后重算产物清单
+> `-Version` 一致、`README.md` 的版本引用与 `version.json` 一致、该版本节**已定稿而非脚本草稿**、
+> 标签未被占用、迁移台账仍与代码一致；然后重算产物清单
 > （让 `MANIFEST` 的 `commit` 等于**将要打标签的提交**，而不是构建时的那个）并打附注标签。
 > 加 `-DryRun` 只断言不落标签。
 >
@@ -196,6 +198,7 @@ git status --porcelain                    # 应为空
 | `git push` / `gh` 报 `EOF`、`SSL connection could not be established`、`Connection closed by <ip> port 22` | 本机代理（Clash/mihomo）瞬断，重试即可；发布助手已带重试（这三种形态都在它的重试正则里） |
 | `gh: command not found`（Agent 会话内） | 装 gh 后老进程 PATH 未刷新，用绝对路径 `C:\Program Files\GitHub CLI\gh.exe` |
 | 手册新鲜度报"落后 N 篇" | 见第六节：按本次范围补，不相干的列进结论 |
+| `check-docs.ps1` 报「README.md 写的是 vX，而 version.json 是 vY」 | README 的版本号是 `version.json` 的派生显示，**别手改一边**：跑 `pwsh scripts/release.ps1 -Bump auto` 让它一并改写（或把 `version.json` 对齐） |
 | `gh` 报 `error validating token: missing required scope 'read:org'` | `gh auth login` 的校验会读组织列表，**硬性要求 `read:org`**（与有没有组织无关）。令牌补上该 scope 再登录 |
 | `gh auth login --with-token` 提示「GH_TOKEN environment variable is being used」 | 环境变量优先于 keyring，登录被拒。先清掉三处的 `GH_TOKEN`（`[Environment]::SetEnvironmentVariable('GH_TOKEN',$null,'User')` + `Remove-Item Env:GH_TOKEN`）并**新开终端**，再登录 |
 | `gh auth status` 显示 `The token in keyring is invalid` | keyring 里留下了坏凭据（常见于在 `GH_TOKEN` 存在时执行 `--with-token`）。重新 `gh auth login --with-token` 覆盖即可，**不必**先 logout |

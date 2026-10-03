@@ -25,8 +25,13 @@ EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 
 （推送与建 GitHub Release 由 `.agents/skills/eos-release/scripts/` 下的发布助手接管）。
 
 流程共 9 步（每步失败即停，退出码 1）：0 仓库前置 → 1 迁移门禁 → 2 编译与静态检查 →
-3 手册新鲜度（默认仅提示）→ 4 版本判定 → 5 CHANGELOG 节 → 6 写 version.json/CHANGELOG →
-7 产物与清单。打标签是**独立的第二步**（-TagOnly），不在本流程里。
+3 手册新鲜度（默认仅提示）→ 4 版本判定 → 5 CHANGELOG 节 →
+6 写 version.json / CHANGELOG / README 的版本引用 → 7 产物与清单。
+打标签是**独立的第二步**（-TagOnly），不在本流程里。
+
+写版本号的文件由本脚本统一维护：`version.json`（真源）、`CHANGELOG.md`（新增一节）、
+`README.md`（项目状态行的版本引用）。README 那个号也曾被人手写、然后就停在 `v0.1` 跨越了整个
+0.2.0 开发周期——所以它改由脚本改写，并由 `scripts/check-docs.ps1` 校验与真源一致。
 
 .EXAMPLE
 pwsh scripts/release.ps1 -DryRun                 # 只看会怎么涨、会生成什么，不写任何文件
@@ -64,6 +69,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $versionFile = Join-Path $root 'version.json'
 $changelogFile = Join-Path $root 'CHANGELOG.md'
+$readmeFile = Join-Path $root 'README.md'
 # 用返回值而不是 exit：exit 会跳过 finally 里的 Pop-Location，留下错乱的目录栈
 $script:exitCode = 0
 
@@ -286,6 +292,42 @@ function Step-ChangelogSection($subjects, [string]$version, [string]$previousTag
     return ($lines -join "`n")
 }
 
+# README 项目状态行里的版本引用。README 要给读者一个版本号，而版本真源是 version.json；
+# 两者由"发布时在这里改写 + check-docs.ps1 校验一致"绑定，手写就必然漂移。
+# 格式固定为「项目状态：早期开发阶段（vX.Y.Z）」——正则要能解析，改格式会让发布失败。
+#
+# 首尾拆成 head/tail 两组：`-replace` 替换的是**整个匹配**，替换串必须把首尾原样拼回去
+# （曾经只写 `v${version}`，于是"项目状态：早期开发阶段（"和"）"被整段吃掉），
+# 而替换串里的 `${version}` 是 .NET 的**捕获组**（旧号），不是 PowerShell 的新号——两个坑叠在一起。
+$readmeVersionPattern = '(?<head>项目状态：早期开发阶段（v)(?<version>\d+\.\d+\.\d+)(?<tail>）)'
+
+function Step-ReadmeVersion([string]$version) {
+    if (-not (Test-Path $readmeFile)) {
+        Fail "README.md 不存在——版本引用无处可写"
+        return
+    }
+    $readme = Get-Content -Raw -Encoding utf8 $readmeFile
+    if ($readme -notmatch $readmeVersionPattern) {
+        Fail "README.md 里找不到版本引用（期望「项目状态：早期开发阶段（v$version）」）——格式被改过就同步不了，先改回再发布"
+        return
+    }
+    # 单引号给出 .NET 的具名组引用，$version 走 PowerShell 插值给出新号。
+    # head 组里已经含那个 "v"，这里不能再补一个（补了会得到"（vv9.10.0）"）。
+    $updated = $readme -replace $readmeVersionPattern, ('${head}' + $version + '${tail}')
+    # 落盘前自检：把改写后的整段拿出来与期望串逐字比对。这类"整段替换"写错会静默吃掉正文
+    # 或多拼一个字符，而替换动作本身不会报错——只比对版本号数字的话，多一个 v 是查不出来的。
+    $check = [regex]::Match($updated, $readmeVersionPattern)
+    $expected = "项目状态：早期开发阶段（v$version）"
+    if (-not $check.Success -or $check.Value -ne $expected) {
+        Fail "README.md 改写后不是「$expected」（实际匹配到「$($check.Value)」）——**未写盘**，请检查版本引用格式"
+        return
+    }
+    if ($DryRun) { Skip "README.md 版本引用（DryRun 未改写）：→ v$version"; return }
+    # -NoNewline：Get-Content -Raw 已含文件末尾换行，再补一个会让 README 每次发布多一行空行
+    Set-Content -Path $readmeFile -Value $updated -Encoding utf8 -NoNewline
+    Pass "README.md 版本引用 → v$version"
+}
+
 function Step-Artifacts([string]$version, $repoMigrations) {
     $outDir = Join-Path $root "artifacts/release-$version"
     if ($DryRun) { Skip "产物目录（DryRun 未创建）：$outDir"; return }
@@ -329,6 +371,17 @@ try {
         if ($Version -and $Version -ne $repoVersion) {
             Fail "version.json 是 $repoVersion，与 -Version $Version 不一致——不要给别的版本号打标签"
         }
+
+        # README 的版本引用也必须与真源一致：发布时由 Step-ReadmeVersion 改写，
+        # 这里再断言一次，防止人工定稿那一提交里漏掉它（漏了的话 README 会一直停在上一版）
+        if ($script:exitCode -eq 0) {
+            $readmeMatch = [regex]::Match((Get-Content -Raw -Encoding utf8 $readmeFile), $readmeVersionPattern)
+            if (-not $readmeMatch.Success) {
+                Fail "README.md 里找不到版本引用（期望「项目状态：早期开发阶段（v$repoVersion）」）"
+            } elseif ($readmeMatch.Groups['version'].Value -ne $repoVersion) {
+                Fail "README.md 写的是 v$($readmeMatch.Groups['version'].Value)，与 version.json 的 $repoVersion 不一致——别手改，跑 release.ps1 同步"
+            }
+        }
         # 注意变量名不叫 $tag：PowerShell 变量名大小写不敏感，$tag 会撞上本脚本的 -Tag 开关参数
         # （[switch]$Tag），往里赋字符串会直接抛"无法把 String 转成 SwitchParameter"。
         $tagName = "v$repoVersion"
@@ -346,8 +399,10 @@ try {
                 if ($lines[$i] -match '^##\s*\[' -or $lines[$i] -match '^\[') { $end = $i - 1; break }
             }
             $section = ($lines[$start..$end] -join "`n")
-            if ($section -match '草稿：由提交信息' -or $section -match '人工定稿要求') {
-                Fail "CHANGELOG 的 [$repoVersion] 节还是脚本草稿（仍含「草稿：由提交信息」或「人工定稿要求」）——先定稿并提交，再打标签"
+            # 判据锚在草稿行本身（行首 + 前缀）：裸词匹配会误伤正文——定稿时写明
+            # "按人工定稿要求改写"之类的句子是很自然的，那种节不该被判成草稿。
+            if ($section -match '(?m)^> 草稿：由提交信息' -or $section -match '(?m)^> \*\*人工定稿要求\*\*') {
+                Fail "CHANGELOG 的 [$repoVersion] 节还是脚本草稿（仍含「> 草稿：由提交信息」或「> **人工定稿要求**」行）——先定稿并提交，再打标签"
             }
         }
 
@@ -485,7 +540,10 @@ try {
     Set-Content -Path $changelogFile -Value $updated -Encoding utf8
     Pass "version.json → $next；CHANGELOG 已追加 $next 节（**需人工定稿**）"
 
-    Step-Artifacts $next $repoMigrations
+    Step-ReadmeVersion $next
+
+    # README 没同步上就不出产物：产物是为这一版发出去的，各处版本号不一致时出它没有意义
+    if ($script:exitCode -eq 0) { Step-Artifacts $next $repoMigrations }
 
     if ($Tag) {
         # 不能在这里打标签：此刻 CHANGELOG 只是**草稿**（发给用户的说明还没改写、内部条目还在），
