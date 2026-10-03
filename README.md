@@ -87,7 +87,8 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 
 ## 参与贡献
 
-见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。动手前先扫一遍 [`LESSONS.md`](LESSONS.md)——那里按
+〔触发／症状 → 根因 → 处置 → 防线〕记着踩过的坑与"该怎么做"。
 
 ## 许可证
 

@@ -83,6 +83,60 @@ if ($null -ne $readme -and (Test-Path $versionPath)) {
     }
 }
 
+# ---- 2c. LESSONS.md 的结构与编号（错误） ----
+# 这份清单是给干活的 Agent 用的：条目长歪（编号断了、四段缺一）会让引用指错，也让"该怎么做"读不出来。
+# 只查结构与编号，不判内容对错——"一条只记一次事故、只记可复用的"靠人守（见 AGENTS.md 第五节）。
+$lessonsPath = Join-Path $root 'LESSONS.md'
+if (-not (Test-Path $lessonsPath)) {
+    $errors.Add('LESSONS.md 不存在——可复用的坑与经验缺了单一入口（AGENTS.md 第五节指向它）')
+} else {
+    $blocks = [System.Collections.Generic.List[object]]::new()
+    $cur = $null
+    foreach ($line in (Get-Content -Encoding UTF8 $lessonsPath)) {
+        if ($line -like '### *') {
+            if ($null -ne $cur) { $blocks.Add($cur) }
+            $cur = [pscustomobject]@{ Head = $line; Body = [System.Collections.Generic.List[string]]::new() }
+            continue
+        }
+        if ($null -ne $cur) { $cur.Body.Add($line) }
+    }
+    if ($null -ne $cur) { $blocks.Add($cur) }
+
+    $lessonIds = [System.Collections.Generic.List[int]]::new()
+    $badHead = 0
+    foreach ($b in $blocks) {
+        $m = [regex]::Match($b.Head, '^### L(?<id>\d+) ')
+        if (-not $m.Success) {
+            if ($badHead -lt 3) {
+                $errors.Add("LESSONS.md 的条目标题须写成 '### L<n> <标题>'，实际是：$($b.Head)")
+            }
+            $badHead++
+            continue
+        }
+        $id = [int]$m.Groups['id'].Value
+        $lessonIds.Add($id)
+        $body = $b.Body -join "`n"
+        foreach ($need in '触发／症状', '根因', '处置', '防线') {
+            if ($body -notmatch "(?m)^-\s*\*\*$need\*\*") {
+                $errors.Add("LESSONS.md 的 L$id 缺「$need」段——四段（触发／症状 / 根因 / 处置 / 防线）缺一不可")
+            }
+        }
+    }
+    if ($lessonIds.Count -eq 0) {
+        $errors.Add('LESSONS.md 里没有任何 "### L<n>" 条目——没有条目等于没有清单')
+    } else {
+        $dupIds = @($lessonIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { "L$($_.Name)" })
+        if ($dupIds.Count -gt 0) {
+            $errors.Add("LESSONS.md 编号重复：$($dupIds -join '、')——编号是引用锚点，只增不改、不回收")
+        }
+        $maxId = ($lessonIds | Measure-Object -Maximum).Maximum
+        $missingIds = @((1..$maxId) | Where-Object { $_ -notin $lessonIds })
+        if ($missingIds.Count -gt 0) {
+            $errors.Add("LESSONS.md 编号不连续，缺：$($missingIds -join '、')")
+        }
+    }
+}
+
 # ---- 3. 活跃计划新鲜度（警告） ----
 $activePlans = @(Get-ChildItem (Join-Path $root 'docs\plans') -Filter '*.md' -File -ErrorAction SilentlyContinue |
     Where-Object { $_.DirectoryName -eq (Join-Path $root 'docs\plans') })

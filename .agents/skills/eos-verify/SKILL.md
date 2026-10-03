@@ -43,6 +43,8 @@ EOS 是元数据驱动的 ERP 重构项目。任何改动落地前必须跑对�
 - 一键回归：`scripts/regression.ps1`（单测 + 前端 lint/build/test + E2E 四链 + UI 冒烟），统一报告到 `logs/goal/regression/`。
 - 任何阶段验收前必须回归全绿（基线数字见 `docs/status.md` §2）。
 - 开工前运行 `pwsh scripts/check-docs.ps1`，确认 `docs/status.md` 未长期未刷新（该门禁按"落后多少提交"计，超阈值仅提示）、活跃计划未陈旧。
+- 动手前先扫一眼仓库根 [`LESSONS.md`](../../../LESSONS.md)（可复用的坑清单，四段式：触发／症状 → 根因 → 处置 → 防线）——
+  尤其写迁移、改元数据、写测试与门禁、碰真库数据时；收尾时把可复用的新坑补一条进去。
 
 ## 4. 收尾
 
