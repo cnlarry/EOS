@@ -71,7 +71,17 @@ public static class ChooserJoinCatalog
     /// 避免整条 QUERY_RELATION 造成行放大）。引用别名无法覆盖时返回 null（fail-closed）。
     /// </summary>
     public static string? BuildJoinClause(ChooserSourceJoins catalog, IReadOnlyCollection<string> referencedAliases)
+        => BuildJoinClause(catalog, referencedAliases, out _);
+
+    /// <summary>
+    /// 同上；<paramref name="joinedAliases"/> 回传本段里**实际出现**的别名。
+    /// 选择器还有第二路 JOIN（虚拟列解析）会拼进同一个 FROM——两路各自拼一次同名别名会让
+    /// SQL 直接报「在 FROM 子句中多次指定了相关名称」，调用方据此把第二路里重复的别名让出去。
+    /// </summary>
+    public static string? BuildJoinClause(
+        ChooserSourceJoins catalog, IReadOnlyCollection<string> referencedAliases, out IReadOnlySet<string> joinedAliases)
     {
+        joinedAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (referencedAliases.Count == 0)
         {
             return null;
@@ -131,6 +141,7 @@ public static class ChooserJoinCatalog
         {
             return null;
         }
+        joinedAliases = new HashSet<string>(chosen.Select(join => join.Alias), StringComparer.OrdinalIgnoreCase);
         var parts = new List<string>();
         foreach (var join in chosen)
         {

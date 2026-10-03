@@ -83,6 +83,8 @@ public sealed class WorkbenchChooserService(
         var scopeParameters = new List<object>(baseParameters);
         string? scopePredicate = string.IsNullOrWhiteSpace(basePredicate) ? null : basePredicate;
         var joins = new List<string>();
+        // 过滤条件 JOIN 段实际拼进去的别名：虚拟列解析随后拼同一个 FROM，重复别名会让 SQL 报错
+        IReadOnlySet<string> filterJoinAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (filterStruct is null)
         {
             // FILTER_STRUCT=NULL means the condition is pending migration; fail-closed empty,
@@ -132,7 +134,7 @@ public sealed class WorkbenchChooserService(
             scopeParameters.AddRange(boundParameters);
             if (compiled.Joins.Count > 0)
             {
-                var joinClause = ChooserJoinCatalog.BuildJoinClause(catalog, compiled.Joins);
+                var joinClause = ChooserJoinCatalog.BuildJoinClause(catalog, compiled.Joins, out filterJoinAliases);
                 if (joinClause is null)
                 {
                     logger.LogWarning("选择器 JOIN 重建失败（fail-closed）table={Table}", table);
@@ -182,7 +184,7 @@ public sealed class WorkbenchChooserService(
             var virtualFields=await ReadChooserVirtualFieldsAsync(connection,table,missingColumns,token);
             if(virtualFields.Count>0)
             {
-                var resolution=await new VirtualColumnResolver(connection).ResolveAsync(table,virtualFields,token);
+                var resolution=await new VirtualColumnResolver(connection).ResolveAsync(table,virtualFields,token,alreadyJoined:filterJoinAliases);
                 if(resolution.ResolvedKeys.Count>0)
                 {
                     virtualSelect=string.Join(",",resolution.SelectFragments);

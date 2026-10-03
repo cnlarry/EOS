@@ -76,4 +76,30 @@ public sealed class ChooserJoinCatalogTests
         var catalog = Catalog();
         Assert.Null(ChooserJoinCatalog.BuildJoinClause(catalog, new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
     }
+
+    [Fact]
+    public void BuildJoinClause_ReportsJoinedAliases_IncludingDependencies()
+    {
+        var catalog = Catalog(
+            new VirtualJoin("COP_SEND_M", "COP_SEND_M", new[] { C("COP_SEND_D", "SEND_NO", "COP_SEND_M", "SEND_NO") }, []),
+            new VirtualJoin("CLIENT", "CLIENT", new[] { C("COP_SEND_M", "CLIENT_ID", "CLIENT", "CLIENT_ID") }, []),
+            new VirtualJoin("PRODUCT", "PRODUCT", new[] { C("COP_SEND_D", "PRO_NO", "PRODUCT", "PRO_NO") }, []));
+        // 回传的是**实际拼进 FROM 的别名集合**（含依赖闭包）：选择器的虚拟列解析据此把重复别名让出去，
+        // 否则同一条 FROM 里会出现两次同名别名（SQL 报「在 FROM 子句中多次指定了相关名称」）
+        var clause = ChooserJoinCatalog.BuildJoinClause(
+            catalog, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CLIENT" }, out var joinedAliases);
+        Assert.NotNull(clause);
+        Assert.Contains("CLIENT", joinedAliases);
+        Assert.Contains("COP_SEND_M", joinedAliases);
+        Assert.DoesNotContain("PRODUCT", joinedAliases);
+    }
+
+    [Fact]
+    public void BuildJoinClause_NothingToJoin_ReportsEmptyAliases()
+    {
+        var catalog = Catalog();
+        Assert.Null(ChooserJoinCatalog.BuildJoinClause(
+            catalog, new HashSet<string>(StringComparer.OrdinalIgnoreCase), out var joinedAliases));
+        Assert.Empty(joinedAliases);
+    }
 }

@@ -176,12 +176,18 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
     /// <summary>
     /// 对虚拟字段子集做受控解析，返回可直接拼入 SELECT/FROM 的片段。
     /// 未解析字段全部返回 UnresolvedKeys（调用方不渲染）；解析永不抛 SQL 注入类异常。
+    ///
+    /// <paramref name="alreadyJoined"/> 是**调用方已在同一 FROM 里拼过的 JOIN 别名**（选择器的
+    /// 过滤条件 JOIN 段）：命中这些别名的 JOIN 不再重复输出，否则同一条 FROM 里会出现两次同名别名，
+    /// SQL Server 直接报「在 FROM 子句中多次指定了相关名称」。别名两侧同源（同一张 QUERY_RELATION），
+    /// 故让出去的那一段必然已存在，SELECT 片段照常引用得到。
     /// </summary>
     public async Task<VirtualColumnResolution> ResolveAsync(
         string table,
         IReadOnlyList<WorkbenchField> virtualFields,
         CancellationToken token,
-        string? baseAlias = null)
+        string? baseAlias = null,
+        IReadOnlySet<string>? alreadyJoined = null)
     {
         baseAlias ??= table;
         var selected = virtualFields.Where(field => field.IsVirtual).ToList();
@@ -354,7 +360,8 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
         }
 
         var joinFragment = string.Concat(
-            joins.Where(join => needed.Contains(join.Alias)).Select(join =>
+            joins.Where(join => needed.Contains(join.Alias)
+                    && (alreadyJoined is null || !alreadyJoined.Contains(join.Alias))).Select(join =>
                 $" LEFT JOIN dbo.[{join.Table}] AS [{join.Alias}] WITH (NOLOCK) ON {FormatJoinOn(join, table, baseAlias)}"));
         var baseColumns = joins
             .Where(join => needed.Contains(join.Alias))
