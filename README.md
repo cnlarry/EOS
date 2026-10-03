@@ -7,7 +7,8 @@
 > 表结构与 HTTP 接口仍可能随开发调整。欢迎试用与反馈，暂不建议用于关键业务。
 >
 > 该版本号由发布脚本写入，与 [`version.json`](./version.json) 一致（本行**不要手改**）；
-> 每版的变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
+> 各版本的可下载产物与发布说明见 [Releases](https://github.com/cnlarry/EOS/releases)，
+> 变更历史见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ## 系统构成
 
