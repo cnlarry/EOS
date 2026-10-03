@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { LoadingState } from '../../components/common/AsyncState'
@@ -268,6 +268,7 @@ function mergeChooserUi(
 }
 
 export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, onSaved, historyTab = false, actionRef, onStateChange, renderActions }: FieldEditorFormProps) {
+  const queryClient = useQueryClient()
   const [draft, setDraft] = useState<FieldMeta | null>(null)
   const [original, setOriginal] = useState<FieldMeta | null>(null)
   const [section, setSection] = useState<FieldSection>('basic')
@@ -281,6 +282,10 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   const baselineRef = useRef<string | null>(null)
   // 已初始化的字段标识：同字段后台重取（refetch/窗口聚焦）不覆盖编辑中的草稿
   const loadedKeyRef = useRef<string | null>(null)
+  // 已应用的服务端快照版本（dataUpdatedAt）：保存后的失效重取带来新版本时才重建草稿
+  const snapshotRef = useRef(-1)
+  // 编辑中标记的 ref 镜像：载入效果据此判断"是否允许用服务端快照覆盖草稿"
+  const dirtyRef = useRef(false)
   const [historyLimit, setHistoryLimit] = useState(20)
 
   useEffect(() => {
@@ -310,8 +315,12 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     const data = loadQuery.data
     if (!data) return
     const loadedKey = `${mode}:${tableId}:${fieldKey ?? ''}`
-    if (loadedKeyRef.current === loadedKey) return
+    // 同字段：编辑中忽略后台重取（不覆盖未保存改动），未编辑且服务端快照有新版时才重建草稿
+    //（保存成功后失效重取就靠这一步拿到最新快照，否则再次保存会用旧快照被乐观锁误判）
+    if (loadedKeyRef.current === loadedKey
+      && (dirtyRef.current || snapshotRef.current === loadQuery.dataUpdatedAt)) return
     loadedKeyRef.current = loadedKey
+    snapshotRef.current = loadQuery.dataUpdatedAt
     const nextDraft = mode === 'edit' ? data : { ...data, key: '', tableId }
     const ui = Object.fromEntries(
       (data.choosers ?? []).map((source, index) => [
@@ -325,7 +334,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     setExprStructure(initialStructure())
     setChooserUi(ui)
     baselineRef.current = JSON.stringify(mergeChooserUi(nextDraft, ui))
-  }, [mode, loadQuery.data, tableId, fieldKey])
+  }, [mode, loadQuery.data, loadQuery.dataUpdatedAt, tableId, fieldKey])
 
   const tablesQuery = useQuery({
     queryKey: ['field-editor', 'tables'],
@@ -350,6 +359,10 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
       // 保存成功后以提交内容为新基线，并同步归零 dirty（onSaved 触发的返回导航不得被离开确认拦截）
       if (lastPayloadRef.current != null) baselineRef.current = lastPayloadRef.current
       onStateChange?.({ canSave, saving: false, dirty: false })
+      // 保存后服务端已是新值，而原快照仍是保存前的：失效重取，
+      // 让再次保存（重复保存/离开确认保存）拿到最新快照，不被服务端乐观锁误判为并发修改
+      void queryClient.invalidateQueries({ queryKey: ['field-editor', 'load', tableId, fieldKey ?? '', mode] })
+      void queryClient.invalidateQueries({ queryKey: ['field-admin', 'fields', tableId] })
       onSaved()
     },
   })
@@ -461,6 +474,9 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   const dirty = draft != null && baselineRef.current != null
     && JSON.stringify(mergeChooserUi(draft, chooserUi)) !== baselineRef.current
   const lastStateRef = useRef<{ canSave: boolean; saving: boolean; dirty: boolean } | null>(null)
+  useEffect(() => {
+    dirtyRef.current = dirty
+  }, [dirty])
 
   useEffect(() => {
     if (actionRef) {

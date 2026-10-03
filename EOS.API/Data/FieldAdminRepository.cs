@@ -846,6 +846,19 @@ public sealed class FieldAdminRepository(
 
         var current = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
             ?? throw new KeyNotFoundException("字段不存在。");
+        // 提交内容与库中已一致（实为无操作）：不写、不审计，也不再比对快照。
+        // 客户端保存成功后可能仍带着保存前的快照再次提交（重复保存/离开确认保存），
+        // 此时比对快照会把"重复提交同一份内容"误报为"内容已被他人修改"。
+        if (IsNoOpUpdate(field, current))
+        {
+            if (idempotencyKey is not null)
+            {
+                await idempotency.CompleteAsync(
+                    connection, transaction, idempotencyKey, resultKey, flowStarted: false, token);
+            }
+            await transaction.CommitAsync(token);
+            return resultKey;
+        }
         if (original is not null && !SameInput(original, current))
         {
             logger.LogWarning("字段乐观锁冲突 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
@@ -1160,6 +1173,16 @@ public sealed class FieldAdminRepository(
         // 表达式：null = 调用方本次不改（如工作台列宽保存路径），不参与冲突判定
         && (a.VirtualExpression is null || b.VirtualExpression is null || NullableEquals(a.VirtualExpression, b.VirtualExpression))
         && (a.ConvertFunction is null || b.ConvertFunction is null || NullableEquals(a.ConvertFunction, b.ConvertFunction));
+
+    /// <summary>
+    /// 提交内容与库中现有一致（本次更新实为无操作）：结构字段、数据源、下拉选项都相同，
+    /// 且受控表达式同口径（null = 本次不改）。用于跳过无操作写入，并避免把重复提交误报为并发修改。
+    /// </summary>
+    internal static bool IsNoOpUpdate(FieldAdminInput next, FieldAdminInput current) =>
+        SameInput(next, current)
+        && NullableEquals(next.Options, current.Options)
+        && (next.VirtualExpression is null || NullableEquals(next.VirtualExpression, current.VirtualExpression))
+        && (next.ConvertFunction is null || NullableEquals(next.ConvertFunction, current.ConvertFunction));
 
     private static bool SameChooser(FieldAdminChooser a, FieldAdminChooser b) =>
         a.Active == b.Active && NullableEquals(a.Table, b.Table) && NullableEquals(a.Description, b.Description)
