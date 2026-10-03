@@ -45,10 +45,28 @@ if (-not (Test-Path $statusPath)) {
 
 # ---- 2. README 不复述里程碑（警告） ----
 $readmePath = Join-Path $root 'README.md'
+$readme = $null
 if (Test-Path $readmePath) {
     $readme = Get-Content -Raw -Encoding UTF8 $readmePath
     if ($readme -match '(?m)^#+ .*M(8[0-9]|9[0-4])(\s|：|:)') {
         $warnings.Add('README.md 出现里程碑标题（M80+）——历史应留在 git/archive，请删掉并指向 docs/status.md')
+    }
+}
+
+# ---- 2b. README 的版本引用与 version.json 一致（错误） ----
+# README 的项目状态行要给读者一个版本号，而版本真源是仓库根 version.json。
+# 两者靠"发布时脚本改写 + 这里校验"绑定：手工只改一边会立刻被这里拦下
+# （写死的版本号必然漂移——它曾停在 v0.1 跨越了整个 0.2.0 的开发周期）。
+$versionPath = Join-Path $root 'version.json'
+if ($null -ne $readme -and (Test-Path $versionPath)) {
+    $repoVersion = ([string](Get-Content -Raw -Encoding UTF8 $versionPath | ConvertFrom-Json).version).Trim()
+    # 格式写死成"（vX.Y.Z）"：机器要能解析，所以别改成别的写法
+    $match = [regex]::Match($readme, '项目状态：早期开发阶段（v(?<version>\d+\.\d+\.\d+)）')
+    if (-not $match.Success) {
+        $errors.Add("README.md 找不到版本引用（期望「项目状态：早期开发阶段（v$repoVersion）」）——版本要能被机器校验，格式别改")
+    } elseif ($match.Groups['version'].Value -ne $repoVersion) {
+        $errors.Add("README.md 写的是 v$($match.Groups['version'].Value)，而 version.json 是 $repoVersion" +
+                    "——发布脚本会同步，手工只改一边即漂移")
     }
 }
 
