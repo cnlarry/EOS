@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import type { CellContext, ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { IconPlayerPlay, IconTrash } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -287,6 +287,44 @@ const DetailFieldCell = memo(function DetailFieldCell({ field, value, error, ind
   )
 })
 
+/** 明细编辑格的运行期数据：按列键查字段，其余为网格级状态与回调。 */
+interface DetailEditContextValue {
+  fields: Map<string, FormFieldDefinition>
+  errors: FieldErrors[]
+  chooserMenuKey: string | null
+  chooserMenuDirection: 'down' | 'up'
+  onFieldChange: (index: number, key: string, value: string) => void
+  onChoose: (index: number, field: FormFieldDefinition, anchor: ChooserAnchor) => void
+  onFieldBlur: (index: number, field: FormFieldDefinition, value: string) => void
+}
+
+const DetailEditContext = createContext<DetailEditContextValue | null>(null)
+
+/**
+ * 明细编辑格：表格列的 `cell` 就是 React 的元素类型，写成行内箭头函数则每次渲染都是新身份，
+ * React 据此把整格卸载重挂，正在输入的控件随之失焦（表现为每敲一个字符都要重新点一下）。
+ * 故 cell 固定为模块级组件，运行期数据（错误、来源菜单、回调）经 context 下发。
+ */
+const DetailEditCell = ({ row, column }: CellContext<DetailGridRow, unknown>) => {
+  const context = useContext(DetailEditContext)
+  const field = context?.fields.get(column.id)
+  if (!context || !field) return null
+  const index = row.original.__index
+  return (
+    <DetailFieldCell
+      field={field}
+      value={String(row.original[field.key] ?? '')}
+      error={context.errors[index]?.[field.key]}
+      index={index}
+      chooserMenuKey={context.chooserMenuKey}
+      chooserMenuDirection={context.chooserMenuDirection}
+      onFieldChange={context.onFieldChange}
+      onChoose={context.onChoose}
+      onFieldBlur={context.onFieldBlur}
+    />
+  )
+}
+
 interface DetailFormGridProps {
   form: FormDefinition
   detailRows: Record<string, string>[]
@@ -338,6 +376,15 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
     }, 30)
   }
   const visibleDetail = form.detailFields.filter(field => field.isVisible)
+  const editContext: DetailEditContextValue = {
+    fields: new Map(visibleDetail.map(field => [field.key, field])),
+    errors: detailErrors,
+    chooserMenuKey,
+    chooserMenuDirection,
+    onFieldChange,
+    onChoose,
+    onFieldBlur,
+  }
   const viewIndices = sortedIndices && sortedIndices.length === detailRows.length
     ? sortedIndices
     : detailRows.map((_, index) => index)
@@ -416,23 +463,7 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
         header: field.label,
         enableSorting: true,
         meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
-        cell: ({ row }) => {
-          const index = row.original.__index
-          return (
-            <DetailFieldCell
-              key={`${row.original.__id}-${field.key}`}
-              field={field}
-              value={String(row.original[field.key] ?? '')}
-              error={detailErrors[index]?.[field.key]}
-              index={index}
-              chooserMenuKey={chooserMenuKey}
-              chooserMenuDirection={chooserMenuDirection}
-              onFieldChange={onFieldChange}
-              onChoose={onChoose}
-              onFieldBlur={onFieldBlur}
-            />
-          )
-        },
+        cell: DetailEditCell,
       }
     }),
     ...(!viewing ? [{
@@ -474,30 +505,32 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
         </div>
       ) : null}
       <div className="table-responsive" onKeyDown={handleKeyDown}>
-        <ErpTable
-          columns={columns}
-          data={gridRows}
-          getRowId={row => row.__id}
-          sorting={detailSort ? [{ id: detailSort.key, desc: detailSort.dir === -1 }] : []}
-          onSortingChange={onSortChange}
-          rowSelection={rowSelection}
-          onRowSelectionChange={onSelectionChange}
-          // 浏览态只读明细可窗口化（行数多时只渲染可视区）；编辑态保留全量 DOM 供 Enter/新增行交互
-          virtualize={viewing}
-          resizable
-          storageKey={storageKey}
-          persistResize={false}
-          onColumnResize={onResize}
-          className="erp-detail-grid"
-          responsive={false}
-          empty={
-            detailRows.length === 0 && !viewing ? (
-              <div className="erp-detail-empty">
-                <Button size="sm" variant="secondary" onClick={onAddRow}>+ 新增一行</Button>
-              </div>
-            ) : undefined
-          }
-        />
+        <DetailEditContext.Provider value={editContext}>
+          <ErpTable
+            columns={columns}
+            data={gridRows}
+            getRowId={row => row.__id}
+            sorting={detailSort ? [{ id: detailSort.key, desc: detailSort.dir === -1 }] : []}
+            onSortingChange={onSortChange}
+            rowSelection={rowSelection}
+            onRowSelectionChange={onSelectionChange}
+            // 浏览态只读明细可窗口化（行数多时只渲染可视区）；编辑态保留全量 DOM 供 Enter/新增行交互
+            virtualize={viewing}
+            resizable
+            storageKey={storageKey}
+            persistResize={false}
+            onColumnResize={onResize}
+            className="erp-detail-grid"
+            responsive={false}
+            empty={
+              detailRows.length === 0 && !viewing ? (
+                <div className="erp-detail-empty">
+                  <Button size="sm" variant="secondary" onClick={onAddRow}>+ 新增一行</Button>
+                </div>
+              ) : undefined
+            }
+          />
+        </DetailEditContext.Provider>
       </div>
     </section>
   )

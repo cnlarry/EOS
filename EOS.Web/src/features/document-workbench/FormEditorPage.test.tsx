@@ -713,6 +713,39 @@ describe('FormEditorPage', () => {
     expect(detailInputs[0]).toHaveValue('8')
   })
 
+  it('明细数量连续输入不丢焦点', async () => {
+    // 列定义里的 cell 必须是稳定身份：写成行内箭头函数时，每次渲染 React 都会把整格卸载重挂，
+    // 输入框随之失焦（表现为每敲一个字符都要重新点一下）。
+    const withQty: FormDefinition = {
+      ...formDefinition,
+      detailFields: [
+        field('ITEM', '明细项'),
+        field('QTY', '数量', { dataType: 'decimal' }),
+        field('AMOUNT', '金额', { dataType: 'decimal', serverFilled: true, isReadonly: true }),
+      ],
+    }
+    const bundle = { master: { PRO_NO: 'P1', EDITION: 'A' }, details: [{ ITEM: 'X1', QTY: '1', AMOUNT: '10' }] }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return withQty
+      if (p.includes('/record')) return bundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    const detailInputs = () => Array.from(container.querySelectorAll<HTMLInputElement>('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control'))
+    // ITEM 在前、QTY 在后；只读金额列渲染为静态文本不占输入框
+    const qty = detailInputs()[1]!
+    qty.focus()
+    // 逐字键入 1000：焦点全程留在同一个控件上，值逐字累加（每次渲染都换个输入框的话第二笔就落空）
+    for (const text of ['1', '10', '100', '1000']) {
+      fireEvent.change(detailInputs()[1]!, { target: { value: text } })
+    }
+    expect(detailInputs()[1]).toBe(qty)
+    expect(qty).toHaveValue('1000')
+    expect(document.activeElement).toBe(qty)
+  })
+
   it('明细主键关联列只读（服务端持有）', async () => {
     const withPkDetail: FormDefinition = {
       ...formDefinition,
