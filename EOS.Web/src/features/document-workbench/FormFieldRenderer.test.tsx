@@ -48,6 +48,24 @@ describe('FormFieldRenderer', () => {
     expect(isFullWidthField(field({ key: 'TEL', displayLength: 220 }))).toBe(false)
   })
 
+  it('版式显式排过的长文本字段以版式为准（不再强制整行、行高 1 行时用单行控件）', () => {
+    // rowSpan 有值 = 版式里排过：列宽交回版式（span），形态由行高定
+    expect(isFullWidthField(field({ key: 'PRODUCE_REMARK', rowSpan: 1, span: 2 }))).toBe(false)
+    expect(isFullWidthField(field({ key: 'PRODUCE_REMARK', rowSpan: 2, span: 4 }))).toBe(false)
+    // 行高 1 行 → 单行文本框；2 行及以上 → 多行文本框
+    expect(fieldVariant(field({ key: 'PRODUCE_REMARK', rowSpan: 1 }))).toBe('text')
+    expect(fieldVariant(field({ key: 'PRODUCE_REMARK', rowSpan: 2 }))).toBe('textarea')
+    // 未定制（rowSpan 为空）时仍是原来的启示式
+    expect(fieldVariant(field({ key: 'PRODUCE_REMARK' }))).toBe('textarea')
+  })
+
+  it('版式给 1 行高的备注字段渲染为单行输入控件', () => {
+    const { container } = render(<FormFieldRenderer field={field({ key: 'PRODUCE_REMARK', label: '生产备注', rowSpan: 1, span: 2 })} value="" onChange={() => undefined} />)
+    expect(container.querySelector('textarea')).toBeNull()
+    expect(container.querySelector('input')).not.toBeNull()
+    expect(container.querySelector('.erp-form-field')?.className).not.toContain('is-full')
+  })
+
   it('变体判定：date/datetime 分流、数值系归 decimal、FORM_OPTIONS 归 select', () => {
     expect(fieldVariant(field({}))).toBe('text')
     expect(fieldVariant(field({ dataType: 'int' }))).toBe('decimal')
@@ -151,11 +169,19 @@ describe('FormFieldRenderer', () => {
     expect(screen.getByText('字段一 *')).toBeInTheDocument()
   })
 
-  it('错误信息与正则提示展示', () => {
+  it('展示错误信息；正则改由控件 pattern 属性承载，不再显示在控件下方', () => {
     const { container } = render(<FormFieldRenderer field={field({ regex: '^\\d+$' })} value="x" error="内容不符合格式要求。" onChange={() => undefined} />)
     expect(screen.getByText('内容不符合格式要求。')).toBeInTheDocument()
-    expect(screen.getByText('格式校验：^\\d+$')).toBeInTheDocument()
+    expect(screen.queryByText(/格式校验/)).not.toBeInTheDocument()
+    expect(container.querySelector('input')).toHaveAttribute('pattern', '^\\d+$')
     expect(container.querySelector('input')).toHaveClass('is-invalid')
+  })
+
+  it('离开控件时把字段与当前值交给 onFieldBlur', () => {
+    const onFieldBlur = vi.fn()
+    const { container } = render(<FormFieldRenderer field={field({})} value="abc" onChange={() => undefined} onFieldBlur={onFieldBlur} />)
+    fireEvent.blur(container.querySelector('input')!)
+    expect(onFieldBlur).toHaveBeenCalledWith(expect.objectContaining({ key: 'f1' }), 'abc')
   })
 
   it('有活跃数据来源时显示选择按钮并触发 onChoose', () => {

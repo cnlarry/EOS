@@ -567,9 +567,9 @@ describe('FormEditorPage', () => {
     })
     renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
-    // 多来源先弹来源菜单：选第 2 个来源（厂商），再在选择器里选一条记录
+    // 多来源先在选择器按钮下方弹来源菜单：选第 2 个来源（厂商），再在选择器里选一条记录
     fireEvent.click(screen.getByRole('button', { name: '选择' }))
-    fireEvent.click(await screen.findByRole('button', { name: '厂商基本资料' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '厂商基本资料' }))
     fireEvent.click(await screen.findByText('双和'))
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
     fireEvent.click(screen.getByRole('button', { name: '保存' }))

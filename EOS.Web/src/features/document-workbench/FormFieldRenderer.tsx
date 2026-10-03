@@ -7,18 +7,33 @@ import { formatFieldValue } from './fieldFormat'
 import { canonicalizeDecimalValue } from './formEditorUtils'
 import { fromDateTimeControlValue, toDateTimeControlValue } from './dateTimeValue'
 
+/** 选择器按钮的视口矩形：多来源菜单据此在按钮下方/上方弹出，并把按钮与该边融为一体。 */
+export interface ChooserAnchor {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  width: number
+}
+
 interface FormFieldRendererProps {
   field: FormFieldDefinition
   value: string
   error?: string
   onChange: (value: string) => void
-  onChoose?: (field: FormFieldDefinition) => void
+  onChoose?: (field: FormFieldDefinition, anchor: ChooserAnchor) => void
   /** 标签右键进入字段设置（仅 canSetup 时传入，传入即启用右键菜单）；x/y 为右键落点坐标 */
   onFieldSetup?: (field: FormFieldDefinition, x: number, y: number) => void
   /** 复合单元格内联模式：不渲染标签与格线，只渲染控件（供复合格 [主][选择][从] 使用） */
   bare?: boolean
   /** 浏览态：全部字段走只读文本渲染 */
   viewing?: boolean
+  /** 当前正在本字段上展开来源菜单：按钮让出该侧边框与圆角，与菜单融为一体 */
+  chooserMenuKey?: string | null
+  /** 来源菜单的弹出方向（up = 字段贴近屏幕下缘，菜单从按钮上方弹出） */
+  chooserMenuDirection?: 'down' | 'up'
+  /** 离开控件（失焦）：带正则的字段在此一刻校验内容（空值先按必填判定） */
+  onFieldBlur?: (field: FormFieldDefinition, value: string) => void
 }
 
 interface ControlProps {
@@ -26,35 +41,44 @@ interface ControlProps {
   value: string
   disabled: boolean
   onChange: (value: string) => void
+  /** 离开该控件：带正则的字段在此一刻校验内容（空值先按必填判定） */
+  onBlur?: () => void
 }
 
 const controlClassName = (error?: string) => `form-control${error ? ' is-invalid' : ''}`
 
 // ===== 控件变体注册表：新控件类型只加条目，不改页面编排 =====
 
-function TextControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+function TextControl({ field, value, disabled, onChange, onBlur, error }: ControlProps & { error?: string }) {
   return (
     <input
       type="text"
       className={controlClassName(error)}
       value={value}
       maxLength={field.maxLength ?? undefined}
+      // 格式要求用控件自身的 pattern 表达，不在下方另起一行显示正则文本：
+      // 浏览器可据此原生长度/格式提示，正则细节不外显到界面上
+      pattern={field.regex ?? undefined}
       disabled={disabled}
       onChange={event => onChange(event.target.value)}
+      onBlur={onBlur}
     />
   )
 }
 
 /** decimal 变体：文本框 + inputmode，失焦按 DISPLAY_FORMAT 展示格式化；保存前经 canonicalizeDecimalValue 规范化 */
-function DecimalControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+function DecimalControl({ field, value, disabled, onChange, onBlur, error }: ControlProps & { error?: string }) {
   const handleBlur = () => {
     if (disabled) return
     const canonical = canonicalizeDecimalValue(value)
     // 不可解析（含货币符号等）保留原值交由校验报错；可解析则套 DISPLAY_FORMAT 展示
-    if (!canonical || !Number.isFinite(Number(canonical))) return
-    const formatted = formatFieldValue(Number(canonical), field.dataType, field.displayFormat)
-    const next = formatted === '' ? canonical : formatted
-    if (next !== value) onChange(next)
+    if (canonical && Number.isFinite(Number(canonical))) {
+      const formatted = formatFieldValue(Number(canonical), field.dataType, field.displayFormat)
+      const next = formatted === '' ? canonical : formatted
+      if (next !== value) onChange(next)
+    }
+    // 格式化之后再报校验结论：报的是用户终将看到的那串内容
+    onBlur?.()
   }
   return (
     <input
@@ -70,7 +94,7 @@ function DecimalControl({ field, value, disabled, onChange, error }: ControlProp
   )
 }
 
-function DateControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+function DateControl({ field, value, disabled, onChange, onBlur, error }: ControlProps & { error?: string }) {
   return (
     <input
       type="date"
@@ -78,12 +102,13 @@ function DateControl({ field, value, disabled, onChange, error }: ControlProps &
       value={toDateTimeControlValue(field.dataType, value)}
       disabled={disabled}
       onChange={event => onChange(fromDateTimeControlValue(event.target.value))}
+      onBlur={onBlur}
     />
   )
 }
 
 /** datetime 变体：datetime-local + 秒分量；提交 yyyy-MM-ddTHH:mm:ss 本地朴素串 */
-function DateTimeControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+function DateTimeControl({ field, value, disabled, onChange, onBlur, error }: ControlProps & { error?: string }) {
   return (
     <input
       type="datetime-local"
@@ -92,30 +117,36 @@ function DateTimeControl({ field, value, disabled, onChange, error }: ControlPro
       value={toDateTimeControlValue(field.dataType, value)}
       disabled={disabled}
       onChange={event => onChange(fromDateTimeControlValue(event.target.value))}
+      onBlur={onBlur}
     />
   )
 }
 
-function TextareaControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+/** 多行文本：高度按版式行高（ROW_SPAN）给——版式说 3 行高就真的是 3 行高 */
+function TextareaControl({ field, value, disabled, onChange, onBlur, error }: ControlProps & { error?: string }) {
+  const rowSpan = Math.max(2, field.rowSpan ?? 2)
   return (
     <textarea
       className={controlClassName(error)}
-      rows={3}
+      rows={rowSpan}
+      style={{ minHeight: `${rowSpan * 26}px` }}
       value={value}
       maxLength={field.maxLength ?? undefined}
       disabled={disabled}
       onChange={event => onChange(event.target.value)}
+      onBlur={onBlur}
     />
   )
 }
 
-function SelectControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+function SelectControl({ field, value, disabled, onChange, onBlur, error }: ControlProps & { error?: string }) {
   return (
     <select
       className={`form-select${error ? ' is-invalid' : ''}`}
       value={value}
       disabled={disabled}
       onChange={event => onChange(event.target.value)}
+      onBlur={onBlur}
     >
       {value === '' ? <option value="">请选择</option> : null}
       {field.options.map(option => (
@@ -147,7 +178,7 @@ const CONTROL_RENDERERS: Record<FieldVariant, (props: ControlProps & { error?: s
   checkbox: CheckboxControl,
 }
 
-export function FormFieldRenderer({ field, value, error, onChange, onChoose, onFieldSetup, bare = false, viewing = false }: FormFieldRendererProps) {
+export function FormFieldRenderer({ field, value, error, onChange, onChoose, onFieldSetup, bare = false, viewing = false, chooserMenuKey = null, chooserMenuDirection = 'down', onFieldBlur }: FormFieldRendererProps) {
   const variant = fieldVariant(field)
   const hasChooser = variant !== 'select' && Boolean(onChoose) && field.choosers.some(source => source.active && source.table)
   // 只读文本触发条件：浏览态全量；编辑/新增态仅 serverFilled 且无选择器的字段
@@ -158,6 +189,8 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
   const disabled = !readOnlyStatic && (field.isReadonly || field.serverFilled)
   // 只读联动字段的选择按钮仍可用；serverFilled 无选择器时按钮无意义
   const chooserDisabled = field.serverFilled && !hasChooser
+  // 本字段的来源菜单正展开：按钮让出朝向菜单的那侧边框与圆角（与菜单顶/底边融为一体）
+  const menuOpen = chooserMenuKey === field.key
 
   let control: ReactElement
   if (readOnlyStatic && variant === 'checkbox') {
@@ -172,7 +205,14 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
       </span>
     )
   } else {
-    control = CONTROL_RENDERERS[variant]({ field, value, disabled, onChange, error })
+    control = CONTROL_RENDERERS[variant]({
+      field,
+      value,
+      disabled,
+      onChange,
+      error,
+      onBlur: onFieldBlur ? () => onFieldBlur(field, value) : undefined,
+    })
   }
 
   const container = (
@@ -180,13 +220,20 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
       <div className="d-flex erp-control-row">
         {control}
         {hasChooser && !readOnlyStatic ? (
-          <Button size="sm" variant="secondary" className="erp-chooser-btn" aria-label="选择" title={`选择${field.label}`} disabled={chooserDisabled} onClick={() => onChoose?.(field)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            className={`erp-chooser-btn${menuOpen ? (chooserMenuDirection === 'up' ? ' is-menu-open-up' : ' is-menu-open') : ''}`}
+            aria-label="选择"
+            title={`选择${field.label}`}
+            disabled={chooserDisabled}
+            onClick={event => onChoose?.(field, event.currentTarget.getBoundingClientRect())}
+          >
             <IconListDetails size={14} />
           </Button>
         ) : null}
       </div>
       {error ? <div className="invalid-feedback d-block">{error}</div> : null}
-      {field.regex ? <div className="form-hint">格式校验：{field.regex}</div> : null}
     </div>
   )
   if (bare) return container
