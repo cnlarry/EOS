@@ -279,6 +279,9 @@ pwsh docs/guide/_tools/check-freshness.ps1 -Strict
 文件日志只保留 Warning+，正常请求的 `correlationId` 在文件侧查不到属预期；
 以 `traceId` / `correlationId` + `AUDIT_EVENT.CORRELATION_ID` 串联前后端。
 
+**先查坑**：动手前（尤其写迁移、改元数据、写测试与门禁、碰真库数据、并发改共享文档时）先扫一眼
+[`LESSONS.md`](LESSONS.md)——那里按〔触发／症状 → 根因 → 处置 → 防线〕记着踩过的坑，每条都写清"该怎么做"。
+
 ## 六、AI 助手工作指令
 
 ### 协作语言
