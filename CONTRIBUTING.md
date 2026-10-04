@@ -59,5 +59,9 @@
 
 ## 提交信息
 
-- 使用祈使句概括改动，例如 `Add column persistence to workbench`；
-- 一个 PR 只做一件事，保持 diff 聚焦。
+采用 Conventional Commits：`<type>(<scope 可选>): <描述>`，描述用简体中文，
+格式与「写什么 / 不写什么」见 [`AGENTS.md`](AGENTS.md) 第四节「提交信息」。
+
+- 一个提交只做一类事，保持 diff 聚焦；
+- 提交信息只描述改动本身：不写任务编号、对话上下文、`按用户要求` 与验证流水
+  （自查：`pwsh scripts/check-commit-msg.ps1 -Message '...'`）。
