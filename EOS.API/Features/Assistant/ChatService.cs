@@ -212,6 +212,23 @@ public sealed class ChatService(
         + "请直接用文字给出结论；若现有信息不足以得出结论，就说明你已经查到什么、还缺什么、"
         + "以及用户下一步可以怎么做（换一种问法、指明时间范围或单据，或去哪个页面自己看）。";
 
+    /// <summary>
+    /// 当前日期一行（数据区内容，不是指令）。
+    ///
+    /// <para>
+    /// 模型没有别的地方能知道"今天"——系统提示词里不写、处境段也不带，于是"上个月""本周"这类相对时间
+    /// 只能靠它猜：实测它猜错过月份，还会试图调用一个系统里根本不存在的时间工具，白烧一轮工具额度。
+    /// </para>
+    /// </summary>
+    internal static string TodayLine(DateTimeOffset now)
+    {
+        string[] weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+        return $"今天是 {now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)}"
+            + $"（{weekdays[(int)now.DayOfWeek]}）。"
+            + "用户说「上个月」「本周」「今天」这类相对时间时，一律以这一天为基准推算，不要猜；"
+            + "系统只提供到日期，需要更精确的时间点时如实说明。";
+    }
+
     public async IAsyncEnumerable<ChatStreamEvent> StreamReplyAsync(
         string userId,
         long sessionId,
@@ -832,6 +849,11 @@ public sealed class ChatService(
         AppendRuleIfAvailable(systemPrompt, capability, MetricUsageRule, "enum_metrics", "resolve_metric");
         AppendRuleIfAvailable(systemPrompt, capability, DiagnosisUsageRule, "diagnose_record");
         AppendRuleIfAvailable(systemPrompt, capability, KnowledgeChannelRule, "describe_mechanism", "kb_search");
+
+        // 当前日期是**数据区**的一条事实（见 TodayLine）：相对时间问题（"上个月"）必须有基准，
+        // 否则模型只能猜月份、并去找一个不存在的取时间工具。
+        systemPrompt.AppendLine();
+        systemPrompt.AppendLine(TodayLine(DateTimeOffset.Now));
 
         if (pageContext is not null && !pageContext.IsEmpty)
         {

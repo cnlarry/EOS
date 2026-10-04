@@ -189,6 +189,25 @@ public sealed class ChatServiceTests
     }
 
     [Fact]
+    public async Task System_Prompt_Carries_Todays_Date()
+    {
+        // "上个月""本周"这类相对时间必须有基准：此前提示词与处境段都不带日期，
+        // 模型只能猜月份（实测猜错过），还会去找一个系统里不存在的时间工具
+        var model = new FakeChatModel(chunks: ["ok"]);
+        var service = CreateService(model, new FakeRepository());
+
+        await CollectAsync(service.StreamReplyAsync(
+            "u1", 7, "上个月的营业额是多少？", null, "corr", CancellationToken.None));
+
+        var system = model.LastMessages[0];
+        Assert.Equal(ChatRole.System, system.Role);
+        Assert.Contains(
+            DateTimeOffset.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            system.Content);
+        Assert.Contains("不要猜", system.Content);
+    }
+
+    [Fact]
     public async Task Not_Configured_Fails_Fast_Without_Persisting()
     {
         var model = new FakeChatModel(configured: false);
