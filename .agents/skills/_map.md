@@ -35,7 +35,7 @@
 | `docs/migrations/update.sql` | 本机 | 已冻结的库升级史，不随仓库分发 |
 | `logs/goal/regression/` | 本机 | 回归报告落盘位置，运行时产物 |
 | `docs/oss-release/README.md` | 已退役 | 随双仓发布机制一并删除 |
-| `scripts/publish-oss.ps1` | 已退役 | 同上（删除提交 `428630d`） |
+| `scripts/publish-oss.ps1` | 已退役 | 同上（删除提交 `da7cd1e`） |
 | `scripts/export-oss-seed.ps1` | 已退役 | 同上 |
 | `docs/agents/issue-tracker.md` | 外部 | 第三方技能 `code-review` 的 setup 占位，须运行其自身 setup 才有 |
 | `scripts/hitl-loop.template.sh` | 相对 | 实际位于 `.agents/skills/diagnosing-bugs/scripts/`，正文按技能目录相对书写 |
