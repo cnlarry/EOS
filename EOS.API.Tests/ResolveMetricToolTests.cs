@@ -34,8 +34,16 @@ public sealed class ResolveMetricToolTests
             throw new NotSupportedException();
     }
 
-    private sealed class FakeSearchGateway(WorkbenchDefinition? definition) : IWorkbenchSearchGateway
+    private sealed class FakeSearchGateway(Func<int, WorkbenchDefinition?> resolve) : IWorkbenchSearchGateway
     {
+        /// <summary>同一个定义应答所有模块（多数用例只关心"定义可用"这一件事）。</summary>
+        public FakeSearchGateway(WorkbenchDefinition? definition) : this(_ => definition)
+        {
+        }
+
+        /// <summary>按模块应答：用来验证"候选建不出定义就换下一个"。</summary>
+        public List<int> AskedModules { get; } = [];
+
         public Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<SystemKnowledgeModule>>([]);
 
@@ -44,8 +52,11 @@ public sealed class ResolveMetricToolTests
 
         public Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag,
             bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
-            IReadOnlySet<string> deniedDetailFields, CancellationToken token) =>
-            Task.FromResult(definition);
+            IReadOnlySet<string> deniedDetailFields, CancellationToken token)
+        {
+            AskedModules.Add(moduleId);
+            return Task.FromResult(resolve(moduleId));
+        }
 
         public Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail,
             IReadOnlyDictionary<string, string> keys, int page, int pageSize, CancellationToken token,
@@ -225,6 +236,47 @@ public sealed class ResolveMetricToolTests
         Assert.Contains("[CLIENT_ID]=@dim", plan.Sql);
         Assert.Contains("([ORDER_DATE]>=@dim", plan.Sql);
         Assert.DoesNotContain("SELECT AMOUNT", plan.Sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Skips_Candidates_That_Cannot_Build_A_Definition()
+    {
+        // 只按表名匹配时，最先命中往往是"以来源表为主表"的查询页（如 2504 订单查询中心）：
+        // 它建不出工作台定义。这时应继续试下一个候选，而不是当场判"权限不足"——
+        // 实测按错误的结论回话会把模型带偏（它会拿同一个口径反复重试）。
+        var gateway = new FakeSearchGateway(moduleId => moduleId == 1405 ? Definition() : null);
+        var repository = new FakeMetricRepository(Metric(), [2504, 1405]);
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), new FakeProbe(),
+            new MetricDefinitionValidator(new FakeProbe()),
+            new FakePermissions(new ModulePermission(Rights())), gateway,
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"sales_amount"}"""), CancellationToken.None);
+
+        Assert.True(result.Ok, result.ContentForModel);
+        Assert.Contains("1234.5", result.ContentForModel);
+        Assert.Equal(new[] { 2504, 1405 }, gateway.AskedModules);
+    }
+
+    [Fact]
+    public async Task Rejects_When_No_Candidate_Can_Carry_The_Metric()
+    {
+        // 候选都建不出定义（都不是工作台承载页）：拒绝文案要说清是"没有挂靠在可查询的工作台模块上"，
+        // 不能含糊成"权限范围不足"——原因说不清会让模型重试同一个口径，白烧工具轮
+        var gateway = new FakeSearchGateway(_ => null);
+        var repository = new FakeMetricRepository(Metric(), [2504]);
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), new FakeProbe(),
+            new MetricDefinitionValidator(new FakeProbe()),
+            new FakePermissions(new ModulePermission(Rights())), gateway,
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"sales_amount"}"""), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("通用工作台承载页", result.ContentForModel);
+        Assert.DoesNotContain("权限范围内构建", result.ContentForModel);
     }
 
     [Fact]

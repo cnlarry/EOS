@@ -76,38 +76,70 @@ public sealed class ResolveMetricTool(
         {
             return ToolExecutionResult.Deny($"口径 {metric.MetricId} 的来源表未关联任何模块，无法施加数据范围，拒绝计算。");
         }
-        var moduleId = moduleIds[0];
-        var permission = await permissions.GetAsync(userId, moduleId, token);
-        if (!permission.CanBrowse)
+
+        // 同一张来源表可能挂靠多个模块，而"挂得上"不等于"算得出"：只按表名匹配时，命中的常是
+        // **以该表为主表**的查询页（如 2504 订单查询中心——页面不是工作台承载页，建不出定义）；
+        // 而口径里的行过滤往往要求来源表是**明细表**（主表参与关联与过滤，如 sales_amount 依赖
+        // COP_ORDER_M.CONFIRM_TAG）。所以这里逐个候选试到第一个真能算出来的模块：
+        // 能浏览 → 定义能建出 → 口径校验（列与行过滤在该模块上都可用）。
+        WorkbenchDefinition? definition = null;
+        ModulePermission? permission = null;
+        MetricValidationResult? validation = null;
+        string? validationFailure = null;
+        var browsable = 0;
+        foreach (var moduleId in moduleIds)
         {
-            return this.DenyBrowse($"#{moduleId}");
+            var candidatePermission = await permissions.GetAsync(userId, moduleId, token);
+            if (!candidatePermission.CanBrowse) continue;
+            browsable++;
+
+            var candidateDefinition = await gateway.GetDefinitionAsync(moduleId, userId,
+                candidatePermission.Rights.ExecuteTag, candidatePermission.Rights.CanViewCost,
+                candidatePermission.Rights.CanViewSecrecy, candidatePermission.Rights.DeniedMasterFields,
+                candidatePermission.Rights.DeniedDetailFields, token);
+            if (candidateDefinition is null) continue;
+
+            var candidate = ResolveSourceColumns(candidateDefinition, metric.SourceTable);
+            if (candidate.Error is not null)
+            {
+                validationFailure ??= candidate.Error;
+                continue;
+            }
+
+            var candidateValidation = await validator.ValidateAsync(new MetricValidationInput(
+                parse.Expression, metric.SourceTable, candidate.SourceAllowed, metric.DimensionKeys,
+                metric.RowFilter, candidate.SourceIsMaster ? null : candidateDefinition.MasterTable,
+                candidate.SourceIsMaster ? null : candidate.MasterAllowed), token);
+            if (!candidateValidation.Ok)
+            {
+                validationFailure ??= candidateValidation.Error;
+                continue;
+            }
+
+            definition = candidateDefinition;
+            permission = candidatePermission;
+            validation = candidateValidation;
+            break;
         }
 
-        var definition = await gateway.GetDefinitionAsync(moduleId, userId,
-            permission.Rights.ExecuteTag, permission.Rights.CanViewCost, permission.Rights.CanViewSecrecy,
-            permission.Rights.DeniedMasterFields, permission.Rights.DeniedDetailFields, token);
-        if (definition is null)
+        if (definition is null || permission is null || validation is null)
         {
-            return ToolExecutionResult.Deny("无法在当前用户权限范围内构建该来源的数据定义，拒绝计算。");
+            // 一个候选都浏览不了：沿用防探测口径（"不存在或没有权限"），不点名模块
+            if (browsable == 0) return this.DenyBrowse($"#{moduleIds[0]}");
+            // 看得到、也能建出定义，只是口径在该模块上算不出来（列不可见 / 行过滤引用不到）——照实说
+            if (validationFailure is not null)
+            {
+                return ToolExecutionResult.Deny($"口径校验未通过，拒绝计算：{validationFailure}");
+            }
+            return ToolExecutionResult.Deny(
+                $"口径 {metric.MetricId} 的来源表 {metric.SourceTable} 在候选模块上都算不出来"
+                + "（挂靠的模块不是通用工作台承载页，或你没有浏览权限），无法施加数据范围，拒绝计算。");
         }
 
         var sourceIsMaster = string.Equals(definition.MasterTable, metric.SourceTable, StringComparison.OrdinalIgnoreCase);
         var sourceAllowed = (sourceIsMaster ? definition.MasterFields : definition.DetailFields)
             .Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (sourceAllowed.Count == 0)
-        {
-            return ToolExecutionResult.Deny("当前用户在该来源表上没有可见字段，拒绝计算。");
-        }
         var masterAllowed = definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var validation = await validator.ValidateAsync(new MetricValidationInput(
-            parse.Expression, metric.SourceTable, sourceAllowed, metric.DimensionKeys,
-            metric.RowFilter, sourceIsMaster ? null : definition.MasterTable,
-            sourceIsMaster ? null : masterAllowed), token);
-        if (!validation.Ok)
-        {
-            return ToolExecutionResult.Deny($"口径校验未通过，拒绝计算：{validation.Error}");
-        }
 
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, permission.Rights.DataFilter,
                 out var scopePredicate, out var scopeValues))
@@ -150,6 +182,22 @@ public sealed class ResolveMetricTool(
             return ToolExecutionResult.Success($"口径 {metric.MetricId}（{metric.MetricName}）在指定范围内没有数据。\n{summary}");
         }
         return ToolExecutionResult.Success($"口径 {metric.MetricId}（{metric.MetricName}）计算结果：{value:0.####}\n{summary}");
+    }
+
+    /// <summary>
+    /// 来源表在这个候选模块里的可见列：它是该模块的主表还是明细表，以及可读列与主表列两条白名单。
+    /// 一列都看不见时直接给出拒绝原因——没有可读的列就不该继续往下算。
+    /// </summary>
+    private static (bool SourceIsMaster, IReadOnlySet<string> SourceAllowed, IReadOnlySet<string> MasterAllowed, string? Error)
+        ResolveSourceColumns(WorkbenchDefinition definition, string sourceTable)
+    {
+        var sourceIsMaster = string.Equals(definition.MasterTable, sourceTable, StringComparison.OrdinalIgnoreCase);
+        var columns = sourceIsMaster ? definition.MasterFields : definition.DetailFields;
+        IReadOnlySet<string> sourceAllowed = columns.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        IReadOnlySet<string> masterAllowed = definition.MasterFields.Select(field => field.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var error = sourceAllowed.Count == 0 ? "当前用户在该来源表上没有可见字段，拒绝计算。" : null;
+        return (sourceIsMaster, sourceAllowed, masterAllowed, error);
     }
 
     private async Task<IReadOnlyList<string>> ResolveMasterJoinColumnsAsync(
