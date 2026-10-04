@@ -39,6 +39,9 @@ public class ReportMetricIntegrationTests
         var args = JsonDocument.Parse("{}").RootElement;
         var result = await tool.ExecuteAsync("admin", args, CancellationToken.None);
         Assert.True(result.Ok);
+        // 业务主词是「营业额」（口径名按业务口径定稿，见迁移 311）；俗称「销售额」留在说明里，
+        // 两种叫法都要能被关键字检索命中
+        Assert.Contains("营业额", result.ContentForModel);
         Assert.Contains("销售额", result.ContentForModel);
         Assert.Contains("采购金额", result.ContentForModel);
 
