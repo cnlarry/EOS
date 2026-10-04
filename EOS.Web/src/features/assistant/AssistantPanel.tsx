@@ -163,10 +163,13 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
   }, [a])
 
   const openTab = useOpenTab()
-  const currentArchived = a.sessions.find(item => item.id === a.sessionId)?.archivedAt != null
+  const currentSession = a.sessions.find(item => item.id === a.sessionId)
+  const currentArchived = currentSession?.archivedAt != null
 
   return (
     <div className={`erp-assistant-panel is-${variant}`}>
+      {/* 顶部条分两段：左段是"我是谁 + 当前会话"，右段是本面板的动作。
+          全屏是页级宽度，若会话选择照半屏那样撑满，就会被拉成横贯整屏的一条长杠。 */}
       <header className="erp-assistant-header">
         <IconRobot size={20} />
         <span className="erp-assistant-title">工作助手</span>
@@ -221,6 +224,7 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
             value={a.sessionId ?? ''}
             onChange={(event) => a.setSessionId(event.target.value || null)}
             aria-label="选择会话"
+            title={currentSession ? `当前会话：${currentSession.title}` : '暂无会话'}
           >
             {a.sessions.length === 0 && <option value="">暂无会话</option>}
             {a.sessions.map(session => (
@@ -230,7 +234,9 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
             ))}
           </select>
         )}
-        <div className="position-relative" ref={menuRef}>
+        {/* 面板级动作的起点：全屏下由 CSS 给这里 `margin-left: auto`，
+            把「更多 / 记忆 / 形态切换」顶到右侧，中间留白交给两段分组承担 */}
+        <div className="position-relative erp-assistant-header-tools" ref={menuRef}>
           <button className="btn btn-icon btn-sm btn-ghost-secondary" type="button"
             title="更多操作" aria-label="更多操作"
             onClick={() => setMenuOpen(value => !value)}>

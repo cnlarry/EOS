@@ -1721,6 +1721,17 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-rename .form-control { min-width: 0; border-color: var(--tblr-primary, #206bc4); }
 .erp-assistant-rename .btn { padding: 2px 7px; font-size: 11px; line-height: 1.5; }
 .erp-assistant-menu { position: absolute; top: 100%; right: 0; z-index: 1090; }
+/* 全屏顶部条分两段：左段是"我是谁 + 当前会话"，右段是面板级动作（更多 / 记忆 / 形态切换）。
+   分段靠的就是下面这条 `margin-left: auto`：把右段顶到最右侧，中间留白由两段分组承担。 */
+.erp-assistant-panel.is-page .erp-assistant-header-tools { margin-left: auto; }
+/* 全屏是页级宽度：会话选择若照半屏那样 `flex: 1` 撑满，就成了横贯整屏的一条长杠。
+   这里按内容给一个上限（超长标题由 select 自身截断，全名在 title 上），与右侧动作段之间留白——
+   半屏只有 520px，维持撑满即可，不封顶。 */
+.erp-assistant-panel.is-page .erp-assistant-session-select,
+.erp-assistant-panel.is-page .erp-assistant-rename {
+  flex: 0 1 360px;
+  max-width: 360px;
+}
 
 .erp-assistant-messages {
   flex: 1 1 auto;
