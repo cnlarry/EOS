@@ -120,16 +120,27 @@ internal static class RecordPayloadValidator
         return new ValidationResult(errors, converted);
     }
 
+    /// <summary>
+    /// 元数据默认值里的日期哨兵：<c>DFT_VALUE='D'</c> 表示"今天"，只对日期/时间类型字段生效。
+    ///
+    /// <para>
+    /// 新增态（下发默认值给客户端）与保存态（缺省时补齐默认值）必须用**同一判据**。
+    /// 客户端只会把默认值原样套进表单，它不认识哨兵；若只有保存侧认识，下发下去的哨兵
+    /// 就会被当作普通值提交，保存时因无法转换为日期而被拒（表现为"什么也没动，一点保存就报格式错"）。
+    /// </para>
+    /// </summary>
+    public static bool IsTodayDefault(string dataType, string? defaultValue)
+        => !string.IsNullOrWhiteSpace(defaultValue)
+           && defaultValue.Trim().Equals("D", StringComparison.OrdinalIgnoreCase)
+           && dataType.Contains("date", StringComparison.OrdinalIgnoreCase);
+
     public static void ApplyDefaults(IReadOnlyList<FormFieldDefinition> fields, IDictionary<string, object?> values)
     {
         foreach (var field in fields)
         {
             if (field.IsReadonly || field.IsVirtual || field.ServerFilled || field.DisplayOnly || values.ContainsKey(field.Key)) continue;
             if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
-            // Date macro: DFT_VALUE='D' means "today" for datetime fields (baseline convention).
-            // Previously this was silently skipped on conversion failure, breaking defaults like HR in-service dates.
-            if (field.DataType.Contains("date", StringComparison.OrdinalIgnoreCase)
-                && field.DefaultValue.Trim().Equals("D", StringComparison.OrdinalIgnoreCase))
+            if (IsTodayDefault(field.DataType, field.DefaultValue))
             {
                 values[field.Key] = DateTime.Today;
                 continue;

@@ -466,6 +466,9 @@ public sealed class WorkbenchDefinitionBuilder(
     /// Default values for new mode:
     /// 1) auto bill-number modules get the default bill type plus the next generated number;
     /// 2) date fields (editable, not server-filled, no DFT_VALUE) default to today.
+    /// Date fields carrying the 'D' sentinel are expanded here too: the client only applies
+    /// metadata defaults verbatim, so a raw sentinel reaching it would be submitted as a plain
+    /// value and rejected by the save pipeline as unparseable.
     /// Returned only for mode=new; values are generated server-side for display and re-validated
     /// by the save pipeline.
     /// </summary>
@@ -496,9 +499,16 @@ public sealed class WorkbenchDefinitionBuilder(
         var today = DateTime.Today.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
         foreach (var field in masterFields)
         {
-            if (field is { IsVisible: true, IsReadonly: false, ServerFilled: false, IsVirtual: false, DisplayOnly: false }
-                && field.DataType.Contains("date",StringComparison.OrdinalIgnoreCase)
-                && string.IsNullOrEmpty(field.DefaultValue))
+            if (field is not { IsVisible: true, IsReadonly: false, ServerFilled: false, IsVirtual: false, DisplayOnly: false }) continue;
+            // 日期哨兵默认值（DFT_VALUE='D'）必须在这里就展开成实际日期：客户端只做"原样套用"，
+            // 收到哨兵会把它当普通日期值提交，保存时被判"数值格式不正确"而整单被拒。
+            if (RecordPayloadValidator.IsTodayDefault(field.DataType,field.DefaultValue))
+            {
+                defaults[field.Key] = today;
+                continue;
+            }
+            if (string.IsNullOrEmpty(field.DefaultValue)
+                && field.DataType.Contains("date",StringComparison.OrdinalIgnoreCase))
                 defaults[field.Key] = today;
         }
         // 复合格主字段带默认值时，同格的从字段（名称类）必须一起出现，否则新增态只有一个代号。
@@ -525,8 +535,10 @@ public sealed class WorkbenchDefinitionBuilder(
 
     /// <summary>
     /// 字段元数据里的新增默认值（FIELDS.DFT_VALUE），按字段类型转换后返回。
-    /// 不可转换的值（无参函数表达式、日期哨兵 'D'、页面代码规则 token）一律视为"没有默认值"：
-    /// 这类值新增态由客户端原样套用，服务端不解析、也不拿它去查伴生显示值。
+    /// 不可转换的值（无参函数表达式、页面代码规则 token）一律视为"没有默认值"：
+    /// 服务端不解析、也不拿它去查伴生显示值。
+    /// 日期哨兵 'D' 同样转换不出来，但新增态的日期分支已把它展开成当天，
+    /// 因此它在下发结果里只以实际日期出现，不会以哨兵形态交给客户端。
     /// </summary>
     private static string? MetadataDefaultValue(FormFieldDefinition field)
     {

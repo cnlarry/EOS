@@ -197,6 +197,28 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
+    public void DateSentinelDefault_ExpandsToToday_AndIsNotAcceptableAsRawValue()
+    {
+        // DFT_VALUE='D' 是"今天"的日期哨兵，只有日期类型认它。新增态把默认值原样下发给客户端，
+        // 客户端不认识哨兵、会把它当普通值提交；保存侧若不认哨兵，整单会被判"数值格式不正确"。
+        Assert.True(RecordPayloadValidator.IsTodayDefault("date", "D"));
+        Assert.True(RecordPayloadValidator.IsTodayDefault("datetime", " d "));
+        Assert.False(RecordPayloadValidator.IsTodayDefault("int", "D"));
+        Assert.False(RecordPayloadValidator.IsTodayDefault("date", "2026-01-01"));
+        Assert.False(RecordPayloadValidator.IsTodayDefault("date", null));
+
+        var fields = new[] { Field("ON_DUTY_DATE", dataType: "date", defaultValue: "D") };
+        var values = new Dictionary<string, object?>();
+        RecordPayloadValidator.ApplyDefaults(fields, values);
+        Assert.Equal(DateTime.Today, Assert.IsType<DateTime>(values["ON_DUTY_DATE"]));
+
+        // 哨兵原样提交必须被拒——这正是"下发哨兵、客户端回传"这一失败形态的判定点
+        var rejected = RecordPayloadValidator.ValidateSubmitted(fields,
+            new Dictionary<string, string?> { ["ON_DUTY_DATE"] = "D" });
+        Assert.Equal("INVALID_VALUE", Assert.Single(rejected.Errors).Code);
+    }
+
+    [Fact]
     public void SerialNumbers_AreAssignedSequentially_WhenMissing()
     {
         var rows = new List<IDictionary<string, object?>>
