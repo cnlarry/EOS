@@ -1,6 +1,6 @@
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Assistant;
 
 /// <summary>
 /// 会话列表的排序键。

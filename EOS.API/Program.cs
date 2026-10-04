@@ -284,7 +284,7 @@ builder.Services.AddHttpClient("AssistantModel");
 // 参数目录（AssistantParameterCatalog）是代码里的唯一真源，解析器读库产出策略对象；
 // 目录 / 密钥存取 / 参数解析 / 运行期快照都是单例；真正被消费的 IChatModel 是 **Scoped**：
 // 一次请求内配置固定（一条回答不会跨两个模型），跨请求读得到新快照（改配置与切模型都不必重启）。
-builder.Services.AddSingleton<EOS.API.Data.IAssistantModelCatalog, EOS.API.Data.AssistantModelCatalog>();
+builder.Services.AddSingleton<EOS.API.Data.Assistant.IAssistantModelCatalog, EOS.API.Data.Assistant.AssistantModelCatalog>();
 // 型号拉取：向厂商要可用模型清单（型号不硬编码，ADR-030 §12.3），密钥只从既有密钥存储读
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IAssistantModelDiscovery,
     EOS.API.Features.Assistant.ModelAccess.AssistantModelDiscovery>();
@@ -302,7 +302,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IChatModel,
     EOS.API.Features.Assistant.ModelAccess.ResolvingChatModel>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantRepository, EOS.API.Data.AssistantRepository>();
 // 管理侧会话仓储（跨用户，菜单组 31 / 3101，见 ADR-030）：与个人侧并存，语义互不影响
-builder.Services.AddScoped<EOS.API.Data.IAssistantAdminRepository, EOS.API.Data.AssistantAdminRepository>();
+builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantAdminRepository, EOS.API.Data.Assistant.AssistantAdminRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IWorkbenchSearchGateway>(sp =>
     sp.GetRequiredService<EOS.API.Data.DocumentWorkbenchRepository>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>();

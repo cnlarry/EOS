@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Data.Assistant;
 using Microsoft.Extensions.Logging;
 
 namespace EOS.API.Features.Assistant.ModelAccess;

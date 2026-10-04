@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Assistant;
 using EOS.API.Features.Assistant.Parameters;
 using Microsoft.Extensions.Options;
 

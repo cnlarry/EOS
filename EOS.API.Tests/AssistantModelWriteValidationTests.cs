@@ -1,5 +1,6 @@
 using EOS.API.Controllers;
 using EOS.API.Data;
+using EOS.API.Data.Assistant;
 using EOS.API.Features.Assistant.ModelAccess;
 using Xunit;
 

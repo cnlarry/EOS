@@ -1,7 +1,7 @@
 using EOS.API.Features.Assistant.ModelAccess;
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Assistant;
 
 /// <summary>
 /// <c>dbo.ASSISTANT_PROVIDER</c> 的一行：一个接入点（端点 + 密钥环境变量名 + 默认超时）。

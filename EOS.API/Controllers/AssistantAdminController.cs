@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Assistant;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.ModelAccess;

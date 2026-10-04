@@ -11,8 +11,8 @@ EOS.API/Controllers/ReportCenterController.cs
 EOS.API/Controllers/ReportMetricController.cs
 EOS.API/Controllers/TableDataController.cs
 EOS.API/Controllers/WorkflowController.cs
-EOS.API/Data/AssistantAdminRepository.cs
-EOS.API/Data/AssistantModelCatalog.cs
+EOS.API/Data/Assistant/AssistantAdminRepository.cs
+EOS.API/Data/Assistant/AssistantModelCatalog.cs
 EOS.API/Data/AssistantRepository.cs
 EOS.API/Data/AssistantUsageRepository.cs
 EOS.API/Data/AuthenticationRepository.cs

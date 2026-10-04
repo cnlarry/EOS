@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Assistant;
 
 namespace EOS.API.Features.Assistant.ModelAccess;
 
