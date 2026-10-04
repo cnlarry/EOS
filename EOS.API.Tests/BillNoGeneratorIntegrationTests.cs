@@ -17,7 +17,12 @@ namespace EOS.API.Tests;
 [Trait("Category", "Integration")]
 public sealed class BillNoGeneratorIntegrationTests
 {
-    private const string MigrationFile = "098_bill_no_sequence.sql";
+    /// <summary>
+    /// 建表 + 回填计数器的迁移，按**文件名后缀**定位而不是写死完整文件名：
+    /// 迁移编号只是排序键、会因插入新脚本而整体挪号（本文件曾写死 `098_bill_no_sequence.sql`，
+    /// 该脚本后来变成 `097_bill_no_sequence.sql`，于是 `First(...)` 直接抛异常、用例常红）。
+    /// </summary>
+    private const string MigrationSuffix = "_bill_no_sequence.sql";
 
     /// <summary>并发用例使用的合成单别：只在测试期间存在，结束即删。</summary>
     private const string SyntheticBillCode = "ZZSEQ";
@@ -149,12 +154,29 @@ public sealed class BillNoGeneratorIntegrationTests
         if (connectionString is null) return;
 
         await EnsureSequenceTableAsync();
-        var before = await SnapshotCountersAsync(connectionString);
+        var (before, _) = await SnapshotCountersAsync(connectionString);
         await ExecuteMigrationAsync(connectionString);
-        var after = await SnapshotCountersAsync(connectionString);
+        var (after, duplicates) = await SnapshotCountersAsync(connectionString);
 
         Assert.NotEmpty(before);
-        Assert.Equal(before, after);
+        Assert.Empty(duplicates);
+
+        // 不变式（与用例名同义）：原有计数器**不回退**，且不因重复执行产生重复行。
+        // 不能用"集合全等"：迁移的回填是 `max(现有计数器, 现存最大号)`，业务表里若有计数器落在
+        // 其后的号（例如该号是在模块还没配自动单号时手填进去的），第一次执行会把计数器补到正确
+        // 位置——那是**修复**而不是回退，集合全等会把这种修复判成失败。
+        foreach (var (key, current) in before)
+        {
+            Assert.True(after.TryGetValue(key, out var updated), $"计数器 {key} 在重复执行后消失。");
+            Assert.True(updated >= current, $"计数器 {key} 回退：{current} -> {updated}。");
+        }
+
+        var added = after.Keys.Except(before.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal).ToArray();
+        if (added.Length > 0)
+        {
+            _output.WriteLine("回填补齐了 {0} 个计数器（业务表里已有号、计数器缺行）：{1}",
+                added.Length, string.Join(", ", added));
+        }
     }
 
     // ---------- 支撑方法 ----------
@@ -228,23 +250,28 @@ public sealed class BillNoGeneratorIntegrationTests
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task<List<string>> SnapshotCountersAsync(string connectionString)
+    private static async Task<(Dictionary<string, long> Counters, List<string> DuplicateKeys)> SnapshotCountersAsync(string connectionString)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
+        // 同一 (BILL_CODE, PERIOD_KEY) 只应有一行；窗口计数把"重复建行"直接读出来，
+        // 而不是靠"集合元素个数"间接推断（重复行会被字典吞掉，等于放过）。
         const string sql = """
-            SELECT BILL_CODE + '|' + PERIOD_KEY + '|' + CAST(CURRENT_NO AS NVARCHAR(20))
+            SELECT BILL_CODE + '|' + PERIOD_KEY AS KEY_TEXT, CURRENT_NO,
+                   COUNT_BIG(*) OVER (PARTITION BY BILL_CODE, PERIOD_KEY) AS ROW_COUNT
             FROM dbo.BILL_NO_SEQUENCE;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync();
-        var rows = new List<string>();
+        var counters = new Dictionary<string, long>(StringComparer.Ordinal);
+        var duplicates = new List<string>();
         while (await reader.ReadAsync())
         {
-            rows.Add(reader.GetString(0));
+            var key = reader.GetString(0);
+            if (reader.GetInt64(2) > 1) duplicates.Add(key);
+            counters[key] = reader.GetInt64(1);
         }
-        rows.Sort(StringComparer.Ordinal);
-        return rows;
+        return (counters, duplicates);
     }
 
     /// <summary>建表 + 回填计数器：执行迁移 098（内嵌资源），重复执行幂等。</summary>
@@ -278,9 +305,9 @@ public sealed class BillNoGeneratorIntegrationTests
     {
         var assembly = typeof(ErpDatabaseInitializer).Assembly;
         var resource = assembly.GetManifestResourceNames()
-            .First(name => name.EndsWith(MigrationFile, StringComparison.OrdinalIgnoreCase));
+            .First(name => name.EndsWith(MigrationSuffix, StringComparison.OrdinalIgnoreCase));
         using var stream = assembly.GetManifestResourceStream(resource)
-            ?? throw new InvalidOperationException($"迁移资源缺失：{MigrationFile}");
+            ?? throw new InvalidOperationException($"迁移资源缺失：*{MigrationSuffix}");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
