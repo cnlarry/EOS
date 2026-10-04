@@ -264,6 +264,8 @@ public sealed class ChatToolOrchestrationTests
         Assert.Equal(new AssistantChatLimitsOptions().MaxToolRounds, tool.Calls.Count);
         Assert.Equal(new AssistantChatLimitsOptions().MaxToolRounds + 1, model.RoundsSeen.Count);
         Assert.Null(model.RoundsSeen[^1].Tools);
+        // 且必须明说"不能再调工具"：不说的话，模型会把"还想再查一次"写成正文里的调用标记，整轮作废
+        Assert.Single(model.RoundsSeen[^1].Messages.Where(message => message.Content == ChatService.FinalRoundInstruction));
         var done = events.OfType<ChatStreamEvent.Completed>().Single();
         Assert.Equal("已达到工具调用上限。", done.Message.Content);
         Assert.Single(repo.AssistantSaved);

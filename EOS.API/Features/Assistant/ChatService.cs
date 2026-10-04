@@ -198,6 +198,20 @@ public sealed class ChatService(
         + "属于权限或状态的原因必须直接说明（例如「你没有批核权限」「单据已结案，先取消结案」），不得含糊成「操作失败」；"
         + "证据不足时如实说明缺哪些证据，不要猜测根因。";
 
+    /// <summary>
+    /// 收尾轮（工具调用已达上限）必须**明说"不能再调工具"**。
+    ///
+    /// <para>
+    /// 这一轮不再下发工具声明，而模型此刻往往"还想再查一次"——没有工具通道，它就把自己的调用标记
+    /// 写进正文（实测 DeepSeek 的 DSML 标记块就是这么来的）：这一轮既没有回答、也没有工具可执行，
+    /// 整条回答只能作废。把话说在前面，它才会改用文字交代结论与缺什么。
+    /// </para>
+    /// </summary>
+    internal const string FinalRoundInstruction =
+        "本轮是最后一步：不能再调用任何工具，也不要输出工具调用的标记。"
+        + "请直接用文字给出结论；若现有信息不足以得出结论，就说明你已经查到什么、还缺什么、"
+        + "以及用户下一步可以怎么做（换一种问法、指明时间范围或单据，或去哪个页面自己看）。";
+
     public async IAsyncEnumerable<ChatStreamEvent> StreamReplyAsync(
         string userId,
         long sessionId,
@@ -312,10 +326,19 @@ public sealed class ChatService(
             var isFinalRound = round == chat.MaxToolRounds; // 上限轮强制纯文本收尾
 
             var textBuilder = new StringBuilder();
+            // 还没下发给客户端的正文尾部：见下面"可能是工具调用标记"的按住处理
+            var heldTail = new StringBuilder();
             var callMap = new SortedDictionary<int, ToolCallAccumulator>();
             ModelAccess.ChatUsage? usage = null;
             string? finishReason = null;
             Exception? streamError = null;
+
+            // 收尾轮不再下发工具：不把这句话说在前面，模型会把"还想再查一次"写成正文里的调用标记
+            // （见 FinalRoundInstruction），这一轮就白跑了。
+            if (isFinalRound)
+            {
+                messages.Add(new ChatMessage(ChatRole.System, FinalRoundInstruction));
+            }
 
             var enumerator = model.StreamAsync(
                 messages,
@@ -366,7 +389,16 @@ public sealed class ChatService(
                 if (!string.IsNullOrEmpty(delta.ContentDelta))
                 {
                     textBuilder.Append(delta.ContentDelta);
-                    yield return new ChatStreamEvent.Delta(delta.ContentDelta!);
+                    heldTail.Append(delta.ContentDelta);
+                    // 工具调用只该走结构化通道，模型偶尔会把它写进正文（见 ToolCallTextGuard）。
+                    // 标记不是回答：从"可能是标记开头"的那个 '<' 起按住，确认不是标记的部分才下发。
+                    var tail = heldTail.ToString();
+                    var holdFrom = ToolCallTextGuard.PossibleMarkupStart(tail, 0);
+                    if (holdFrom > 0)
+                    {
+                        yield return new ChatStreamEvent.Delta(tail[..holdFrom]);
+                        heldTail.Remove(0, holdFrom);
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(delta.FinishReason))
@@ -405,7 +437,9 @@ public sealed class ChatService(
                 yield break;
             }
 
-            var text = textBuilder.ToString();
+            // 这一轮模型产出的原始正文。剥掉工具调用标记的那份在下面按需生成：
+            // 用量估算仍按原始长度算（标记也是模型真的产出并计费的 token）。
+            var rawText = textBuilder.ToString();
             var calls = callMap
                 .Where(kv => !string.IsNullOrEmpty(kv.Value.Name))
                 .Select(kv => new CompletedToolCall(
@@ -427,7 +461,7 @@ public sealed class ChatService(
                 else
                 {
                     anyEstimated = true;
-                    var (prompt, completion) = EstimateUsage(EstimatePromptTokens(messages), text);
+                    var (prompt, completion) = EstimateUsage(EstimatePromptTokens(messages), rawText);
                     totalPromptTokens += prompt;
                     totalCompletionTokens += completion;
                 }
@@ -438,7 +472,7 @@ public sealed class ChatService(
                 AccumulateRoundUsage();
                 // 工具轮：assistant-with-tool-calls 与 tool 结果只存在于本轮内存上下文，
                 // 不落库；摘要随最终回复行落库供审计与前端展示。
-                messages.Add(new ChatMessage(ChatRole.Assistant, text, calls));
+                messages.Add(new ChatMessage(ChatRole.Assistant, rawText, calls));
                 var outcomes = new ToolOutcome[calls.Count];
                 // 这里用 try/finally 而不是 try/catch：finally 里要结算预留额度，而**迭代器不允许
                 // 在带 catch 的 try 里 yield**。工具轮被取消时预留必须释放，否则当日额度会被锁死。
@@ -507,6 +541,41 @@ public sealed class ChatService(
             if (calls.Count > 0)
             {
                 logger.LogWarning("助手工具轮次达到上限（session={SessionId}），强制纯文本收尾", sessionId);
+            }
+
+            // 工具调用只该走结构化通道，模型偶尔会把它写进正文（见 ToolCallTextGuard）：
+            // 标记不是回答，既不能当成回答落库（会长期留在会话里），也不能当成回答下发。
+            var text = ToolCallTextGuard.Strip(rawText);
+            var held = heldTail.ToString();
+            if (held.Length > 0 && text.EndsWith(held, StringComparison.Ordinal))
+            {
+                // 按住的那段扛过了剥离（末尾那半个 '<' 之类，本来就不是标记）：补发，别让界面缺一段
+                yield return new ChatStreamEvent.Delta(held);
+            }
+
+            if (text.Length == 0 && rawText.Length > 0)
+            {
+                // 日志把"这一轮调过哪些工具 + 标记片段"一并留下：否则事后既看不到模型干了什么，
+                // 也看不到它吐的是哪种标记，同类问题无从排查（丢弃的正文不进库、也没有别的落点）。
+                logger.LogWarning(
+                    "助手正文只有工具调用标记、没有回答（session={SessionId} round={Round}），已丢弃 {Length} 字符；"
+                    + "本轮工具：{Tools}；标记片段：{Snippet}",
+                    sessionId, round, rawText.Length,
+                    toolLog.Count == 0 ? "（无）" : string.Join('、', toolLog.Select(call => call.Name).Distinct()),
+                    rawText.Length <= 300 ? rawText : rawText[..300]);
+                breaker?.RecordFailure(userId);
+                await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
+                yield return new ChatStreamEvent.Failed("AI_MODEL_UNPARSED_TOOL_CALL",
+                    "助手这次没有给出回答（模型返回了无效的工具调用格式），请重试。");
+                yield break;
+            }
+
+            if (text.Length != rawText.Length)
+            {
+                // 正文里混着调用标记：正文留着、标记剥掉，记一笔便于事后核对模型到底吐了什么
+                logger.LogWarning(
+                    "助手把工具调用写进了正文（session={SessionId} round={Round}），已剥掉 {Length} 字符后落库",
+                    sessionId, round, rawText.Length - text.Length);
             }
 
             if (string.IsNullOrEmpty(text))

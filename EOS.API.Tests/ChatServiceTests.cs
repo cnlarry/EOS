@@ -122,6 +122,22 @@ public sealed class ChatServiceTests
         return events;
     }
 
+    /// <summary>全角竖线：标记在**文本通道**里用它转义（结构化通道里不存在这个差异）。</summary>
+    private const string FullWidthPipe = "\uFF5C";
+
+    /// <summary>
+    /// 模型把工具调用写进正文的实测形态：DSML 标记块、竖线用全角转义、且**分片到达**
+    /// （每一片都可能落在标记内部，这正是"按住"要覆盖的地方）。
+    /// </summary>
+    private static string[] ToolCallMarkupChunks() =>
+    [
+        $"<{FullWidthPipe}{FullWidthPipe}DSML{FullWidthPipe}{FullWidthPipe} calls>\n"
+            + $"<{FullWidthPipe}{FullWidthPipe}DSML{FullWidthPipe}{FullWidthPipe} invoke name=\"run_report\">\n",
+        $"<{FullWidthPipe}{FullWidthPipe}DSML{FullWidthPipe}{FullWidthPipe} parameter name=\"report_id\">"
+            + $"{FullWidthPipe}COP_Order_List_yw</{FullWidthPipe}{FullWidthPipe}DSML{FullWidthPipe}{FullWidthPipe} parameter>\n",
+        $"</{FullWidthPipe}{FullWidthPipe}DSML{FullWidthPipe}{FullWidthPipe} calls>",
+    ];
+
     [Fact]
     public async Task Streams_Deltas_Then_Completed_And_Persists_Reply()
     {
@@ -218,6 +234,44 @@ public sealed class ChatServiceTests
         // 用户消息已落库（事实保留），半截回复不落库
         Assert.Single(repo.UserMessages);
         Assert.Empty(repo.AssistantMessages);
+    }
+
+    [Fact]
+    public async Task Tool_Call_Markup_In_Content_Is_Neither_Streamed_Nor_Persisted()
+    {
+        // 标记里没有任何工具被执行，它不是回答：用户不该看到它，它也不该占着一条回答长期留在会话里
+        var model = new FakeChatModel(chunks: ToolCallMarkupChunks());
+        var repo = new FakeRepository();
+        var service = CreateService(model, repo);
+
+        var events = await CollectAsync(service.StreamReplyAsync(
+            "u1", 7, "上个月的营业额是多少？", null, "corr", CancellationToken.None));
+
+        Assert.Empty(events.OfType<ChatStreamEvent.Delta>());
+        var fail = Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(events));
+        Assert.Equal("AI_MODEL_UNPARSED_TOOL_CALL", fail.Code);
+        // 用户消息已落库（事实保留），标记不落库
+        Assert.Single(repo.UserMessages);
+        Assert.Empty(repo.AssistantMessages);
+    }
+
+    [Fact]
+    public async Task Answer_Followed_By_Markup_Keeps_The_Answer_Only()
+    {
+        var chunks = new List<string> { "结论：口径表见下。\n" };
+        chunks.AddRange(ToolCallMarkupChunks());
+        var model = new FakeChatModel(chunks: [.. chunks]);
+        var repo = new FakeRepository();
+        var service = CreateService(model, repo);
+
+        var events = await CollectAsync(service.StreamReplyAsync(
+            "u1", 7, "上个月的营业额是多少？", null, "corr", CancellationToken.None));
+
+        // 正文照常流式（"按住"只会把末尾的空白多留一拍），尾部的标记一个字都不下发
+        var streamed = string.Concat(events.OfType<ChatStreamEvent.Delta>().Select(delta => delta.Text));
+        Assert.Equal("结论：口径表见下。\n", streamed);
+        Assert.IsType<ChatStreamEvent.Completed>(events[^1]);
+        Assert.Equal("结论：口径表见下。", repo.AssistantMessages[0].Content);
     }
 }
 
