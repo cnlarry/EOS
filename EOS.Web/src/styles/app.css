@@ -1899,6 +1899,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   font-size: 12px;
   color: var(--tblr-secondary, #6c757d);
 }
+/* 它长在**用户气泡内**（主色底）：分隔线与次要文字都要按底色重算对比度，否则在白底上
+   好看的灰字落到主色底上就看不清了 */
+.erp-assistant-bubble.is-user .erp-assistant-context {
+  border-top-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.92);
+}
 .erp-assistant-context-title { display: block; margin-bottom: 2px; }
 .erp-assistant-context ul { margin: 0; padding-left: 16px; }
 

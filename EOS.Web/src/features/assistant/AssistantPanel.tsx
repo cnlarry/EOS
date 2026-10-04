@@ -353,7 +353,10 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
         )}
         {a.bubbles.map(bubble => (
           <div key={bubble.key} className={`erp-assistant-message ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
-            <div className="erp-assistant-bubble">
+            {/* 气泡样式按侧别分（用户=主色底、助手=浅底描边）：此前只写了 message 行的类、气泡自身没带
+                修饰类，样式块 `erp-assistant-bubble.is-user/.is-assistant` 一直没生效——用户消息因此
+                退化成"没有底色的一段文字"，长回答一来就被淹掉 */}
+            <div className={`erp-assistant-bubble ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
               {bubble.role === 2 && bubble.reasoning && <ReasoningBlock text={bubble.reasoning} />}
               {bubble.role === 2 && bubble.text
                 ? <KbSourceText text={bubble.text} onOpen={setOpenDocId} />
