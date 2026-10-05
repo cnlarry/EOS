@@ -8,7 +8,7 @@ public class ModuleRouteValidatorTests
     [Theory]
     [InlineData("/reports", 129801, "/reports/129801")]
     [InlineData("/workbench", 1406, "/workbench/1406")]
-    [InlineData("/search-center", 2501, "/search-center/2501")]
+    [InlineData("/search-center", 1405, "/search-center/1405")]
     [InlineData("/detail-query", 14996, "/detail-query/14996")]
     public void ParameterizedBases_AppendModuleId(string url, int moduleId, string expected)
     {
