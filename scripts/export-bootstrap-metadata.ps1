@@ -66,8 +66,8 @@ function Read-Terms {
 
 function Read-Map {
     param([string]$Path)
-    # 必须用**大小写敏感**的有序字典：HUAJING 与 huajing 是两条独立规则，
-    # 用 [ordered]@{} 会让后者覆盖前者（PowerShell 默认键比较不区分大小写）。
+    # 必须用**大小写敏感**的有序字典：同一个代号的两种大小写写法是两条独立规则（替换值不同），
+    # 用 [ordered]@{} 会让后一条覆盖前一条——PowerShell 的默认键比较不区分大小写。
     $map = New-Object System.Collections.Specialized.OrderedDictionary([StringComparer]::Ordinal)
     if (-not (Test-Path -LiteralPath $Path)) { return $map }
     foreach ($line in [IO.File]::ReadLines($Path)) {
