@@ -41,9 +41,9 @@
 - 向量库逻辑上归 `EOS.API` 侧管理；网关、客户端、Agent 均不得直连；
 - 具体向量库选型（Milvus / Qdrant / Weaviate 等）在阶段 C 启动前确定；
 - 仓库根目录 `.rag/lancedb` 是本地开发用 RAG 工具（`mcp-local-rag-anything`）的缓存，不是企业知识库落点。
-  （**现状注记（2026-09-15）**：该 MCP 与技能在本机未安装，`.rag/lancedb` 与 `ingest-driver.js` /
-  `verify-driver.js` 仍在；决策本身不变，仅记录工具当前未接线，详见
-  `docs/eos-development/09-元数据与RAG指南.md` §4。）
+  （**现状注记（2026-09-15；2026-10-05 补）**：该 MCP 与技能在本机未安装；此后 `.rag/` 目录整体
+  已不在本机，`lancedb` 与 `ingest-driver.js` / `verify-driver.js` 随之丢失。决策本身不变，
+  仅记录工具当前未接线。）
 
 ### 3. 入库与向量化
 
