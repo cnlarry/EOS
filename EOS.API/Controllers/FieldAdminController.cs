@@ -64,6 +64,25 @@ public sealed class FieldAdminController(
         return Ok(await repository.GetModulesAsync(token));
     }
 
+    /// <summary>未登记进 TABLES 的物理表/视图候选（新增数据表元数据按选取方式录入）。</summary>
+    [HttpGet("lookups/physical-tables")]
+    public async Task<IActionResult> LookupPhysicalTables(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetPhysicalObjectsAsync(token));
+    }
+
+    /// <summary>
+    /// 从物理表/视图登记表元数据并自动生成字段元数据（描述取表/列说明，类型按物理列匹配）。
+    /// 只登记已存在的物理对象，不创建物理表。
+    /// </summary>
+    [HttpPost("tables/from-physical")]
+    public async Task<IActionResult> RegisterPhysicalTable(RegisterPhysicalTableRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        return Ok(await repository.RegisterPhysicalTableAsync(request, userContext.EmployeeName, token));
+    }
+
     [HttpGet("tables/{table}/fields")]
     public async Task<IActionResult> Fields(
         string table,
@@ -91,6 +110,24 @@ public sealed class FieldAdminController(
         if (!string.Equals(request.TableId, table, StringComparison.OrdinalIgnoreCase))
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "TABLE_MISMATCH", "路径表名与请求体表名不一致。"));
         return Ok(await repository.CreateUnmanagedFieldsAsync(request, userContext.EmployeeName, token));
+    }
+
+    /// <summary>幽灵字段清单（元数据存在、物理列已不存在；虚拟字段不属幽灵字段，不在清单内）。</summary>
+    [HttpGet("tables/{table}/fields/ghosts")]
+    public async Task<IActionResult> GhostFields(string table, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetGhostFieldsAsync(table, token));
+    }
+
+    /// <summary>清理幽灵字段（删除 FIELDS 元数据并清理其历史列配置；逐条按当前库状态复核）。</summary>
+    [HttpPost("tables/{table}/fields/ghosts/cleanup")]
+    public async Task<IActionResult> CleanupGhostFields(string table, CleanupGhostFieldsRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        if (!string.Equals(request.TableId, table, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "TABLE_MISMATCH", "路径表名与请求体表名不一致。"));
+        return Ok(await repository.CleanupGhostFieldsAsync(request, userContext.EmployeeName, token));
     }
 
     [HttpGet("fields/{table}/{field}")]

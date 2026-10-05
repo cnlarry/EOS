@@ -17,10 +17,11 @@ const unmanaged = {
   limited: false,
 }
 
+// 虚拟字段由服务端排除（无物理列是它的设计），故孤儿视图里不再出现「虚拟字段」列
 const orphan = {
   kind: 'orphan',
   rows: [
-    { T_ID: 'GONE', F_ID: 'OLD', F_TYPE: 'nvarchar', F_DESC: '旧字段', IS_VIRTUAL: true },
+    { T_ID: 'GONE', F_ID: 'OLD', F_TYPE: 'nvarchar', F_DESC: '旧字段' },
   ],
   total: 1,
   limited: false,
@@ -79,6 +80,9 @@ describe('FieldAuditPage', () => {
     expect(apiClientMock.get).toHaveBeenCalledWith('/table-data/field-audit/orphan')
     expect(screen.getByText('共 1 行')).toBeInTheDocument()
     expect(screen.getByText('旧字段')).toBeInTheDocument()
+    // 虚拟字段已由服务端排除，页面不再提供该列（免得读者以为列表里漏掉了虚拟字段）
+    expect(screen.queryByRole('columnheader', { name: '虚拟字段' })).toBeNull()
+    expect(screen.getByText(/虚拟字段没有物理列，不计/)).toBeInTheDocument()
     // 视图切换后清空上一视图的选中行
     await waitFor(() => {
       expect(screen.getAllByLabelText('选择此行')[0]).not.toBeChecked()

@@ -1,4 +1,4 @@
-import { IconCopy, IconEdit, IconListDetails, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
+import { IconCopy, IconEdit, IconEraser, IconListDetails, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import type { FieldAdminTable } from './TableAdminPage'
 import { UnmanagedFieldsModal } from './UnmanagedFieldsModal'
+import { GhostFieldsModal } from './GhostFieldsModal'
 import { describeApiError } from '../../lib/errors'
 
 interface FieldAdminFieldSummary {
@@ -53,6 +54,7 @@ export function FieldAdminPage() {
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [unmanagedOpen, setUnmanagedOpen] = useState(false)
+  const [ghostOpen, setGhostOpen] = useState(false)
   const [selectedField, setSelectedField] = useState<string | null>(null)
   // 系统列组默认隐藏；打开后服务端即不过滤（含徽标与删除保护）。
   const [showSystem, setShowSystem] = useState(false)
@@ -74,6 +76,8 @@ export function FieldAdminPage() {
   })
 
   const items = fields.data?.items ?? []
+  // 幽灵字段数来自表元数据（服务端口径：非虚拟且物理列已不存在；虚拟字段不算）
+  const orphanCount = table?.orphanCount ?? 0
   const errorMessage = describeApiError(fields.error, '发生未知错误，请稍后重试。')
 
   const confirmDelete = useCallback((fieldId: string, description: string) => {
@@ -130,6 +134,9 @@ export function FieldAdminPage() {
           <Button size="sm" icon={<IconPlus size={16} />} onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/new`)}>新增</Button>
           <Button size="sm" variant={showSystem ? 'primary' : 'secondary'} title="单据生命周期系统列默认隐藏（结构锁定、不可删除）" onClick={() => { setShowSystem((value) => !value); setPage(1) }}>{showSystem ? '隐藏系统列' : '显示系统列'}</Button>
           <Button size="sm" icon={<IconListDetails size={16} />} onClick={() => setUnmanagedOpen(true)}>未管理字段</Button>
+          {orphanCount > 0 && (
+            <Button size="sm" icon={<IconEraser size={16} />} title="元数据还在、物理列已不存在的字段（虚拟字段不算幽灵字段）" onClick={() => setGhostOpen(true)}>清理幽灵字段</Button>
+          )}
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void fields.refetch()}>刷新</Button>
           <Button size="sm" onClick={() => navigate('/admin/tables')}>返回</Button>
         </>}
@@ -140,6 +147,11 @@ export function FieldAdminPage() {
             {(table?.unmanagedCount ?? 0) > 0 && (
               <button type="button" className="badge bg-warning-lt border-0" title="点击查看未管理字段" onClick={() => setUnmanagedOpen(true)}>
                 未管理 {table?.unmanagedCount ?? 0}
+              </button>
+            )}
+            {orphanCount > 0 && (
+              <button type="button" className="badge bg-danger-lt border-0" title="元数据还在、物理列已不存在的字段；点击查看并清理" onClick={() => setGhostOpen(true)}>
+                幽灵 {orphanCount}
               </button>
             )}
             <span className="text-secondary small">共 {fields.data?.total ?? 0} 个字段</span>
@@ -169,6 +181,19 @@ export function FieldAdminPage() {
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: ['field-admin', 'fields'] })
             void queryClient.invalidateQueries({ queryKey: ['field-admin', 'unmanaged'] })
+            void queryClient.invalidateQueries({ queryKey: ['field-admin', 'tables'] })
+          }}
+        />
+      )}
+      {ghostOpen && (
+        <GhostFieldsModal
+          open
+          tableId={tableId}
+          tableDescription={table?.description}
+          onClose={() => setGhostOpen(false)}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ['field-admin', 'fields'] })
+            void queryClient.invalidateQueries({ queryKey: ['field-admin', 'ghosts'] })
             void queryClient.invalidateQueries({ queryKey: ['field-admin', 'tables'] })
           }}
         />

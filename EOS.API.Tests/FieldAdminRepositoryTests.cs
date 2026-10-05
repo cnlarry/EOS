@@ -120,6 +120,42 @@ public sealed class FieldAdminRepositoryTests
             () => repository.CreateUnmanagedFieldsAsync(new("COMPANY", ["bad field"]), "IT", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task GetGhostFields_RejectsInvalidIdentifier()
+    {
+        var repository = CreateRepository();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.GetGhostFieldsAsync("bad table", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CleanupGhostFields_RejectsEmptySelection()
+    {
+        var repository = CreateRepository();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.CleanupGhostFieldsAsync(new("COMPANY", []), "IT", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.CleanupGhostFieldsAsync(new("COMPANY", ["   "]), "IT", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CleanupGhostFields_RejectsInvalidIdentifier()
+    {
+        var repository = CreateRepository();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.CleanupGhostFieldsAsync(new("bad table", ["COMPANY_ID"]), "IT", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.CleanupGhostFieldsAsync(new("COMPANY", ["bad field"]), "IT", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RegisterPhysicalTable_RejectsInvalidIdentifier()
+    {
+        var repository = CreateRepository();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.RegisterPhysicalTableAsync(new("bad table"), "IT", CancellationToken.None));
+    }
+
     private static FieldAdminInput FieldInput(
         string label = "测试字段",
         string? format = null,

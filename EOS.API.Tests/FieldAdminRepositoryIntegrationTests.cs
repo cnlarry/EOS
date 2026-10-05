@@ -21,6 +21,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
 
     private readonly FieldAdminRepository _repository;
     private readonly List<(string Table, string Field)> _createdFields = [];
+    private readonly List<string> _createdTables = [];
 
     public FieldAdminRepositoryIntegrationTests()
     {
@@ -188,6 +189,111 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// 幽灵字段判定与清理：只有「非虚拟且物理列已不存在」的字段算幽灵。
+    /// 虚拟字段结构上就没有物理列，既不进清单、也不进表的幽灵计数、更不会被清理请求删掉。
+    /// </summary>
+    [Fact]
+    public async Task CleanupGhostFields_RemovesOnlyNonVirtualMissingColumns()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var table = "COMPANY";
+        var ghost = $"ZZ_FA_GHOST_{Random.Shared.Next(100000, 999999)}";
+        var virtualField = $"ZZ_FA_VIRT_{Random.Shared.Next(100000, 999999)}";
+        var sql = $"""
+            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,VIRTUAL_EXP,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            VALUES (N'{table}',N'{ghost}',N'幽灵字段测试','nvarchar',0,0,0,0,NULL,'IT',GETDATE());
+            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,VIRTUAL_EXP,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            VALUES (N'{table}',N'{virtualField}',N'虚拟字段测试','nvarchar',0,0,0,1,N'COMPANY_ID','IT',GETDATE());
+            """;
+
+        var orphansBefore = await OrphanCountAsync(table);
+        try
+        {
+            await ExecuteStatementsAsync(sql);
+            _createdFields.Add((table, ghost));
+            _createdFields.Add((table, virtualField));
+
+            var ghosts = await _repository.GetGhostFieldsAsync(table, CancellationToken.None);
+            Assert.Contains(ghosts, item => item.FieldId.Equals(ghost, StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(ghosts, item => item.FieldId.Equals(virtualField, StringComparison.OrdinalIgnoreCase));
+
+            // 两个夹具一起插入后计数只涨 1：虚拟字段那一行不进幽灵计数
+            Assert.Equal(orphansBefore + 1, await OrphanCountAsync(table));
+
+            var cleanup = await _repository.CleanupGhostFieldsAsync(
+                new(table, [ghost, virtualField]), "IT", CancellationToken.None);
+            Assert.Equal(1, cleanup.Removed);
+            Assert.Equal(1, cleanup.Skipped);
+            Assert.Contains(cleanup.SkippedReasons, reason => reason.Contains("虚拟字段"));
+            _createdFields.Remove((table, ghost));
+
+            // 幽灵已删、虚拟字段仍在：计数回到插入前（虚拟字段此刻就是"没有物理列的字段"，若被计入就会多 1）
+            Assert.Null(await _repository.GetMetadataAsync(table, ghost, CancellationToken.None));
+            Assert.NotNull(await _repository.GetMetadataAsync(table, virtualField, CancellationToken.None));
+            Assert.Equal(orphansBefore, await OrphanCountAsync(table));
+        }
+        finally
+        {
+            await CleanupCreatedFieldsAsync();
+        }
+    }
+
+    /// <summary>
+    /// 从物理表/视图登记表元数据（选取式新增）：表描述与类型由物理对象推导，字段按物理列生成
+    /// （说明取列说明、类型取物理类型），生成后不应产生"幽灵"；重复登记必须被拒绝。
+    /// </summary>
+    [Fact]
+    public async Task RegisterPhysicalTable_CreatesTableAndFieldMetadata()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var candidate = await FindUnregisteredPhysicalObjectAsync();
+        if (candidate is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _repository.RegisterPhysicalTableAsync(
+                new(candidate.Value.TableId), "IT", CancellationToken.None);
+            _createdTables.Add(result.TableId);
+
+            Assert.Equal(candidate.Value.TableId, result.TableId, ignoreCase: true);
+            Assert.Equal(candidate.Value.IsView ? "VIEW" : "TABLE", result.Type);
+            Assert.Equal(candidate.Value.IsView ? "V" : "P", result.Kind);
+            Assert.Equal(
+                candidate.Value.Description.Length == 0 ? candidate.Value.TableId : candidate.Value.Description,
+                result.Description,
+                ignoreCase: true);
+            Assert.True(result.FieldCreated > 0, "至少要生成一个字段元数据");
+
+            // 生成的字段都能对应物理列（幽灵为 0）；类型不受支持而被跳过的列表现为"未管理"
+            var fields = await _repository.GetFieldsAsync(result.TableId, null, 1, 100, CancellationToken.None);
+            Assert.Equal(result.FieldCreated, fields.Total);
+            Assert.All(fields.Items, item => Assert.True(item.PhysicalExists));
+            var row = (await _repository.GetTablesAsync(null, CancellationToken.None))
+                .Single(item => item.TableId.Equals(result.TableId, StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(0, row.OrphanCount);
+            Assert.Equal(result.FieldSkipped, row.UnmanagedCount);
+
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => _repository.RegisterPhysicalTableAsync(new(result.TableId), "IT", CancellationToken.None));
+        }
+        finally
+        {
+            await CleanupCreatedTablesAsync();
+        }
+    }
+
     [Fact]
     public async Task UpdateTable_RejectsOptimisticLockConflict()
     {
@@ -339,6 +445,40 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         return (reader.GetString(0), reader.GetString(1));
     }
 
+    /// <summary>取表列表口径下的幽灵字段计数（与界面「幽灵」列同源）。</summary>
+    private async Task<int> OrphanCountAsync(string table)
+    {
+        var tables = await _repository.GetTablesAsync(null, CancellationToken.None);
+        return tables.Single(item => item.TableId.Equals(table, StringComparison.OrdinalIgnoreCase)).OrphanCount;
+    }
+
+    /// <summary>取一个尚未登记进 TABLES 的物理表/视图（含表说明）；开发库没有候选时跳过。</summary>
+    private static async Task<(string TableId, bool IsView, string Description)?> FindUnregisteredPhysicalObjectAsync()
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            """
+            SELECT TOP 1 o.name, o.type, ISNULL(CONVERT(nvarchar(500), ep.value), N'')
+            FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            LEFT JOIN sys.extended_properties ep
+              ON ep.class=1 AND ep.major_id=o.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
+            WHERE s.name=N'dbo' AND o.type IN ('U','V')
+              AND NOT EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=o.name)
+            ORDER BY o.name;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+        return (
+            reader.GetString(0).Trim(),
+            reader.GetString(1).Trim().Equals("V", StringComparison.OrdinalIgnoreCase),
+            reader.GetString(2).Trim());
+    }
+
     public void Dispose()
     {
         if (ConnectionString.Value is null)
@@ -349,6 +489,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         try
         {
             CleanupCreatedFieldsAsync().GetAwaiter().GetResult();
+            CleanupCreatedTablesAsync().GetAwaiter().GetResult();
         }
         catch
         {
@@ -427,6 +568,34 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             await delete.ExecuteNonQueryAsync();
         }
         _createdFields.Clear();
+    }
+
+    /// <summary>清理本用例登记的表元数据、其字段元数据与历史列配置引用。</summary>
+    private async Task CleanupCreatedTablesAsync()
+    {
+        if (_createdTables.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        foreach (var table in _createdTables)
+        {
+            await using var delete = new SqlCommand(
+                """
+                DELETE FROM dbo.SYSQL_DEFAULT WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.SYSQL_FIELDS WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.SYSQL_CONDITION WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.SYSQL_COND_DFT WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.SYSQD_CONDITION WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.FIELDS WHERE T_ID=@Table;
+                DELETE FROM dbo.TABLES WHERE T_ID=@Table;
+                """, connection);
+            delete.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+            await delete.ExecuteNonQueryAsync();
+        }
+        _createdTables.Clear();
     }
 
     private static string? ResolveConnectionString()

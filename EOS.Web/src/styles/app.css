@@ -690,9 +690,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   .erp-field-editor-page .erp-field-nav { width: 100%; max-height: 45vh; }
   .erp-field-editor-page .card-body > .row.g-0 > .col { overflow-y: visible; }
 }
-/* 未管理字段弹窗：电子表格列表限高内部滚动 */
-.erp-unmanaged-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
-.erp-unmanaged-table .table-responsive { overflow: visible; }
+/* 未管理 / 幽灵字段弹窗：电子表格列表限高内部滚动 */
+.erp-unmanaged-table .erp-table-shell, .erp-ghost-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
+.erp-unmanaged-table .table-responsive, .erp-ghost-table .table-responsive { overflow: visible; }
+/* 新增数据表元数据的物理表选取弹窗：同样限高内部滚动 */
+.erp-physical-table-picker .erp-table-shell { max-height: 42vh; overflow-y: auto; }
+.erp-physical-table-picker .table-responsive { overflow: visible; }
 /* 系统级页签面板（TabbedPanel 设计语言）：
    内容面板带完整边框 + 系统圆角 + padding 10px；
    激活标签向下延伸 1px、用面板底色覆盖面板上边框，与面板融为一体；未激活标签仍完整显示面板上边框 */

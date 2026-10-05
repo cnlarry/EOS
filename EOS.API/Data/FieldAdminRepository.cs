@@ -66,6 +66,7 @@ public sealed class FieldAdminRepository(
                                         WHERE f2.T_ID=t.T_ID AND LTRIM(RTRIM(f2.F_ID))=c.name)) AS UnmanagedCount,
                    (SELECT COUNT(*) FROM dbo.FIELDS f3 WITH (NOLOCK)
                      WHERE f3.T_ID=t.T_ID
+                       AND COALESCE(f3.IS_VIRTUAL,0)=0
                        AND NOT EXISTS (SELECT 1 FROM sys.columns c2
                                         JOIN sys.objects o2 ON c2.object_id=o2.object_id AND o2.type IN ('U','V')
                                         JOIN sys.schemas s2 ON o2.schema_id=s2.schema_id
@@ -361,44 +362,32 @@ public sealed class FieldAdminRepository(
         var skipped = 0;
         var reasons = new List<string>();
         var createdChanges = new List<AuditFieldChange>();
+        var existing = await ReadExistingFieldIdsAsync(connection, transaction, request.TableId, token);
+        var physicalColumns = (await ReadGeneratedFieldsAsync(connection, transaction, request.TableId, token))
+            .ToDictionary(item => item.FieldId, StringComparer.OrdinalIgnoreCase);
         foreach (var fieldId in requested)
         {
-            if (await FieldExistsAsync(connection, transaction, request.TableId, fieldId, token))
+            if (existing.Contains(fieldId))
             {
                 skipped++;
                 reasons.Add($"{fieldId}：已存在元数据，跳过");
                 continue;
             }
-            var column = await ReadPhysicalColumnAsync(connection, transaction, request.TableId, fieldId, token);
-            if (column is null)
+            if (!physicalColumns.TryGetValue(fieldId, out var column))
             {
                 skipped++;
                 reasons.Add($"{fieldId}：物理列不存在，跳过");
                 continue;
             }
-            if (!AllowedTypes.Contains(column.Value.Type))
+            if (!AllowedTypes.Contains(column.DataType))
             {
                 skipped++;
-                reasons.Add($"{fieldId}：物理类型 {column.Value.Type} 不受支持，跳过");
+                reasons.Add($"{fieldId}：物理类型 {column.DataType} 不受支持，跳过");
                 continue;
             }
-
-            const string sql = """
-                INSERT INTO dbo.FIELDS
-                    (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,IS_COST,IS_SECRECY,
-                     IS_READONLY,CAN_COPY,DISPLAY_LENGTH,LAST_UPDATE_BY,LAST_UPDATE_DATE)
-                VALUES
-                    (@TableId,@FieldId,@Description,@DataType,1,1,1,0,0,0,0,1,100,@UpdatedBy,GETDATE());
-                """;
-            await using var command = new SqlCommand(sql, connection, transaction);
-            command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
-            command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
-            command.Parameters.Add("@Description", SqlDbType.NVarChar, 500).Value = column.Value.Description;
-            command.Parameters.Add("@DataType", SqlDbType.NVarChar, 100).Value = column.Value.Type;
-            command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
-            await command.ExecuteNonQueryAsync(token);
+            await InsertGeneratedFieldAsync(connection, transaction, request.TableId, column, updatedBy, token);
             created++;
-            createdChanges.Add(new AuditFieldChange(fieldId, null, $"{column.Value.Type} ({column.Value.Description})", null));
+            createdChanges.Add(new AuditFieldChange(fieldId, null, $"{column.DataType} ({column.Description})", null));
         }
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await auditWriter.WriteEventAsync(connection, transaction, null, request.TableId, "CREATE",
@@ -408,6 +397,203 @@ public sealed class FieldAdminRepository(
         logger.LogInformation("批量生成字段元数据 table={Table} created={Created} skipped={Skipped} by={UpdatedBy}",
             request.TableId, created, skipped, updatedBy);
         return new(created, skipped, reasons);
+    }
+
+    /// <summary>
+    /// 未登记进 TABLES 的物理表/视图候选（新增数据表元数据走选取而不是手敲表名）。
+    /// 描述取扩展属性 MS_Description（本库表描述在 class=1, minor_id=0）；候选是"还没登记的对象"，
+    /// 正常环境只有几十个（系统自用表与视图），上限 1000 只为兜底。
+    /// </summary>
+    public async Task<IReadOnlyList<FieldAdminPhysicalObject>> GetPhysicalObjectsAsync(CancellationToken token)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT TOP (1000) o.name AS T_ID,o.type AS OBJECT_TYPE,
+                   ISNULL(CONVERT(nvarchar(500), ep.value),N'') AS DESCRIPTION,
+                   (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id=o.object_id) AS COLUMN_COUNT
+            FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            LEFT JOIN sys.extended_properties ep
+              ON ep.class=1 AND ep.major_id=o.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
+            WHERE s.name=N'dbo' AND o.type IN ('U','V')
+              AND NOT EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=o.name)
+            ORDER BY o.name;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FieldAdminPhysicalObject>();
+        while (await reader.ReadAsync(token))
+        {
+            var table = reader.GetString(0).Trim();
+            if (!WorkbenchSql.Identifier.IsMatch(table)) continue;
+            var objectType = reader.GetString(1).Trim();
+            result.Add(new(table, objectType, ResolveLabel(reader.GetString(2), table), reader.GetInt32(3)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 从物理表/视图登记表元数据并自动生成字段元数据（同一事务）：
+    /// 表描述取表说明（无则用表名）、类型与性质来自物理对象（表=TABLE/P、视图=VIEW/V）；
+    /// 字段的类型与说明来自物理列（列说明无则用列名），主键/自增/计算列标志取自物理结构。
+    /// 类型不受支持的列逐个跳过并回报原因——不静默漏字段。
+    /// </summary>
+    public async Task<RegisterPhysicalTableResult> RegisterPhysicalTableAsync(
+        RegisterPhysicalTableRequest request,
+        string updatedBy,
+        CancellationToken token)
+    {
+        EnsureIdentifier(request.TableId, null);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        var physical = await ReadPhysicalObjectAsync(connection, transaction, request.TableId, token)
+            ?? throw new ArgumentException("物理表或视图不存在，无法登记表元数据。", nameof(request));
+        await using (var repeat = new SqlCommand("SELECT 1 FROM dbo.TABLES WITH (NOLOCK) WHERE T_ID=@TableId", connection, transaction))
+        {
+            repeat.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
+            if (await repeat.ExecuteScalarAsync(token) is not null)
+                throw new ArgumentException("数据表元数据已存在，不能重复登记。", nameof(request));
+        }
+
+        var isView = string.Equals(physical.ObjectType, "V", StringComparison.OrdinalIgnoreCase);
+        var tableInput = new FieldAdminTableInput(physical.Description, isView ? "V" : "P", isView ? "VIEW" : "TABLE", null);
+        const string insertTableSql = """
+            INSERT INTO dbo.TABLES (T_ID,T_DESC,T_KIND,T_TYPE,T_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            VALUES (@TableId,@Description,@Kind,@Type,@Remark,@UpdatedBy,GETDATE());
+            """;
+        await using (var insert = new SqlCommand(insertTableSql, connection, transaction))
+        {
+            AddTableParameters(insert, request.TableId, tableInput, updatedBy);
+            if (await insert.ExecuteNonQueryAsync(token) != 1)
+                throw new InvalidOperationException("新增数据表元数据失败。");
+        }
+
+        var existing = await ReadExistingFieldIdsAsync(connection, transaction, request.TableId, token);
+        var created = 0;
+        var skipped = 0;
+        var reasons = new List<string>();
+        var changes = new List<AuditFieldChange>
+        {
+            new("(table)", null, JsonSerializer.Serialize(DescribeTable(tableInput)), null),
+        };
+        foreach (var column in await ReadGeneratedFieldsAsync(connection, transaction, request.TableId, token))
+        {
+            if (existing.Contains(column.FieldId))
+            {
+                skipped++;
+                reasons.Add($"{column.FieldId}：已存在元数据，跳过");
+                continue;
+            }
+            if (!AllowedTypes.Contains(column.DataType))
+            {
+                skipped++;
+                reasons.Add($"{column.FieldId}：物理类型 {column.DataType} 不受支持，跳过");
+                continue;
+            }
+            await InsertGeneratedFieldAsync(connection, transaction, request.TableId, column, updatedBy, token);
+            created++;
+            changes.Add(new AuditFieldChange(column.FieldId, null, $"{column.DataType} ({column.Description})", null));
+        }
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
+        await auditWriter.WriteEventAsync(connection, transaction, null, request.TableId, "CREATE",
+            $"从物理对象登记表元数据 fields={created} skipped={skipped}", updatedBy, "FIELD_ADMIN",
+            result: 1, changes, token);
+        await transaction.CommitAsync(token);
+        logger.LogInformation("从物理对象登记表元数据 table={Table} fields={Created} skipped={Skipped} by={UpdatedBy}",
+            request.TableId, created, skipped, updatedBy);
+        return new(request.TableId, tableInput.Description, tableInput.Kind ?? "", tableInput.Type ?? "", created, skipped, reasons);
+    }
+
+    /// <summary>
+    /// 幽灵字段：FIELDS 有元数据、物理表已无同名列。虚拟字段结构上就没有物理列，不是幽灵字段，
+    /// 故判定一律排除 IS_VIRTUAL=1 的行（与字段列表的物理列口径一致）。
+    /// </summary>
+    public async Task<IReadOnlyList<FieldAdminGhostField>> GetGhostFieldsAsync(string tableId, CancellationToken token)
+    {
+        EnsureIdentifier(tableId, null);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        var statuses = await ReadFieldPhysicalStatusAsync(connection, null, tableId, token);
+        return statuses
+            .Where(item => !item.IsVirtual && !item.PhysicalExists)
+            .Select(item => new FieldAdminGhostField(item.FieldId, item.Description, item.DataType))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 清理幽灵字段：删除元数据已找不到物理列的 FIELDS 行并清理其历史列配置（同一事务内）。
+    /// 逐条按**当前**库状态复核，虚拟字段、物理列仍存在、系统列一律跳过——
+    /// 前端拿到的清单可能已过期，不能凭它直接删。
+    /// </summary>
+    public async Task<CleanupGhostFieldsResult> CleanupGhostFieldsAsync(
+        CleanupGhostFieldsRequest request,
+        string updatedBy,
+        CancellationToken token)
+    {
+        EnsureIdentifier(request.TableId, null);
+        var requested = request.FieldIds
+            .Select(id => id?.Trim() ?? "")
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (requested.Count == 0)
+            throw new ArgumentException("请至少选择一个字段。", nameof(request));
+        foreach (var id in requested)
+            EnsureIdentifier(request.TableId, id);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        var statuses = (await ReadFieldPhysicalStatusAsync(connection, transaction, request.TableId, token))
+            .ToDictionary(item => item.FieldId, StringComparer.OrdinalIgnoreCase);
+        var removed = 0;
+        var reasons = new List<string>();
+        var changes = new List<AuditFieldChange>();
+        foreach (var fieldId in requested)
+        {
+            if (!statuses.TryGetValue(fieldId, out var status))
+            {
+                reasons.Add($"{fieldId}：元数据不存在，跳过");
+                continue;
+            }
+            if (status.IsVirtual)
+            {
+                reasons.Add($"{fieldId}：虚拟字段没有物理列，不属幽灵字段，跳过");
+                continue;
+            }
+            if (status.PhysicalExists)
+            {
+                reasons.Add($"{fieldId}：物理列存在，不是幽灵字段，跳过");
+                continue;
+            }
+            if (WorkflowStates.IsLifecycleColumn(fieldId))
+            {
+                reasons.Add($"{fieldId}：系统列不允许删除，跳过");
+                continue;
+            }
+            if (await DeleteFieldMetadataAsync(connection, transaction, request.TableId, fieldId, token) != 1)
+            {
+                reasons.Add($"{fieldId}：元数据已被他人删除，跳过");
+                continue;
+            }
+            removed++;
+            changes.Add(new AuditFieldChange(fieldId, $"{status.DataType} ({status.Description})", null, null));
+        }
+        // 无实际删除时不写审计、不标脏：与字段更新的无操作口径一致，避免留下"清了 0 条"的空事件。
+        if (removed > 0)
+        {
+            await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
+            await auditWriter.WriteEventAsync(connection, transaction, null, request.TableId, "DELETE",
+                $"清理幽灵字段 removed={removed} skipped={reasons.Count}", updatedBy, "FIELD_ADMIN",
+                result: 1, changes, token);
+        }
+        await transaction.CommitAsync(token);
+        logger.LogInformation("清理幽灵字段 table={Table} removed={Removed} skipped={Skipped} by={UpdatedBy}",
+            request.TableId, removed, reasons.Count, updatedBy);
+        return new(removed, reasons.Count, reasons);
     }
 
     public async Task<FieldAdminPageResult> GetFieldsAsync(
@@ -919,28 +1105,11 @@ public sealed class FieldAdminRepository(
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         var snapshot = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
             ?? throw new KeyNotFoundException("字段不存在。");
-        await using var delete = new SqlCommand("DELETE FROM dbo.FIELDS WHERE T_ID=@TableId AND F_ID=@FieldId", connection, transaction);
-        delete.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
-        delete.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
-        if (await delete.ExecuteNonQueryAsync(token) != 1)
+        if (await DeleteFieldMetadataAsync(connection, transaction, tableId, fieldId, token) != 1)
         {
             await transaction.RollbackAsync(token);
             throw new KeyNotFoundException("字段不存在。");
         }
-        const string cleanSql = """
-            DELETE FROM dbo.SYSQL_FIELDS WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQL_DEFAULT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
-            DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
-            """;
-        await using var clean = new SqlCommand(cleanSql, connection, transaction);
-        clean.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
-        clean.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
-        clean.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId.Trim()}";
-        await clean.ExecuteNonQueryAsync(token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await auditWriter.WriteEventAsync(connection, transaction, null, $"{tableId}.{fieldId}",
             "DELETE", "字段维护删除", updatedBy, "FIELD_ADMIN", result: 1,
@@ -1439,43 +1608,218 @@ public sealed class FieldAdminRepository(
             reader.IsDBNull(3) ? null : reader.GetString(3));
     }
 
-    private static async Task<bool> FieldExistsAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        string tableId,
-        string fieldId,
-        CancellationToken token)
-    {
-        const string sql = "SELECT 1 FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
-        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
+    /// <summary>
+    /// 按物理列生成字段元数据的输入（描述取列说明、类型取物理类型、主键/自增/计算列取物理结构）：
+    /// 「未管理字段批量生成」与「从物理对象登记表」共用同一份事实，避免两处口径分叉。
+    /// 类型不受支持的列也会返回，由调用方判定后回报原因。
+    /// </summary>
+    private sealed record GeneratedFieldSource(
+        string FieldId,
+        string Description,
+        string DataType,
+        bool IsPrimaryKey,
+        bool IsAutoIncrement,
+        bool IsReadonly);
 
-    private static async Task<(string Description, string Type)?> ReadPhysicalColumnAsync(
+    /// <summary>读该表全部物理列的生成输入（一次取回，按 column_id 排序）。</summary>
+    private static async Task<IReadOnlyList<GeneratedFieldSource>> ReadGeneratedFieldsAsync(
         SqlConnection connection,
-        SqlTransaction transaction,
+        SqlTransaction? transaction,
         string tableId,
-        string fieldId,
         CancellationToken token)
     {
         const string sql = """
-            SELECT COALESCE(CONVERT(nvarchar(500), ep.value), c.name) AS F_DESC, TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            SELECT c.name AS F_ID,
+                   TYPE_NAME(c.user_type_id) AS DATA_TYPE,
+                   ISNULL(CONVERT(nvarchar(500), ep.value),N'') AS DESCRIPTION,
+                   CAST(c.is_identity AS bit) AS IS_IDENTITY,
+                   CAST(c.is_computed AS bit) AS IS_COMPUTED,
+                   CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK
             FROM sys.columns c
             JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
             JOIN sys.schemas s ON o.schema_id=s.schema_id
             LEFT JOIN sys.extended_properties ep
-              ON ep.class=1 AND ep.major_id=OBJECT_ID('dbo.' + QUOTENAME(@TableId))
-             AND ep.minor_id=c.column_id AND ep.name='MS_Description'
-            WHERE s.name=N'dbo' AND o.name=@TableId AND c.name=@FieldId;
+              ON ep.class=1 AND ep.major_id=c.object_id AND ep.minor_id=c.column_id AND ep.name=N'MS_Description'
+            LEFT JOIN (SELECT ic.object_id,ic.column_id FROM sys.indexes i
+                       JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+                       WHERE i.is_primary_key=1) pk
+              ON pk.object_id=c.object_id AND pk.column_id=c.column_id
+            WHERE s.name=N'dbo' AND o.name=@TableId
+            ORDER BY c.column_id;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
-        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<GeneratedFieldSource>();
+        while (await reader.ReadAsync(token))
+        {
+            var field = reader.GetString(0).Trim();
+            if (!WorkbenchSql.Identifier.IsMatch(field)) continue;
+            var dataType = MapPhysicalType(reader.GetString(1));
+            result.Add(new(
+                FieldId: field,
+                Description: ResolveLabel(reader.GetString(2), field),
+                DataType: dataType,
+                IsPrimaryKey: reader.GetBoolean(5),
+                IsAutoIncrement: reader.GetBoolean(3),
+                IsReadonly: reader.GetBoolean(4) || IsRowVersionType(dataType)));
+        }
+        return result;
+    }
+
+    /// <summary>表的物理对象信息（类型 U/V + 表说明，说明为空/占位时回落到表名）。</summary>
+    private static async Task<(string ObjectType, string Description)?> ReadPhysicalObjectAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT o.type,ISNULL(CONVERT(nvarchar(500), ep.value),N'')
+            FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            LEFT JOIN sys.extended_properties ep
+              ON ep.class=1 AND ep.major_id=o.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
+            WHERE s.name=N'dbo' AND o.name=@TableId AND o.type IN ('U','V');
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token)) return null;
-        return (reader.GetString(0), reader.GetString(1));
+        return (reader.GetString(0).Trim(), ResolveLabel(reader.GetString(1), tableId));
+    }
+
+    /// <summary>该表已有元数据的字段名集合（生成字段元数据前判重）。</summary>
+    private static async Task<HashSet<string>> ReadExistingFieldIdsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string tableId,
+        CancellationToken token)
+    {
+        var statuses = await ReadFieldPhysicalStatusAsync(connection, transaction, tableId, token);
+        return statuses.Select(item => item.FieldId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>插入一条按物理列生成的字段元数据（调用方负责事务、判重、类型支持与审计）。</summary>
+    private static async Task InsertGeneratedFieldAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        GeneratedFieldSource source,
+        string updatedBy,
+        CancellationToken token)
+    {
+        const string sql = """
+            INSERT INTO dbo.FIELDS
+                (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,IS_COST,IS_SECRECY,
+                 IS_READONLY,IS_AUTOINC,IS_PK,CAN_COPY,DISPLAY_LENGTH,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            VALUES
+                (@TableId,@FieldId,@Description,@DataType,1,1,1,0,0,0,
+                 @Readonly,@AutoIncrement,@PrimaryKey,1,100,@UpdatedBy,GETDATE());
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = source.FieldId;
+        command.Parameters.Add("@Description", SqlDbType.NVarChar, 500).Value = source.Description;
+        command.Parameters.Add("@DataType", SqlDbType.NVarChar, 100).Value = source.DataType;
+        command.Parameters.Add("@Readonly", SqlDbType.Bit).Value = source.IsReadonly;
+        command.Parameters.Add("@AutoIncrement", SqlDbType.Bit).Value = source.IsAutoIncrement;
+        command.Parameters.Add("@PrimaryKey", SqlDbType.Bit).Value = source.IsPrimaryKey;
+        command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
+        await command.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>物理类型名归一：sysname 即 nvarchar、rowversion 即 timestamp，其余原样。</summary>
+    private static string MapPhysicalType(string physicalType) => physicalType.Trim().ToLowerInvariant() switch
+    {
+        "sysname" => "nvarchar",
+        "rowversion" => "timestamp",
+        var other => other,
+    };
+
+    /// <summary>行版本列由数据库维护，表单不得要求录入（标只读）。</summary>
+    private static bool IsRowVersionType(string dataType) => dataType is "timestamp";
+
+    /// <summary>说明为空或占位文本（'NULL' / '&nbsp;'）时回落到名字，避免把占位文本写成标签。</summary>
+    private static string ResolveLabel(string? value, string fallback)
+    {
+        var text = value?.Trim() ?? "";
+        return text.Length == 0 || PlaceholderLabels.Contains(text) ? fallback : text;
+    }
+
+    /// <summary>单个字段的物理列状态（幽灵判定与清理共用的唯一来源）。</summary>
+    private sealed record FieldPhysicalStatus(
+        string FieldId,
+        string Description,
+        string DataType,
+        bool IsVirtual,
+        bool PhysicalExists);
+
+    /// <summary>读该表全部字段的物理列状态（一次取回，判定与清理都在内存里对同一份事实做决定）。</summary>
+    private static async Task<IReadOnlyList<FieldPhysicalStatus>> ReadFieldPhysicalStatusAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string tableId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
+                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar') AS F_TYPE,
+                   CAST(COALESCE(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL,
+                   CAST(CASE WHEN EXISTS (SELECT 1 FROM sys.columns c
+                                            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                            JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                            WHERE s.name=N'dbo' AND o.name=@TableId
+                                              AND c.name=LTRIM(RTRIM(f.F_ID))) THEN 1 ELSE 0 END AS bit) AS IS_PHYSICAL
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.T_ID=@TableId
+            ORDER BY f.F_ID;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FieldPhysicalStatus>();
+        while (await reader.ReadAsync(token))
+        {
+            var field = reader.GetString(0).Trim();
+            if (!WorkbenchSql.Identifier.IsMatch(field)) continue;
+            result.Add(new(field, reader.GetString(1), reader.GetString(2), reader.GetBoolean(3), reader.GetBoolean(4)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 删除单条字段元数据并清理其历史列配置引用（同一事务内；调用方负责系统列拒绝、审计与脏标记）。
+    /// 返回受影响行数：0 表示该字段元数据已不存在。
+    /// </summary>
+    private static async Task<int> DeleteFieldMetadataAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        string fieldId,
+        CancellationToken token)
+    {
+        await using var delete = new SqlCommand("DELETE FROM dbo.FIELDS WHERE T_ID=@TableId AND F_ID=@FieldId", connection, transaction);
+        delete.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
+        delete.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        if (await delete.ExecuteNonQueryAsync(token) != 1) return 0;
+        // 引用清理清单与字段删除同源：用户列配置、默认列、查询条件记忆、报表条件引用一并收口
+        const string cleanSql = """
+            DELETE FROM dbo.SYSQL_FIELDS WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQL_DEFAULT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
+            DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
+            """;
+        await using var clean = new SqlCommand(cleanSql, connection, transaction);
+        clean.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        clean.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
+        clean.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId.Trim()}";
+        await clean.ExecuteNonQueryAsync(token);
+        return 1;
     }
 
     private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

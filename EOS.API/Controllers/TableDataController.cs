@@ -58,18 +58,21 @@ public sealed class TableDataController(
         }
         else
         {
+            // 虚拟字段按设计就没有物理列（值由 VIRTUAL_EXP 派生），不是"物理表不存在"，
+            // 故两侧都排除 IS_VIRTUAL=1（与数据表维护页的幽灵字段口径一致）。
             sql=$$"""
                 SELECT TOP ({{limit}}) LTRIM(RTRIM(f.T_ID)) AS T_ID,LTRIM(RTRIM(f.F_ID)) AS F_ID,
-                       LTRIM(RTRIM(ISNULL(f.F_TYPE,''))) AS F_TYPE,LTRIM(RTRIM(ISNULL(f.F_DESC,''))) AS F_DESC,
-                       CAST(ISNULL(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL
+                       LTRIM(RTRIM(ISNULL(f.F_TYPE,''))) AS F_TYPE,LTRIM(RTRIM(ISNULL(f.F_DESC,''))) AS F_DESC
                 FROM dbo.FIELDS f WITH (NOLOCK)
-                WHERE NOT EXISTS (SELECT 1 FROM sys.columns c
+                WHERE COALESCE(f.IS_VIRTUAL,0)=0
+                  AND NOT EXISTS (SELECT 1 FROM sys.columns c
                                   JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                                   JOIN sys.schemas s ON o.schema_id=s.schema_id
                                   WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID)
                 ORDER BY f.T_ID,f.F_ID;
                 SELECT COUNT_BIG(1) FROM dbo.FIELDS f WITH (NOLOCK)
-                WHERE NOT EXISTS (SELECT 1 FROM sys.columns c
+                WHERE COALESCE(f.IS_VIRTUAL,0)=0
+                  AND NOT EXISTS (SELECT 1 FROM sys.columns c
                                   JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                                   JOIN sys.schemas s ON o.schema_id=s.schema_id
                                   WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID);

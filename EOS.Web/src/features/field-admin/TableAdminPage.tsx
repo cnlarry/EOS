@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { TableEditorModal, type TableEditorEndpoints, type TableDetail } from './TableEditorModal'
 import { ExpressionAuditModal } from './ExpressionAuditModal'
+import { PhysicalTablePickerModal } from './PhysicalTablePickerModal'
 import { describeApiError } from '../../lib/errors'
 
 export interface FieldAdminTable {
@@ -37,7 +38,9 @@ export function TableAdminPage() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
   const [kind, setKind] = useState('')
-  const [editor, setEditor] = useState<{ mode: 'new' | 'edit'; tableId?: string } | null>(null)
+  // 新增走「选取物理表/视图」弹窗；编辑弹窗只维护已登记的表信息
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [editor, setEditor] = useState<{ tableId: string } | null>(null)
   const [exprAuditOpen, setExprAuditOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
@@ -67,11 +70,7 @@ export function TableAdminPage() {
       return apiClient.get<TableDetail>(`/admin/tables/${encodeURIComponent(editor.tableId)}`)
     },
     save: async (input, tableId, original) => {
-      if (editor?.mode === 'new') {
-        await apiClient.post('/admin/tables', { tableId, table: input })
-      } else {
-        await apiClient.put(`/admin/tables/${encodeURIComponent(tableId)}`, { tableId, table: input, original })
-      }
+      await apiClient.put(`/admin/tables/${encodeURIComponent(tableId)}`, { tableId, table: input, original })
     },
   }), [editor])
 
@@ -91,9 +90,12 @@ export function TableAdminPage() {
       header: '未管理',
       cell: (info) => {
         const count = Number(info.getValue() ?? 0)
+        const hint = count > 0
+          ? `${count} 个物理列还没有字段元数据`
+          : '该表所有物理列都已有字段元数据'
         return count > 0
-          ? <span className="badge bg-danger-lt text-danger">{count}</span>
-          : <span className="badge bg-green-lt text-success">0</span>
+          ? <span className="badge bg-danger-lt text-danger" title={hint}>{count}</span>
+          : <span className="badge bg-green-lt text-success" title={hint}>0</span>
       },
     },
     {
@@ -101,9 +103,12 @@ export function TableAdminPage() {
       header: '幽灵',
       cell: (info) => {
         const count = Number(info.getValue() ?? 0)
+        const hint = count > 0
+          ? `${count} 个字段元数据已找不到对应物理列`
+          : '没有幽灵字段'
         return count > 0
-          ? <span className="badge bg-danger-lt text-danger">{count}</span>
-          : <span className="badge bg-green-lt text-success">0</span>
+          ? <span className="badge bg-danger-lt text-danger" title={hint}>{count}</span>
+          : <span className="badge bg-green-lt text-success" title={hint}>0</span>
       },
     },
     { accessorKey: 'type', header: '类型', cell: (info) => <span className="text-secondary">{String(info.getValue() ?? '—')}</span> },
@@ -126,7 +131,7 @@ export function TableAdminPage() {
       cell: ({ row }) => (
         <div className="d-flex gap-1 justify-content-end">
           <Button size="sm" variant="ghost" icon={<IconListDetails size={14} />} title="管理字段" onClick={(event) => { event.stopPropagation(); navigate(`/admin/tables/${encodeURIComponent(row.original.tableId)}/fields`) }}>管理字段</Button>
-          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} title="编辑" onClick={(event) => { event.stopPropagation(); setEditor({ mode: 'edit', tableId: row.original.tableId }) }}>编辑</Button>
+          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} title="编辑" onClick={(event) => { event.stopPropagation(); setEditor({ tableId: row.original.tableId }) }}>编辑</Button>
           <Button
             size="sm"
             variant="ghost"
@@ -160,7 +165,7 @@ export function TableAdminPage() {
         )}
         actions={<>
           <Button size="sm" onClick={() => setExprAuditOpen(true)}>表达式审计</Button>
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>
+          <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setPickerOpen(true)}>新增</Button>
         </>}
       >
         {tables.isPending ? <LoadingState label="正在加载数据表…" /> : tables.isError ? <ErrorState message={errorMessage} onRetry={() => void tables.refetch()} /> : (
@@ -182,7 +187,6 @@ export function TableAdminPage() {
       {editor && (
         <TableEditorModal
           open
-          mode={editor.mode}
           tableId={editor.tableId}
           endpoints={endpoints}
           onClose={() => setEditor(null)}
@@ -190,6 +194,13 @@ export function TableAdminPage() {
             void queryClient.invalidateQueries({ queryKey: ['field-admin', 'tables'] })
             setEditor(null)
           }}
+        />
+      )}
+      {pickerOpen && (
+        <PhysicalTablePickerModal
+          open
+          onClose={() => setPickerOpen(false)}
+          onRegistered={() => { void queryClient.invalidateQueries({ queryKey: ['field-admin', 'tables'] }) }}
         />
       )}
       <ExpressionAuditModal open={exprAuditOpen} onClose={() => setExprAuditOpen(false)} />

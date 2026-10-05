@@ -195,6 +195,44 @@ describe('FieldAdminPage', () => {
     expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(1)
   })
 
+  it('没有幽灵字段时不显示清理入口', async () => {
+    renderPage()
+    await loaded()
+    expect(screen.queryByRole('button', { name: '清理幽灵字段' })).toBeNull()
+  })
+
+  it('幽灵字段清理弹窗只列幽灵字段并可清理', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p === '/admin/tables') return [{ tableId: 'PRODUCT_EDITION', description: '产品版次', kind: 'P', type: 'TABLE', fieldCount: 2, unmanagedCount: 0, orphanCount: 2 }]
+      if (p.includes('/admin/tables/') && p.endsWith('/fields')) return fieldsPage
+      if (p.endsWith('/fields/unmanaged')) return []
+      if (p.endsWith('/fields/ghosts')) return [
+        { fieldId: 'OLD_COL', description: '旧列', dataType: 'nvarchar' },
+        { fieldId: 'GONE_COL', description: '已删列', dataType: 'int' },
+      ]
+      if (p.includes('/admin/fields/')) return fieldMeta
+      if (p === '/admin/lookups/modules') return []
+      throw new Error(`unexpected GET ${p}`)
+    })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path.endsWith('/fields/ghosts/cleanup')) return { removed: 1, skipped: 0, skippedReasons: [] }
+      return undefined
+    })
+    renderPage()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '清理幽灵字段' }))
+    await waitFor(() => expect(screen.getByText('清理幽灵字段（产品版次）')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByRole('checkbox', { name: '选择此行' })).toHaveLength(2))
+    fireEvent.click(screen.getAllByRole('checkbox', { name: '选择此行' })[0])
+    fireEvent.click(screen.getByRole('button', { name: '清理' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/tables/PRODUCT_EDITION/fields/ghosts/cleanup',
+      expect.objectContaining({ tableId: 'PRODUCT_EDITION', fieldIds: ['OLD_COL'] }),
+    ))
+    await waitFor(() => expect(screen.getByText(/已清理 1 个幽灵字段/)).toBeInTheDocument())
+  })
+
   it('未管理字段弹窗可批量生成并展示结果', async () => {
     renderPage()
     await loaded()

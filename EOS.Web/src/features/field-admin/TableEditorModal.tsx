@@ -35,8 +35,7 @@ export interface TableEditorEndpoints {
 
 interface TableEditorModalProps {
   open: boolean
-  mode: 'new' | 'edit'
-  tableId?: string
+  tableId: string
   endpoints: TableEditorEndpoints
   onClose: () => void
   onSaved: () => void
@@ -69,9 +68,11 @@ function extractInput(detail: TableDetail): TableInput {
   return { description: detail.description, kind: detail.kind, type: detail.type, remark: detail.remark }
 }
 
-const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/
-
-export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSaved }: TableEditorModalProps) {
+/**
+ * 已登记表信息的编辑弹窗（低风险字段子集）。
+ * 新增表元数据走「选取物理表/视图」（PhysicalTablePickerModal）按物理结构自动生成，不在这里手敲。
+ */
+export function TableEditorModal({ open, tableId, endpoints, onClose, onSaved }: TableEditorModalProps) {
   const [draft, setDraft] = useState<TableDetail | null>(null)
   const [original, setOriginal] = useState<TableDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -82,18 +83,12 @@ export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSa
   useEffect(() => {
     if (!open) return
     setSaveError(null)
-    if (mode === 'new') {
-      setDraft(emptyDraft(tableId ?? ''))
-      setOriginal(null)
-      setLoadError(false)
-      return
-    }
     let cancelled = false
     setLoading(true)
     setLoadError(false)
     void endpoints.load().then((detail) => {
       if (cancelled) return
-      setDraft(detail ? { ...detail } : emptyDraft(tableId ?? ''))
+      setDraft(detail ? { ...detail } : emptyDraft(tableId))
       setOriginal(detail ? { ...detail } : null)
       setLoadError(detail == null)
     }).catch(() => {
@@ -102,13 +97,11 @@ export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSa
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [open, mode, tableId, endpoints])
+  }, [open, tableId, endpoints])
 
   if (!open) return null
 
-  const isNew = mode === 'new'
-  const tableIdValid = isNew ? IDENTIFIER.test(draft?.tableId.trim() ?? '') : true
-  const canSave = draft != null && draft.description.trim().length > 0 && tableIdValid && !loading && !loadError
+  const canSave = draft != null && draft.description.trim().length > 0 && !loading && !loadError
 
   const handleSave = async () => {
     if (!draft) return
@@ -126,7 +119,7 @@ export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSa
 
   return (
     <Modal
-      title={isNew ? '新增数据表元数据' : `数据表信息（${draft?.tableId ?? ''}）`}
+      title={`数据表信息（${draft?.tableId ?? tableId}）`}
       onClose={onClose}
       size="lg"
       footer={<>
@@ -135,59 +128,47 @@ export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSa
       </>}
     >
       <div className="alert alert-warning">
-              {isNew
-                ? '仅允许登记已存在的物理表/视图元数据；不会创建物理表。新增后可在「管理字段」中生成字段元数据。'
-                : '仅维护低风险表信息（描述/性质/类型/备注）；关联表、查询联表、默认条件等高风险配置由受控机制另行维护。'}
+        仅维护低风险表信息（描述/性质/类型/备注）；关联表、查询联表、默认条件等高风险配置由受控机制另行维护。
+      </div>
+      {loadError && <div className="alert alert-danger">无法加载该数据表元数据，请确认当前账号具有数据表维护权限。</div>}
+      {draft && (
+        <div className="row g-3">
+          <div className="col-md-6">
+            <label className="form-label">数据表名</label>
+            <input className="form-control" value={draft.tableId} disabled />
+          </div>
+          <div className="col-md-6">
+            <label className="form-label">数据表描述</label>
+            <input className="form-control" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+          </div>
+          <div className="col-md-4">
+            <label className="form-label">性质（T_KIND）</label>
+            <select className="form-select" value={draft.kind ?? ''} onChange={(event) => setDraft({ ...draft, kind: event.target.value || null })}>
+              {KIND_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          <div className="col-md-4">
+            <label className="form-label">类型（T_TYPE）</label>
+            <select className="form-select" value={draft.type ?? 'TABLE'} onChange={(event) => setDraft({ ...draft, type: event.target.value || null })}>
+              {TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          <div className="col-md-4">
+            <label className="form-label">可否导入（CAN_IMPORT）</label>
+            <input className="form-control" value={draft.canImport ? '是' : '否'} disabled />
+          </div>
+          <div className="col-12">
+            <label className="form-label">备注（T_REMARK）</label>
+            <textarea className="form-control" rows={2} value={draft.remark ?? ''} onChange={(event) => setDraft({ ...draft, remark: event.target.value || null })} />
+          </div>
+          {draft.lastUpdatedBy && (
+            <div className="col-12 text-secondary" style={{ fontSize: 12 }}>
+              最后更新：{draft.lastUpdatedBy}（{draft.lastUpdatedAt ? new Date(draft.lastUpdatedAt).toLocaleString('zh-CN') : '—'}）
             </div>
-            {loadError && <div className="alert alert-danger">无法加载该数据表元数据，请确认当前账号具有数据表维护权限。</div>}
-            {draft && (
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label">数据表名</label>
-                  {isNew ? (
-                    <input
-                      className={`form-control${tableIdValid ? '' : ' is-invalid'}`}
-                      value={draft.tableId}
-                      placeholder="如 COMPANY / PRODUCT"
-                      onChange={(event) => setDraft({ ...draft, tableId: event.target.value })}
-                    />
-                  ) : (
-                    <input className="form-control" value={draft.tableId} disabled />
-                  )}
-                  {isNew && !tableIdValid && draft.tableId && <div className="invalid-feedback">表名需为字母/下划线开头、最长 128 位的标识符。</div>}
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label">数据表描述</label>
-                  <input className="form-control" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">性质（T_KIND）</label>
-                  <select className="form-select" value={draft.kind ?? ''} onChange={(event) => setDraft({ ...draft, kind: event.target.value || null })}>
-                    {KIND_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">类型（T_TYPE）</label>
-                  <select className="form-select" value={draft.type ?? 'TABLE'} onChange={(event) => setDraft({ ...draft, type: event.target.value || null })}>
-                    {TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">可否导入（CAN_IMPORT）</label>
-                  <input className="form-control" value={draft.canImport ? '是' : '否'} disabled />
-                </div>
-                <div className="col-12">
-                  <label className="form-label">备注（T_REMARK）</label>
-                  <textarea className="form-control" rows={2} value={draft.remark ?? ''} onChange={(event) => setDraft({ ...draft, remark: event.target.value || null })} />
-                </div>
-                {!isNew && draft.lastUpdatedBy && (
-                  <div className="col-12 text-secondary" style={{ fontSize: 12 }}>
-                    最后更新：{draft.lastUpdatedBy}（{draft.lastUpdatedAt ? new Date(draft.lastUpdatedAt).toLocaleString('zh-CN') : '—'}）
-                  </div>
-                )}
-              </div>
-            )}
-            {saveError && <div className="alert alert-danger mt-3 mb-0">{saveError}</div>}
+          )}
+        </div>
+      )}
+      {saveError && <div className="alert alert-danger mt-3 mb-0">{saveError}</div>}
     </Modal>
   )
 }

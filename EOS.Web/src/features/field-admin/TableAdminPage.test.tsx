@@ -1,6 +1,6 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
@@ -123,22 +123,51 @@ describe('TableAdminPage', () => {
     expect(document.querySelector('.badge.bg-green-lt')).not.toBeNull()
   })
 
-  it('新增按钮打开表编辑弹窗并提交', async () => {
+  it('未管理与幽灵计数带悬停说明，0 与大于 0 文案各自成立', async () => {
+    renderPage()
+    await loaded()
+    const unmanaged = screen.getByText('3')
+    const orphan = screen.getByText('2')
+    expect(unmanaged.getAttribute('title')).toBe('3 个物理列还没有字段元数据')
+    expect(orphan.getAttribute('title')).toBe('2 个字段元数据已找不到对应物理列')
+
+    // 0 值的文案同样只在提示里出现，不占列表宽度
+    expect(screen.getAllByText('0').some((badge) => badge.getAttribute('title') === '该表所有物理列都已有字段元数据')).toBe(true)
+    expect(screen.getAllByText('0').some((badge) => badge.getAttribute('title') === '没有幽灵字段')).toBe(true)
+  })
+
+  it('新增改为选取物理表/视图登记，并按物理结构生成字段元数据', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === '/admin/tables') return tables
+      if (path === '/admin/lookups/physical-tables') return [
+        { tableId: 'KB_COLLECTION', objectType: 'U', description: '知识库集合', columnCount: 6 },
+        { tableId: 'V_USERS', objectType: 'V', description: '用户视图', columnCount: 5 },
+      ]
+      throw new Error(`unexpected GET ${path}`)
+    })
+    apiClientMock.post.mockResolvedValue({
+      tableId: 'KB_COLLECTION', description: '知识库集合', kind: 'P', type: 'TABLE',
+      fieldCreated: 6, fieldSkipped: 0, skippedReasons: [],
+    })
     renderPage()
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: '新增' }))
-    await waitFor(() => expect(screen.getByText('新增数据表元数据')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('新增数据表元数据（选取物理表或视图）')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('KB_COLLECTION')).toBeInTheDocument())
+    expect(screen.getByText('V_USERS')).toBeInTheDocument()
+    // 未选行时不能登记
+    expect(screen.getByRole('button', { name: '登记并生成字段' })).toBeDisabled()
+
+    // 弹窗迭在列表之上，两者都有"选择此行"单选列：必须限定在弹窗内取行
     const dialog = screen.getByRole('dialog')
-    const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
-    fireEvent.change(inputs[0], { target: { value: 'NEW_TABLE' } })
-    fireEvent.change(inputs[1], { target: { value: '新表' } })
-    const save = screen.getByRole('button', { name: '保存' })
-    await waitFor(() => expect(save).toBeEnabled())
-    fireEvent.click(save)
+    fireEvent.click(within(dialog).getAllByRole('radio', { name: '选择此行' })[0])
+    expect(screen.getByRole('button', { name: '登记并生成字段' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: '登记并生成字段' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      '/admin/tables',
-      expect.objectContaining({ tableId: 'NEW_TABLE', table: expect.objectContaining({ description: '新表' }) }),
+      '/admin/tables/from-physical',
+      { tableId: 'KB_COLLECTION' },
     ))
+    await waitFor(() => expect(screen.getByText(/生成 6 个字段元数据/)).toBeInTheDocument())
   })
 
   it('删除需要确认并调用删除接口', async () => {
