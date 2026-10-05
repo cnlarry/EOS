@@ -15,8 +15,9 @@
 | 1 | `00_create_database.sql` | 创建 `EOS.ERP` 数据库 |
 | 2 | `10_schema.sql` | 表、函数、视图与运行时依赖的存储过程（纯结构，无数据） |
 | 3 | `20_metadata.sql` | 元数据种子：模块菜单、字段登记、通用查询、报表与表单版式 |
-| 4 | `30_admin.sql` | 初始管理员 `admin`（口令 `admin`，登录后请立即修改） |
-| 5 | `40_journal_baseline.sql` | 登记已固化的迁移编号，应用启动时不再重复执行 |
+| 4 | `25_base_data.sql` | 基础资料种子：公司/部门、币别、税别、银行、条件、类别/颜色/单位/材质、仓库，以及示例客户与厂商 |
+| 5 | `30_admin.sql` | 初始账号 `admin`（管理员）与 `larry`（普通用户），登录后请立即修改口令 |
+| 6 | `40_journal_baseline.sql` | 登记已固化的迁移编号，应用启动时不再重复执行 |
 
 示例：
 
@@ -27,6 +28,7 @@
 sqlcmd -S . -E -i db/bootstrap/00_create_database.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/10_schema.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/20_metadata.sql -f 65001
+sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/25_base_data.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/30_admin.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/40_journal_baseline.sql -f 65001
 ```
@@ -35,9 +37,14 @@ sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/40_journal_baseline.sql -f 65001
 
 - 元数据（模块、字段、查询列、报表版式、表单布局、流程定义）随仓库发布，
   新库会用与演示环境一致的界面元数据启动。
-- 业务数据（单据、主档、员工等）全部为空，需要在界面中自行建立。
-- 除 `admin` 外不预置任何账号；`admin` 拥有全部模块与报表权限。
-- 脚本可重复执行：结构脚本不防重，首次执行即可；元数据与账号种子幂等。
+- **基础资料随建库生成**：公司与部门、员工、币别、税别、银行、价格/付款条件、结算方式、
+  帐款类型、产品类别/颜色/单位/材质、仓库/库位/库存策略，以及电子元器件行业的示例客户与厂商，
+  见 `25_base_data.sql`。这些记录供其它单据引用，可整体替换为真实数据。
+- 业务单据（订单、送货单、收料单等）为空，需按单据流自行建立。
+- 初始账号两个：`admin`（管理员，全模块与报表权限）与 `larry`（普通用户，无配置/审批权限）。
+- 基础资料的清单与 CRUD 验收见 `EOS.API.Tests/base-data-modules.json` 与
+  `EOS.API.Tests/E2eBaseDataCrud.ps1`。
+- 脚本可重复执行：结构脚本不防重，首次执行即可；元数据、基础资料与账号种子幂等。
 
 ## 4. 后续升级
 

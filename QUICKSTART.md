@@ -17,6 +17,7 @@
 sqlcmd -S . -E -i db/bootstrap/00_create_database.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/10_schema.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/20_metadata.sql -f 65001
+sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/25_base_data.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/30_admin.sql -f 65001
 sqlcmd -S . -E -d "EOS.ERP" -i db/bootstrap/40_journal_baseline.sql -f 65001
 ```
@@ -63,15 +64,16 @@ npm run dev
 
 ## 4. 登录
 
-| 项目 | 值 |
-| --- | --- |
-| 账号 | `admin` |
-| 口令 | `admin` |
+| 账号 | 口令 | 说明 |
+| --- | --- | --- |
+| `admin` | `admin` | 管理员，全模块与报表权限 |
+| `larry` | `larry` | 普通用户，无配置/保密/成本与审批权限 |
 
 登录后：
-- 到「系统管理 → 用户权限」确认 `admin` 的全模块权限已就位；
+- 到「系统管理 → 用户权限」确认账号权限已就位；
 - 到「用户资料」修改口令；
-- 业务主档（客户、供应商、物料、员工等）为空，需要按单据流从基础资料开始建立。
+- 基础资料（公司/部门、币别、税别、仓库、示例客户与厂商等）已随建库生成，
+  可直接建立业务单据；示例数据可整体替换为真实数据。
 
 ## 5. 验证与测试
 
