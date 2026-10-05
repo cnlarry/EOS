@@ -727,12 +727,31 @@ public sealed class WorkbenchCommandHandler(
         {
             await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
         }
+        // 从属行处置：仓库这类主档的自动生成从属行（库位哨兵行）在**未被库存使用**时随宿主清理，
+        // 已被使用时在这里以可读码拦下——否则外键冲突会冒泡成 500（见 WorkbenchDeleteCascades）。
+        if (WorkbenchDeleteCascades.HasRule(definition.MasterTable)
+            && await WorkbenchDeleteCascades.PrepareAsync(connection, transaction, definition.MasterTable, keyValues, token) is { } cascadeRefusal)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, cascadeRefusal.Code, cascadeRefusal.Message);
+        }
         // 单据删除时一并清掉来源记忆，避免留下指向已删单据的孤儿行。
         await FormChooserSourceMemo.DeleteDocumentAsync(connection, transaction, definition.ModuleId, FormChooserSourceMemo.SerializeKey(keyValues), token);
         var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
         await using var command = new SqlCommand($"DELETE FROM dbo.[{definition.MasterTable}] WHERE {where};", connection, transaction);
         WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
-        var affected = await command.ExecuteNonQueryAsync(token);
+        int affected;
+        try
+        {
+            affected = await command.ExecuteNonQueryAsync(token);
+        }
+        // 仍被外键拦下（例如主档被业务单据引用）：同属用户可预期的输入问题，转成可读 400 而不是 500。
+        catch (SqlException ex) when (WriteFailureTranslator.IsExpectedWriteFailure(ex))
+        {
+            var deleteFailure = WriteFailureTranslator.Translate(ex, definition.MasterTable);
+            logger.LogWarning(ex, "统一表单删除被拒 module={ModuleId} table={Table} code={Code}",
+                definition.ModuleId, definition.MasterTable, deleteFailure.Code);
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, deleteFailure.Code, deleteFailure.Message, [deleteFailure]);
+        }
         if (affected == 0)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");

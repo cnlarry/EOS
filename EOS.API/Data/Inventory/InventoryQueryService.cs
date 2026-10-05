@@ -30,6 +30,10 @@ public static class InventoryQueryService
     /// 不把效期复制进余额表（复制就会与主档漂移）。
     /// </summary>
     public const string BatchTable = "INV_BATCH_M";
+
+    /// <summary>批次明细（批次库存行，键含库别与库位）。</summary>
+    public const string BatchDetailTable = "INV_BATCH_D";
+
     public const string EffectDateColumn = "EFFECT_DATE";
     public const string BatchDateColumn = "BATCH_DATE";
     public const string InSummaryColumn = "IN_SUM";
@@ -123,6 +127,39 @@ public static class InventoryQueryService
         command.Parameters.Add("@t", SqlDbType.NVarChar, 20).Value = billType.Trim();
         command.Parameters.Add("@n", SqlDbType.NVarChar, 40).Value = billNo.Trim();
         return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    // ===== 主档删除前的库存痕迹判据 =====
+
+    /// <summary>
+    /// 某库别在库存域留下的痕迹行数（余额 / 流水 / 批次明细）。供"删除仓库"这类主档删除前判断该库别是否已被库存使用。
+    ///
+    /// <para>
+    /// 三类都算的理由：余额行是当前状态，流水与批次明细是历史与效期凭据，三者都以库别为键。
+    /// 库别被删掉后它们会变成指向不存在库别的孤儿行，而 `check-inventory-balance-identity` /
+    /// `check-month-snapshot-recon` 是按 (料号, 库别) 逐键比对的——孤儿行会直接表现为不平。
+    /// 判据刻意保守：任一类有行即视为在用。
+    /// </para>
+    /// <para>读法收口在本服务内（门禁 `scripts/check-inventory-read-hosts.ps1` 只放行本文件与两条写路径）。</para>
+    /// </summary>
+    public static async Task<DepotTraceCounts> GetDepotTraceCountsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string depotId,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            $"SELECT (SELECT COUNT(*) FROM dbo.{BalanceTable} WHERE LTRIM(RTRIM({DepotColumn}))=@Depot),"
+            + $" (SELECT COUNT(*) FROM dbo.{LedgerTable} WHERE LTRIM(RTRIM({DepotColumn}))=@Depot),"
+            + $" (SELECT COUNT(*) FROM dbo.{BatchDetailTable} WHERE LTRIM(RTRIM({DepotColumn}))=@Depot);",
+            connection, transaction);
+        command.Parameters.Add("@Depot", SqlDbType.NVarChar, 10).Value = depotId.Trim();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+        {
+            return default;
+        }
+        return new DepotTraceCounts(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2));
     }
 
     /// <summary>
@@ -788,4 +825,21 @@ public static class InventorySources
     /// <summary>只取某一方向的单价（另一方向记 0，避免把出库行的单价算进加权）。</summary>
     public static string LedgerPriceFor(string alias, string direction) =>
         $"CASE WHEN {alias}.IN_OUT = '{direction}' THEN {alias}.PRICE ELSE 0 END";
+}
+
+/// <summary>某库别的库存痕迹行数（余额 / 流水 / 批次明细）。</summary>
+public readonly record struct DepotTraceCounts(int BalanceRows, int LedgerRows, int BatchRows)
+{
+    /// <summary>任一类有行，即"该库别已被库存使用"。</summary>
+    public bool Any => BalanceRows > 0 || LedgerRows > 0 || BatchRows > 0;
+
+    /// <summary>供拒绝文案使用的人话描述（只列非零项）。</summary>
+    public string Describe()
+    {
+        var parts = new List<string>();
+        if (BalanceRows > 0) parts.Add($"库存余额 {BalanceRows} 行");
+        if (LedgerRows > 0) parts.Add($"库存流水 {LedgerRows} 行");
+        if (BatchRows > 0) parts.Add($"批次明细 {BatchRows} 行");
+        return string.Join('、', parts);
+    }
 }
