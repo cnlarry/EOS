@@ -90,15 +90,14 @@ foreach ($p in ($db.StoredProcedures    | Where-Object { -not $_.IsSystemObject 
 #      故走 SMO 的依赖拓扑序。
 #   ② 视图 / 函数 / 存储过程 —— SQL Server **不把函数体、视图体里的引用登记为依赖**，
 #      这些对象在依赖树里被判成「无依赖」而排到表之前，创建时就会找不到表
-#      （实测 'f_get_form_desc' 报「列名 'T_ID' 无效」）。它们创建时只要求被引用的表已存在，
+#      （实测某个遗留函数报「列名无效」）。它们创建时只要求被引用的表已存在，
 #      因此统一放在表之后，彼此按名序即可。
-# 库里已坏死的遗留对象不进基线：它们当初能创建成功，只是因为引用的表当时还不存在
+# 库里坏死的遗留对象不进基线：它们当初能创建成功，只是因为引用的表当时还不存在
 # （SQL Server 的延迟名称解析），表建好之后就一直在报错。收进基线会让整份结构脚本
 # 在干净库上跑不完，而它们本身也没有任何可用性。
-#   f_get_form_desc —— 引用 WFFORM.FORM_IDX / TABLES.T_ID，而 WFFORM 的列早已是
-#   WF_M_IDX / FLOW_NAME；f_get_user_desc —— 引用已改名的列 EMP_NAME。
-# 两项均实测「调用即报列名无效」。清单由 `sp_refreshsqlmodule` 全库扫一遍得出，当前仅此两项。
-$skipObjects = @('f_get_form_desc', 'f_get_user_desc')
+# 清单由 `sp_refreshsqlmodule` 全库扫一遍得出。当前为空——历史上仅有的两项
+# 已由迁移 316 退役，退役依据留在该迁移里。
+$skipObjects = @()
 
 $tables = @($objects | Where-Object { $_.GetType().Name -eq 'Table' })
 $others = @($objects | Where-Object { $_.GetType().Name -ne 'Table' -and $skipObjects -notcontains $_.Name })

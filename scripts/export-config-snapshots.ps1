@@ -48,15 +48,14 @@ $legacyUrlOverrides = @{
 
 Write-Host "导出统一表单配置快照（白名单 $($enabled.Count) 模块）" -ForegroundColor Cyan
 
-# module-list.tsv：白名单模块（MODI_URL 取 ADR-004 备份表旧页面路径，供 layout-diff/extract-layouts/
-# AcceptanceSemantics 提取旧页面；无旧路径回退现代值——现代化后 MODULES.MODI_URL 已无旧路径）
+# module-list.tsv：白名单模块（MODI_URL 取当前值，供 layout-diff/extract-layouts/
+# AcceptanceSemantics 提取旧页面。旧页面路径原来从 ADR-004 时期的一张备份快照回退，
+# 该快照已由迁移 315 退役，现只取 MODULES.MODI_URL——现代化后它已不再含旧路径。
 $moduleRows = Invoke-EosSqlTable -Query @"
 SET NOCOUNT ON;
 SELECT LTRIM(RTRIM(CAST(M_IDX AS varchar(20)))), LTRIM(RTRIM(ISNULL(M_ALIAS,''))), LTRIM(RTRIM(ISNULL(M_DESC,''))),
        LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
-       COALESCE((SELECT TOP 1 LTRIM(RTRIM(b.MODI_URL)) FROM dbo.MODULES_Backup_ADR004 b
-                 WHERE b.M_IDX=MODULES.M_IDX AND LTRIM(RTRIM(ISNULL(b.MODI_URL,''))) LIKE '~%'),
-                LTRIM(RTRIM(ISNULL(MODI_URL,''))))
+       LTRIM(RTRIM(ISNULL(MODI_URL,'')))
 FROM dbo.MODULES WHERE M_IDX IN $idList ORDER BY M_IDX;
 "@
 $moduleLines = foreach ($row in $moduleRows.Rows) {
@@ -81,13 +80,11 @@ FROM dbo.FIELDS WHERE LTRIM(RTRIM(T_ID)) IN $tblList ORDER BY T_ID, F_ID;
 "@
 }
 
-# modules-config.tsv：白名单模块布局配置（MODI_URL 同取旧路径）
+# modules-config.tsv：白名单模块布局配置（MODI_URL 同样只取当前值，理由见上）
 $modConfigRows = Invoke-EosSqlTable -Query @"
 SET NOCOUNT ON;
 SELECT LTRIM(RTRIM(CAST(M_IDX AS varchar(20)))), LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-       COALESCE((SELECT TOP 1 LTRIM(RTRIM(b.MODI_URL)) FROM dbo.MODULES_Backup_ADR004 b
-                 WHERE b.M_IDX=MODULES.M_IDX AND LTRIM(RTRIM(ISNULL(b.MODI_URL,''))) LIKE '~%'),
-                LTRIM(RTRIM(ISNULL(MODI_URL,'')))),
+       LTRIM(RTRIM(ISNULL(MODI_URL,''))),
        LTRIM(RTRIM(ISNULL(FORM_BUTTONS,'')))
 FROM dbo.MODULES WHERE M_IDX IN $idList ORDER BY M_IDX;
 "@

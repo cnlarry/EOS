@@ -124,6 +124,50 @@ $retiredObjects = @(
         Pattern       = '\b(?:PREVIEW_TAG|PRINT_TAG|EXPORT_TAG)\b'
         CaseSensitive = $true
     }
+    # 历史备份表退役（迁移 315）：5 个 BAK / Backup / GHOST 快照表，与现行的表结构脱节，
+    # 此前一直靠导出脚本按名字模式排除才没进建库种子。名字足够独特，用词边界匹配裸名即可。
+    [pscustomobject]@{
+        Name    = 'FIELDS_GHOST_BAK_20260909'
+        Reason  = 'FIELDS 的历史快照表，见 Migrations/315_drop_legacy_backup_tables.sql'
+        Pattern = '\bFIELDS_GHOST_BAK_20260909\b'
+    }
+    [pscustomobject]@{
+        Name    = 'TABLES_GHOST_BAK_20260909'
+        Reason  = 'TABLES 的历史快照表，见 Migrations/315_drop_legacy_backup_tables.sql'
+        Pattern = '\bTABLES_GHOST_BAK_20260909\b'
+    }
+    [pscustomobject]@{
+        Name    = 'FIELD_DATASOURCE_RESIDUE_BAK_20260909'
+        Reason  = '字段数据来源重构期的中间表快照，见 Migrations/315_drop_legacy_backup_tables.sql'
+        Pattern = '\bFIELD_DATASOURCE_RESIDUE_BAK_20260909\b'
+    }
+    [pscustomobject]@{
+        Name    = 'MODULES_Backup_ADR004'
+        Reason  = 'ADR-004 迁移前对 MODULES 的快照，见 Migrations/315_drop_legacy_backup_tables.sql'
+        Pattern = '\bMODULES_Backup_ADR004\b'
+    }
+    [pscustomobject]@{
+        Name    = 'SYSDL_Backup_ADR004'
+        Reason  = 'ADR-004 迁移前对 SYSDL 的快照，见 Migrations/315_drop_legacy_backup_tables.sql'
+        Pattern = '\bSYSDL_Backup_ADR004\b'
+    }
+    # 坏死遗留函数退役（迁移 316）：三个函数引用改名前的老列，调用即报「列名无效」。
+    # 它们在库里能存在，只是因为创建时被引用的表还不存在（SQL Server 的延迟名称解析）。
+    [pscustomobject]@{
+        Name    = 'dbo.f_get_form_desc'
+        Reason  = '引用老列 WFFORM.FORM_IDX / TABLES.T_ID，调用即报错，见 Migrations/316_retire_broken_legacy_functions.sql'
+        Pattern = 'f_get_form_desc'
+    }
+    [pscustomobject]@{
+        Name    = 'dbo.f_get_user_desc'
+        Reason  = '引用已改名的列 EMP_NAME，调用即报错，见 Migrations/316_retire_broken_legacy_functions.sql'
+        Pattern = 'f_get_user_desc'
+    }
+    [pscustomobject]@{
+        Name    = 'dbo.f_get_user_listdesc'
+        Reason  = '函数体第 589 字符处调用已退役的 f_get_user_desc，一并退役，见 Migrations/316_retire_broken_legacy_functions.sql'
+        Pattern = 'f_get_user_listdesc'
+    }
 )
 
 function Get-RetiredHit {
