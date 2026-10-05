@@ -316,7 +316,7 @@ FROM (VALUES
     (N'TW',    N'托外仓',         CAST(1 AS bit), CAST(NULL AS nvarchar(50))),
     (N'PJ',    N'品检仓',         CAST(0 AS bit), CAST(NULL AS nvarchar(50))),
     (N'BF',    N'报废仓',         CAST(0 AS bit), CAST(NULL AS nvarchar(50))),
-    (N'GZHSC', N'示例东莞仓', CAST(1 AS bit), N'CK-03')
+    (N'DEMOC', N'示例东莞仓', CAST(1 AS bit), N'CK-03')
 ) v(DEPOT_ID, DEPOT_NAME, MRP, PRINCIPAL)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.DEPOT d WHERE LTRIM(RTRIM(d.DEPOT_ID)) = v.DEPOT_ID);
 GO
