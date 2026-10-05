@@ -257,6 +257,9 @@ function Invoke-EosSqlFile {
     )
     if (-not [System.IO.Path]::IsPathRooted($Path)) { throw "必须使用绝对路径：$Path" }
     if (-not (Test-Path -LiteralPath $Path)) { throw "文件不存在：$Path" }
+    # sqlcmd 把 `/` 也当选项前缀：正向斜杠路径（如 d:/repo/...）会被拆成 `/L...`、`/D...` 等选项，
+    # 报 "The -L parameter can not be used in combination with other parameters"。一律先转成反斜杠。
+    $Path = $Path -replace '/', '\'
 
     $target = Get-EosSqlTarget -ConnectionString $ConnectionString
     if (Test-EosSqlCmd -ConnectionString $ConnectionString) {
