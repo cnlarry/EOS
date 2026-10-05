@@ -206,6 +206,16 @@ describe('AppShell', () => {
     expect(screen.getByText('WB')).toBeInTheDocument()
   })
 
+  it('菜单搜索按回车打开第一项并清空搜索框', () => {
+    renderShell('/dashboard')
+    const box = screen.getByRole('searchbox', { name: '搜索菜单' })
+    fireEvent.input(box, { target: { value: '1209' } })
+    expect(screen.getByText('Enter')).toBeInTheDocument()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(screen.getByText('WB')).toBeInTheDocument()
+    expect(box).toHaveValue('')
+  })
+
   it('菜单搜索无命中时提示', () => {
     renderShell('/dashboard')
     fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '不存在的菜单' } })

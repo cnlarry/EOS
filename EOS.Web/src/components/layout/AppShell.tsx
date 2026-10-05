@@ -907,11 +907,18 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                 onChange={(event) => setMenuQuery(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') setMenuQuery('')
+                  // 回车打开第一项：输入的就是某个模块的完整编号时，该项已被提到首位（见 searchMenu），即"编号直达"
+                  if (event.key === 'Enter' && searchResults.length > 0) {
+                    event.preventDefault()
+                    openTab(searchResults[0].item.route!)
+                    setMenuQuery('')
+                  }
                 }}
                 placeholder="搜索菜单…"
                 aria-label="搜索菜单"
               />
               {!menuQuery && <span className="erp-nav-kbd">Ctrl K</span>}
+              {menuQuery && searchResults.length > 0 && <span className="erp-nav-kbd">Enter</span>}
               {menuQuery && (
                 <button
                   className="erp-nav-search-clear"
