@@ -17,6 +17,7 @@ import { AssistantProvider } from '../../features/assistant/AssistantProvider'
 import { useToast } from '../ui/toastContext'
 import { navigationIcons } from './navigationIcons'
 import { childPad, dotLeft, groupPad, lineSidebar } from './menuDepth'
+import { searchMenu } from './menuSearch'
 import { workbenchAction, workbenchList, workbenchModuleId } from '../../features/document-workbench/workbenchPath'
 import { RECENT_MODULES_KEY, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY, THEME_KEY, workspaceTabsKey } from '../../lib/storageKeys'
 import { PAGE_META } from '../../app/routeMeta'
@@ -787,26 +788,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   }
 
   const trimmedQuery = menuQuery.trim().toLowerCase()
-  const searchResults = useMemo(() => {
-    if (!trimmedQuery) return []
-    const hits: { item: NavigationItem; breadcrumb: string }[] = []
-    const walk = (items: NavigationItem[], trail: string[]) => {
-      for (const item of items) {
-        if (item.children?.length) {
-          walk(item.children, [...trail, item.label])
-        } else {
-          const label = item.label.toLowerCase()
-          const moduleId = item.moduleId != null ? String(item.moduleId) : ''
-          const alias = (item.alias ?? '').toLowerCase()
-          if (label.includes(trimmedQuery) || moduleId.includes(trimmedQuery) || alias.includes(trimmedQuery)) {
-            hits.push({ item, breadcrumb: [...trail, item.label].join(' / ') })
-          }
-        }
-      }
-    }
-    walk(navigation, [])
-    return hits.slice(0, 50)
-  }, [navigation, trimmedQuery])
+  const searchResults = useMemo(() => searchMenu(navigation, trimmedQuery), [navigation, trimmedQuery])
 
   const renderChildren = (items: NavigationItem[], depth: number) =>
     items.map((item) => {

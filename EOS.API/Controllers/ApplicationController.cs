@@ -25,45 +25,87 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             organization = new { id = User.FindFirstValue("department_id") ?? "", name = User.FindFirstValue("department_name") ?? "" }
         };
         var modules = await navigationRepository.GetForUserAsync(userId, token);
-        var roots = modules.Where(module => module.ParentId == 0)
-            .OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList();
         var navigation = new List<object> {
             new { id = "dashboard", label = "首页", route = "/dashboard", icon = "dashboard", children = (object?)null },
             new { id = "report-center", label = "报表中心", route = "/report-center", icon = "report", children = (object?)null }
         };
         var iconOverrides = configuration.GetSection("NavigationIcons").GetChildren()
             .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
-        foreach (var root in roots)
-        {
-            var rootIcon = IconFor(root.Id, root.Label, iconOverrides);
-            var children = BuildChildren(root.Id, modules, rootIcon);
-            if (children.Count == 0) continue;
-            navigation.Add(new { id = $"module-{root.Id}", label = root.Label, route = (string?)null, icon = IconFor(root.Id, root.Label, iconOverrides), children = (object?)children });
-        }
+        navigation.AddRange(BuildNavigation(modules, iconOverrides));
         navigation.Add(new { id = "settings", label = "个人设置", route = "/settings/profile", icon = "settings", children = (object?)null });
         var permissions = modules.Where(module => module.Enabled).Select(module => $"fallback-module.{module.Id}.read").ToList();
         return Ok(new { user, permissions, navigation });
     }
 
     /// <summary>
-    /// 递归构建完整菜单树。
-    /// 叶子携带 moduleId / masterTable / groups，供分组（第 4 级）与搜索使用。
-    /// 中间层不再被跳过（此前实现把二级压平成叶子，丢失层级）。
+    /// 构建完整菜单树，返回顶层节点。
+    /// 节点形态：有下级的作分组（分组自己也有页面时一并带上落点与模块编号）；没有下级的作叶子，
+    /// 携带 moduleId / alias / route / masterTable / groups，供导航渲染、面包屑、第 4 级分组与菜单搜索使用。
+    /// 落点按「父模块 → 根模块 → 顶层」逐级回退：元数据里父模块被删号（M_P_IDX 指向已不存在的模块）
+    /// 或祖先链不完整时，模块改挂最近的可用祖先——挂在树外等于既不在菜单里、也按模块编号搜不到。
     /// </summary>
-    private static List<object> BuildChildren(int parentId, IReadOnlyList<NavigationModule> modules, string rootIcon)
+    private static List<object> BuildNavigation(IReadOnlyList<NavigationModule> modules, IReadOnlyDictionary<string, string?> iconOverrides)
     {
-        var result = new List<object>();
-        var direct = modules.Where(module => module.ParentId == parentId && module.Id != parentId)
-            .OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList();
-        foreach (var module in direct)
+        var byId = modules.ToDictionary(module => module.Id);
+        var childrenOf = modules
+            .GroupBy(module => Placement(module, byId))
+            .ToDictionary(group => group.Key, group => group.OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList());
+        var placed = new HashSet<int>();
+        var navigation = new List<object>();
+        foreach (var root in childrenOf.GetValueOrDefault(0, []))
         {
-            var descendants = BuildChildren(module.Id, modules, rootIcon);
-            if (descendants.Count > 0)
-                result.Add(new { id = $"module-{module.Id}", label = module.Label, route = (string?)null, icon = rootIcon, children = (object?)descendants });
-            else if (module.Enabled) result.Add(MenuLeaf(module, rootIcon));
+            // 顶层节点自己就是页面（无下级）时按叶子渲染，不再因"没有下级"被整条丢掉
+            var node = BuildNode(root, childrenOf, placed, IconFor(root.Id, root.Label, iconOverrides));
+            if (node is not null) navigation.Add(node);
         }
-        return result;
+        // 父链成环、或根模块自身不在可访问集合里时，模块挂不上任何祖先：
+        // 叶子降级到顶层，避免带页面的模块从菜单与搜索里静默消失（有下级的由其下级各自降级）
+        foreach (var module in modules)
+        {
+            if (placed.Contains(module.Id) || childrenOf.ContainsKey(module.Id) || !module.Enabled) continue;
+            navigation.Add(MenuLeaf(module, IconFor(module.RootId, module.Label, iconOverrides)));
+        }
+        return navigation;
     }
+
+    /// <summary>模块在菜单树上的落点：父模块可访问则挂父模块，否则退回根模块，都不可用则落到顶层。</summary>
+    private static int Placement(NavigationModule module, IReadOnlyDictionary<int, NavigationModule> byId)
+    {
+        if (module.ParentId != 0 && module.ParentId != module.Id && byId.ContainsKey(module.ParentId)) return module.ParentId;
+        if (module.RootId != module.Id && byId.ContainsKey(module.RootId)) return module.RootId;
+        return 0;
+    }
+
+    /// <summary>构建单个节点：有下级即分组，没有下级即叶子（停用且无下级的节点不产出）。</summary>
+    private static object? BuildNode(
+        NavigationModule module,
+        IReadOnlyDictionary<int, List<NavigationModule>> childrenOf,
+        HashSet<int> placed,
+        string icon)
+    {
+        placed.Add(module.Id);
+        var children = childrenOf.GetValueOrDefault(module.Id, [])
+            .Select(child => BuildNode(child, childrenOf, placed, icon))
+            .OfType<object>()
+            .ToList();
+        if (children.Count == 0) return module.Enabled ? MenuLeaf(module, icon) : null;
+        var hasOwnPage = HasOwnPage(module);
+        return new
+        {
+            id = $"module-{module.Id}",
+            label = module.Label,
+            alias = module.Alias,
+            // 分组自己也有页面时带上落点与编号：否则"有下级"会吞掉这张页面的入口（菜单搜索按编号也就找不到）
+            route = hasOwnPage ? RouteFor(module) : (string?)null,
+            icon,
+            moduleId = hasOwnPage ? module.Id : (int?)null,
+            children = (object?)children
+        };
+    }
+
+    /// <summary>模块自己是否承载页面（M_URL 非空且启用）：空 M_URL 的节点是纯目录，没有可打开的落点。</summary>
+    private static bool HasOwnPage(NavigationModule module) =>
+        module.Enabled && !string.IsNullOrWhiteSpace(module.SourceUrl);
 
     private static object MenuLeaf(NavigationModule module, string rootIcon) => new
     {

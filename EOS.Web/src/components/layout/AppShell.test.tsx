@@ -199,6 +199,13 @@ describe('AppShell', () => {
     expect(screen.getByText('WB')).toBeInTheDocument()
   })
 
+  it('菜单搜索支持按模块编号直达', () => {
+    renderShell('/dashboard')
+    fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '1209' } })
+    fireEvent.click(screen.getByRole('button', { name: '销售管理 / 销售子组 / 分组模块' }))
+    expect(screen.getByText('WB')).toBeInTheDocument()
+  })
+
   it('菜单搜索无命中时提示', () => {
     renderShell('/dashboard')
     fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '不存在的菜单' } })
