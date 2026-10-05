@@ -1,0 +1,8 @@
+# 默认责任人：所有 PR 都会请求维护者评审。
+# 有新的长期维护者后按目录补条目，避免全部变更都压在一个人的通知里。
+* @cnlarry
+
+# 权限边界与助手能力面是安全相关的核心，评审要格外看。
+/EOS.API/Security/           @cnlarry
+/EOS.API/Features/Assistant/ @cnlarry
+/.github/workflows/          @cnlarry

@@ -1,0 +1,40 @@
+name: 功能建议
+description: 提出新能力或行为改进
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先讲业务场景，不必先想技术方案：同一句话在场景里说清楚，往往有好几种实现，
+        而选哪种取决于约束（元数据能不能表达、权限归谁、要不要迁移）。
+
+        按 [CONTRIBUTING](https://github.com/cnlarry/EOS/blob/main/CONTRIBUTING.md) 的约定，
+        跨模块、会长期约束实现方式的改动要先写 ADR 再动手。
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 场景
+      description: 你在做什么业务、卡在哪一步。
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: 现在的做法与不足
+    validations:
+      required: false
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的行为
+      description: 描述看到什么、点什么、得到什么结果，比描述实现更有效。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 影响面
+      description: 是否涉及元数据、权限、迁移或既有单据行为；不确定可留空。
+    validations:
+      required: false

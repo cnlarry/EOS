@@ -1,0 +1,76 @@
+name: 缺陷报告
+description: 报告可复现的功能异常
+title: "[缺陷] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先查一遍 [QUICKSTART](https://github.com/cnlarry/EOS/blob/main/QUICKSTART.md) 的常见问题
+        与 [docs/guide](https://github.com/cnlarry/EOS/tree/main/docs/guide) 的对应篇目。
+
+        **不要粘贴连接串、口令、密钥与真实业务数据**——贴日志前请先抹掉这些值。
+  - type: checkboxes
+    id: precheck
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已按 QUICKSTART 从空环境建库，且异常可重复出现
+          required: true
+        - label: 已确认报告内容不含连接串、口令、密钥与真实业务数据
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 取自 version.json；从源码运行时写提交号（`git rev-parse --short HEAD`）
+      placeholder: "0.2.0 或 a1b2c3d"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及范围
+      options:
+        - EOS.API（接口 / 权限 / 审计）
+        - EOS.Web（界面 / 工作台 / 表单）
+        - 数据库迁移（db/bootstrap 或 Data/Migrations）
+        - 工作助手
+        - 报表与打印
+        - 文档与工具
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 以 admin 登录
+        2. 打开模块 …
+        3. 点击 …
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 期望行为与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志与错误码
+      description: |
+        `EOS.API/logs/api-json.log` 的尾部（`Get-Content -Tail 100`），
+        或界面上给出的 `error.code` 与 `correlationId`。这些标识能串起前后端链路，比截图有用。
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: 运行环境
+      placeholder: "Windows 11 / .NET 10.0.401 / SQL Server 2025 / Node 24.9 / Chrome 141"
+    validations:
+      required: true

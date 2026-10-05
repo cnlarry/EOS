@@ -1,12 +1,26 @@
 # 贡献指南
 
 感谢你参与 EOS 的开发。请先阅读本文件与 [QUICKSTART.md](QUICKSTART.md)，
-并遵守以下约定。
+并遵守以下约定。参与本项目即表示同意 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+## 第一次参与
+
+- **没有 SQL Server 也能出力**：前端全套（`npm run lint` / `build` / `test`）与后端离线单测
+  都不依赖数据库，命令见 [docs/guide/06 第九节](docs/guide/06-测试与质量门禁.md)；
+  完整环境要求见 [QUICKSTART.md](QUICKSTART.md)；
+- **先讨论再动手**：跨模块、会长期约束实现方式的改动先开 issue 说清场景与边界，
+  按下方「架构决策记录」的约定先写 ADR，避免返工；
+- **PR 会自动跑 CI**（`.github/workflows/ci.yml`）：编译、离线单测、前端全套、静态门禁；
+  报红时在本地复现同一套命令即可；
+- **安全漏洞不要开公开 issue**，走 [私密报告通道](.github/SECURITY.md)。
 
 ## 提交前
 
 - 确保 `EOS.Web` 通过 `npm run lint` 与 `npm run build`；
-- 确保 `EOS.API` 通过 `dotnet build`，新增行为尽量带测试；
+- 确保 `EOS.API` 通过 `dotnet build`，新增行为尽量带测试；没有数据库时按离线集跑：
+  `dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter "Category!=Integration&Category!=Tool"`；
+  新增真库用例要打 `[Trait("Category", "Integration")]`（约定见
+  [docs/guide/06 第二节](docs/guide/06-测试与质量门禁.md)）；
 - 涉及数据库结构的改动必须走 DbUp 迁移：
   在 `EOS.API/Data/Migrations/` 新增 `NNN_描述.sql`（`NNN` 取现有最大编号 + 1），
   对象命名全大写，并在本地启动时确认迁移自动执行成功；

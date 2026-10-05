@@ -1,5 +1,7 @@
 # EOS
 
+[![CI](https://github.com/cnlarry/EOS/actions/workflows/ci.yml/badge.svg)](https://github.com/cnlarry/EOS/actions/workflows/ci.yml)
+
 一个**元数据驱动**的企业资源计划（ERP）系统：模块菜单、业务字段、列表列、查询条件、报表版式与表单布局
 全部由数据库元数据驱动，界面由一套通用工作台按元数据即时生成；业务规则在应用层以确定性的领域服务实现。
 
@@ -89,6 +91,14 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 
 见 [CONTRIBUTING.md](CONTRIBUTING.md)。动手前先扫一遍 [`LESSONS.md`](LESSONS.md)——那里按
 〔触发／症状 → 根因 → 处置 → 防线〕记着踩过的坑与"该怎么做"。
+
+- **提问与想法**：走 [Discussions](https://github.com/cnlarry/EOS/discussions)；
+- **缺陷与功能建议**：[新建 issue](https://github.com/cnlarry/EOS/issues/new/choose)
+  （模板会引导你给出复现步骤与日志标识）；
+- **安全漏洞**：走[私密报告通道](https://github.com/cnlarry/EOS/security/advisories/new)，不要开公开 issue；
+- **没有 SQL Server 也能贡献**：前端 `npm run lint` / `build` / `test` 与后端离线单测都不依赖数据库，
+  命令见 [`docs/guide/06`](docs/guide/06-测试与质量门禁.md) 第九节；
+- 参与本项目即表示同意 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
 ## 许可证
 

@@ -1,0 +1,36 @@
+# 依赖更新：按量分组、每周一次，避免把维护者的通知淹没在逐包 PR 里。
+# 注意 CONTRIBUTING 的约定：依赖有增减时要同步登记 THIRD-PARTY-NOTICES.md
+# （组件、版本与许可），所以这类 PR 合入前需要人工看一眼那张表。
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /EOS.API
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      nuget-api:
+        patterns: ["*"]
+  - package-ecosystem: nuget
+    directory: /EOS.API.Tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      nuget-tests:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /EOS.Web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

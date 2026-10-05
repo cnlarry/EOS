@@ -1,0 +1,25 @@
+# 跨编辑器的基础约定。只声明缩进与编码这类无争议项，不引入格式化器：
+# 本仓库的代码风格由 docs/guide/03-工程规范与硬约束.md 约束，这里只让编辑器默认行为一致。
+#
+# 刻意不声明 end_of_line：索引已经是 LF，工作区行尾由 git 的 core.autocrlf 决定；
+# 在这里钉死行尾会让 Windows 上的编辑器把既有文件整篇改写。
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_size = 4
+
+[*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,yml,yaml,css,html}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_size = 2
+
+# Markdown 的行尾两个空格是硬换行，不能裁剪。
+[*.md]
+trim_trailing_whitespace = false

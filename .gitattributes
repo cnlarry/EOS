@@ -1,0 +1,27 @@
+# 入库文本统一规范化为 LF（索引里存 LF，工作区行尾仍由 git 的 core.autocrlf 按平台决定）。
+# 显式声明这条是为了在贡献者本地 core.autocrlf=false 时也保持一致：
+# 否则 Windows 贡献者提交 CRLF 后，其他人和 CI 上会出现整文件级「已被修改」的假 diff。
+* text=auto
+
+# 二进制：禁止行尾转换与文本 diff。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.bmp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.xls binary
+*.xlsx binary
+*.doc binary
+*.docx binary
+*.dll binary
+*.pdb binary
+*.exe binary
+
+# 生成物不参与 GitHub 的语言统计与 diff 展开（它是 npm 生成的锁文件，逐行审阅没有意义）。
+EOS.Web/package-lock.json linguist-generated=true

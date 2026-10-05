@@ -1,0 +1,9 @@
+# 空白 issue 一律关闭：没有场景与复现步骤的报告，维护者要来回追问好几轮才能开工。
+blank_issues_enabled: false
+contact_links:
+  - name: 使用与部署提问
+    url: https://github.com/cnlarry/EOS/discussions
+    about: 环境搭建、配置、用法提问请走讨论区；issue 留给缺陷与功能建议。
+  - name: 安全漏洞
+    url: https://github.com/cnlarry/EOS/security/advisories/new
+    about: 请勿在公开 issue 里提交安全漏洞，走私密报告通道。
