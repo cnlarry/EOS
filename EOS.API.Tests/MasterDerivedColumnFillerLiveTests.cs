@@ -12,6 +12,7 @@ namespace EOS.API.Tests;
 /// 走真库的理由：取值来自业务主档（`dbo.CURR`）与真实表列结构，"来源有值而主档查不到必须拒绝"
 /// 这条只有连真库才验得出来（替身会把 fail-closed 验成纸面断言）。用例只读，不改库内数据。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public class MasterDerivedColumnFillerLiveTests
 {

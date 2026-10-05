@@ -17,6 +17,7 @@ namespace EOS.API.Tests;
 /// 夹具全部落在自造键上（单别 <c>ZZDRY</c>），收尾只删自己造的行。
 /// </para>
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ActionDryRunTests : IAsyncLifetime
 {

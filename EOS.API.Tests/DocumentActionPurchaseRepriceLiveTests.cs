@@ -26,6 +26,7 @@ namespace EOS.API.Tests;
 /// 夹具全自造（ZZRP 前缀），用完即删：不碰真实采购单与计价。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
 {

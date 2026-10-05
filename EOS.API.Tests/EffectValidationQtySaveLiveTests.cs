@@ -12,6 +12,7 @@ namespace EOS.API.Tests;
 /// 与其它真库用例同属 live-database 集合：本类按 TOP 1 无排序挑采购行造数，
 /// 与并行的真库用例同表会互相干扰。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class EffectValidationQtySaveLiveTests
 {

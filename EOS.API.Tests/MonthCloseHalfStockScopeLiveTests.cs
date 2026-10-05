@@ -30,6 +30,7 @@ namespace EOS.API.Tests;
 /// （守卫只读它的日期列，因此不需要造单据）。守卫排在**任何写入之前**，所以本用例不碰余额表。
 /// 判别性：把处理器里的参数判断摘掉 ⇒ 第①条变红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MonthCloseHalfStockScopeLiveTests : IAsyncLifetime
 {

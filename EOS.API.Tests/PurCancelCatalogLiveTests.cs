@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 同时把**旧 C# 的聚合查询内联为基准**，逐例比较"被判违规的明细序号集合"两侧一致。
 /// 造数用 `ADR12PC` 前缀的合成采购键，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class PurCancelCatalogLiveTests
 {

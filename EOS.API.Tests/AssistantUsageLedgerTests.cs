@@ -9,6 +9,7 @@ namespace EOS.API.Tests;
 /// 原子扣减并发测试（需真库 + 迁移 045）。
 /// 无连接或台账表未就绪时测试失败而非跳过——静默跳过会让 CI 把"未验证"误读为"已验证"。
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class AssistantUsageLedgerTests
 {
     private static string? TestConnection() =>

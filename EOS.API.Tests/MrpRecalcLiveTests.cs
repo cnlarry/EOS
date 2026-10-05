@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// ③ 逐产品比对可独立推导的期望值，避免"两边都错得一样"。
 /// 整段在事务内进行，结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MrpRecalcLiveTests
 {

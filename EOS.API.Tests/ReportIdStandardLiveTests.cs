@@ -13,7 +13,7 @@ namespace EOS.API.Tests;
 /// "新增的不会被写坏 + 存量的不会偷偷回来"。
 /// </para>
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportIdStandardLiveTests
 {

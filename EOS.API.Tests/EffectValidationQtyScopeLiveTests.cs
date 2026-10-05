@@ -11,6 +11,7 @@ namespace EOS.API.Tests;
 /// "他单超量"不得拦下本单。用例在同一事务内造"违规单 + 合规单"并回滚，零残留。
 /// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致的约定）。
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class EffectValidationQtyScopeLiveTests
 {
     private static readonly string ConnectionString =

@@ -21,7 +21,12 @@ namespace EOS.API.Tests;
 ///
 /// 需要真库连接；基线文件由环境变量 <c>EOS_FORM_LAYOUT_PARITY_BASELINE</c> 指定。
 /// 未提供基线（或文件不存在）时不执行比对；提供即必须全绿（对拍基线是外部产物，不入库）。
+///
+/// **迁移 319 之后抓基线要先知道一件事**：`form.columns` 由陈旧的固定值 `2`（旧代码的记录默认值，
+/// 运行时不消费）改为按模块声明的栅格列数（未声明为 4）。用 319 之前抓的基线对拍，会在
+/// `form.columns` 上全模块报差异——那是这次契约变更本身，不是观感回退，重新抓一份基线即可。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class FormLayoutParityLiveTests
 {
@@ -182,7 +187,7 @@ public sealed class FormLayoutParityLiveTests
         Assert.NotNull(definition);
         var layout = definition!.FormLayout;
         Assert.NotNull(layout);
-        // 统一表单固定四子列（忽略模块列数元数据：用户拍板"全局固定一行四列"，该元数据已退役）
+        // 统一表单的栅格列数按模块声明（MODULES.FORM_LAYOUT_COLUMNS）；1405 未声明，故为默认四列
         Assert.Equal(FormLayoutDerivation.DefaultColumns, layout!.Columns);
         Assert.NotEmpty(layout.Master);
         // 版式段必须与"当前是否已定制"自洽：库里该模块有行才算定制（无行是推导默认）

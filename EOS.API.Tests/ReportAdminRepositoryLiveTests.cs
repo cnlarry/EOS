@@ -12,6 +12,7 @@ namespace EOS.API.Tests;
 /// 只在读取那一刻把文本列当布尔读（`InvalidCastException`）或把两个字段对调，端点直接 500。
 /// 新增列（如报表专有版式 `FORMAT_ID`）时最容易发生，因此按"逐列与库内值对应"钉住。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportAdminRepositoryLiveTests
 {

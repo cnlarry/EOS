@@ -18,6 +18,7 @@ namespace EOS.API.Tests;
 /// （如多语句共享 CTE 的作用域问题、主副表解析写错），只在页面打开那一刻炸 500 或给出空标签。
 /// 这里按"逐键与既有元数据对应"钉住，而不是断言某个中文词。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ModuleBusinessConfigReadLiveTests
 {

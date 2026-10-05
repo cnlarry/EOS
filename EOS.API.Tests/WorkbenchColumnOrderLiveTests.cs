@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 主键列不因行标识需要被插回显示列（键列由查询层单独并入返回行，不参与渲染）。
 /// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class WorkbenchColumnOrderLiveTests
 {

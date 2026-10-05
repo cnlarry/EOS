@@ -12,6 +12,7 @@ namespace EOS.API.Tests;
 /// 确认覆盖同名。需真库 + 迁移 043。
 /// 无连接或记忆表未就绪时测试失败而非跳过——静默跳过会让 CI 把"未验证"误读为"已验证"。
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class AssistantMemoryIsolationTests
 {
     private sealed class DenyAllPermissions : IPermissionService

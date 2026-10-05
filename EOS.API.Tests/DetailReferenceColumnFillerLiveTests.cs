@@ -12,6 +12,7 @@ namespace EOS.API.Tests;
 /// 走真库的理由：来源行与取值都来自真实业务表，"有引用但查不到来源必须拒绝"这条只有连真库
 /// 才验得出来（替身会把 fail-closed 验成纸面断言）。用例只读，不改库内数据。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public class DetailReferenceColumnFillerLiveTests
 {

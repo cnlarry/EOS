@@ -15,7 +15,7 @@ namespace EOS.API.Tests;
 ///
 /// 真库用例，需 <c>MSSQL_ERP_CONN</c>；全程在一个事务内建数、断言、回滚。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DepotLocationMasterLiveTests
 {

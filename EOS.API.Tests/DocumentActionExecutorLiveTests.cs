@@ -22,6 +22,7 @@ namespace EOS.API.Tests;
 /// 增量（审计按设计保留、不清），结束时只回收自己占的 WORKBENCH_IDEMPOTENCY 行，业务表一行不改。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
 {

@@ -10,7 +10,7 @@ namespace EOS.API.Tests;
 /// 承载页节点如果在菜单里可见，用户点进去会落在一个"报表已按业务模块归位、这里什么都没有"的空页上——
 /// 它不会报错，所以只能靠断言把这条形态钉住。报表中心的导航项是前端固定项，不落在 MODULES 里。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportEntryPointLiveTests
 {

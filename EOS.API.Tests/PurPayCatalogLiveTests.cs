@@ -15,6 +15,7 @@ namespace EOS.API.Tests;
 /// （四列诊断，列间 7/10/10 空格）。用例把旧过程 `P_PUR_PAY_After_Save`/`P_PUR_PAY_CHECK` 的语句链内联为基准，
 /// 比较主表最终状态与"拒绝与否 + 文案"，并覆盖门控关。造数用 `ADR12PY` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class PurPayCatalogLiveTests
 {

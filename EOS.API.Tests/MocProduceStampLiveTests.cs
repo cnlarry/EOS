@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 逐列比较最终值（含"先写入垃圾值再被覆盖"的行），证明移植等价。
 /// 造数用 `ADR12MP` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MocProduceStampLiveTests
 {

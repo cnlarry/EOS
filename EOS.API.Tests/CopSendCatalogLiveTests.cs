@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 以及 SAVE 期 `cop-send-mo-flag` 的包装标记写入（每品号客户订单号最大的一行）。
 /// 造数用 `ADR12CS` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class CopSendCatalogLiveTests
 {

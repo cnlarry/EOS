@@ -32,6 +32,7 @@ namespace EOS.API.Tests;
 /// ③ 手工释放兜底（部分释放）；④ 预留不带来源 ⇒ 拒；⑤ 探路不写。
 /// 判别性：去掉钩子里的释放动作 ⇒ 第②条变红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
 {

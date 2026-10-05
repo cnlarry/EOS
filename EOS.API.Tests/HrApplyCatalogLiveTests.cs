@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 额度明细缺该员工且累计大于零亦拒绝。
 /// 造数用 `ADR12HA` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class HrApplyCatalogLiveTests
 {

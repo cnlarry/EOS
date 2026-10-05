@@ -21,6 +21,7 @@ namespace EOS.API.Tests;
 /// 断言不写死名称：主字段默认值从定义里读，期望名称按该字段选择器的来源表与 RETURN_ITEMS
 /// 回写映射查库取回，再与下发的新增态默认值比对。需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class FormNewDefaultCompanionLiveTests
 {

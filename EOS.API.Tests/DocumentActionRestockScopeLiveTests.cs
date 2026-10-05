@@ -26,6 +26,7 @@ namespace EOS.API.Tests;
 /// 夹具全自造（ZZRS 仓 + 两库区 + 库存 + 盘点单），用完即删：不碰真实库存与单据。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionRestockScopeLiveTests : IAsyncLifetime
 {

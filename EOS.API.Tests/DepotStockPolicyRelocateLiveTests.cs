@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 借真实库别来跑，等于对那个库别的真实库存做一次账面认定，收尾再按库位删就等于销毁数量。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
 {

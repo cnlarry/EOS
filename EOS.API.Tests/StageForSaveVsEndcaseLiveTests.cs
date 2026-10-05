@@ -24,6 +24,7 @@ namespace EOS.API.Tests;
 /// 需要 MSSQL_ERP_CONN；用自造键造数（不借真实主档的取样值写入），收尾只删自造行，
 /// 审计行按设计保留。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class StageForSaveVsEndcaseLiveTests : IAsyncLifetime
 {

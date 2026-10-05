@@ -15,6 +15,7 @@ namespace EOS.API.Tests;
 /// ② `IsReferenced` 的判据（已发布配置引用 / 代码直读）——设置页靠它把"暂时没有读取方"的参数
 /// 标出来，标错会误导操作员（把活开关当成没用的项，或反过来）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class SystemParameterServiceLiveTests
 {

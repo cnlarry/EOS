@@ -20,6 +20,7 @@ namespace EOS.API.Tests;
 ///      —— 没有它，统一表单对任何模块都直接 404（这是模块能不能被维护的**开关**，
 ///      写成用例是为了它不会在某次配置整理里被悄悄删掉）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DepotProductLocationModuleLiveTests
 {

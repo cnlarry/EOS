@@ -18,6 +18,7 @@ namespace EOS.API.Tests;
 ///   ② 路由侧——`MODI_URL` 指向统一表单动作模板（否则列表双击没有目的地）；
 ///   ③ 动作侧——模块上仍有 `MANUAL` 动作行（自定义按钮的宿主，只有浏览态工具栏渲染它们）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryReadOnlyFormEntryLiveTests
 {

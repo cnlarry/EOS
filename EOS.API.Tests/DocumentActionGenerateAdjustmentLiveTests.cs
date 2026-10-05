@@ -26,6 +26,7 @@ namespace EOS.API.Tests;
 /// 夹具自己造库存行（ZZ 前缀料号）与盘点单，结束即清理：不碰任何真实库存与单据。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
 {

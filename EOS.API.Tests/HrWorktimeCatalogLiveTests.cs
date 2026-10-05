@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 申请侧无该员工时按 0 呈现（**移植按意图修正的旧缺陷**，既有实现该分支必抛"列名无效"）。
 /// 造数用 `ADR12WT` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class HrWorktimeCatalogLiveTests
 {

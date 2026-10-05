@@ -15,7 +15,7 @@ namespace EOS.API.Tests;
 ///
 /// 取数条件偏向库里既有的一对（库别, 料件）只读取样：不写入任何行，因此无需夹具清理。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportAggregateFieldPrivilegeLiveTests
 {

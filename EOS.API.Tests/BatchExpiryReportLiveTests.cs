@@ -14,7 +14,7 @@ namespace EOS.API.Tests;
 /// 因此只用自己的料号/库别，收尾按料号精确清干净并断言零残留；
 /// 阈值改动（系统参数）在 finally 里还原成原值。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class BatchExpiryReportLiveTests
 {

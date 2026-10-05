@@ -13,7 +13,7 @@ namespace EOS.API.Tests;
 ///
 /// 必须用**已提交**的存量数据：`SaveAsync` 只有"自建连接"一种签名。按仓库既有做法——提交后断言、收尾清理。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DepotStockPolicyUpgradeLiveTests
 {

@@ -15,6 +15,7 @@ namespace EOS.API.Tests;
 /// 同时验证 `custom-validation` 的闭集：未注册 handler 在发布期即被拒（用注册表本身断言）。
 /// 造数用 `ADR12CO` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class CopOrderCheckLiveTests
 {

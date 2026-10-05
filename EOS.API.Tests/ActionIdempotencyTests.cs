@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 且**重放同一键不重复写**。第一条靠"schema 里根本没有这个字段"证，第二条靠真库重放证。
 /// </para>
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ActionIdempotencyTests : IAsyncLifetime
 {

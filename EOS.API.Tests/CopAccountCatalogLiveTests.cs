@@ -17,6 +17,7 @@ namespace EOS.API.Tests;
 ///   ③ 170103 `cop-prepay-rollup`：主表金额＝明细金额合计（舍入三位）——同样与旧过程语句对拍。
 /// 造数用 `ADR12CA`/`ADR12CP` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class CopAccountCatalogLiveTests
 {

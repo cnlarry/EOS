@@ -30,6 +30,7 @@ namespace EOS.API.Tests;
 /// ⑤ 探路不写。
 /// 判别性：摘掉同步那一步 ⇒ 第①②条的 `USEABLE_QTY` 断言变红（WS-25 的门禁会常态守这条等式）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
 {

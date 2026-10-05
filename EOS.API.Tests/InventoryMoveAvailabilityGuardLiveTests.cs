@@ -28,6 +28,7 @@ namespace EOS.API.Tests;
 /// 判别性：把判据改回 `QTY` ⇒ 第①条变红。
 /// 夹具 `ZZAVID` 前缀自造（料件 + 余额 + 冻结 + 批次账 + 借出单），结束即删。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryMoveAvailabilityGuardLiveTests : IAsyncLifetime
 {

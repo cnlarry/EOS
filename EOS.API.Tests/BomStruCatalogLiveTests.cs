@@ -17,6 +17,7 @@ namespace EOS.API.Tests;
 /// ①~③ 把旧过程 `P_BOM_STRU_After_Save` 的语句内联为基准，比较"拒绝与否 + 文案"（按空白归一，
 /// 与对拍脚本同口径）；④ 把旧过程的 UPDATE 内联为基准，比较主表最终状态。事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class BomStruCatalogLiveTests
 {

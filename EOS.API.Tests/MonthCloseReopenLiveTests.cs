@@ -28,6 +28,7 @@ namespace EOS.API.Tests;
 /// 直接调用 <see cref="WorkbenchApprovalService.RunApprovalCoreAsync"/>（公开的事务内核心），
 /// 用测试自己的事务，因此批核/解批/审计都在同一份可回滚的事务里，且走的就是真实路径。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MonthCloseReopenLiveTests
 {

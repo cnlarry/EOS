@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 加入真库串行集合：本类读余额表做合计对账，与"事务内建数/删数"的真库用例并行时
 /// 会读到被锁行或半成品数据，表现为与代码无关的偶发失败（隔离跑稳定通过）。
 /// </remarks>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MetricReconciliationTests
 {

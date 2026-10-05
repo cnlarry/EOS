@@ -19,6 +19,7 @@ namespace EOS.API.Tests;
 /// 判别性：把 `CONFIRM_TAG = 1` 从查询里去掉 ⇒ ④ 变红（草稿期会被当关账期）；
 /// 去掉"已有流水"那段 ⇒ ② 变红；去掉整条守卫 ⇒ ①③ 变红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryPeriodServiceLiveTests
 {

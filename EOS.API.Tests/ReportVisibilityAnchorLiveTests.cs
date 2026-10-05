@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 ///
 /// 只读断言，不写任何行。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportVisibilityAnchorLiveTests
 {

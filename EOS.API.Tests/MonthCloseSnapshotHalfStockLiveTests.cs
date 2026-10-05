@@ -24,6 +24,7 @@ namespace EOS.API.Tests;
 /// （把余额清空后再生成，行必须消失——证明来源只有"直取余额"一处）。
 /// 判别性：摘掉快照服务里的参数判断（等价于"无条件纳半成品"）⇒ 第①条变红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MonthCloseSnapshotHalfStockLiveTests : IAsyncLifetime
 {

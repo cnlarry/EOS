@@ -15,6 +15,7 @@ namespace EOS.API.Tests;
 ///
 /// 判别性：把 QTY / PRICE 的 `IS_READONLY` 置回 0 ⇒ 本用例第一条断言即红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MonthCloseFieldMetadataLiveTests
 {

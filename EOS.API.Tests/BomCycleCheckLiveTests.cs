@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 ///    该差异单独用一条用例钉住（只跑目录规则，不跑会挂死的原逻辑）。
 /// 整段在事务内进行，结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class BomCycleCheckLiveTests
 {

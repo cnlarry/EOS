@@ -24,6 +24,7 @@ namespace EOS.API.Tests;
 ///      R1 等价性：系统不替人挑位置，否则会凭空改变库存键）；
 ///   ③ `FIXED` ⇒ 落**物料主货位**（`DEPOT_PRODUCT_LOCATION.IS_PRIMARY = 1`）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InboundLocationResolveLiveTests
 {

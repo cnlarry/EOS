@@ -11,6 +11,7 @@ namespace EOS.API.Tests;
 /// 组合校验里未实现档位（现只剩容量）的拒绝放在服务端——界面灰显只是体验，
 /// 直连 API 仍可复现"保存成功却不生效"。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DepotStockPolicyTests
 {

@@ -15,6 +15,7 @@ namespace EOS.API.Tests;
 /// 移植按工号排序、去尾空格 ⇒ 按名字集合比较；② 输出行序不参与比较（集合语义）。
 /// 整段在事务内进行，结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class HrAnalysisReportPortLiveTests
 {

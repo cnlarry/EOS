@@ -15,7 +15,7 @@ namespace EOS.API.Tests;
 ///
 /// 真库用例，需 <c>MSSQL_ERP_CONN</c>；只读，不改任何数据。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class EffectParamPhysicalGateLiveTests
 {

@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// and the semantic layer from drifting apart (a ghost-column metric referenced
 /// by a sample fails here instead of at answer time).
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class MetricEvalExecutionTests
 {
     private static string? TestConnection() =>
@@ -146,6 +147,7 @@ public sealed class MetricEvalExecutionTests
 /// Latency aggregation for the governance dashboard: seeded session/messages with
 /// known elapsed values must aggregate to the exact average and P95.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class AssistantLatencyMetricsTests
 {
     private static string? TestConnection() =>

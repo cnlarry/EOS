@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// 一旦解析口径与库内不一致（例如又被改回按承载页列取），权限就会锚到别的模块上——
 /// 表现是"能打开本不该打开的报表"或"打不开本该打开的报表"，两种都不会报错、不会 403。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportIdentityLiveTests
 {

@@ -20,6 +20,7 @@ namespace EOS.API.Tests;
 /// 不能写成常驻断言——它要等可用量服务与出库校验落地（冻结/预留的入口与消费）才谈得上维持。
 /// 本用例只断言"初始化确实发生过"，不假装不变量已经存在。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryFreezeReserveSchemaLiveTests
 {

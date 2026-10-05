@@ -23,7 +23,7 @@ namespace EOS.API.Tests;
 /// 只读：不写任何业务数据，不启停服务，直接连库取数并经生产同一条取数路径（QueryPdfAsync）渲染。
 /// </para>
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportListPdfLiveParityTests
 {

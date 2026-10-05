@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 /// `PARA_NAME` 目前只是展示用的名字。实测两者并不总是一致（库存日报的条件行 PARA_NAME 为空、
 /// 考勤分析表写的是 `@date` 而注册表声明 `@date1`），那是既有情况，不在本用例的判定范围内。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportAggregateConditionBindingLiveTests
 {

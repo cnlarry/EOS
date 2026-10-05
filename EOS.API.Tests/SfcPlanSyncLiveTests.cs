@@ -19,6 +19,7 @@ namespace EOS.API.Tests;
 /// 另跑一遍"连续保存两次"的对拍，覆盖生产号重复追加的既有行为。
 /// 造数用 `ADR12SP` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class SfcPlanSyncLiveTests
 {

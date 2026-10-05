@@ -13,6 +13,7 @@ namespace EOS.API.Tests;
 /// 作废冲突旧卡——同一初始态下与**旧 C# 语句**比较整表结果，并覆盖"未填到期日"的旧卡。
 /// 造数用 `ADR12EC` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class EmployeeCardCatalogLiveTests
 {

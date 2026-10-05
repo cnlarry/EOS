@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// ② 行为验证——同一批数据走移植实现后，17 个引用列全部落到新编号、旧编号一处不留。
 /// 整段在事务内进行，结束回滚，不留残留。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MenuAdminModuleIdCascadeLiveTests
 {

@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 ///      "拒绝与否 + 文案"，并覆盖门控关、额度内放行与"同引用键多行必须按组合并求和"。
 /// 造数用 `ADR12PD` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class PurchaseDueCatalogLiveTests
 {

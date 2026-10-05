@@ -11,6 +11,7 @@ namespace EOS.API.Tests;
 /// 只比同维度键、编辑自身不算冲突。事务内造数并回滚，零残留。
 /// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致的约定）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class EffectValidationPeriodOverlapLiveTests
 {

@@ -18,6 +18,7 @@ namespace EOS.API.Tests;
 /// 另跑一次"无待购行"场景：仅应购数量清零，其余不动。
 /// 造数用 `ADR12PA` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class PurApplySyncLiveTests
 {

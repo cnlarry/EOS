@@ -13,6 +13,7 @@ namespace EOS.API.Tests;
 /// 与 EffectValidationPeriodOverlap*Tests 的区别：那两组用手写参数验语句与语义，
 /// 本组直接读工作区配置，验的是**真正要发布的那份参数**。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class EffectValidationPeriodOverlapConfigLiveTests
 {

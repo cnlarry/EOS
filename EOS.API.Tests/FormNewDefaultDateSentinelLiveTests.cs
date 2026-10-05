@@ -17,6 +17,7 @@ namespace EOS.API.Tests;
 ///
 /// 用例取员工资料（180102）的转正日期 ON_DUTY_DATE：全库唯一一个以哨兵作默认值的字段。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class FormNewDefaultDateSentinelLiveTests
 {

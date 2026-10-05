@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 按与读端相同的 0..2 序取三个开关，并回查 MODULES / WFFORM 原始值对拍——
 /// 表达式一旦退回 int，这里立刻红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class FlowDefinitionCapabilityLiveTests
 {

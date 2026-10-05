@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 并专门覆盖"明细金额＝**原**单价 × 数量"这一 SQL Server SET 右值取旧值的语义。
 /// 造数用 `ADR12CM` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class CusManualRollupLiveTests
 {

@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// 与其余真库用例的差别：本用例的夹具**必须提交**——选择器仓储自带连接（`DbConnectionFactory`），
 /// 读不到未提交的行。因此建数只用自己的料号、收尾按料号精确清干净，并断言残留为 0。
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class BatchChooserLiveTests
 {

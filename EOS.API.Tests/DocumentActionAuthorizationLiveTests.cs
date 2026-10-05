@@ -21,6 +21,7 @@ namespace EOS.API.Tests;
 /// 用例只写自己造的合成用户/组（ZZ 前缀），按钮配置行也临时插入并在 finally 清理。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionAuthorizationLiveTests
 {

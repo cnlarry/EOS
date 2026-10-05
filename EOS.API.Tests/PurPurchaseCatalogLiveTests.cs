@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 ///      应购数量清零回填 → 金额按税种 I/O/N 重算 → 主表金额按汇率折算汇总 → 数量逐行分配 → 单号串联）。
 /// 写段用"旧 C# 的语句链内联为基准"做对拍，并断言关键列值。造数用 `ADR12PU` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class PurPurchaseCatalogLiveTests
 {

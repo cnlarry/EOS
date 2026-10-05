@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 ///
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class SnapshotContentEquivalenceLiveTests
 {

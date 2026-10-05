@@ -13,6 +13,7 @@ namespace EOS.API.Tests;
 /// 用例把**旧 C# 语句内联为基准**，对同一初始态分别执行"目录效果"与"旧语句"，比较最终值；
 /// 并断言参数校验是 fail-closed（keyField 非本模块主键首列即拒）。造数用 `ADR12MOU` 前缀，事务回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MouProMouldIdsLiveTests
 {

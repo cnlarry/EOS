@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 用例把旧过程 `P_COP_RECEIPT_After_Save`/`P_COP_RECEIPT_CHECK` 的语句链内联为基准，比较主表状态与拒绝文案，
 /// 并覆盖门控关。造数用 `ADR12CR` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class CopReceiptCatalogLiveTests
 {

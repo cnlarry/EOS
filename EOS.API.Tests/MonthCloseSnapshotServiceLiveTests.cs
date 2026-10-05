@@ -22,6 +22,7 @@ namespace EOS.API.Tests;
 ///
 /// 另断两条边界：已批核的期**拒绝生成**；未批核的期重复生成是**重写**（先删本级明细）而不是追加。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MonthCloseSnapshotServiceLiveTests
 {

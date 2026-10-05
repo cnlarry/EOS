@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 ///      比对"拒绝与否 + 文案"（诊断首列是组内最大明细序号），并覆盖门控关与额度内放行。
 /// 造数用 `ADR12PP` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class PurPrepayCatalogLiveTests
 {

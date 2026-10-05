@@ -25,6 +25,7 @@ namespace EOS.API.Tests;
 /// 用的是模块 130103（入库单）的**已发布定义**，因此 `inventory-move` 的 `depotField`/`direction`
 /// 都是从真实配置里读出来的，不是测试代码里写死的。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DepotLocationSuggestionLiveTests
 {

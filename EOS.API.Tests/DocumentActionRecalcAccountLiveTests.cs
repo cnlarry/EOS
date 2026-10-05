@@ -25,6 +25,7 @@ namespace EOS.API.Tests;
 /// 单据与明细在本用例内造（键以 ZZ 前缀隔离），结束即删除；库存表只读不改。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
 {

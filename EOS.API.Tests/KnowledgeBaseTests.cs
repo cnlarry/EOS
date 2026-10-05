@@ -349,6 +349,7 @@ public sealed class KnowledgeBaseTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task Repository_IngestIsIdempotent_VisibilityFilters_AndDeleteSyncs()
     {
         var connectionString = await RequireReadyConnectionAsync();

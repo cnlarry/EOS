@@ -20,6 +20,7 @@ namespace EOS.API.Tests;
 /// </list>
 /// </para>
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class AssistantActionEndToEndTests : IAsyncLifetime
 {

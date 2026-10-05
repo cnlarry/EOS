@@ -14,7 +14,7 @@ namespace EOS.API.Tests;
 /// 不通过 → 三者全禁。若哪天有人又把某处例外逻辑加回来，会先在这里露头。
 /// </para>
 /// </summary>
-[Trait("Category", "live-database")]
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ReportRightsSingleLayerLiveTests
 {

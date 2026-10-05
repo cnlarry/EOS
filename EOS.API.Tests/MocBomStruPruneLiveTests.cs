@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 并覆盖"明细缺主行（主行被上一轮删掉）需要第二轮才清干净"的迭代语义。
 /// 造数用 `ADR12MB` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MocBomStruPruneLiveTests
 {

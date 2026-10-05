@@ -13,6 +13,7 @@ namespace EOS.API.Tests;
 /// 而 API 侧即将由 C# 改为目录配置——本用例在改之前先把两边的文案对齐，
 /// 避免把消息差异留到切换之后才发现。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class EffectValidationPeriodOverlapMessageParityTests
 {

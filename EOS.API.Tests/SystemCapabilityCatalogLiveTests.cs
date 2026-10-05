@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 能力目录与元数据的一致性（真库）：目录里出现的模块号 / 表，必须逐条在对应的真值来源里找得到。
 /// 目录一旦编造、或写死了一个已退役的标识，这里即变红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class SystemCapabilityCatalogLiveTests
 {

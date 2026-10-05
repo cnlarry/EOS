@@ -17,6 +17,7 @@ namespace EOS.API.Tests;
 /// 只读，不写库；保存与"保存即重发布"由端到端脚本 `EOS.API.Tests/FormLayoutDesignE2E.ps1` 覆盖
 /// （那条路径要经过发布校验器与快照表，走真实接口更能说明问题）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class FormLayoutDesignLiveTests
 {

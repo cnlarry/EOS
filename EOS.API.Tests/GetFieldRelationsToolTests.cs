@@ -148,6 +148,7 @@ public sealed class GetFieldRelationsToolTests
 /// must reference tables and columns that physically exist (sys.objects/sys.columns).
 /// A ghost relation would poison cross-table planning, so it fails loudly.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class FieldRelationRegistryTests
 {
     private static string? TestConnection() =>

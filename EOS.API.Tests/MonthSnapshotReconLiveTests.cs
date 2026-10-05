@@ -17,6 +17,7 @@ namespace EOS.API.Tests;
 ///
 /// 夹具都是"完整快照"（按当前余额逐键生成），因此断言是**全库逐键**的，不是抽一个键看。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MonthSnapshotReconLiveTests
 {

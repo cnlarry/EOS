@@ -26,6 +26,7 @@ namespace EOS.API.Tests;
 /// 夹具全自造（ZZPC 前缀），用完即删。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
 {

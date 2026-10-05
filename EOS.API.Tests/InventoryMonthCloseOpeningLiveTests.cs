@@ -30,6 +30,7 @@ namespace EOS.API.Tests;
 /// 三种退化写法分别得到：取单行 ⇒ 60 或 40（+10）；跨月求和 ⇒ 7 + 100 + 10 = 117；
 /// 选月不过滤批核位 ⇒ 999（草稿更晚，会被选中）。三者都与 110 不等，故任一退化都会变红。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryMonthCloseOpeningLiveTests
 {

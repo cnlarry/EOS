@@ -21,6 +21,7 @@ namespace EOS.API.Tests;
 /// 夹具单据与引擎归一化后的四键对齐尚未调通（实测引擎对该夹具报"库存数量不足"），
 /// 而 WS-23 要改的正是那条校验的判据，届时一并把它做成 WS-23 的用例。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryAvailabilitySyncLiveTests : IAsyncLifetime
 {

@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 用户没勾这两列时表单里就没有格子，单据必然过账失败。本用例把"配置里没勾也要出现在表单里"钉住。
 /// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class RuntimeRequiredDetailColumnsLiveTests
 {

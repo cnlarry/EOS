@@ -23,6 +23,7 @@ namespace EOS.API.Tests;
 /// 判别性：把读取侧的投影从 `USEABLE_QTY` 换成 `QTY` ⇒ 第①条变红。
 /// 夹具 `ZZAVRD` 前缀自造，结束即删。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryAvailabilityReadPathLiveTests : IAsyncLifetime
 {

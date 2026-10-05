@@ -19,6 +19,7 @@ namespace EOS.API.Tests;
 ///
 /// 夹具 `ZZAVL` 前缀自造（余额行 + 冻结行 + 预留行 + 一张真实盘点单当来源），结束即删。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryAvailabilityServiceLiveTests : IAsyncLifetime
 {

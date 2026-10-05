@@ -20,6 +20,7 @@ namespace EOS.API.Tests;
 /// 合成单据一律用 ADR12 专用键，用例结束即删除。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class AutoApproveEffectLiveTests
 {

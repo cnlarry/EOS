@@ -27,6 +27,7 @@ namespace EOS.API.Tests;
 /// 夹具全自造（ZZPG 前缀：订单 BOM 两层 + 父制令单），用完即删。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
 {

@@ -14,6 +14,7 @@ namespace EOS.API.Tests;
 /// 比较 `FIELDS` 行的四项属性；另覆盖"前缀不匹配的字段先被置为不可见"。
 /// 造数用 `ADR12WF` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class WageItemFieldsSyncLiveTests
 {

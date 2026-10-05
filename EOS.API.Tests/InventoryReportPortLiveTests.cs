@@ -16,6 +16,7 @@ namespace EOS.API.Tests;
 /// 因此用例显式断言"旧 = 旧公式值、新 = 加权平均值"，把差异钉住而不是跳过。
 /// 整段在事务内进行，结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class InventoryReportPortLiveTests
 {

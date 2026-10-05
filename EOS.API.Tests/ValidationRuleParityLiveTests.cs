@@ -22,6 +22,7 @@ namespace EOS.API.Tests;
 ///
 /// 需要 MSSQL_ERP_CONN（与本仓库其它真库用例一致）。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class ValidationRuleParityLiveTests
 {

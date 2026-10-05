@@ -13,6 +13,7 @@ namespace EOS.API.Tests;
 /// 用例把**旧 C# 的两步内联为基准**，在同一初始态下比较"剩余行集合"与"判重结论"；
 /// 并单独覆盖"本单自身重复 ⇒ 拒绝且文案逐字"。造数用 `ADR12WL` 前缀，事务结束回滚。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class WageLzPruneLiveTests
 {

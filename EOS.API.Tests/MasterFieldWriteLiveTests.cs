@@ -31,6 +31,7 @@ namespace EOS.API.Tests;
 ///   ③ **不产生库存流水**（不触发 `inventory-move`、`INV_DEPOT_LOG` 一行不加）；
 ///   ④ 探路（`CONFIRM_TAG=1` + `confirm=false`）**一个字都不写**。
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("live-database")]
 public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
 {
