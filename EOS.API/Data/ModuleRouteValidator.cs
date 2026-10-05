@@ -21,7 +21,6 @@ internal static class ModuleRouteValidator
         "/reports",
         "/workbench",
         "/search-center",
-        "/detail-query",
     ];
 
     private static readonly string[] ExactRoutes =

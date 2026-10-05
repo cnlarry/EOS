@@ -4,7 +4,6 @@ import { moduleReadPermission } from '../features/auth/modulePermissions'
 import {
   DashboardPage,
   DepotStockPolicyPage,
-  DetailQueryPage,
   FieldAuditPage,
   FieldEditorRoute,
   BomExpandPage,
@@ -98,7 +97,6 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
   { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
   { element: <RequirePermission permission={moduleReadPermission(199901)} />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },
-  { path: 'detail-query/:moduleId', element: withSuspense(<DetailQueryPage />) },
   { element: <RequirePermission permission={moduleReadPermission(2102)} />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2101)} />, children: [{ path: 'workflow/design', element: withSuspense(<FlowDesignPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2103)} />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },

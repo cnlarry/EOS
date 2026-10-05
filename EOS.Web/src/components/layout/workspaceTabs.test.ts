@@ -194,9 +194,8 @@ describe('workspaceReducer', () => {
     expect(next.tabs[0].label).toBe('采购订单')
   })
 
-  it('模块域路由（报表/明细查询/打印等）也能解析出模块 ID', () => {
+  it('模块域路由（报表/打印等）也能解析出模块 ID', () => {
     expect(moduleIdOfUrl('/reports/1606')).toBe('1606')
-    expect(moduleIdOfUrl('/detail-query/1606?x=1')).toBe('1606')
     expect(moduleIdOfUrl('/print/1606')).toBe('1606')
     expect(moduleIdOfUrl('/layout-designer/1606')).toBe('1606')
     expect(moduleIdOfUrl('/fallback/modules/1606')).toBe('1606')

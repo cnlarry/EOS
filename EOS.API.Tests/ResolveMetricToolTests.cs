@@ -241,11 +241,11 @@ public sealed class ResolveMetricToolTests
     [Fact]
     public async Task Skips_Candidates_That_Cannot_Build_A_Definition()
     {
-        // 只按表名匹配时，最先命中往往是"以来源表为主表"、却不是工作台承载的模块（如 14996
-        // 明细查询页）：它建不出工作台定义。这时应继续试下一个候选，而不是当场判"权限不足"——
+        // 只按表名匹配时，最先命中的可能是"以来源表为主表"、却建不出工作台定义的模块
+        // （自定义承载页、或表未纳入工作台）：这时应继续试下一个候选，而不是当场判"权限不足"——
         // 实测按错误的结论回话会把模型带偏（它会拿同一个口径反复重试）。
         var gateway = new FakeSearchGateway(moduleId => moduleId == 1405 ? Definition() : null);
-        var repository = new FakeMetricRepository(Metric(), [14996, 1405]);
+        var repository = new FakeMetricRepository(Metric(), [129802, 1405]);
         var tool = new ResolveMetricTool(
             repository, new CapturingExecutor(repository), new FakeProbe(),
             new MetricDefinitionValidator(new FakeProbe()),
@@ -256,7 +256,7 @@ public sealed class ResolveMetricToolTests
 
         Assert.True(result.Ok, result.ContentForModel);
         Assert.Contains("1234.5", result.ContentForModel);
-        Assert.Equal(new[] { 14996, 1405 }, gateway.AskedModules);
+        Assert.Equal(new[] { 129802, 1405 }, gateway.AskedModules);
     }
 
     [Fact]

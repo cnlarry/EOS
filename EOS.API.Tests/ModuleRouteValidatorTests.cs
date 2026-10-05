@@ -9,7 +9,6 @@ public class ModuleRouteValidatorTests
     [InlineData("/reports", 129801, "/reports/129801")]
     [InlineData("/workbench", 1406, "/workbench/1406")]
     [InlineData("/search-center", 1405, "/search-center/1405")]
-    [InlineData("/detail-query", 14996, "/detail-query/14996")]
     public void ParameterizedBases_AppendModuleId(string url, int moduleId, string expected)
     {
         Assert.Equal(expected, ModuleRouteValidator.Resolve(url, moduleId));
@@ -137,7 +136,6 @@ public class ModuleRouteValidatorTests
     [InlineData("/workbench", true)]
     [InlineData("/reports", true)]
     [InlineData("/search-center", true)]
-    [InlineData("/detail-query", true)]
     [InlineData("/admin/tables", true)]
     [InlineData("/settings/system", true)]
     [InlineData("/workbench/{moduleId}/new", true)]

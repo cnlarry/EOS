@@ -108,9 +108,9 @@ export function tabUrlOf(location: { pathname: string; search: string; hash: str
   return `${location.pathname}${location.search}${location.hash}`
 }
 
-/** 地址中的模块 ID：工作台/报表/明细查询/打印/版式设计/兜底模块这几类模块域路由都算。 */
+/** 地址中的模块 ID：工作台/报表/打印/版式设计/兜底模块这几类模块域路由都算。 */
 export function moduleIdOfUrl(url: string): string | null {
-  const matched = /^\/(?:workbench|reports|detail-query|print|layout-designer|fallback\/modules)\/(\d+)/.exec(url.split(/[?#]/)[0])
+  const matched = /^\/(?:workbench|reports|print|layout-designer|fallback\/modules)\/(\d+)/.exec(url.split(/[?#]/)[0])
   return matched ? matched[1] : null
 }
 

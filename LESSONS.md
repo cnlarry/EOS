@@ -293,6 +293,33 @@
   ——真库比对"可访问且带页面的模块 ⊆ 导航树模块编号"与反向的"导航不出现无权模块编号"；
   前端 `menuSearch.test.ts` 钉住目录节点不参与、分组自带页面可搜。改模块树、改搜索匹配面时跑这两条。
 
+### L74 `MODULES.FILTER` / `DATA_FILTER` 只认主表自身的列，跨表口径必须封进视图
+
+- **触发／症状**：把"待生产订单明细"（14996）、"客户逾期未对帐"（14998）、"厂商逾期未对账"（170297）
+  这类模块的 `M_URL` 直接改成 `/workbench`，列表立刻 403"该模块的数据过滤条件尚不支持"；
+  同时 `SORT_FIELDS` 里的 `COP_SEND_M.SEND_DATE` 静默失效（排序退回第一列）。
+- **根因**：`WorkbenchScopeFilter.ApplyModuleFilter` 调 `DataFilterParser.TryParse(..., foreignTables: null)`，
+  而解析器对 `表.列` 形式只在 `表 == MASTER_TABLE` 时接受，其余一律判"不支持"并 fail-closed 抛 403
+  （不降级为全量查询）；用户的 `DATA_FILTER` 走同一入口。`NormalizeSort` 同理：限定名不等于主表就
+  丢弃整条排序。这三个模块的 FILTER 恰好全部引用父表/旁表
+  （`COP_ORDER_M.ORDER_DATE`、`PRODUCT.MAIN_SOURCE`、`COP_SEND_M.SEND_DATE`、`PUR_RECEIVE_M.RECEIVE_DATE`），
+  所以它们与"有没有新增/批核按钮"无关，只能由专用只读页承载。
+- **处置**：照 14993（`V_COP_ACCOUNT_M`）的既有形状——把跨表口径（JOIN、`PLAN_QTY-FINISHED_PLAN_QTY`
+  这类派生列、"上月 26 日"这类相对边界）原样封进视图，`MASTER_TABLE` 指向视图、`FILTER` 留空、
+  `SORT_FIELDS` 用 `视图名.列`，`FIELDS`/`SYSQL_DEFAULT` 建列元数据，`TABLES` 按 `T_TYPE='VIEW'` 登记。
+  用户数据范围里的表名前缀要一并改写（`CLIENT.SALES_ID=...` → `SALES_ID=...`），否则同一批账号
+  从"看见别人的行"直接变成 403（14998 的 lesson/long 就是这种：原页只查 `CanBrowse`、完全跳过
+  `EXEC_TAG`/`DATA_FILTER`，改挂后才真正受范围约束）。
+- **防线**：工作台取主键只 JOIN `sys.tables`，视图取不到主键 ⇒ 排序只能靠 `SORT_FIELDS`，迁移里必须同写。
+  落库前先在事务内跑通工作台形态的查询再提交：
+  `SELECT ... FROM dbo.[视图] WITH (NOLOCK) ORDER BY [列] DESC OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY`
+  加一条数据范围谓词；能返回行才动 `MODULES`。
+- **同族第二坑：判断某列"能不能用来过滤"要看 `sys.columns`，不能看 `FIELDS`。** 表的主表显示列里有大量
+  **虚拟字段**——14999 的 `COP_ORDER_D.SALES_ID` 就是 `CLIENT.SALES_ID` 的虚拟派生（该表共 **40 个虚拟字段、
+  横跨 7 张表**），它出现在 `FIELDS` 里、也出现在列表上，但 `sys.columns` 里没有它。`ReadFilterFieldKeys`
+  只收 `IS_VIRTUAL=0` 的列，所以把条件改成 `SALES_ID='X'` 照样 403。要按派生口径过滤，只能把该页整页迁成
+  视图（视图内 join 出真实列），不能靠改条件绕过。
+
 ## 四、门禁与验证
 
 ### L35 控制器依赖漏注册：编译 0 错、单测全绿，端点仍全量 500
@@ -542,7 +569,8 @@
   按"主表命中优先、M_IDX 升序"取第一个，命中的常是 2504 订单查询中心（`M_URL=/search-center`，
   不是工作台承载页，定义建不出来）；真正能算的是把该表当**明细表**的 1405 销售订单
   （口径的行过滤要 join 它的主表 `COP_ORDER_M`）。2504 已于迁移 314 下线，但"以该表为主表却不是
-  工作台承载"的模块仍存在（如 14996 明细查询页）——这条判据不随模块存废而变。
+  工作台承载"的模块仍存在（如 129802 BOM 展开表、18069805 工资表明细表这类自定义承载页）——
+  这条判据不随模块存废而变。
 - **处置**：`ResolveMetricTool` 逐个候选试到第一个"能浏览 + 定义能建出 + 口径校验通过"的模块；
   全都不行时按原因分开拒绝——一个候选都浏览不了仍走防探测口径，看得见却算不出来就照实说
   （"口径校验未通过：…"／"没有挂靠在可查询的工作台模块上"），**不要含糊成"权限不足"**。

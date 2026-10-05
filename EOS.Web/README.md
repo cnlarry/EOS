@@ -49,7 +49,7 @@ src/
 - `/workbench/:moduleId`：通用工作台；
 - `/workbench/:moduleId/new|edit/:key|view/:key|copy`：统一表单单据操作；
 - `/admin/*`：系统管理（用户、权限、菜单、表字段、报表设置、用户组）；
-- `/reports`、`/search-center`、`/detail-query/:moduleId`：报表与查询中心；
+- `/reports`、`/search-center`：报表与查询中心；
 - `/settings/*`：个人资料与系统参数。
 
 路由保护分认证与权限两级；前端权限只改善体验，后端仍会对每个请求重新授权。

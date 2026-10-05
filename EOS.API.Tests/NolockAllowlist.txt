@@ -6,7 +6,6 @@
 # read-only/reporting justification. Remove entries that no longer use NOLOCK.
 EOS.API/Controllers/AuditController.cs
 EOS.API/Controllers/BomExpandController.cs
-EOS.API/Controllers/DetailQueryController.cs
 EOS.API/Controllers/ReportCenterController.cs
 EOS.API/Controllers/ReportMetricController.cs
 EOS.API/Controllers/TableDataController.cs

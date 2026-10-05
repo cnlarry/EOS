@@ -45,13 +45,4 @@ public static class ModuleIds
 
     /// <summary>单行参数表设置 HRM_SETUP（180662）。</summary>
     public const int HrmSetup = 180662;
-
-    /// <summary>明细查询：客户订单明细（14996 → COP_ORDER_D）。</summary>
-    public const int DetailQueryOrder = 14996;
-
-    /// <summary>明细查询：送货明细（14998 → COP_SEND_D）。</summary>
-    public const int DetailQuerySend = 14998;
-
-    /// <summary>明细查询：收料明细（170297 → PUR_RECEIVE_D）。</summary>
-    public const int DetailQueryReceive = 170297;
 }

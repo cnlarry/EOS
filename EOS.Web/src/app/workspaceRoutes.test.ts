@@ -15,7 +15,6 @@ describe('WORKSPACE_ROUTES', () => {
       '/reports/1606',
       '/report-center',
       '/search-center',
-      '/detail-query/1606',
       '/admin/tables',
       '/admin/tables/PRODUCT/fields',
       '/admin/users',

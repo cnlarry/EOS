@@ -390,27 +390,14 @@ record('字段审计页页面级无滚动条（表内滚动）', fieldAuditPageS
   record('颜色资料导出所选 CSV 含选中行', colorCsv.includes('C001') && colorCsv.includes('黑色'), colorCsv.slice(0, 200).replace(/\s+/g, ' '))
   await page.screenshot({ path: join(shotDir, 'workbench-110302.png'), fullPage: false })
 
-  // 11k. 跨表明细查询页（14996/14998/170297，M79 受控只读页）
-  for (const [detailModuleId, detailTitle] of [[14996, '待生产订单明细'], [14998, '客户逾期未对帐'], [170297, '厂商逾期未对账']]) {
-    await page.goto(`${baseUrl}/detail-query/${detailModuleId}`, { waitUntil: 'networkidle' })
-    // 这些模块在旧菜单中因父根 M_TAG=0 不可见，页面可经 URL 直达；
-    // 断言改为等待内容渲染（列名或空结果），不依赖侧栏标题。
-    await page.waitForFunction((tokens) => {
-      const text = document.body.innerText
-      return !text.includes('正在加载') && (text.includes('没有符合条件的数据') || tokens.some((token) => text.includes(token)))
-    }, ['项次', '送货单号', '收料单号'], { timeout: 15000 })
-    const detailText = await page.locator('body').innerText()
-    record(`明细查询页 ${detailModuleId} 加载`, detailText.includes('项次') || detailText.includes('送货单号') || detailText.includes('收料单号') || detailText.includes('没有符合条件的数据'), detailText.slice(0, 120).replace(/\s+/g, ' '))
-    await page.screenshot({ path: join(shotDir, `detail-query-${detailModuleId}.png`), fullPage: false })
-  }
-
-  // 11l. FILTER 受控扩展恢复的 7 个同表模块（M79）：列表不再返回 403
-  for (const filterModuleId of [1520, 14989, 14997, 14999, 16998, 16999, 170299]) {
+  // 11k. 原跨表明细查询三模块（14996/14998/170297）改挂口径视图后走统一工作台；
+  // 连同 FILTER 受控扩展恢复的同表模块，列表都不再返回 403。
+  for (const filterModuleId of [1520, 14989, 14997, 14999, 16998, 16999, 170299, 14996, 14998, 170297]) {
     await page.goto(`${baseUrl}/workbench/${filterModuleId}`, { waitUntil: 'networkidle' })
     await page.waitForSelector('table', { timeout: 15000 })
     await page.waitForTimeout(500)
     const filterText = await page.locator('body').innerText()
-    record(`FILTER 模块 ${filterModuleId} 列表可查`, !filterText.includes('数据过滤条件尚不支持'), filterText.slice(0, 120).replace(/\s+/g, ' '))
+    record(`模块 ${filterModuleId} 工作台列表可查`, !filterText.includes('数据过滤条件尚不支持'), filterText.slice(0, 120).replace(/\s+/g, ' '))
   }
 
   // 12. 最终控制台错误检查（全部页面）
