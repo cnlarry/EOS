@@ -16,7 +16,7 @@
 | 03-工程规范与硬约束.md | 已完成 | - |
 | 04-API契约与前后端协作.md | 已完成 | EOS.API/Errors, EOS.API/Middleware, EOS.API/Models, EOS.Web/src/services |
 | 05-数据库迁移与建库.md | 已完成 | EOS.API/Data/Migrations, EOS.API/Data/ErpDatabaseInitializer.cs, db |
-| 06-测试与质量门禁.md | 已完成 | EOS.API.Tests |
+| 06-测试与质量门禁.md | 已完成 | EOS.API.Tests, .github/workflows |
 | 10-元数据模型.md | 已完成 | - |
 | 11-元数据运维.md | 已完成 | EOS.API/Controllers/FieldAdminController.cs, EOS.API/Controllers/TableDataController.cs, EOS.API/Controllers/ModuleBusinessConfigController.cs, EOS.API/Controllers/BusinessFlowController.cs, EOS.API/Data/FieldAdminRepository.cs, EOS.API/Data/ModuleBusinessConfigRepository.cs, EOS.API/Features/BusinessFlow, EOS.Web/src/features/field-admin, EOS.Web/src/features/business-flow |
 | 12-元数据消费.md | 已完成 | EOS.API/Data/WorkbenchFieldMetaMapper.cs, EOS.API/Data/WorkbenchDefinitionBuilder.cs, EOS.API/Data/ModuleBusinessMap.cs, EOS.API/Data/ModuleRouteValidator.cs |

@@ -1,0 +1,110 @@
+# 开源协作门禁。
+#
+# 外部贡献者很难在本地装齐 EOS 的全部环境（Windows + SQL Server 2025 + .NET 10 + Node），
+# 没有 CI 时 PR 只能靠维护者拉下来手工验证，反馈慢且容易漏。这里跑的是**不需要数据库、
+# 不需要 EOS.API 在线**的那部分：编译、离线单测、前端全套、以及一批静态门禁。
+#
+# 需要真库的用例（EOS.API.Tests 中带 Category=Integration 的一批）不在 CI 范围，
+# 由维护者在本地跑，口径见 docs/guide/06-测试与质量门禁.md。
+#
+# 后端与门禁跑在 windows-latest：EOS.API 依赖 System.Drawing 的字体与条码渲染
+# （见 EOS.API/EOS.API.csproj），且 scripts/ 下的门禁脚本按 Windows 路径拼接。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: 前端（lint / build / 测试）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: EOS.Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: EOS.Web/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+      - name: 静态检查
+        run: npm run lint
+      - name: 类型检查与构建
+        run: npm run build
+      - name: 单元测试
+        run: npm test
+
+  api:
+    name: 后端（编译 / 离线测试）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: 编译
+        run: dotnet build EOS.slnx -c Release
+      # 真库用例标 Category=Integration（无连接串即失败，不能在无库的 runner 上跑），
+      # 按需手工重跑的工具类标 Category=Tool（靠环境变量开关，不该在 CI 里触发）。
+      # xUnit 的「!=」对没有该标签的用例判为满足，故这里是「排除这两类、其余全跑」。
+      - name: 离线测试（不含真库用例与人工工具）
+        run: dotnet test EOS.API.Tests/EOS.API.Tests.csproj -c Release --no-build --filter "Category!=Integration&Category!=Tool"
+
+  gates:
+    name: 静态门禁
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # PR 下检出的是 GitHub 合成的 merge commit，而 GitHub 自动生成的合并提交必然
+          # 不符合 Conventional Commits，会让提交信息门禁误报；改取 PR 分支头。
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # 手册新鲜度按「文档与对应源码各自的最后一次提交」比较，浅克隆下 git log 取不到历史，
+          # 会把所有篇目误判为新鲜（假绿）。提交信息门禁也要读区间内的提交。
+          fetch-depth: 0
+      - name: 控制器与效果处理器的 DI 注册
+        run: ./scripts/check-di-registrations.ps1
+      - name: 前端样式类
+        run: ./scripts/check-css-classes.ps1
+      - name: 数据层边界
+        run: ./scripts/check-data-layer-boundary.ps1
+      - name: 已退役库对象
+        run: ./scripts/check-retired-db-objects.ps1
+      - name: 助手可代理动作注册表
+        run: ./scripts/check-assistant-action-registry.ps1
+      - name: 助手动作阈值与红线
+        run: ./scripts/check-assistant-action-limits.ps1
+      - name: 统一工作台策略层单入口
+        run: ./scripts/check-workbench-policy-single-entry.ps1
+      - name: Agent 技能引用
+        run: ./scripts/check-agent-skills.ps1
+      - name: 敏感信息文本
+        run: ./scripts/check-sensitive-terms.ps1
+      # 刻意不带 -Strict：它按 git 时间戳判定「源码动了、文档没动」，而改测试夹具、
+      # 调 CI 参数这类不改变文档描述行为的改动也会命中。做成硬门禁只会逼出
+      # 「为空过门禁而改文档」的动作；该不该补文档由维护者看日志里的落后清单判断。
+      - name: 开发手册新鲜度（只提示）
+        run: ./docs/guide/_tools/check-freshness.ps1
+      - name: 提交信息
+        if: github.event_name == 'pull_request'
+        # 检出的 HEAD 取 PR 分支头（而非 GitHub 合成的 merge commit），
+        # 否则区间里会混进一条自动生成的合并提交，格式必然不合规。
+        # shell: pwsh 的当前目录是仓库根，无需切换。
+        run: |
+          git fetch --no-tags origin ${{ github.event.pull_request.base.ref }}
+          ./scripts/check-commit-msg.ps1 -Range "origin/${{ github.event.pull_request.base.ref }}..HEAD"
