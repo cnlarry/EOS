@@ -22,6 +22,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
     private readonly FieldAdminRepository _repository;
     private readonly List<(string Table, string Field)> _createdFields = [];
     private readonly List<string> _createdTables = [];
+    private readonly List<string> _createdPhysicalTables = [];
 
     public FieldAdminRepositoryIntegrationTests()
     {
@@ -244,8 +245,10 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
     }
 
     /// <summary>
-    /// 从物理表/视图登记表元数据（选取式新增）：表描述与类型由物理对象推导，字段按物理列生成
-    /// （说明取列说明、类型取物理类型），生成后不应产生"幽灵"；重复登记必须被拒绝。
+    /// 从物理表登记表元数据（选取式新增）：表描述与类型由物理对象推导，字段按物理列生成
+    /// （说明取列说明、类型取物理类型、主键/自增/计算列取自物理结构），生成后不产生「幽灵」。
+    /// 物理对象由用例自造（含表/列说明）——登记这类用例的写目标就是元数据，
+    /// 不借库里现成的表来写；结束先删元数据再 DROP 物理表。
     /// </summary>
     [Fact]
     public async Task RegisterPhysicalTable_CreatesTableAndFieldMetadata()
@@ -255,42 +258,61 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             return;
         }
 
-        var candidate = await FindUnregisteredPhysicalObjectAsync();
-        if (candidate is null)
-        {
-            return;
-        }
+        var table = $"ZZ_FA_PHYS_{Random.Shared.Next(100000, 999999)}";
+        var sql = $"""
+            CREATE TABLE dbo.{table} (
+                CODE nvarchar(50) NOT NULL,
+                QTY decimal(18,4) NULL,
+                REMARK nvarchar(200) NULL,
+                REMARK_LEN AS (len(REMARK)),
+                CONSTRAINT PK_{table} PRIMARY KEY (CODE));
+            EXEC sp_addextendedproperty N'MS_Description',N'字段维护登记用例表',N'SCHEMA',N'dbo',N'TABLE',N'{table}';
+            EXEC sp_addextendedproperty N'MS_Description',N'编号',N'SCHEMA',N'dbo',N'TABLE',N'{table}',N'COLUMN',N'CODE';
+            """;
+        _createdPhysicalTables.Add(table);
 
         try
         {
-            var result = await _repository.RegisterPhysicalTableAsync(
-                new(candidate.Value.TableId), "IT", CancellationToken.None);
+            await ExecuteStatementsAsync(sql);
+            var result = await _repository.RegisterPhysicalTableAsync(new(table), "IT", CancellationToken.None);
             _createdTables.Add(result.TableId);
 
-            Assert.Equal(candidate.Value.TableId, result.TableId, ignoreCase: true);
-            Assert.Equal(candidate.Value.IsView ? "VIEW" : "TABLE", result.Type);
-            Assert.Equal(candidate.Value.IsView ? "V" : "P", result.Kind);
-            Assert.Equal(
-                candidate.Value.Description.Length == 0 ? candidate.Value.TableId : candidate.Value.Description,
-                result.Description,
-                ignoreCase: true);
-            Assert.True(result.FieldCreated > 0, "至少要生成一个字段元数据");
+            // 表：描述取表说明，类型与性质按物理对象
+            Assert.Equal(table, result.TableId, ignoreCase: true);
+            Assert.Equal("字段维护登记用例表", result.Description);
+            Assert.Equal("TABLE", result.Type);
+            Assert.Equal("P", result.Kind);
+            Assert.Equal(4, result.FieldCreated);
+            Assert.Equal(0, result.FieldSkipped);
 
-            // 生成的字段都能对应物理列（幽灵为 0）；类型不受支持而被跳过的列表现为"未管理"
-            var fields = await _repository.GetFieldsAsync(result.TableId, null, 1, 100, CancellationToken.None);
+            // 字段：说明取列说明（无则用列名）、类型按物理列、主键与计算列取自物理结构
+            var code = await _repository.GetMetadataAsync(table, "CODE", CancellationToken.None);
+            Assert.NotNull(code);
+            Assert.Equal("编号", code!.Field.Label);
+            Assert.Equal("nvarchar", code.Field.DataType, ignoreCase: true);
+            Assert.True(code.IsPrimaryKey);
+            Assert.True(code.PhysicalExists);
+            var computed = await _repository.GetMetadataAsync(table, "REMARK_LEN", CancellationToken.None);
+            Assert.NotNull(computed);
+            Assert.Equal("REMARK_LEN", computed!.Field.Label);
+            Assert.True(computed.Field.IsReadonly, "计算列由数据库算，必须标只读");
+
+            // 生成的字段都能对应物理列：该表不该留下「幽灵」或「未管理」
+            var fields = await _repository.GetFieldsAsync(table, null, 1, 50, CancellationToken.None);
             Assert.Equal(result.FieldCreated, fields.Total);
             Assert.All(fields.Items, item => Assert.True(item.PhysicalExists));
             var row = (await _repository.GetTablesAsync(null, CancellationToken.None))
-                .Single(item => item.TableId.Equals(result.TableId, StringComparison.OrdinalIgnoreCase));
+                .Single(item => item.TableId.Equals(table, StringComparison.OrdinalIgnoreCase));
             Assert.Equal(0, row.OrphanCount);
-            Assert.Equal(result.FieldSkipped, row.UnmanagedCount);
+            Assert.Equal(0, row.UnmanagedCount);
 
             await Assert.ThrowsAsync<ArgumentException>(
-                () => _repository.RegisterPhysicalTableAsync(new(result.TableId), "IT", CancellationToken.None));
+                () => _repository.RegisterPhysicalTableAsync(new(table), "IT", CancellationToken.None));
         }
         finally
         {
             await CleanupCreatedTablesAsync();
+            await CleanupPhysicalTablesAsync();
         }
     }
 
@@ -452,31 +474,26 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         return tables.Single(item => item.TableId.Equals(table, StringComparison.OrdinalIgnoreCase)).OrphanCount;
     }
 
-    /// <summary>取一个尚未登记进 TABLES 的物理表/视图（含表说明）；开发库没有候选时跳过。</summary>
-    private static async Task<(string TableId, bool IsView, string Description)?> FindUnregisteredPhysicalObjectAsync()
+    /// <summary>清理本用例自造的物理表（登记用例的物理对象由用例自己建）。</summary>
+    private async Task CleanupPhysicalTablesAsync()
     {
+        if (_createdPhysicalTables.Count == 0)
+        {
+            return;
+        }
+
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
-        await using var command = new SqlCommand(
-            """
-            SELECT TOP 1 o.name, o.type, ISNULL(CONVERT(nvarchar(500), ep.value), N'')
-            FROM sys.objects o
-            JOIN sys.schemas s ON o.schema_id=s.schema_id
-            LEFT JOIN sys.extended_properties ep
-              ON ep.class=1 AND ep.major_id=o.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
-            WHERE s.name=N'dbo' AND o.type IN ('U','V')
-              AND NOT EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=o.name)
-            ORDER BY o.name;
-            """, connection);
-        await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+        foreach (var table in _createdPhysicalTables)
         {
-            return null;
+            if (!WorkbenchSql.Identifier.IsMatch(table))
+            {
+                continue;
+            }
+            await using var drop = new SqlCommand($"DROP TABLE IF EXISTS dbo.{table};", connection);
+            await drop.ExecuteNonQueryAsync();
         }
-        return (
-            reader.GetString(0).Trim(),
-            reader.GetString(1).Trim().Equals("V", StringComparison.OrdinalIgnoreCase),
-            reader.GetString(2).Trim());
+        _createdPhysicalTables.Clear();
     }
 
     public void Dispose()
@@ -490,6 +507,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         {
             CleanupCreatedFieldsAsync().GetAwaiter().GetResult();
             CleanupCreatedTablesAsync().GetAwaiter().GetResult();
+            CleanupPhysicalTablesAsync().GetAwaiter().GetResult();
         }
         catch
         {
