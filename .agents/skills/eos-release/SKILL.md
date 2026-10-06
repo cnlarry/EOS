@@ -187,7 +187,8 @@ git status --porcelain                    # 应为空
 §2 基线如因发布而变化则一并刷新。**不要**往文件顶部堆流水。
 
 编辑 `docs/status.md` **前先取锁**：在 `.agents/reservations/` 下按「共享文件路径里 `/` 换成 `__`」建一个
-锁文件（多 Agent 并行规范见 [`AGENTS.local.md`](../../../AGENTS.local.md)；本机文件，别人克隆里没有），
+锁文件（多 Agent 并行规范见 `AGENTS.local.md`；本机文件、别人克隆里没有，故按**本机资产**口径引用——
+`.agents/skills/_map.md` 按登记键匹配，写成带 `../` 前缀的相对链接会匹配不上而被判成"引用了不存在的资产"），
 写完释放。
 
 ## 十、常见症状
