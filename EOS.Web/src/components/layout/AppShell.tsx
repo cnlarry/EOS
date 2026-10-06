@@ -323,6 +323,14 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     if (!moduleId) return null
     return allLeaves.find((item) => item.route === workbenchList(moduleId))?.label ?? null
   }, [allLeaves])
+  /**
+   * 模块页的标题**取模块自己的名字**（菜单树叶子的 `label`，即 `MODULES.M_DESC`）：
+   * 这个页面叫什么，唯一真源是元数据里的模块名——模块在 2301 改名后，标签与面包屑应随之变。
+   * `PAGE_META` 退到两处兜底：分区名（`section`）、以及**非模块页面**的标题（首页、工作助手等，
+   * 它们没有对应模块）；导航树还没装载时也由它顶着，叶子到达后标题同步效应会纠正。
+   */
+  const moduleTitleForPath = useCallback((pathname: string): string | null =>
+    allLeaves.find((item) => item.route === pathname)?.label ?? null, [allLeaves])
   // 字段维护子页（2302 /admin/tables/:tableId/fields）：
   // 面包屑固定为 系统管理 > 数据表维护 > 数据表维护 > {表名} > 字段
   const fieldAdminFields = location.pathname.match(/^\/admin\/tables\/([^/]+)\/fields$/)
@@ -353,14 +361,25 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
             title: `${op}${moduleLabel}${docNo ? `：${docNo}` : ''}`,
           }
         })()
-      : PAGE_META[location.pathname] ?? {
-          section: activeGroup?.label ?? 'ERP',
-          title: activeMenu?.label ?? moduleLabelOfPath(location.pathname) ?? UNRESOLVED_TAB_LABEL,
-        }
+      : (() => {
+          const meta = PAGE_META[location.pathname]
+          return {
+            // 分区仍取 PAGE_META（模块页在导航树里归属的分区与之一致），标题优先模块名
+            section: meta?.section ?? activeGroup?.label ?? 'ERP',
+            title: moduleTitleForPath(location.pathname)
+              ?? meta?.title
+              ?? activeMenu?.label
+              ?? moduleLabelOfPath(location.pathname)
+              ?? UNRESOLVED_TAB_LABEL,
+          }
+        })()
   // ===== 标签工作区行为 =====
   /** 新标签的临时标题：激活后由标题同步效应刷新为页面真实标题 */
   const labelForUrl = useCallback((url: string) => {
     const pathname = parsePath(url).pathname || '/'
+    // 模块页先取模块名（`MODULES.M_DESC`），PAGE_META 只兜底非模块页面——见 moduleTitleForPath
+    const moduleTitle = moduleTitleForPath(pathname)
+    if (moduleTitle) return moduleTitle
     const meta = PAGE_META[pathname]
     if (meta) return meta.title
     const moduleId = moduleIdOfUrl(url)
@@ -374,7 +393,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     if (leaf) return leaf.label
     // 都命中不了时用路径末段顶着（如 /settings/PRODUCT → PRODUCT），页面挂载后会被真实标题刷新
     return decodeURIComponent(pathname.split('/').filter(Boolean).pop() ?? '') || UNRESOLVED_TAB_LABEL
-  }, [allLeaves])
+  }, [moduleTitleForPath, allLeaves])
 
   /** 打开标签：已开则聚焦，未开则新建；撞顶只提示，既不新建也不跳转 */
   const openTab = useCallback((rawUrl: string) => {

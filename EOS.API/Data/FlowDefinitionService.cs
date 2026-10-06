@@ -71,7 +71,8 @@ public sealed class FlowDefinitionService(
             while (await reader.ReadAsync(token))
             {
                 var moduleId = reader.GetInt32(0);
-                if (!ModuleRouteValidator.IsWorkbenchUrl(reader.GetString(3)))
+                // 工作台模块判定与 ModuleRouteValidator 同口径（承载页 /workbench，或留空但有主表）
+                if (!ModuleRouteValidator.IsWorkbenchModule(reader.GetString(3), reader.GetString(2)))
                     continue;
                 // 批核能力：效果引擎接管 / 自动批核 / 已配置流程（遗留批核过程字段已物理删除）
                 var hasWorkflow = WorkflowStates.HasApproveCapability(
@@ -257,7 +258,7 @@ public sealed class FlowDefinitionService(
             title = reader.GetString(0);
             masterTable = reader.GetString(1);
             var moduleUrl = reader.GetString(2);
-            if (!ModuleRouteValidator.IsWorkbenchUrl(moduleUrl))
+            if (!ModuleRouteValidator.IsWorkbenchModule(moduleUrl, masterTable))
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NOT_WORKBENCH", "只能给通用工作台模块配置审批流程。");
             var hasWorkflow = WorkflowStates.HasApproveCapability(
                 reader.GetBoolean(3),

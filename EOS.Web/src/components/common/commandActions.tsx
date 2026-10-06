@@ -29,9 +29,10 @@ import {
 } from '@tabler/icons-react'
 
 /**
- * 标准动作 → 图标 + 悬停标题 的中央注册表（对应服务端 FORM_BUTTONS 白名单动作）。
+ * 标准动作 → 图标 + 悬停标题 的中央注册表。
  * 统一动作表意：同一动作在任何页面（工作台/统一表单/列表）显示同一图标与标题，
- * 避免不同实现带来的歧义。新增动作必须在此登记 + 服务端 ParseFormButtons 白名单同步。
+ * 避免不同实现带来的歧义。新增动作必须在此登记（服务端不再有白名单列：
+ * 动作集由能力 + 权限决定，`MODULES.FORM_BUTTONS` 已随迁移 320 退役）。
  */
 export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }> = {
   new: { icon: <IconPlus size={16} />, title: '新增' },
@@ -48,8 +49,8 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   endcase: { icon: <IconLock size={16} />, title: '结案' },
   unendcase: { icon: <IconLockOpen size={16} />, title: '取消结案' },
   print: { icon: <IconPrinter size={16} />, title: '打印' },
-  // 报表：**模块级**动作（打开本模块的报表清单），不是单据级动作，
-  // 因此不进 FORM_BUTTONS 白名单（不进=管理员配置不了它，它按"有没有可见报表"自己决定出不出现）。
+  // 报表：**模块级**动作（打开本模块的报表清单），不是单据级动作——
+  // 它不随单据级动作集出现，按"本模块有没有可见报表"自己决定出不出现。
   report: { icon: <IconReportAnalytics size={16} />, title: '报表' },
   export: { icon: <IconFileExport size={16} />, title: '导出' },
   search: { icon: <IconSearch size={16} />, title: '通用查询' },
@@ -60,7 +61,7 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   columns: { icon: <IconColumns size={16} />, title: '选择列' },
   fit: { icon: <IconArrowAutofitWidth size={16} />, title: '自适应列宽' },
   upload: { icon: <IconFileUpload size={16} />, title: '上传' },
-  // Browse-mode navigation (previous/next by current list order) and help (HELP_URL)
+  // Browse-mode navigation (previous/next by current list order) and help (列表帮助弹窗)
   prior: { icon: <IconArrowUp size={16} />, title: '上一条' },
   next: { icon: <IconArrowDown size={16} />, title: '下一条' },
   help: { icon: <IconHelpCircle size={16} />, title: '帮助' },

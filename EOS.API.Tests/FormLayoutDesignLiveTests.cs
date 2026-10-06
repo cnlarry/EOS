@@ -135,14 +135,22 @@ public sealed class FormLayoutDesignLiveTests
         Assert.NotNull(state);
         Assert.Equal(MasterTable, state!.MasterTable);
         Assert.NotNull(state.DetailTable);
-        Assert.True(state.Columns >= 1);
+        // 一行几列只看页签（模块级那层已随迁移 322 删除）
+        Assert.All(state.Tabs, tab => Assert.InRange(
+            tab.Columns ?? FormLayoutDerivation.DefaultColumns,
+            FormLayoutDerivation.MinColumns, FormLayoutDerivation.MaxColumns));
         Assert.Contains(state.Tabs, tab => tab.No == 1);
         Assert.NotEmpty(state.Master.Layout);
         Assert.Empty(state.Master.Pool);          // 零配置：推导默认即"全部已排"
 
         var layoutKeys = state.Master.Layout.Select(row => row.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         Assert.All(state.Master.Layout, row => Assert.False(string.IsNullOrWhiteSpace(row.Label)));
-        Assert.All(state.Master.Layout, row => Assert.InRange(row.Span, 1, state.Columns));
+        // 跨度上限按**该行所属页签**的列数判（模块级那层已随迁移 322 删除，只剩页签这一处真源）
+        Assert.All(state.Master.Layout, row =>
+        {
+            var tab = state.Tabs.FirstOrDefault(item => item.No == row.TabNo);
+            Assert.InRange(row.Span, 1, tab?.Columns ?? FormLayoutDerivation.DefaultColumns);
+        });
         Assert.All(state.Master.Layout, row => Assert.InRange(row.RowSpan, 1, FormLayoutDerivation.MaxRowSpan));
         // 版式行不允许重复字段（主键约束），这里再钉一次读取侧不重不漏
         Assert.Equal(layoutKeys.Count, state.Master.Layout.Count);

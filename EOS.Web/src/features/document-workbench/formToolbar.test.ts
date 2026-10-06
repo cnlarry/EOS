@@ -20,8 +20,6 @@ function form(overrides: Partial<FormDefinition> = {}): FormDefinition {
     detailNoFields: '',
     detailDfVerify: '',
     tabs: [],
-    columns: 4,
-    buttons: null,
     hasWorkflow: true,
     hasStatelessApprove: false,
     defaultValues: {},
@@ -87,17 +85,11 @@ describe('buildViewToolbarItems', () => {
     expect(deapprove?.disabled).toBe(true)
   })
 
-  it('白名单模式：只返回 FORM_BUTTONS 配置的动作，且顺序跟随配置', () => {
-    const f = form({ buttons: [{ action: 'endcase' }, { action: 'print' }, { action: 'approve' }] })
-    const items = buildViewToolbarItems(f, state(), handlers())
-    // 函数忠实于 FORM_BUTTONS 顺序（组件再按固定顺序 filter 插入）
-    expect(items.map(item => item.action)).toEqual(['endcase', 'print', 'approve'])
-  })
-
-  it('白名单模式：权限不足的动作被过滤', () => {
-    const f = form({ buttons: [{ action: 'approve' }, { action: 'print' }], canApprove: false })
-    const items = buildViewToolbarItems(f, state(), handlers())
-    expect(items.map(item => item.action)).toEqual(['print'])
+  it('动作集只由能力与权限决定（FORM_BUTTONS 白名单已退役）', () => {
+    // 权限全无：批核/解批与结案都不出现，只剩打印（单据级动作不再有任何"配置开关"可开）
+    const noPermission = form({ canApprove: false, canDeapprove: false, canEndCase: false, canUnEndCase: false })
+    expect(buildViewToolbarItems(noPermission, state(), handlers()).map(item => item.action))
+      .toEqual(['print'])
   })
 
   it('无批核能力时不显示批核/解批（无死按钮）', () => {

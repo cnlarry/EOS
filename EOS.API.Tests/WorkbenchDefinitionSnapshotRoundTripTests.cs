@@ -40,12 +40,9 @@ public sealed class WorkbenchDefinitionSnapshotRoundTripTests
             GroupExpressions: ["", "", "", "", ""],
             FormTabs: null,
             FormColumns: null,
-            FormButtons: [new WorkbenchButton("approve")],
             IfCopy: false,
             SearchMaster: false,
             SearchDetail: false,
-NewUrl: "/workbench/1401/new",
-        ModiUrl: "/workbench/1401/edit",
             DefinitionVersion: "module-1401-v1");
 
         var json = JsonSerializer.Serialize(definition);
@@ -60,7 +57,6 @@ NewUrl: "/workbench/1401/new",
         Assert.Equal(2, roundTrip.MasterFields.Count);
         Assert.True(roundTrip.BusinessRule!.AutoBillNo);
         Assert.Equal("CLIENT_ID", roundTrip.BusinessRule!.BillNoField);
-        Assert.Equal("approve", roundTrip.FormButtons!.Single().Action);
         Assert.True(roundTrip.FilterFieldKeys!.Contains("SALES_ID"));
         Assert.Equal("module-1401-v1", roundTrip.DefinitionVersion);
     }

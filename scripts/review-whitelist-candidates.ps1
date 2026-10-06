@@ -4,8 +4,11 @@
 统一表单白名单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 +
 当前 EnabledModuleIds，逐模块给出 建议（可放量 / 需确认 / 阻塞 / 已启用）。
 .DESCRIPTION
-启用判据参考 docs/plans/archive/统一表单编辑器待办.md §A（已归档）：
-MODI_URL 非空、默认值/单号已登记、主子表评审。
+放量真源 = EOS.API/appsettings.json 的 UnifiedFormEditor.EnabledModuleIds（写名单）/
+ReadOnlyModuleIds（只读名单）。路由三列（NEW_URL / MODI_URL / HELP_URL）已随迁移 321 物理删除，
+不再参与判定；候选资格（工作台模块）= M_URL 为 '/workbench'，或 M_URL 留空但有主表
+（默认落统一工作台，与 ModuleRouteValidator.IsWorkbenchModule 同口径）。
+默认值/单号登记、主子表评审等其它参考见 docs/plans/archive/统一表单编辑器待办.md §A（已归档）。
 本脚本只读，不改任何配置；结论供实施顾问逐条确认后写入
 UnifiedFormEditor:EnabledModuleIds。
 .EXAMPLE
@@ -44,7 +47,7 @@ $coverageMap = @{
     'E2eOutsourceQcDomain.ps1'          = @('2803','2805','2806','2816','2815','2817','2818','3901','3307')
     'E2eProductionRestDomain.ps1'       = @('1522','1503','1514','1504','1515','1509')
     'E2eSalesProcurementRestDomain.ps1' = @('1413','1418','1407','1409','1608','1612','1609','1610','1908')
-    'E2eBaseDomain.ps1'                 = @('1201','1204','1311','2205','2305')
+    'E2eBaseDomain.ps1'                 = @('1201','1204','1311','2305')
     'E2eHrEmployeeDomain.ps1'           = @('180102','180110','180105','180111','180208','1616')
     'E2eInventoryRestDomain.ps1'        = @('130102','130107','130101','130110')
 }
@@ -58,8 +61,7 @@ $ids = ($candidates.M_IDX -join ',')
 $dbRows = & sqlcmd -S localhost -d EOS.ERP -E -h -1 -W -Q @"
 SET NOCOUNT ON;
 SELECT LTRIM(RTRIM(CAST(M_IDX AS varchar(20)))),
-       LTRIM(RTRIM(ISNULL(MODI_URL,''))),
-       LTRIM(RTRIM(ISNULL(NEW_URL,''))),
+       LTRIM(RTRIM(ISNULL(M_URL,''))),
        LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
        LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
        LTRIM(RTRIM(ISNULL(FILTER,''))),
@@ -72,11 +74,11 @@ ORDER BY CAST(M_IDX AS INT);
 $db = @{}
 foreach ($line in $dbRows) {
     $c = $line -split '\|'
-    if ($c.Count -lt 8) { continue }
+    if ($c.Count -lt 7) { continue }
     $db[$c[0].Trim()] = [pscustomobject]@{
-        ModiUrl = $c[1].Trim(); NewUrl = $c[2].Trim()
-        MasterTable = $c[3].Trim(); DetailTable = $c[4].Trim()
-        Filter = $c[5].Trim(); AutoApprove = [int]$c[6].Trim(); MTag = [int]$c[7].Trim()
+        MUrl = $c[1].Trim()
+        MasterTable = $c[2].Trim(); DetailTable = $c[3].Trim()
+        Filter = $c[4].Trim(); AutoApprove = [int]$c[5].Trim(); MTag = [int]$c[6].Trim()
     }
 }
 
@@ -101,7 +103,10 @@ function Get-Suggestion {
         return '不建议：主/明细表是库存表（写入须经移动引擎，通用表单会绕过）'
     }
     if ($isEnabled) { return '已启用' }
-    if ($meta.ModiUrl -eq '' -and $meta.NewUrl -eq '') { return '需确认：MODI_URL/NEW_URL 均为空' }
+    # 工作台模块判定与 ModuleRouteValidator.IsWorkbenchModule 同口径（承载页 /workbench，或留空但有主表）
+    if (-not (($meta.MUrl -eq '/workbench') -or (($meta.MUrl -eq '') -and ($meta.MasterTable -ne '')))) {
+        return '不适用：非工作台模块（M_URL 非 /workbench 且无主表）'
+    }
     if ($meta.Filter -ne '') { return '需确认：模块 FILTER 行级过滤' }
     if ($meta.AutoApprove -eq 1) { return '需确认：AUTO_APPROVE=1（保存即批核）' }
     if ($id -in $prereqModules) { return '需确认：依赖真实业务前置数据' }
@@ -116,7 +121,7 @@ foreach ($c in $candidates) {
     if (-not $meta) {
         $rows.Add([pscustomobject]@{
             M_IDX = $id; M_DESC = $c.M_DESC; 状态 = '缺库内元数据'; 主表 = ''; 明细表 = ''
-            已启用 = ''; MODI_URL = ''; 移植结论 = ''
+            已启用 = ''; 移植结论 = ''
             域E2E = ''; FILTER = ''; AUTO_APPROVE = ''; 前置数据 = ''; 建议 = '缺库内元数据'
         })
         continue
@@ -130,7 +135,6 @@ foreach ($c in $candidates) {
         主表 = $meta.MasterTable
         明细表 = $meta.DetailTable
         已启用 = $id -in $enabled
-        MODI_URL = $meta.ModiUrl
         移植结论 = $decision
         域E2E = $byModule[$id]
         FILTER = if ($meta.Filter -ne '') { $meta.Filter } else { '' }

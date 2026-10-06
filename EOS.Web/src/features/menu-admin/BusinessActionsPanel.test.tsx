@@ -19,9 +19,6 @@ const moduleWithTables = (id: number, desc: string): MenuAdminModule => ({
   M_ALIAS: null,
   M_DESC: desc,
   M_URL: null,
-  NEW_URL: null,
-  MODI_URL: null,
-  HELP_URL: null,
   DETAIL_NO_FIELDS: null,
   DETAIL_NO_SAVE: false,
   SEARCH_1: false,
@@ -45,12 +42,12 @@ const moduleWithTables = (id: number, desc: string): MenuAdminModule => ({
   GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
   FORM_TABS: null,
   FORM_COLUMNS: null,
-  FORM_BUTTONS: null,
   LAST_UPDATE_BY: null,
   LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
   EFFECT_ENGINE_TAG: false,
+  REMARK: null,
 })
 
 const catalog = {

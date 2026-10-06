@@ -38,15 +38,18 @@ public static class FormLayoutValidator
         IReadOnlyDictionary<string, FormLayoutFieldFact> detailFields)
     {
         var issues = new List<FormLayoutValidationIssue>();
-        var columns = layout.Columns > 0 ? layout.Columns : FormLayoutDerivation.DefaultColumns;
 
         ValidateTabs(layout, issues);
-        ValidateRows(layout.Master, masterFields, layout, columns, isMaster: true, issues);
+        ValidateRows(layout.Master, masterFields, layout, isMaster: true, issues);
         ValidateRows(
             layout.Detail.Select(row => new FormLayoutRow(row.Key, 1, row.OrderNo, 1, 1, false, null, null, 0, row.Hidden)).ToList(),
-            detailFields, layout, columns, isMaster: false, issues);
+            detailFields, layout, isMaster: false, issues);
         return issues;
     }
+
+    /// <summary>该行所属页签的列数上限（页签级事实；历史快照缺该值时兜底 4 列）。</summary>
+    private static int ColumnsOf(FormLayoutDefinition layout, int tabNo) =>
+        FormLayoutDerivation.ResolveTabColumns(layout.Tabs, tabNo);
 
     private static void ValidateTabs(FormLayoutDefinition layout, List<FormLayoutValidationIssue> issues)
     {
@@ -66,7 +69,6 @@ public static class FormLayoutValidator
         IReadOnlyList<FormLayoutRow> rows,
         IReadOnlyDictionary<string, FormLayoutFieldFact> fields,
         FormLayoutDefinition layout,
-        int columns,
         bool isMaster,
         List<FormLayoutValidationIssue> issues)
     {
@@ -95,10 +97,14 @@ public static class FormLayoutValidator
                 issues.Add(new FormLayoutValidationIssue(
                     "FORM_LAYOUT_TAB_UNKNOWN", $"字段 {row.Key} 指向不存在的页签 {row.TabNo}。", row.Key));
             }
-            if (row.Span < 1 || row.Span > columns)
+            // 跨度上限是**该行所属页签**的列数（页签 1 两列、页签 2 一列时两行各有各的上限）
+            var rowColumns = ColumnsOf(layout, row.TabNo);
+            if (row.Span < 1 || row.Span > rowColumns)
             {
                 issues.Add(new FormLayoutValidationIssue(
-                    "FORM_LAYOUT_SPAN_OUT_OF_RANGE", $"字段 {row.Key} 的列跨度 {row.Span} 超出 1..{columns}。", row.Key));
+                    "FORM_LAYOUT_SPAN_OUT_OF_RANGE",
+                    $"字段 {row.Key} 的列跨度 {row.Span} 超出页签 {row.TabNo} 的 1..{rowColumns}。",
+                    row.Key));
             }
             if (row.RowSpan < 1 || row.RowSpan > MaxRowSpan)
             {

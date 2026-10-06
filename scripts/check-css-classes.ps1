@@ -51,7 +51,6 @@ param(
         'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory-item',
         'src/features/document-workbench/DocumentWorkbenchPage.tsx|erp-group-dropdown',
         'src/features/field-admin/FieldPickerSelect.tsx|erp-picker-option',
-        'src/features/menu-admin/MenuAdminPage.tsx|erp-menu-form-card',
         'src/features/menu-admin/MenuAdminPage.tsx|erp-nav-child-depth-*',
         'src/features/menu-admin/MenuAdminPage.tsx|erp-nav-children-depth-*',
         'src/features/print/PrintViewPage.tsx|erp-pdf-frame',

@@ -31,18 +31,18 @@ export interface FormOptionItem {
 
 import type { DocumentActionMeta } from './documentActionRunner'
 
-/** 工作台/表单业务按钮（解析自 MODULES.FORM_BUTTONS，如 '1=copy;2=approve;3=print'） */
-export interface WorkbenchButton {
-  action: string
-}
-
 /** 自定义按钮（单据操作）的元数据；类型与执行器共用一份定义（此处再导出，页面只依赖本文件）。 */
 export type { DocumentActionMeta }
 
-/** 表单页签（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'） */
+/** 表单页签（来自 `MODULE_FORM_TAB`，TAB_NO=1 为常驻的"默认"页签） */
 export interface FormTab {
   no: number
   title: string
+  /**
+   * 该页签的布局列数（`MODULE_FORM_TAB.LAYOUT_COLUMNS`，NOT NULL DEFAULT 4）：
+   * 同一表单的不同页签可以一行几列各不相同。缺省（历史快照）按 4 列兜底。
+   */
+  columns?: number | null
 }
 
 /** 单个录入字段（GET /api/document-workbench/{moduleId}/form-definition 返回项） */
@@ -103,8 +103,14 @@ export interface FormDefinition {
   detailNoFields: string
   detailDfVerify: string
   tabs: FormTab[]
-  columns: number
-  buttons: WorkbenchButton[] | null
+  // 栅格列数不在这里：一行几列只看页签（`tabs[].columns`，见 `resolveTabColumns`）——
+  // 原先那个模块级兜底段已随迁移 322 删除
+  /** 打开方式（`MODULES.FORM_OPEN_MODE`）：tab 本页签 / newtab 新页签 / dialog 弹窗 */
+  openMode?: string | null
+  /** 弹窗方式的窗体宽度（px）；只有弹窗方式下发 */
+  dialogWidth?: number | null
+  /** 弹窗方式的窗体高度（px）；只有弹窗方式下发 */
+  dialogHeight?: number | null
   /** 模块是否具备批核工作流（效果引擎接管 / 已配置流程 / 自动批核） */
   hasWorkflow: boolean
   /** 无副作用批核能力（自动批核且无过程/效果链/流程定义）：批核/解批按钮据此与 hasWorkflow 取并集显隐 */
@@ -134,8 +140,7 @@ export interface FormDefinition {
    /** 新增/编辑用户权限 */
    canAddNew: boolean
    canEdit: boolean
-   /** 帮助页地址（MODULES.HELP_URL，非空时浏览态显示帮助按钮） */
-   helpUrl?: string | null
+   /** 帮助页地址已随迁移 321 退场（MODULES.HELP_URL 物理删除，浏览态不再有「帮助」按钮） */
    /** 字段设置权限（2302 字段维护 CanSetup）：为 true 时表单标签右键可进入字段设置页 */
    canSetup: boolean
    /** 版式设计权（FORM_DESIGN_TAG）：为 true 时表单标签右键出现【表单设计】；服务端写端点独立鉴权 */

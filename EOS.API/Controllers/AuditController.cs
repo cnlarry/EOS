@@ -9,7 +9,7 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// Operation audit query over AUDIT_EVENT (v2, the only operation log store).
-/// SYSDF is history-only and no longer queried here.
+/// SYSDF（旧操作日志表）已随迁移 325 整表退役，不再存在于库中。
 /// Permission gate: module 2313 (system management → table maintenance → log management,
 /// the module that presents the log) CanBrowse.
 /// </summary>

@@ -47,9 +47,8 @@ public sealed class FormLayoutRepository(
             return null;
         }
 
-        var columns = FormLayoutDerivation.DefaultColumns;
         var layout = await FormLayoutReader.ReadAsync(
-            connection, moduleId, module.MasterTable, module.DetailTable, columns, token);
+            connection, moduleId, module.MasterTable, module.DetailTable, token);
         // 主表字段池含虚拟列：它们是选择器回写的伴生显示列，能排进版式（运行态按只读字段渲染）
         var masterFields = await WorkbenchDefinitionBuilder.ReadFormFieldRows(
             connection, module.MasterTable, module.MasterTable, token, includeVirtual: true);
@@ -68,12 +67,15 @@ public sealed class FormLayoutRepository(
         }
 
         var stamp = await ReadStampAsync(connection, null, moduleId, token);
+        // 呈现配置与运行态同口径下发：非法/未配置回落本页签；宽高只在弹窗方式下有意义，
+        // 非弹窗方式下不给画板尺寸（画板照旧铺满可用区域）
+        var openMode = FormOpenModes.Normalize(module.OpenMode);
+        var isDialog = FormOpenModes.IsDialog(openMode);
         return new FormLayoutDesignState(
             moduleId,
             module.Title,
             module.MasterTable,
             string.IsNullOrWhiteSpace(module.DetailTable) ? null : module.DetailTable,
-            columns,
             EffectiveTabs(layout),
             BuildTableDesign(module.MasterTable, layout.Master, masterFields, masterFacts, rights,
                 isDetail: false, customized: layout.MasterCustomized),
@@ -82,7 +84,10 @@ public sealed class FormLayoutRepository(
                 layout.Detail.Select(row => new FormLayoutRow(
                     row.Key, 1, row.OrderNo, 1, 1, false, null, null, 0, row.Hidden)).ToList(),
                 detailFields, detailFacts, rights, isDetail: true, customized: layout.DetailCustomized),
-            stamp);
+            stamp,
+            openMode,
+            isDialog ? module.DialogWidth : null,
+            isDialog ? module.DialogHeight : null);
     }
 
     /// <summary>可套用来源：只列共用同一主表的模块（跨主表套用会把业务上不该出现的同名字段排进表单）。</summary>
@@ -97,8 +102,6 @@ public sealed class FormLayoutRepository(
         }
         const string sql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
-                   -- 列数统一为四子列（FORM_COLUMNS 已退役），模板只用于"同主表套用版式"的模块清单
-                   CAST(0 AS int),
                    CASE WHEN LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))) = '' THEN 0 ELSE 1 END
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) = @MasterTable AND m.M_IDX <> @ModuleId
@@ -112,8 +115,7 @@ public sealed class FormLayoutRepository(
         while (await reader.ReadAsync(token))
         {
             templates.Add(new FormLayoutTemplate(
-                reader.GetInt32(0), reader.GetString(1), module.MasterTable,
-                reader.GetInt32(2), reader.GetInt32(3) == 1));
+                reader.GetInt32(0), reader.GetString(1), module.MasterTable, reader.GetInt32(2) == 1));
         }
         return templates;
     }
@@ -134,8 +136,12 @@ public sealed class FormLayoutRepository(
             return new FormLayoutSaveOutcome(FormLayoutSaveStatus.ModuleNotFound, "模块不存在或未配置主表。");
         }
 
-        var columns = FormLayoutDerivation.DefaultColumns;
-        var layout = FormLayoutSubmission.Normalize(request, columns);
+        // 呈现配置（打开方式 / 弹窗宽高）与版式同一笔保存、同一次重发布 ⇒ 保存即生效；
+        // 全空表示"只存版式"（历史调用方），不动 MODULES 的呈现列
+        var presentation = FormLayoutSubmission.ParsePresentation(request);
+        // 列跨度按**该行所属页签的列数**夹取（页签级事实，未给则落兜底 4 列）：
+        // 设计器与运行态必须同源，否则设计态排 3 段、运行态按 2 列渲染会把格子挤到下一行
+        var layout = FormLayoutSubmission.Normalize(request);
         var masterFacts = await FormLayoutFactsBuilder.BuildAsync(
             connection, module.MasterTable, module.MasterTable, token);
         var detailFacts = string.IsNullOrWhiteSpace(module.DetailTable)
@@ -152,7 +158,7 @@ public sealed class FormLayoutRepository(
         }
 
         return await ApplyAsync(
-            module, layout, request.IdempotencyKey, request.BaseUpdatedAt, userId, executor,
+            module, layout, presentation, request.IdempotencyKey, request.BaseUpdatedAt, userId, executor,
             SaveAction, isReset: false, token);
     }
 
@@ -168,12 +174,14 @@ public sealed class FormLayoutRepository(
             return new FormLayoutSaveOutcome(FormLayoutSaveStatus.ModuleNotFound, "模块不存在或未配置主表。");
         }
         return await ApplyAsync(
-            module, null, idempotencyKey, baseUpdatedAt, userId, executor, ResetAction, isReset: true, token);
+            module, null, FormPresentation.None, idempotencyKey, baseUpdatedAt, userId, executor,
+            ResetAction, isReset: true, token);
     }
 
     private async Task<FormLayoutSaveOutcome> ApplyAsync(
         ModuleInfo module,
         FormLayoutDefinition? layout,
+        FormPresentation presentation,
         string? idempotencyKey,
         string? baseUpdatedAt,
         string userId,
@@ -185,7 +193,7 @@ public sealed class FormLayoutRepository(
         var moduleId = module.ModuleId;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var backup = await ReadBackupAsync(connection, moduleId, token);
+        var backup = await ReadBackupAsync(connection, module, token);
 
         await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
         {
@@ -219,12 +227,18 @@ public sealed class FormLayoutRepository(
                 {
                     await InsertLayoutAsync(connection, transaction, module, layout, userId, token);
                 }
+                if (presentation.IsGiven)
+                {
+                    await UpdatePresentationAsync(connection, transaction, moduleId, presentation, token);
+                }
                 await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, executor, token);
                 await auditWriter.WriteEventAsync(
                     connection, transaction, moduleId, $"module-{moduleId}", action,
                     isReset
                         ? $"重置模块 {moduleId} 的表单版式为默认版式。"
-                        : $"保存模块 {moduleId} 的表单版式（页签 {layout!.Tabs.Count} 个、主表 {layout.Master.Count} 行、明细 {layout.Detail.Count} 行）。",
+                        : $"保存模块 {moduleId} 的表单版式（页签 {layout!.Tabs.Count} 个〔{DescribeTabColumns(layout.Tabs)}〕、"
+                          + $"主表 {layout.Master.Count} 行、明细 {layout.Detail.Count} 行）。"
+                          + DescribePresentation(module, presentation),
                     executor, ResourceType, result: 1, fieldChanges: null, token,
                     detailJson: layout is null ? null : JsonSerializer.Serialize(layout));
                 await transaction.CommitAsync(token);
@@ -270,7 +284,8 @@ public sealed class FormLayoutRepository(
         FormLayoutDefinition layout, string userId, CancellationToken token)
     {
         const string tabSql = """
-            INSERT INTO dbo.MODULE_FORM_TAB (M_IDX, TAB_NO, TAB_TITLE) VALUES (@ModuleId, @TabNo, @Title);
+            INSERT INTO dbo.MODULE_FORM_TAB (M_IDX, TAB_NO, TAB_TITLE, LAYOUT_COLUMNS)
+            VALUES (@ModuleId, @TabNo, @Title, @Columns);
             """;
         foreach (var tab in layout.Tabs)
         {
@@ -278,6 +293,8 @@ public sealed class FormLayoutRepository(
             command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = module.ModuleId;
             command.Parameters.Add("@TabNo", SqlDbType.Int).Value = tab.No;
             command.Parameters.Add("@Title", SqlDbType.NVarChar, 50).Value = tab.Title.Length == 0 ? string.Empty : tab.Title;
+            // 页签级布局列数：null = 沿用模块默认列数（读取侧 ResolveTabColumns 兜底）
+            command.Parameters.Add("@Columns", SqlDbType.TinyInt).Value = (object?)tab.Columns ?? DBNull.Value;
             await command.ExecuteNonQueryAsync(token);
         }
 
@@ -342,13 +359,18 @@ public sealed class FormLayoutRepository(
         }
     }
 
-    /// <summary>保存前快照：行 + 页签 + 脏标记，供发布失败时整笔恢复。</summary>
-    private async Task<LayoutBackup> ReadBackupAsync(SqlConnection connection, int moduleId, CancellationToken token)
+    /// <summary>
+    /// 保存前快照：行 + 页签 + 脏标记 + 模块呈现列，供发布失败时整笔恢复。
+    /// 呈现列直接取已读入的模块行（同事务外读的同一行，值即保存前值）。
+    /// </summary>
+    private async Task<LayoutBackup> ReadBackupAsync(SqlConnection connection, ModuleInfo module, CancellationToken token)
     {
+        var moduleId = module.ModuleId;
         var tabs = new List<FormTabDefinition>();
         var rows = new List<(string Table, FormLayoutRow Row)>();
         const string tabSql = """
-            SELECT TAB_NO, LTRIM(RTRIM(ISNULL(TAB_TITLE,''))) FROM dbo.MODULE_FORM_TAB WHERE M_IDX=@ModuleId;
+            SELECT TAB_NO, LTRIM(RTRIM(ISNULL(TAB_TITLE,''))), LAYOUT_COLUMNS
+            FROM dbo.MODULE_FORM_TAB WHERE M_IDX=@ModuleId;
             """;
         await using (var command = new SqlCommand(tabSql, connection))
         {
@@ -356,7 +378,9 @@ public sealed class FormLayoutRepository(
             await using var reader = await command.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
             {
-                tabs.Add(new FormTabDefinition(reader.GetInt32(0), reader.GetString(1)));
+                tabs.Add(new FormTabDefinition(
+                    reader.GetInt32(0), reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetByte(2)));
             }
         }
         const string rowSql = """
@@ -390,8 +414,60 @@ public sealed class FormLayoutRepository(
                 dirty = Convert.ToBoolean(value);
             }
         }
-        return new LayoutBackup(tabs, rows, dirty);
+        return new LayoutBackup(tabs, rows, dirty, module);
     }
+
+    /// <summary>
+    /// 写模块行的呈现列（打开方式 / 弹窗宽高）。同一事务内、与版式行一起提交，
+    /// 所以重发布读到的是新值——这就是"设计器里保存即生效"的落点；值 null 即清空该列。
+    ///
+    /// **不写 `FORM_LAYOUT_COLUMNS`**：栅格列数自 2026-10-06 起是页签级事实
+    /// （`MODULE_FORM_TAB.LAYOUT_COLUMNS`，随页签一起写），模块那一列退化为"未声明页签的兜底列数"。
+    /// </summary>
+    private static async Task UpdatePresentationAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        FormPresentation presentation, CancellationToken token)
+    {
+        const string sql = """
+            UPDATE dbo.MODULES SET
+                FORM_OPEN_MODE=@OpenMode, FORM_DIALOG_WIDTH=@DialogWidth,
+                FORM_DIALOG_HEIGHT=@DialogHeight
+            WHERE M_IDX=@ModuleId;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@OpenMode", SqlDbType.NVarChar, 20).Value = (object?)presentation.OpenMode ?? DBNull.Value;
+        command.Parameters.Add("@DialogWidth", SqlDbType.Int).Value = (object?)presentation.DialogWidth ?? DBNull.Value;
+        command.Parameters.Add("@DialogHeight", SqlDbType.Int).Value = (object?)presentation.DialogHeight ?? DBNull.Value;
+        await command.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>审计文案里的呈现变更（只列真正变了的项，未变的不刷屏）。</summary>
+    private static string DescribePresentation(ModuleInfo module, FormPresentation presentation)
+    {
+        if (!presentation.IsGiven)
+        {
+            return string.Empty;
+        }
+        var changes = new List<string>();
+        if (!string.Equals(FormOpenModes.Normalize(module.OpenMode), FormOpenModes.Normalize(presentation.OpenMode), StringComparison.Ordinal))
+        {
+            changes.Add($"打开方式 {FormOpenModes.Normalize(module.OpenMode)} → {FormOpenModes.Normalize(presentation.OpenMode)}");
+        }
+        if (module.DialogWidth != presentation.DialogWidth || module.DialogHeight != presentation.DialogHeight)
+        {
+            changes.Add($"弹窗尺寸 {DescribeSize(module.DialogWidth, module.DialogHeight)} → {DescribeSize(presentation.DialogWidth, presentation.DialogHeight)}");
+        }
+        return changes.Count == 0 ? string.Empty : "呈现配置：" + string.Join("；", changes) + "。";
+    }
+
+    /// <summary>审计文案里的页签列数摘要：列数是页签级事实，审计里要看得出"哪个页签几列"。</summary>
+    private static string DescribeTabColumns(IReadOnlyList<FormTabDefinition> tabs)
+        => string.Join("、", tabs.OrderBy(tab => tab.No).Select(tab =>
+            $"{tab.No}{(tab.Title.Length == 0 ? "默认" : tab.Title)}={tab.Columns?.ToString() ?? "默认"}"));
+
+    private static string DescribeSize(int? width, int? height)
+        => width is null && height is null ? "默认" : $"{width?.ToString() ?? "默认"}×{height?.ToString() ?? "默认"}";
 
     private async Task RestoreBackupAsync(int moduleId, LayoutBackup backup, string userId, CancellationToken token)
     {
@@ -401,8 +477,11 @@ public sealed class FormLayoutRepository(
         try
         {
             await DeleteRowsAsync(connection, transaction, moduleId, token);
+            // 回滚必须把页签级列数一起写回：漏了它，保存中途失败（复原备份）会把"哪个页签几列"抹成
+            // NULL（= 回落模块默认列数）——一次失败的保存改变了页面观感，且没有任何提示
             const string tabSql = """
-                INSERT INTO dbo.MODULE_FORM_TAB (M_IDX, TAB_NO, TAB_TITLE) VALUES (@ModuleId, @TabNo, @Title);
+                INSERT INTO dbo.MODULE_FORM_TAB (M_IDX, TAB_NO, TAB_TITLE, LAYOUT_COLUMNS)
+                VALUES (@ModuleId, @TabNo, @Title, @Columns);
                 """;
             foreach (var tab in backup.Tabs)
             {
@@ -410,6 +489,7 @@ public sealed class FormLayoutRepository(
                 command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
                 command.Parameters.Add("@TabNo", SqlDbType.Int).Value = tab.No;
                 command.Parameters.Add("@Title", SqlDbType.NVarChar, 50).Value = tab.Title;
+                command.Parameters.Add("@Columns", SqlDbType.TinyInt).Value = (object?)tab.Columns ?? DBNull.Value;
                 await command.ExecuteNonQueryAsync(token);
             }
             const string rowSql = """
@@ -449,6 +529,15 @@ public sealed class FormLayoutRepository(
             else if (backup.Dirty == true)
             {
                 await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, userId, token);
+            }
+
+            // 呈现列也回到保存前：这次改动整体没生效（重发布被拦），模块行不该留下"半截已改"的呈现配置。
+            // 页签级列数随页签行一起回到旧值（见上方 page-tab INSERT：LAYOUT_COLUMNS 一并写回）
+            if (backup.Presentation is { } original)
+            {
+                await UpdatePresentationAsync(connection, transaction, moduleId,
+                    new FormPresentation(original.OpenMode, original.DialogWidth, original.DialogHeight, IsGiven: true),
+                    token);
             }
             await transaction.CommitAsync(token);
         }
@@ -512,10 +601,12 @@ public sealed class FormLayoutRepository(
     private static async Task<ModuleInfo?> ReadModuleAsync(
         SqlConnection connection, int moduleId, CancellationToken token)
     {
-        // 列数固定为统一表单的四子列、页签只来自 MODULE_FORM_TAB：模块表的列数/页签列已退役
+        // 呈现配置取模块声明（FORM_OPEN_MODE / FORM_DIALOG_WIDTH / FORM_DIALOG_HEIGHT）；
+        // 页签与一行几列都只来自 MODULE_FORM_TAB（迁移 322 起模块级列数已删）
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))
+                   LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
+                   FORM_OPEN_MODE, FORM_DIALOG_WIDTH, FORM_DIALOG_HEIGHT
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -531,20 +622,23 @@ public sealed class FormLayoutRepository(
             return null;
         }
         var detailTable = reader.GetString(2);
+        var openMode = reader.IsDBNull(3) ? null : reader.GetString(3);
+        var dialogWidth = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4);
+        var dialogHeight = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
         return new ModuleInfo(moduleId, reader.GetString(0), masterTable,
-            detailTable.Length == 0 ? null : detailTable);
+            detailTable.Length == 0 ? null : detailTable, openMode, dialogWidth, dialogHeight);
     }
 
     /// <summary>
     /// 设计态看到的页签必须与运行态一致：页签只来自版式表（<c>MODULE_FORM_TAB</c>），
-    /// 没有页签行时兜底为常驻的 1 号页签。
+    /// 没有页签行时兜底为常驻的 1 号页签（列数按兜底 4 列，与库内 DEFAULT 同值）。
     /// </summary>
     private static IReadOnlyList<FormTabDefinition> EffectiveTabs(FormLayoutDefinition layout)
     {
         var tabs = layout.Tabs.ToList();
         if (tabs.All(tab => tab.No != 1))
         {
-            tabs.Insert(0, new FormTabDefinition(1, string.Empty));
+            tabs.Insert(0, new FormTabDefinition(1, string.Empty, FormLayoutDerivation.DefaultColumns));
         }
         return tabs.OrderBy(tab => tab.No).ToList();
     }
@@ -648,10 +742,13 @@ public sealed class FormLayoutRepository(
     }
 
     private sealed record ModuleInfo(
-        int ModuleId, string Title, string MasterTable, string? DetailTable);
+        int ModuleId, string Title, string MasterTable, string? DetailTable,
+        string? OpenMode = null, int? DialogWidth = null, int? DialogHeight = null);
 
     private sealed record LayoutBackup(
         IReadOnlyList<FormTabDefinition> Tabs,
         IReadOnlyList<(string Table, FormLayoutRow Row)> Rows,
-        bool? Dirty);
+        bool? Dirty,
+        /// <summary>模块行的呈现列快照（打开方式 / 弹窗宽高 / 栅格列数）：发布失败时一并回滚。</summary>
+        ModuleInfo? Presentation = null);
 }

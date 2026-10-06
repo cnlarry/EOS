@@ -3,8 +3,10 @@ import type { FormDefinition } from './formDefinition'
 
 /**
  * 浏览态工具栏单据级动作构建：
- * 原 FORM_BUTTONS 白名单分支与回退集在 FormEditorPage 内近似双份拷贝，
- * 状态禁用条件（isFinished/isConfirmed/flowInProgress）重复 8 遍；抽纯函数后可单测顺序断言。
+ * 动作集**只由能力与权限决定**（批核能力 / 结案权限 / 单据状态 / 流程在途），
+ * 曾经那套 `FORM_BUTTONS` 白名单分支已随迁移 320 退役——它全库为空，
+ * 运行态一直走的都是下面这条判定。
+ * 状态禁用条件（isFinished/flowInProgress）重复 8 遍，抽纯函数后可单测顺序断言。
  * 返回全部 approve/deapprove/endcase/unendcase/print 项，由调用方按固定顺序 filter 插入。
  */
 export interface ViewToolbarState {
@@ -35,33 +37,6 @@ export function buildViewToolbarItems(
   // 批核能力 = 工作流（过程/效果链/流程定义）或无副作用自动批核（与服务端同口径）；
   // 服务端已按"四者取并集"给出 hasApproveCapability，缺字段时回退到旧的两个标志。
   const canWorkflow = form.hasApproveCapability ?? (form.hasWorkflow || form.hasStatelessApprove)
-  if (form.buttons && form.buttons.length > 0)
-    return form.buttons.flatMap((button): ErpCommandItem[] => {
-      switch (button.action) {
-        case 'approve':
-          return canWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress
-            ? [{ action: 'approve', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.openApprove }]
-            : []
-        case 'deapprove':
-          return canWorkflow && form.canDeapprove && keyParam && master && master.CONFIRM_TAG === true
-            ? [{ action: 'deapprove', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.deapprove }]
-            : []
-        case 'endcase':
-          return keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
-            ? [{ action: 'endcase', loading: handlers.finishPending, onClick: handlers.endcase }]
-            : []
-        case 'unendcase':
-          return keyParam && form.canUnEndCase && master && master.FINISHED_TAG === true
-            ? [{ action: 'unendcase', loading: handlers.finishPending, onClick: handlers.unendcase }]
-            : []
-        case 'print':
-          return keyParam ? [{ action: 'print', onClick: handlers.openPrint }] : []
-        default:
-          return []
-      }
-    })
-
-  // 未配置 FORM_BUTTONS 的回退集（保持既有行为：工作流/结案/打印）
   return [
     ...(canWorkflow && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress && form.canApprove
       ? [{ action: 'approve', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.openApprove } satisfies ErpCommandItem]

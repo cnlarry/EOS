@@ -1202,7 +1202,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    编辑页通用结构：顶部工具栏 + 主表"标签-控件"成对网格
    （简单模块 2 对/行、业务单据 2~3 对/行）+ 长文本整行 + 底部灰显只读区 + 明细网格。 */
 /* 设计 token：标签宽/控件高/字号/分区间距统一定义于此。
-   统一表单全局固定一行四列，标签收窄、行高压矮，密集表单风格 */
+   栅格列数由**页签**声明（MODULE_FORM_TAB.LAYOUT_COLUMNS，1..4，NOT NULL DEFAULT 4），标签收窄、行高压矮，密集表单风格 */
 :root {
   --erp-form-label-min: 64px;
   --erp-form-label-width: 80px;
@@ -1524,6 +1524,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-field-setup-item:hover {
   background: var(--tblr-bg-surface-secondary);
 }
+.erp-field-setup-item:disabled { opacity: .5; }
+/* 「更多」菜单（弹窗 footer 的低频动作收口）：与上面的浮层共用同一套菜单样式，
+   只把宽度定得够放「图标 + 动作名」。 */
+.erp-form-more-menu { min-width: 168px; }
 
 /* 选择器弹窗：查询区（字段下拉 + 条件值）系统 */
 .erp-chooser-query .erp-chooser-field { flex: 0 0 170px; width: 170px; }
@@ -1575,6 +1579,49 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 统一表单：视口撑满（与工作台一致），主表单占剩余位置、明细固定高度，各自内部滚动。
    主表单卡与明细卡之间取 10px，与工作台、全站留白口径统一 */
 .erp-form-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+/* 弹窗打开方式（MODULES.FORM_OPEN_MODE='DIALOG'）的**背景底图**：把该模块的工作台列表渲染在
+   窗体背后，弹窗才像"浮在工作台上"，而不是"先开一张空白页再弹窗"。底图由表单页渲染、
+   `inert` 冻结交互；高度链照抄 `.erp-tab-panel > .container-fluid` 那一层（flex 传下去），
+   否则工作台会退化成"按内容算高度"的普通块。 */
+.erp-form-dialog-underlay { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+
+/* 弹窗打开方式（MODULES.FORM_OPEN_MODE='DIALOG'）：同一份表单内容装进**统一弹窗组件**
+   （components/ui/Modal，Bootstrap/Tabler 壳），地址与路由不变。宽高取模块配置的 px，
+   由 dialog 内联样式给出，这里只把"固定尺寸"落地，保证开窗后内容变化不再撑动窗体：
+   - modal-dialog-centered 默认 min-height 近整屏高，必须清零，否则固定高度形同虚设；
+   - modal-content 撑满 dialog，body 交出滚动，内容超出只在窗体内部滚；
+   - 明细卡在窗体内按窗体高度分配高度（不用 vh），窗口大小切换时主表单不被挤成一条缝。 */
+/* max-width 必须放开：modal-dialog 默认上限 500px 会把模块配的宽度吃掉 */
+.erp-form-dialog { max-width: calc(100vw - 32px); min-height: 0; max-height: calc(100vh - 32px); }
+.erp-form-dialog .modal-content { height: 100%; max-height: 100%; }
+/* body 内边距归零：工具条要贴着窗体顶边整条铺开，留白交给内容区自己 */
+.erp-form-dialog .modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+/* 工具条＝窗体第一行（与旧系统 ERP/UserControl/ModifyToolBar.ascx 同位：它在编辑窗体第一行、
+   字段区之上）。下边框与标题栏同款，把工具条与字段区明确分开；窗体窄时按钮换行而不是被裁掉
+   ——工具栏本身与其中的命令栏（ErpCommandBar 根，role=toolbar）都要允许换行 */
+.erp-form-dialog .modal-body > .erp-form-toolbar {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--tblr-border-color);
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.erp-form-dialog .modal-body > .erp-form-toolbar [role="toolbar"] { flex-wrap: wrap; row-gap: 6px; }
+.erp-form-dialog .modal-body > .erp-form-page { flex: 1 1 auto; min-height: 0; padding: 10px 12px 12px; }
+.erp-form-dialog .erp-form-page > .card.erp-detail-card { height: clamp(160px, 34%, 420px); }
+/* 滚动不外溢：窗体内部滚到底再滚滚轮，不会把背后的列表一起带着动（那种"整页在动"的观感也是抖） */
+.erp-form-dialog,
+.erp-form-dialog .modal-body,
+.erp-form-dialog .erp-form-grid,
+.erp-form-dialog .table-responsive { overscroll-behavior: contain; }
 /* JSX 上曾挂着 Bootstrap 工具类 gap-2（0.5rem !important）压掉本规则的 10px，
    已改为不在 JSX 上写间距类：主表单与明细网格的间距只由本规则一处定义 */
 .erp-form-page > .erp-form-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

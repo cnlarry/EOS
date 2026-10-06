@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Forms;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -37,21 +38,22 @@ public sealed class MenuAdminRepository(
     {
         using var timing = DbTimingCollector.Instance.Measure();
         var sql = """
-            SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
+            SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG,
+                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,EFFECT_ENGINE_TAG,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
-                   ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT
-            FROM dbo.MODULES WITH (NOLOCK)
-            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
-            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
-            WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),MODULES.M_IDX) LIKE @Keyword)
+                   ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT,
+                   REMARK
+                   FROM dbo.MODULES WITH (NOLOCK)
+                   LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
+                   LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
+                   WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),MODULES.M_IDX) LIKE @Keyword)
             ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,MODULES.M_IDX;
             """;
         await using var connection = connections.Create();
@@ -235,21 +237,22 @@ public sealed class MenuAdminRepository(
     public async Task<MenuAdminModule?> GetModuleAsync(int id, CancellationToken token)
     {
         var sql = """
-            SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
+            SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG,
+                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,EFFECT_ENGINE_TAG,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
-                   ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT
-            FROM dbo.MODULES WITH (NOLOCK)
-            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
-            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
-            WHERE MODULES.M_IDX=@Id;
+                   ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT,
+                   REMARK
+                   FROM dbo.MODULES WITH (NOLOCK)
+                   LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
+                   LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
+                   WHERE MODULES.M_IDX=@Id;
             """;
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
@@ -462,6 +465,8 @@ public sealed class MenuAdminRepository(
     /// </summary>
     public async Task<int> SaveAllAsync(SaveMenuModuleRequest request, int? oldId, string updatedBy, CancellationToken token)
     {
+        // 呈现配置（打开方式 / 弹窗宽高 / 栅格列数）不在本端点的写面上：它归表单设计器，
+        // 随版式保存 + 同请求重发布（保存即生效）。此处只读回显示，写路径见 FormLayoutRepository。
         var input = request.Module;
         if (oldId is { } updateId && input.M_IDX <= 0)
             throw new ArgumentException("菜单编号必须为正整数。");
@@ -675,40 +680,36 @@ public sealed class MenuAdminRepository(
         if (!string.IsNullOrWhiteSpace(input.DETAIL_TABLE) && !WorkbenchSql.Identifier.IsMatch(input.DETAIL_TABLE))
             throw new ArgumentException($"操作副表名无效：{input.DETAIL_TABLE}");
         if (!ModuleRouteValidator.IsValidHostUrl(input.M_URL))
-            throw new ArgumentException("页面链接不符合现代路由契约：应为承载页（如 /workbench，不带编号）、精确路径、直达表单模板或 /fallback/modules/{编号}。");
-        if (!ModuleRouteValidator.IsValidActionUrl(input.NEW_URL))
-            throw new ArgumentException("新增URL不符合路由契约：应为 /workbench/{moduleId}/new 模板或精确现代路径，留空回退统一表单。");
-        if (!ModuleRouteValidator.IsValidActionUrl(input.MODI_URL))
-            throw new ArgumentException("修改URL不符合路由契约：应为 /workbench/{moduleId}/edit 模板或精确现代路径，留空回退统一表单。");
+            throw new ArgumentException("页面链接不符合路由契约：应为承载页（如 /workbench，不带编号）、精确路径，或留空（目录节点/未声明承载页）。");
     }
 
     private static MenuAdminModule ReadModule(SqlDataReader reader) => new(
         reader.GetInt32(0),
         GetString(reader, 1), GetString(reader, 2) ?? string.Empty, GetString(reader, 3), GetString(reader, 4),
-        GetString(reader, 5), GetString(reader, 6), GetString(reader, 7),
-        GetBool(reader, 8), GetBool(reader, 9), GetBool(reader, 10),
-        reader.IsDBNull(11) ? null : reader.GetInt32(11),
-        reader.GetInt32(12), GetBool(reader, 13), GetBool(reader, 14), GetBool(reader, 15),
-        GetBool(reader, 16), GetString(reader, 17),
-        GetString(reader, 18), GetString(reader, 19), GetString(reader, 20),
-        GetString(reader, 21), GetString(reader, 22),
+        GetBool(reader, 5), GetBool(reader, 6), GetBool(reader, 7),
+        reader.IsDBNull(8) ? null : reader.GetInt32(8),
+        reader.GetInt32(9), GetBool(reader, 10), GetBool(reader, 11), GetBool(reader, 12),
+        GetBool(reader, 13), GetString(reader, 14),
+        GetString(reader, 15), GetString(reader, 16), GetString(reader, 17),
+        GetString(reader, 18), GetString(reader, 19),
+        GetBool(reader, 20), GetString(reader, 21), GetString(reader, 22),
         GetBool(reader, 23), GetString(reader, 24), GetString(reader, 25),
         GetBool(reader, 26), GetString(reader, 27), GetString(reader, 28),
         GetBool(reader, 29), GetString(reader, 30), GetString(reader, 31),
         GetBool(reader, 32), GetString(reader, 33), GetString(reader, 34),
-        GetBool(reader, 35), GetString(reader, 36), GetString(reader, 37),
-        GetString(reader, 38),
-        reader.IsDBNull(39) ? null : reader.GetDateTime(39),
-        GetString(reader, 40),
-        reader.IsDBNull(41) ? (int?)null : (int)reader.GetByte(41),
-        GetString(reader, 42),
-        GetString(reader, 43),
-        EffectEngineTag: GetBool(reader, 44),
-        MasterTableDesc: GetString(reader, 45),
-        DetailTableDesc: GetString(reader, 46),
-        DirtyTag: GetBool(reader, 47),
-        PublishVersion: reader.IsDBNull(48) ? null : reader.GetInt32(48),
-        PublishedAt: reader.IsDBNull(49) ? null : reader.GetDateTime(49));
+        GetString(reader, 35),
+        reader.IsDBNull(36) ? null : reader.GetDateTime(36),
+        GetString(reader, 37),
+        reader.IsDBNull(38) ? (int?)null : (int)reader.GetByte(38),
+        GetString(reader, 39),
+        EffectEngineTag: GetBool(reader, 40),
+        MasterTableDesc: GetString(reader, 41),
+        DetailTableDesc: GetString(reader, 42),
+        DirtyTag: GetBool(reader, 43),
+        PublishVersion: reader.IsDBNull(44) ? null : reader.GetInt32(44),
+        PublishedAt: reader.IsDBNull(45) ? null : reader.GetDateTime(45),
+        // REMARK 追加在两个 SELECT 的**最末尾**（下标 46）：既有 0..45 的下标一个都不用挪
+        REMARK: GetString(reader, 46));
 
     private async Task<(string? Master, string? Detail)> ResolveModuleTablesAsync(int moduleId, CancellationToken token)
     {
@@ -902,19 +903,19 @@ public sealed class MenuAdminRepository(
     {
         const string sql = """
             INSERT INTO dbo.MODULES
-             (M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
+             (M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
               MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
               GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
               GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-              FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG)
-            VALUES
-              (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@NEW_URL,@MODI_URL,@HELP_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
+              M_ICON,EFFECT_ENGINE_TAG,REMARK)
+              VALUES
+              (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
               @GROUP1,@GROUP_EXP1,@GROUP_DESC1,@GROUP2,@GROUP_EXP2,@GROUP_DESC2,@GROUP3,@GROUP_EXP3,@GROUP_DESC3,
               @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE(),
-              @FORM_BUTTONS,@M_ICON,@EFFECT_ENGINE_TAG);
+              @M_ICON,@EFFECT_ENGINE_TAG,@REMARK);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         await command.ExecuteNonQueryAsync(token);
@@ -924,7 +925,7 @@ public sealed class MenuAdminRepository(
     {
         const string sql = """
             UPDATE dbo.MODULES SET
-              M_IDX=@M_IDX,M_ALIAS=@M_ALIAS,M_DESC=@M_DESC,M_URL=@M_URL,NEW_URL=@NEW_URL,MODI_URL=@MODI_URL,HELP_URL=@HELP_URL,
+              M_IDX=@M_IDX,M_ALIAS=@M_ALIAS,M_DESC=@M_DESC,M_URL=@M_URL,
               DETAIL_NO_FIELDS=@DETAIL_NO_FIELDS,DETAIL_NO_SAVE=@DETAIL_NO_SAVE,SEARCH_1=@SEARCH_1,SEARCH_2=@SEARCH_2,
               M_P_IDX=@M_P_IDX,SORT_IDX=@SORT_IDX,M_TAG=@M_TAG,M_ROOT_IDX=@M_ROOT_IDX,AUTO_APPROVE=@AUTO_APPROVE,
               IF_COPY=@IF_COPY,ERROR_NO_SAVE=@ERROR_NO_SAVE,SORT_FIELDS=@SORT_FIELDS,
@@ -936,9 +937,10 @@ public sealed class MenuAdminRepository(
               GROUP4=@GROUP4,GROUP_EXP4=@GROUP_EXP4,GROUP_DESC4=@GROUP_DESC4,
               GROUP5=@GROUP5,GROUP_EXP5=@GROUP_EXP5,GROUP_DESC5=@GROUP_DESC5,
               LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
-              FORM_BUTTONS=@FORM_BUTTONS,M_ICON=@M_ICON,
-              EFFECT_ENGINE_TAG=@EFFECT_ENGINE_TAG
-            WHERE M_IDX=@OLD_IDX;
+              M_ICON=@M_ICON,
+              EFFECT_ENGINE_TAG=@EFFECT_ENGINE_TAG,
+              REMARK=@REMARK
+              WHERE M_IDX=@OLD_IDX;
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         command.Parameters.Add("@OLD_IDX", SqlDbType.Int).Value = oldId;
@@ -952,9 +954,6 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@M_ALIAS", (object?)m.M_ALIAS ?? DBNull.Value);
         command.Parameters.AddWithValue("@M_DESC", m.M_DESC);
         command.Parameters.AddWithValue("@M_URL", (object?)m.M_URL ?? DBNull.Value);
-        command.Parameters.AddWithValue("@NEW_URL", (object?)m.NEW_URL ?? DBNull.Value);
-        command.Parameters.AddWithValue("@MODI_URL", (object?)m.MODI_URL ?? DBNull.Value);
-        command.Parameters.AddWithValue("@HELP_URL", (object?)m.HELP_URL ?? DBNull.Value);
         command.Parameters.AddWithValue("@DETAIL_NO_FIELDS", (object?)m.DETAIL_NO_FIELDS ?? DBNull.Value);
         command.Parameters.Add("@DETAIL_NO_SAVE", SqlDbType.Bit).Value = m.DETAIL_NO_SAVE;
         command.Parameters.Add("@SEARCH_1", SqlDbType.Bit).Value = m.SEARCH_1;
@@ -982,9 +981,11 @@ public sealed class MenuAdminRepository(
             command.Parameters.AddWithValue($"@GROUP_DESC{i + 1}", (object?)description ?? DBNull.Value);
         }
         command.Parameters.AddWithValue("@LAST_UPDATE_BY", updatedBy);
-        command.Parameters.AddWithValue("@FORM_BUTTONS", (object?)m.FORM_BUTTONS ?? DBNull.Value);
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
         command.Parameters.Add("@EFFECT_ENGINE_TAG", SqlDbType.Bit).Value = m.EffectEngineTag;
+        // 模块备注：写"这个模块是干什么的"（2301「基础」页签可编辑）。空串归一成 NULL，
+        // 免得列表/详情在两处显示口径上出现"空串 vs NULL"的假差异。
+        command.Parameters.AddWithValue("@REMARK", string.IsNullOrWhiteSpace(m.REMARK) ? DBNull.Value : m.REMARK.Trim());
         return command;
     }
 
@@ -1000,6 +1001,8 @@ public sealed class MenuAdminRepository(
     /// `ON UPDATE CASCADE` 随本语句首行（改 `MODULES.M_IDX`）自动改指——外键若不带来级联，
     /// 首行本身就会被引用完整性拦下。
     /// </summary>
+    // 与旧过程 P_Change_M_IDX 逐条对应（差异逐条具名在 MenuAdminModuleIdCascadeLiveTests）：
+    // TASK 已随零引用死表退役（迁移 322），级联里不再有它。
     internal const string ChangeModuleIndexSql = """
         UPDATE dbo.MODULES SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         UPDATE dbo.MODULES SET M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX;
@@ -1014,7 +1017,6 @@ public sealed class MenuAdminRepository(
         UPDATE dbo.WFFORM_FLOW SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
         UPDATE dbo.WF_MONITOR SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
         UPDATE dbo.BILLKIND SET B_M_IDX=@NEW_IDX WHERE B_M_IDX=@OLD_IDX;
-        UPDATE dbo.TASK SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         """;
 
     internal static async Task ChangeModuleIdAsync(SqlConnection connection, SqlTransaction transaction, int oldId, int newId, CancellationToken token)

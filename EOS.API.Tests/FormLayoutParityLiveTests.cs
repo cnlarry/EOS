@@ -22,9 +22,9 @@ namespace EOS.API.Tests;
 /// 需要真库连接；基线文件由环境变量 <c>EOS_FORM_LAYOUT_PARITY_BASELINE</c> 指定。
 /// 未提供基线（或文件不存在）时不执行比对；提供即必须全绿（对拍基线是外部产物，不入库）。
 ///
-/// **迁移 319 之后抓基线要先知道一件事**：`form.columns` 由陈旧的固定值 `2`（旧代码的记录默认值，
-/// 运行时不消费）改为按模块声明的栅格列数（未声明为 4）。用 319 之前抓的基线对拍，会在
-/// `form.columns` 上全模块报差异——那是这次契约变更本身，不是观感回退，重新抓一份基线即可。
+/// **契约演进（抓基线前先看一眼）**：`form.columns` 段已随迁移 322 删除（一行几列只看页签
+/// `tabs[].columns`，库内 NOT NULL DEFAULT 4）——本文不再比它；`tabs[]` 只按 (号, 标题) 归一后比，
+/// 所以页签列数不进对拍面。用 322 之前的基线对拍，字段视图应当逐模块一致。
 /// </summary>
 [Trait("Category", "Integration")]
 [Collection("live-database")]
@@ -156,9 +156,7 @@ public sealed class FormLayoutParityLiveTests
                 Keys(formRoot, "masterFields"), form.MasterFields.Select(field => field.Key));
             CompareKeys(mismatches, moduleId, title, "form.detailFields",
                 Keys(formRoot, "detailFields"), form.DetailFields.Select(field => field.Key));
-            CompareValue(mismatches, moduleId, title, "form.columns",
-                formRoot.TryGetProperty("columns", out var formColumns) ? formColumns.ToString() : "null",
-                form.Columns.ToString());
+            // 表单定义里的 columns 段已随迁移 322 删除（一行几列只看页签）；基线里若还留着它，属预期差异
             CompareTabs(mismatches, moduleId, title, formRoot, form.Tabs);
         }
 
@@ -187,8 +185,10 @@ public sealed class FormLayoutParityLiveTests
         Assert.NotNull(definition);
         var layout = definition!.FormLayout;
         Assert.NotNull(layout);
-        // 统一表单的栅格列数按模块声明（MODULES.FORM_LAYOUT_COLUMNS）；1405 未声明，故为默认四列
-        Assert.Equal(FormLayoutDerivation.DefaultColumns, layout!.Columns);
+        // 一行几列按页签：1405 的页签列数落在 1..4（库内 NOT NULL DEFAULT 4），没有模块级兜底值可判
+        Assert.All(layout!.Tabs, tab => Assert.InRange(
+            FormLayoutDerivation.ResolveTabColumns(layout.Tabs, tab.No),
+            FormLayoutDerivation.MinColumns, FormLayoutDerivation.MaxColumns));
         Assert.NotEmpty(layout.Master);
         // 版式段必须与"当前是否已定制"自洽：库里该模块有行才算定制（无行是推导默认）
         var storedRows = await ReadStoredRowCountAsync(definition!.ModuleId);

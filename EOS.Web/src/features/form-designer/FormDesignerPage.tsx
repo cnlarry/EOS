@@ -26,6 +26,7 @@ import { ApiError } from '../../types/api'
 import { apiClient } from '../../services/api'
 import { createId } from '../../lib/uuid'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
@@ -34,6 +35,12 @@ import { applyDrop, parseDragId, zoneOf, type DragSource, type DropTarget } from
 import DesignCanvas from './DesignCanvas'
 import DetailColumnPanel from './DetailColumnPanel'
 import { useDesignerHistory } from './useDesignerHistory'
+import {
+  DEFAULT_DIALOG_HEIGHT,
+  DEFAULT_DIALOG_WIDTH,
+  normalizeFormOpenMode,
+  resolveDialogSize,
+} from '../document-workbench/formOpenMode'
 import {
   addFromPool,
   addTab,
@@ -51,8 +58,12 @@ import {
   RESIDENT_TAB_NO,
   resetRow,
   setHidden,
+  setDialogSize,
+  setOpenMode,
   setPlacement,
   setSection,
+  setTabColumns,
+  tabColumns,
   tabTitle,
   toDraft,
   toSavePayload,
@@ -61,6 +72,14 @@ import {
 import type { FormLayoutTemplate } from './types'
 import type { DesignDraft, DesignState, DesignTable, SaveResponse } from './types'
 import './form-designer.css'
+
+/** 数字输入框 → 可空整数：留空即 null（"按默认开窗"），非数字也按空处理，不把 NaN 写进草稿。 */
+function toOptionalInt(value: string): number | null {
+  const trimmed = value.trim()
+  if (trimmed === '') return null
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? Math.round(parsed) : null
+}
 
 interface FormDesignerPageProps {
   moduleId: number
@@ -115,6 +134,8 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   const [issues, setIssues] = useState<string[]>([])
   const [status, setStatus] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null)
   const [menu, setMenu] = useState<DesignerMenu | null>(null)
+  /** 「表单呈现」配置弹窗（入口在页签行最右端）。 */
+  const [presentationOpen, setPresentationOpen] = useState(false)
   const [templates, setTemplates] = useState<FormLayoutTemplate[] | null>(null)
   const [dragging, setDragging] = useState<DragSource | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget>(null)
@@ -511,7 +532,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
    */
   const removeTab = (no: number) => {
     if (!draft || no === RESIDENT_TAB_NO) return
-    const label = tabTitle(draft.tabs.find(tab => tab.no === no) ?? { no, title: '' })
+    const label = tabTitle(draft.tabs.find(tab => tab.no === no) ?? { no, title: '', columns: null })
     if (!window.confirm(`删除页签「${label}」？`)) return
     apply(deleteTab(draft, no))
     if (activeTabNo === no) setActiveTabNo(RESIDENT_TAB_NO)
@@ -563,6 +584,13 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
 
   // 拖拽预览版式：插入落点先按结果重排渲染，后方字段随之让位（松手前就能看出落点结果）
   const canvasDraft = previewDraft ?? draft
+  // 打开方式与窗体尺寸：与运行态同一处解析（弹窗才谈得上尺寸，其余方式画板铺满）
+  const isDialogDraft = normalizeFormOpenMode(draft.openMode) === 'DIALOG'
+  const dialogSize = resolveDialogSize(draft.dialogWidth, draft.dialogHeight)
+  // 页签行右端那颗按钮上的摘要：不点开也能看出"这张表单怎么开、窗体多大"
+  const presentationSummary = isDialogDraft
+    ? `弹窗 ${dialogSize.width}×${dialogSize.height}`
+    : normalizeFormOpenMode(draft.openMode) === 'NEWTAB' ? '新页签' : '本页签'
 
   return (
     <div className="erp-designer">
@@ -652,6 +680,71 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         </div>
       ) : null}
 
+      {/* 表单呈现配置：入口在页签行最右端（原本的空白处），弹窗里改打开方式与窗体尺寸。
+          它随版式同一笔保存、同一次重发布 ⇒ **保存即生效**——不像模块管理里的元数据草稿
+          那样要人工点发布（见 docs/guide/42 §三）。画板尺寸随之切换，所见即所得。
+          栅格列数**不在这里**：它是页签级事实，走页签右键「布局列数」（各页签可以不同）。 */}
+      {presentationOpen ? (
+        <Modal
+          title="表单呈现"
+          ariaLabel="表单呈现"
+          onClose={() => setPresentationOpen(false)}
+          footer={
+            <Button size="sm" onClick={() => setPresentationOpen(false)}>
+              完成
+            </Button>
+          }
+        >
+          <div className="erp-designer-present-fields">
+            <label className="erp-designer-field">
+              <span>打开方式</span>
+              <select
+                className="form-select form-select-sm"
+                aria-label="打开方式"
+                disabled={busy}
+                value={normalizeFormOpenMode(draft.openMode)}
+                onChange={event => apply(setOpenMode(draft, event.target.value))}
+              >
+                <option value="TAB">本页签（默认）</option>
+                <option value="NEWTAB">新页签</option>
+                <option value="DIALOG">弹窗</option>
+              </select>
+            </label>
+            <label className="erp-designer-field">
+              <span>弹窗宽度</span>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                aria-label="弹窗宽度（px）"
+                placeholder={String(DEFAULT_DIALOG_WIDTH)}
+                disabled={busy || !isDialogDraft}
+                value={draft.dialogWidth == null ? '' : String(draft.dialogWidth)}
+                onChange={event => apply(setDialogSize(draft, { width: toOptionalInt(event.target.value), height: undefined }))}
+              />
+            </label>
+            <label className="erp-designer-field">
+              <span>弹窗高度</span>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                aria-label="弹窗高度（px）"
+                placeholder={String(DEFAULT_DIALOG_HEIGHT)}
+                disabled={busy || !isDialogDraft}
+                value={draft.dialogHeight == null ? '' : String(draft.dialogHeight)}
+                onChange={event => apply(setDialogSize(draft, { width: undefined, height: toOptionalInt(event.target.value) }))}
+              />
+            </label>
+            <p className="erp-designer-muted mb-0">
+              {isDialogDraft
+                ? `画板按弹窗 ${dialogSize.width}×${dialogSize.height} 排布（留空即默认 ${DEFAULT_DIALOG_WIDTH}×${DEFAULT_DIALOG_HEIGHT}）`
+                : '本页签 / 新页签下表单占满可用区域，画板同样铺满'}
+              ｜ 保存即生效（随定义快照一并重发布）
+              ｜ 一行几列按页签定：页签上右键「布局列数」
+            </p>
+          </div>
+        </Modal>
+      ) : null}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -681,8 +774,11 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
               onRowContextMenu={(key, x, y) => setMenu({ kind: 'cell', table: 'master', key, x, y })}
               onSectionContextMenu={(sectionId, x, y) => setMenu({ kind: 'section', sectionId, x, y })}
               onRenameTab={(no, title) => apply(renameTab(draft, no, title))}
-              onAddTab={() => apply(addTab(draft, `页签 ${draft.tabs.length + 1}`))}
+              // 新页签沿用**当前页签**的列数：在一个两列的表单里加页签，得到的是两列页签
+              onAddTab={() => apply(addTab(draft, `页签 ${draft.tabs.length + 1}`, tabColumns(draft, activeTabNo)))}
               onDeleteTab={removeTab}
+              onOpenPresentation={() => setPresentationOpen(true)}
+              presentationSummary={presentationSummary}
               onTabContextMenu={(no, x, y) => setMenu({ kind: 'tab', no, x, y })}
             />
 
@@ -724,7 +820,8 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                     </button>
                     <div className="erp-designer-menu-label">宽度</div>
                     <div className="erp-designer-menu-row">
-                      {[1, 2, 3, 4].map(span => (
+                      {/* 可选宽度 = **该行所属页签**的栅格列数（页签级事实），不写死 1..4 */}
+                      {Array.from({ length: tabColumns(draft, menuRow.tabNo) }, (_, index) => index + 1).map(span => (
                         <button
                           key={span}
                           type="button"
@@ -814,6 +911,22 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 >
                   页签改名…
                 </button>
+                {/* 布局列数：页签级事实——同一表单的不同页签可以一行几列各不相同。
+                    与"宽度/行高"同一套就地选择；改完自动把该页签内越界的跨度夹回来（调整即合规） */}
+                <div className="erp-designer-menu-label">布局列数</div>
+                <div className="erp-designer-menu-row">
+                  {[1, 2, 3, 4].map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={draft && tabColumns(draft, menu.no) === count ? 'is-active' : ''}
+                      aria-label={`一行 ${count} 列`}
+                      onClick={() => runMenu(() => apply(setTabColumns(draft!, menu.no, count)))}
+                    >
+                      {`${count} 列`}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   disabled={menu.no === RESIDENT_TAB_NO}

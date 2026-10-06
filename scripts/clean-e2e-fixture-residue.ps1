@@ -187,7 +187,7 @@ $Targets = @(
 
 # 需要显式谓词的表（键形特殊，无法用「键列 LIKE E2E%」覆盖）
 $Specials = @(
-    @{ Table = 'SYSDF';                  Predicate = "RECORD_IDX LIKE N'E2E%' OR RECORD_IDX LIKE N'%,E2E%'"; Note = '单据操作流水：RECORD_IDX 是「单别,单号」复合键' },
+    # SYSDF（旧操作流水）已随迁移 325 整表退役（数据留档 logs/archive/retire-324/），不再需要清理谓词
     @{ Table = 'SYSDG';                  Predicate = "G_DESC = N'E2E 权限测试组'";                            Note = '组号由服务端生成，只有组名带自造标记' },
     @{ Table = 'SYSDG_USER';             Predicate = "USER_ID LIKE N'E2E%' OR G_IDX IN (SELECT G_IDX FROM dbo.SYSDG WITH (NOLOCK) WHERE G_DESC = N'E2E 权限测试组')"; Note = '组成员：随组删除' },
     @{ Table = 'WORKBENCH_IDEMPOTENCY';  Predicate = "IDEMPOTENCY_KEY LIKE N'E2E%'";                         Note = '端到端幂等键' },
@@ -396,9 +396,9 @@ if ($IncludePermissionResidue) {
     }
 }
 
-# 删除顺序：流水 → 明细 → 主表 → 主档 → 权限/幂等
+# 删除顺序：明细 → 主表 → 主档 → 权限/幂等
+# （原先的 rank 0「流水」档是 SYSDF：它已随迁移 325 退役，档位随之取消）
 function Get-Rank { param($t)
-    if ($t -eq 'SYSDF') { return 0 }
     if ($t -eq 'WORKBENCH_IDEMPOTENCY') { return 1 }
     if ($t.EndsWith('_D')) { return 2 }
     if ($t.EndsWith('_M')) { return 3 }

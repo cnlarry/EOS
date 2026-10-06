@@ -94,8 +94,8 @@ public sealed class DepotProductLocationModuleLiveTests
         Assert.Equal(Table, definition.MasterTable);
         Assert.Equal(new[] { "DEPOT_ID", "PRO_NO", "LOCATION_NO" }, definition.MasterPkOrder.ToArray());
 
-        // `HasAdd` / `HasEdit` 刻意**不在这里断言**：它们由定义构建时的"统一表单启用清单"决定
-        // （`WorkbenchDefinitionBuilder`：`HasAdd = NEW_URL 或 MODI_URL 存在`，表单启用时回落成表单路由），
+        // `HasAdd` / `HasEdit` 刻意**不在这里断言**：它们由请求期的"统一表单名单折叠"决定
+        // （`WorkbenchAccessPolicy.FoldRoutes`：写名单 = 可新增可编辑；迁移 321 之后这是唯一真源），
         // 也就是说 **先有清单、再发布快照**，快照里才带得上这两项。今天这份快照是在清单加入之前发布的，
         // 所以它是 false——重启 API（`IOptions` 是启动快照，改 appsettings 不生效）后重发布即可为 true。
         // 已发布快照必须带 5 个字段（迁移 238 + 订正 239）：`ReadFields` 在"用户还没个人字段配置"时

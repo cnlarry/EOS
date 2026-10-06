@@ -163,7 +163,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT TOP 10 m.M_IDX, ISNULL(m.M_URL,'')
+            SELECT TOP 10 m.M_IDX, ISNULL(m.M_URL,''), ISNULL(m.MASTER_TABLE,'')
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE m.M_DESC LIKE @Keyword
               AND NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL
@@ -176,7 +176,8 @@ public sealed class DocumentWorkbenchRepository(
         {
             var moduleId = reader.GetInt32(0);
             var url = reader.IsDBNull(1) ? "" : reader.GetString(1);
-            if (ModuleRouteValidator.IsWorkbenchUrl(url))
+            var moduleMaster = reader.IsDBNull(2) ? "" : reader.GetString(2);
+            if (ModuleRouteValidator.IsWorkbenchModule(url, moduleMaster))
             {
                 logger.LogDebug("只读助手找到通用模块 titleKeyword={Keyword} module={ModuleId}", titleKeyword, moduleId);
                 return moduleId;
@@ -286,7 +287,8 @@ public sealed class DocumentWorkbenchRepository(
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)), '') IS NOT NULL
               AND NULLIF(LTRIM(RTRIM(m.MASTER_TABLE)), '') IS NOT NULL
-              AND LTRIM(RTRIM(ISNULL(m.M_URL, ''))) = '/workbench'
+              -- 承载页：声明 /workbench，或没声明（有主表即默认走统一工作台，见迁移 321）
+              AND LTRIM(RTRIM(ISNULL(m.M_URL, ''))) IN ('', '/workbench')
               AND (@Keyword = '' OR m.M_DESC LIKE @LikeKeyword)
             ORDER BY m.SORT_IDX, m.M_IDX;
             """;

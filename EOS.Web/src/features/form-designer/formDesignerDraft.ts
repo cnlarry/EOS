@@ -5,6 +5,7 @@
  * 每步编辑能不能做（不可移除字段、复合格配对、页签归属）都能被单测穷举。
  */
 
+import { DEFAULT_FORM_COLUMNS, resolveFormColumns, resolveTabColumns } from '../document-workbench/formLayout'
 import type {
   DesignDraft,
   DesignRow,
@@ -28,7 +29,9 @@ export function toDraft(state: DesignState): DesignDraft {
   return {
     moduleId: state.moduleId,
     title: state.title,
-    columns: state.columns,
+    openMode: state.openMode,
+    dialogWidth: state.dialogWidth,
+    dialogHeight: state.dialogHeight,
     masterTable: state.masterTable,
     detailTable: state.detailTable,
     tabs: normalizeTabs(state.tabs),
@@ -45,21 +48,48 @@ export function toDraft(state: DesignState): DesignDraft {
 }
 
 /** 页签必须含常驻的 1 号页签（其余可删；删掉的页签里的字段回落到它）。 */
-export function normalizeTabs(tabs: readonly { no: number; title: string }[]): DesignTabLike[] {
-  const byNo = new Map<number, string>()
+export function normalizeTabs(tabs: readonly DesignTabInputLike[]): DesignTabLike[] {
+  const byNo = new Map<number, { title: string; columns: number }>()
   for (const tab of tabs) {
     if (!Number.isFinite(tab.no) || tab.no <= 0) continue
-    if (!byNo.has(tab.no)) byNo.set(tab.no, tab.title ?? '')
+    if (!byNo.has(tab.no)) {
+      byNo.set(tab.no, { title: tab.title ?? '', columns: normalizeTabColumns(tab.columns) })
+    }
   }
-  if (!byNo.has(RESIDENT_TAB_NO)) byNo.set(RESIDENT_TAB_NO, '')
+  if (!byNo.has(RESIDENT_TAB_NO)) {
+    byNo.set(RESIDENT_TAB_NO, { title: '', columns: DEFAULT_FORM_COLUMNS })
+  }
   return [...byNo.entries()]
     .sort((left, right) => left[0] - right[0])
-    .map(([no, title]) => ({ no, title }))
+    .map(([no, rest]) => ({ no, ...rest }))
+}
+
+interface DesignTabInputLike {
+  no: number
+  title: string
+  columns?: number | null
 }
 
 interface DesignTabLike {
   no: number
   title: string
+  columns: number
+}
+
+/**
+ * 页签列数的归一：越界/缺省一律落兜底 4 列（库内该列 NOT NULL DEFAULT 4，写入侧不落 NULL），
+ * 不放行非法值到服务端。
+ */
+function normalizeTabColumns(columns: number | null | undefined): number {
+  return resolveFormColumns(columns)
+}
+
+/**
+ * 某页签的布局列数（与运行态同一处解析 `resolveTabColumns`）。
+ * 设计器的画板、跨度夹取与本地校验都走它——三处与运行态同源，才不会"设计态排 2 列、运行态按 4 列渲染"。
+ */
+export function tabColumns(draft: DesignDraft, tabNo: number): number {
+  return resolveTabColumns(draft.tabs, tabNo)
 }
 
 function cloneRows(rows: readonly DesignRow[]): DesignRow[] {
@@ -91,7 +121,7 @@ function renumber(rows: readonly DesignRow[], table: DesignTable): DesignRow[] {
   })
 }
 
-export function tabTitle(tab: DesignTabLike): string {
+export function tabTitle(tab: { no: number; title: string }): string {
   return tab.title.trim().length > 0 ? tab.title.trim() : RESIDENT_TAB_TITLE
 }
 
@@ -155,7 +185,9 @@ export function setPlacement(
   key: string,
   placement: { span?: number; rowSpan?: number; newLine?: boolean },
 ): DesignDraft {
-  const columns = draft.columns > 0 ? draft.columns : 1
+  const target = draft.master.find((row) => row.key === key)
+  // 跨度上限 = **该行所属页签**的列数（页签 1 两列、页签 2 一列时两行各有各的上限）
+  const columns = target ? tabColumns(draft, target.tabNo) : 1
   return {
     ...draft,
     master: draft.master.map((row) =>
@@ -297,9 +329,32 @@ function toRow(field: PoolField): DesignRow {
   }
 }
 
-export function addTab(draft: DesignDraft, title: string): DesignDraft {
+/**
+ * 新增页签：列数默认沿用**当前页签**的列数（不传则落兜底 4 列）。
+ * 沿用当前页签而不是硬编码一个值，是为了"接着刚才那张单子继续排"——
+ * 在一个两列的表单里加页签，得到的应该是两列页签。
+ */
+export function addTab(draft: DesignDraft, title: string, columns: number | null = null): DesignDraft {
   const no = Math.max(RESIDENT_TAB_NO, ...draft.tabs.map((tab) => tab.no)) + 1
-  return { ...draft, tabs: normalizeTabs([...draft.tabs, { no, title }]) }
+  return { ...draft, tabs: normalizeTabs([...draft.tabs, { no, title, columns }]) }
+}
+
+/**
+ * 页签的布局列数：改声明，并把**该页签内**超出新列数的跨度**夹到新列数**（其它页签不受影响）。
+ *
+ * 用户 2026-10-06 拍板："当调整布局的时候，自动把跨度超过布局列数的字段调整为布局列数，
+ * 这样就合规了"——所以这里与 `setPlacement` 一样是**夹取**语义，不留一堆待用户逐行手改的越界行。
+ * 服务端写入侧同样按页签列数夹取（`FormLayoutSubmission.Normalize`），两端一致。
+ */
+export function setTabColumns(draft: DesignDraft, tabNo: number, columns: number): DesignDraft {
+  const next = resolveFormColumns(columns)
+  return {
+    ...draft,
+    tabs: draft.tabs.map((tab) => (tab.no === tabNo ? { ...tab, columns: next } : tab)),
+    master: draft.master.map((row) =>
+      row.tabNo === tabNo ? { ...row, span: Math.min(row.span, next) } : row,
+    ),
+  }
 }
 
 export function renameTab(draft: DesignDraft, no: number, title: string): DesignDraft {
@@ -377,7 +432,13 @@ export function toSavePayload(
   baseUpdatedAt: string | null,
   idempotencyKey: string,
 ): SavePayload {
-  const tabs: TabInput[] = normalizeTabs(draft.tabs).map((tab) => ({ no: tab.no, title: tab.title }))
+  const tabs: TabInput[] = normalizeTabs(draft.tabs).map((tab) => ({
+    no: tab.no,
+    title: tab.title,
+    // 页签自带布局列数（服务端写入 MODULE_FORM_TAB.LAYOUT_COLUMNS，NOT NULL DEFAULT 4）：
+    // 一律落具体值，不提交 null
+    columns: normalizeTabColumns(tab.columns),
+  }))
   const master: RowInput[] = [...draft.master]
     .sort(byPlacement)
     .map((row) => ({
@@ -394,8 +455,44 @@ export function toSavePayload(
   const detail = [...draft.detail]
     .sort(byPlacement)
     .map((row) => ({ key: row.key, hidden: row.hidden }))
-  return { baseUpdatedAt, idempotencyKey, tabs, master, detail }
+  return {
+    baseUpdatedAt,
+    idempotencyKey,
+    tabs,
+    master,
+    detail,
+    // 呈现配置整段随同一笔提交：服务端据此写 MODULES 三列并重发布（保存即生效）。
+    // 栅格列数不在这里——它是页签级事实，随 tabs 各自提交
+    openMode: draft.openMode,
+    dialogWidth: draft.dialogWidth,
+    dialogHeight: draft.dialogHeight,
+  }
 }
+
+/**
+ * 打开方式：切到本页签 / 新页签时**清掉窗体宽高**——那两种方式不消费尺寸，
+ * 留着会变成"看着配了、其实不生效"的值（与运行态读回口径一致）。
+ */
+export function setOpenMode(draft: DesignDraft, openMode: string): DesignDraft {
+  if (openMode !== 'DIALOG') {
+    return { ...draft, openMode, dialogWidth: null, dialogHeight: null }
+  }
+  return { ...draft, openMode }
+}
+
+/** 弹窗宽高：留空（null）即按默认 720×560 开窗，由运行态与画板同一处解析。 */
+export function setDialogSize(
+  draft: DesignDraft,
+  size: { width?: number | null; height?: number | null },
+): DesignDraft {
+  return {
+    ...draft,
+    dialogWidth: size.width === undefined ? draft.dialogWidth : size.width,
+    dialogHeight: size.height === undefined ? draft.dialogHeight : size.height,
+  }
+}
+
+
 
 /**
  * 本地校验：与后端 fail-closed 同口径，先给用户即时反馈。
@@ -411,8 +508,10 @@ export function validateDraft(draft: DesignDraft): string[] {
     if (row.hidden && row.locked) {
       issues.push(`${row.label} ${row.lockReason ?? '不允许移出表单'}。`)
     }
-    if (row.span < 1 || row.span > draft.columns) {
-      issues.push(`${row.label} 的列跨度超出 1..${draft.columns}。`)
+    // 跨度上限是该行所属页签的列数（页签级事实）
+    const rowColumns = tabColumns(draft, row.tabNo)
+    if (row.span < 1 || row.span > rowColumns) {
+      issues.push(`${row.label} 的列跨度超出 1..${rowColumns}。`)
     }
     if (row.rowSpan < 1 || row.rowSpan > MAX_ROW_SPAN) {
       issues.push(`${row.label} 的行跨度超出 1..${MAX_ROW_SPAN}。`)
@@ -480,8 +579,8 @@ export interface DraftFile {
   version: 1
   moduleId: number
   title: string
-  columns: number
-  tabs: { no: number; title: string }[]
+  /** 一行几列随各页签（`tabs[].columns`），文件里不再单列一个模块级列数。 */
+  tabs: { no: number; title: string; columns?: number | null }[]
   master: RowInput[]
   detail: { key: string; hidden: boolean }[]
 }
@@ -493,8 +592,7 @@ export function exportDraftFile(draft: DesignDraft): string {
     version: 1,
     moduleId: draft.moduleId,
     title: draft.title,
-    columns: draft.columns,
-    tabs: normalizeTabs(draft.tabs).map((tab) => ({ no: tab.no, title: tab.title })),
+    tabs: normalizeTabs(draft.tabs).map((tab) => ({ no: tab.no, title: tab.title, columns: tab.columns })),
     master: [...draft.master].sort(byPlacement).map((row) => ({
       key: row.key,
       tabNo: row.tabNo,
@@ -543,14 +641,19 @@ function applyRows(draft: DesignDraft, source: Pick<DraftFile, 'tabs' | 'master'
   const knownDetail = new Map(
     [...draft.detail, ...draft.detailPool].map((row) => [row.key.toUpperCase(), materialize(row)]),
   )
+  // 页签连同各自的列数一起套用：来源的"页签 1 两列、页签 2 一列"在目标模块同样成立
+  const tabs = normalizeTabs(source.tabs?.length ? source.tabs : [{ no: RESIDENT_TAB_NO, title: '' }])
   const rows: DesignRow[] = []
   for (const input of source.master) {
     const mine = knownMaster.get(String(input.key ?? '').toUpperCase())
     if (!mine) continue
+    const tabNo = input.tabNo && input.tabNo > 0 ? input.tabNo : RESIDENT_TAB_NO
     rows.push({
       ...mine,
-      tabNo: input.tabNo && input.tabNo > 0 ? input.tabNo : RESIDENT_TAB_NO,
-      span: clamp(input.span ?? mine.span, 1, 4),
+      tabNo,
+      // 来源可能是另一个模块（同主表套用）或旧文件：跨度必须夹到**目标页签**的列数，
+      // 否则套用后会出现本页签排不出来的跨度，保存被服务端拒
+      span: clamp(input.span ?? mine.span, 1, resolveTabColumns(tabs, tabNo)),
       rowSpan: clamp(input.rowSpan ?? mine.rowSpan, 1, MAX_ROW_SPAN),
       newLine: input.newLine === true,
       sectionId: (input.sectionId ?? '').trim().slice(0, MAX_SECTION_LENGTH) || null,
@@ -570,7 +673,7 @@ function applyRows(draft: DesignDraft, source: Pick<DraftFile, 'tabs' | 'master'
   const placedDetail = new Set(details.map((row) => row.key.toUpperCase()))
   return {
     ...draft,
-    tabs: normalizeTabs(source.tabs?.length ? source.tabs : [{ no: RESIDENT_TAB_NO, title: '' }]),
+    tabs,
     master: rows,
     detail: details,
     // 当前模块有、来源没有的字段**必须回到字段池**（不能就地消失——那等于替换版式时静默删字段）

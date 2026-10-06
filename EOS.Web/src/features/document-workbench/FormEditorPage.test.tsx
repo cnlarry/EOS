@@ -1,11 +1,12 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
 import { WorkspaceDirtyContext, WorkspaceTabContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
 import { ToastProvider } from '../../components/ui/Toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
+import { AuthContext, type AuthContextValue } from '../auth/authContext'
 import { FormEditorPage } from './FormEditorPage'
 import type { FormDefinition } from './formDefinition'
 
@@ -47,8 +48,6 @@ const formDefinition: FormDefinition = {
   detailNoFields: 'PRO_NO',
   detailDfVerify: 'ITEM',
   tabs: [],
-  columns: 4,
-  buttons: null,
   hasWorkflow: false,
   hasStatelessApprove: false,
   defaultValues: {},
@@ -99,7 +98,7 @@ function installApiMocks() {
 function renderEditor(initialEntry: string, dirty?: {
   setDirty: (tabId: string, dirty: boolean) => void
   register: (tabId: string, handlers: TabDirtyHandlers) => () => void
-}) {
+}, state?: unknown) {
   const router = createMemoryRouter(
     [
       { path: '/workbench/:moduleId', element: <div>BACK_LIST</div> },
@@ -107,23 +106,50 @@ function renderEditor(initialEntry: string, dirty?: {
       { path: '/workbench/:moduleId/edit/*', element: <FormEditorPage /> },
       { path: '/workbench/:moduleId/view/*', element: <FormEditorPage /> },
     ],
-    { initialEntries: [initialEntry] },
+    { initialEntries: [state === undefined ? initialEntry : { pathname: initialEntry, state }] },
   )
-  // 脏位登记给外壳（WorkspaceDirtyContext），未注入时按无外壳独立渲染
+  // 脏位登记给外壳（WorkspaceDirtyContext），未注入时按无外壳独立渲染。
+  // 弹窗方式的"工作台底图"会渲染列表页，它要外壳的认证上下文：这里给一份只读替身（不发起会话请求）。
+  const authStub: AuthContextValue = {
+    bootstrap: null, loading: false,
+    login: async () => undefined, logout: async () => undefined,
+    hasPermission: () => true,
+  }
   return renderWithProviders(
     <WorkspaceTabContext.Provider value="t1">
-      <WorkspaceDirtyContext.Provider value={dirty ? { register: dirty.register, setDirty: dirty.setDirty } : null}>
-        {/* 单据操作的结果走全局轻提示，页面依赖 ToastProvider */}
-        <ToastProvider>
-          <RouterProvider router={router} />
-        </ToastProvider>
-      </WorkspaceDirtyContext.Provider>
+      <AuthContext.Provider value={authStub}>
+        <WorkspaceDirtyContext.Provider value={dirty ? { register: dirty.register, setDirty: dirty.setDirty } : null}>
+          {/* 单据操作的结果走全局轻提示，页面依赖 ToastProvider */}
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </WorkspaceDirtyContext.Provider>
+      </AuthContext.Provider>
     </WorkspaceTabContext.Provider>,
   )
 }
 
 function masterInputs(container: HTMLElement): HTMLInputElement[] {
   return Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control:not([disabled])'))
+}
+
+/** 弹窗方式的背景底图会渲染该模块的工作台列表：测试给它一份最小可用的列表定义与空数据。 */
+const underlayListDefinition = {
+  moduleId: 1209, title: '产品版次', masterTable: 'PRODUCT_EDITION', detailTable: '', masterFields: [], detailFields: [],
+  hasAdd: true, hasEdit: true, masterPkOrder: ['PRO_NO'], hasWorkflow: false, ifCopy: false, searchMaster: false,
+  searchDetail: false, buttons: null, formOpenMode: 'DIALOG',
+}
+
+/** 弹窗方式专用的 GET 桩：表单定义 + 记录 + 底图列表（顺序敏感：form-definition、records 必须先判）。 */
+function mockDialogGet(formDefinitionReply: unknown, recordReply: unknown = recordBundle) {
+  apiClientMock.get.mockImplementation(async (path: string) => {
+    const p = String(path)
+    if (p.includes('/form-definition')) return formDefinitionReply
+    if (p.includes('/records')) return { rows: [], total: 0, page: 1, pageSize: 50 }
+    if (p.includes('/record')) return recordReply
+    if (p.includes('/definition')) return underlayListDefinition
+    throw new Error(`unexpected GET ${p}`)
+  })
 }
 
 describe('FormEditorPage', () => {
@@ -186,6 +212,172 @@ describe('FormEditorPage', () => {
     expect(screen.getByDisplayValue('5')).toBeInTheDocument()
     expect(container.querySelector('input[type="checkbox"]')).toBeChecked()
     expect(screen.queryByText('由系统维护')).not.toBeInTheDocument()
+  })
+
+  it('弹窗打开方式：表单内容装进模块声明尺寸的统一弹窗，背后是工作台列表底图', async () => {
+    mockDialogGet({ ...formDefinition, openMode: 'DIALOG', dialogWidth: 900, dialogHeight: 600 })
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    // 沿用统一弹窗组件（components/ui/Modal）：壳、标题、关闭按钮都是那一套
+    const dialog = container.querySelector<HTMLElement>('.modal-dialog.erp-form-dialog')
+    expect(dialog).not.toBeNull()
+    expect(dialog!.style.width).toBe('900px')
+    expect(dialog!.style.height).toBe('600px')
+    expect(dialog!.querySelector('.modal-header .modal-title')?.textContent).toBe('产品版次')
+    // 工具条在窗体第一行（旧系统 ModifyToolBar 同位）、字段区在其下；统一弹窗不再有 footer
+    const body = dialog!.querySelector('.modal-body') as HTMLElement
+    expect(body.firstElementChild?.classList.contains('erp-form-toolbar')).toBe(true)
+    expect(body.firstElementChild?.textContent).toContain('保存')
+    expect(body.querySelector(':scope > .erp-form-page')).not.toBeNull()
+    expect(dialog!.querySelector('.modal-footer')).toBeNull()
+    expect(body.querySelector('.erp-form-grid')).not.toBeNull()
+    // 背后渲染该模块的工作台列表当底图：弹窗是"浮在工作台上"，不是"先开空白页再弹窗"
+    expect(container.querySelector('.erp-form-dialog-underlay')).not.toBeNull()
+  })
+
+  it('弹窗打开方式：与整页同一套——摆页签、只看当前页签的字段，列数按页签取', async () => {
+    const withTabs = {
+      ...formDefinition,
+      openMode: 'DIALOG',
+      // 页签 1 一行一列、页签 2 一行两列：同一份表单里两页签各排各的
+      tabs: [
+        { no: 1, title: '甲', columns: 1 },
+        { no: 2, title: '乙', columns: 2 },
+      ],
+      masterFields: [
+        field('PRO_NO', '产品编号', { isPrimaryKey: true, tabNo: 1 }),
+        field('EDITION', '版次', { tabNo: 2 }),
+      ],
+    }
+    mockDialogGet(withTabs)
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByText('产品编号')).toBeInTheDocument())
+    // 页签在弹窗里照摆（用户 2026-10-06 推翻了"弹窗内不实现多页签"）：当前是页签 1
+    const tabs = container.querySelectorAll('.erp-form-dialog .erp-form-tabs .nav-link')
+    expect([...tabs].map(node => node.textContent)).toEqual(['甲', '乙'])
+    expect(screen.queryByText('版次')).toBeNull()
+    // 页签 1 声明一列 → 栅格一行一列
+    expect(container.querySelector<HTMLElement>('.erp-form-dialog .erp-form-row')?.style.gridTemplateColumns)
+      .toBe('repeat(1, minmax(0, 1fr))')
+
+    fireEvent.click(screen.getByRole('button', { name: '乙' }))
+    await waitFor(() => expect(screen.getByText('版次')).toBeInTheDocument())
+    expect(screen.queryByText('产品编号')).toBeNull()
+    // 切到页签 2（声明两列）→ 同一个窗体里栅格变两列
+    expect(container.querySelector<HTMLElement>('.erp-form-dialog .erp-form-row')?.style.gridTemplateColumns)
+      .toBe('repeat(2, minmax(0, 1fr))')
+  })
+
+  it('本页签打开方式：摆页签、且不套窗体容器与底图', async () => {
+    const withTabs = {
+      ...formDefinition,
+      tabs: [{ no: 1, title: '甲' }, { no: 2, title: '乙' }],
+      masterFields: [
+        field('PRO_NO', '产品编号', { isPrimaryKey: true, tabNo: 1 }),
+        field('EDITION', '版次', { tabNo: 2 }),
+      ],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return withTabs
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByText('产品编号')).toBeInTheDocument())
+    expect(container.querySelector('.erp-form-tabs')).not.toBeNull()
+    expect(screen.queryByText('版次')).toBeNull()
+    await waitFor(() => expect(container.querySelector('.erp-form-dialog')).toBeNull())
+    expect(container.querySelector('.erp-form-dialog-underlay')).toBeNull()
+  })
+
+  it('弹窗打开方式：顶部工具条只常显主干动作，其余收进「更多」', async () => {
+    mockDialogGet({ ...formDefinition, openMode: 'DIALOG', hasWorkflow: true })
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '更多' })).toBeInTheDocument())
+    const strip = container.querySelector('.modal-body > .erp-form-toolbar') as HTMLElement
+    // 常显：返回 + 主干动作，都排在窗体第一行
+    for (const label of ['返回', '新增', '编辑', '删除', '批核']) {
+      expect(within(strip).getByRole('button', { name: label })).toBeInTheDocument()
+    }
+    // 低频动作不在工具条里，而在「更多」菜单里（顺序与整页一致）
+    expect(within(strip).queryByRole('button', { name: '复制' })).toBeNull()
+    fireEvent.click(within(strip).getByRole('button', { name: '更多' }))
+    const menu = screen.getByRole('menu', { name: '更多动作' })
+    expect(within(menu).getByRole('menuitem', { name: /复制/ })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: /审批历史/ })).toBeInTheDocument()
+    // 菜单项就是同一个动作：点「审批历史」按原样打开审批历史窗体
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /审批历史/ }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '审批历史' })).toBeInTheDocument())
+  })
+
+  it('整页打开方式：不出现「更多」，动作仍一行铺开', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '复制' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '更多' })).toBeNull()
+    expect(container.querySelector('.erp-form-toolbar [role="toolbar"]')).not.toBeNull()
+  })
+
+  it('弹窗打开方式：窗体右上角关闭与「取消」同路（回列表）', async () => {
+    mockDialogGet({ ...formDefinition, openMode: 'DIALOG' })
+    renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.getByText('BACK_LIST')).toBeInTheDocument())
+  })
+
+  it('弹窗打开方式：记录加载期间窗体不消失（不抖回整页加载态）', async () => {
+    mockDialogGet({ ...formDefinition, openMode: 'DIALOG', dialogWidth: 900, dialogHeight: 600 }, new Promise(() => undefined))
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
+    await waitFor(() => expect(container.querySelector('.erp-form-dialog')).not.toBeNull())
+    // 加载态渲染在窗体内部，而不是把窗体收掉换成整页；尺寸随定义到达后取定义值
+    await waitFor(() => expect(container.querySelector('.erp-form-dialog')!.textContent ?? '').toContain('正在加载表单…'))
+    await waitFor(() => expect(container.querySelector<HTMLElement>('.erp-form-dialog')!.style.width).toBe('900px'))
+  })
+
+  it('弹窗打开方式：带窗体提示进入时首帧就是窗体（列表页递来的尺寸）', async () => {
+    apiClientMock.get.mockImplementation(() => new Promise(() => undefined))
+    const { container } = renderEditor('/workbench/1209/new', undefined, {
+      formShell: { openMode: 'DIALOG', title: '产品版次', width: 880, height: 620 },
+    })
+    const dialog = container.querySelector<HTMLElement>('.erp-form-dialog')
+    expect(dialog).not.toBeNull()
+    expect(dialog!.style.width).toBe('880px')
+    expect(dialog!.querySelector('.modal-body')?.textContent).toContain('正在加载表单…')
+  })
+
+  it('弹窗打开方式：重新挂载（浏览→编辑）首帧就是窗体，不闪整页加载态', async () => {
+    mockDialogGet({ ...formDefinition, openMode: 'DIALOG', dialogWidth: 900, dialogHeight: 600 })
+    const first = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(first.container.querySelector('.erp-form-dialog')).not.toBeNull())
+    first.unmount()
+    // 重新挂载时定义还没回来：容器按上一次已知的窗体给，加载态落在窗体内部
+    apiClientMock.get.mockImplementation(() => new Promise(() => undefined))
+    const second = renderEditor('/workbench/1209/edit/P1/A')
+    expect(second.container.querySelector('.erp-form-dialog')).not.toBeNull()
+    expect(second.container.querySelector('.modal-body')?.textContent).toContain('正在加载表单…')
+  })
+
+  it('页签声明的栅格列数决定一行几列', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      // 一行几列只看页签（模块级那层已随迁移 322 删除）
+      if (p.includes('/form-definition')) {
+        return { ...formDefinition, tabs: [{ no: 1, title: '', columns: 2 }] }
+      }
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    const row = container.querySelector<HTMLElement>('.erp-form-row')
+    expect(row!.style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))')
   })
 
   it('浏览模式（有工作流、未批核）显示批核/打印，无解批', async () => {
@@ -361,17 +553,18 @@ describe('FormEditorPage', () => {
     expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
   })
 
-  it('浏览态工具栏完整顺序：批核/审批历史/结案/附件/打印/帮助按约定排列', async () => {
+  it('浏览态工具栏完整顺序：批核/审批历史/结案/附件/打印按约定排列', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
-      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true, canEndCase: true, canFileView: true, helpUrl: '/help/1209.html' }
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true, canEndCase: true, canFileView: true }
       if (p.includes('/record')) return recordBundle
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
     const toolbar = (await screen.findByRole('button', { name: '返回' })).closest('[role="toolbar"]')!
     const order = Array.from(toolbar.querySelectorAll('button')).map(button => (button.textContent ?? '').trim())
-    expect(order).toEqual(['返回', '新增', '复制', '编辑', '删除', '批核', '审批历史', '结案', '附件', '打印', '帮助'])
+    // 「帮助」已随 HELP_URL 退场（迁移 321）：定序止于打印
+    expect(order).toEqual(['返回', '新增', '复制', '编辑', '删除', '批核', '审批历史', '结案', '附件', '打印'])
   })
 
   it('浏览模式已批核时删除按钮禁用；点击删除（确认后）调用删除接口并返回列表', async () => {
@@ -1046,7 +1239,7 @@ describe('FormEditorPage', () => {
       ['3 / span 2', '2 / span 1'],
       ['1 / span 4', '3 / span 2'],
     ])
-    // 栅格列数固定四子列
+    // 页签没声明列数（历史快照）⇒ 兜底四子列
     const grid = container.querySelector<HTMLElement>('.erp-form-row')
     expect(grid?.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))')
   })

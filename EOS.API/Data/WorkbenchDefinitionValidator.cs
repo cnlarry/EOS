@@ -48,35 +48,29 @@ public sealed class WorkbenchDefinitionValidator(
         // 写名单与只读名单都表示"运行期有统一表单"，区别只在能不能写
         var enabled = formSettings.Value.EnabledModuleIds.Contains(moduleId)
             || formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
-        var workbenchUrl = ModuleRouteValidator.IsWorkbenchUrl(module.MUrl);
-        if (!workbenchUrl && !enabled)
+        var workbenchModule = ModuleRouteValidator.IsWorkbenchModule(module.MUrl, module.MasterTable);
+        if (!workbenchModule && !enabled)
         {
             checks.Add(new("runtime_whitelist", false,
-                "模块既不在统一表单名单内，M_URL 也不是工作台承载页，无法进入运行时。"));
+                "模块既不在统一表单名单内，承载页也不是统一工作台（M_URL 不是 /workbench，也不是\"留空 + 有主表\"），无法进入运行时。"));
         }
         else
         {
             checks.Add(new("runtime_whitelist", true,
-                workbenchUrl ? "M_URL 为工作台承载页。" : "模块在统一表单名单内。"));
+                workbenchModule ? "承载页是统一工作台（M_URL=/workbench，或留空但有主表）。" : "模块在统一表单名单内。"));
         }
 
-        var routeErrors = new List<string>();
-        if (!string.IsNullOrWhiteSpace(module.NewUrl) && ModuleRouteValidator.ResolveActionUrl(module.NewUrl, moduleId) is null)
-        {
-            routeErrors.Add($"NEW_URL 非法：{module.NewUrl}");
-        }
-        if (!string.IsNullOrWhiteSpace(module.ModiUrl) && ModuleRouteValidator.ResolveActionUrl(module.ModiUrl, moduleId) is null)
-        {
-            routeErrors.Add($"MODI_URL 非法：{module.ModiUrl}");
-        }
-        if (routeErrors.Count > 0)
-        {
-            checks.Add(new("route_valid", false, string.Join("；", routeErrors)));
-        }
-        else
-        {
-            checks.Add(new("route_valid", true, "路由契约（M_URL/NEW_URL/MODI_URL）合法。"));
-        }
+        // 路由契约：只剩 M_URL 一个字段（NEW_URL / MODI_URL / HELP_URL 随迁移 321 物理删除）。
+        // 这里只拦"退场形态"——已删掉的动作模板不得复活；不校验精确路径白名单，
+        // 以免历史上那类 /legacy/... 占位值把发布卡死（它们本来就落占位页，安全降级）。
+        var retiredTemplates = new[] { "/workbench/{moduleId}/new", "/workbench/{moduleId}/edit", "/workbench/{moduleId}/view" };
+        var routeError = retiredTemplates
+            .FirstOrDefault(template => string.Equals(module.MUrl.Trim(), template, StringComparison.OrdinalIgnoreCase)) is { } revived
+            ? $"M_URL 写了已退场的动作模板（新增/修改路由随迁移 321 删除，请改填承载页）：{revived}"
+            : null;
+        checks.Add(routeError is null
+            ? new("route_valid", true, "路由契约合法（只认 M_URL 承载页，不再有新增/修改路由）。")
+            : new("route_valid", false, routeError));
 
         var masterOk = WorkbenchSql.Identifier.IsMatch(module.MasterTable) && await WorkbenchSql.TableExistsAsync(connection, module.MasterTable, token);
         checks.Add(masterOk
@@ -194,7 +188,7 @@ public sealed class WorkbenchDefinitionValidator(
             : new("convert_functions_controlled", false, $"CONVERT_FUNCTION 不在白名单：{string.Join(",", convertErrors)}。"));
 
         WorkbenchDefinition? definition = null;
-        if (workbenchUrl || enabled)
+        if (workbenchModule || enabled)
         {
             // 发布路径的"可构建"校验必须以"元数据重建"后的定义为准（与写入快照的定义一致）：
             // 走 forPublish=true 会忽略已发布基线，让校验反映当前代码+元数据，而不是旧快照。
@@ -212,7 +206,7 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("definition_build", false, "模块不在运行白名单，跳过定义构建。"));
         }
 
-        if (enabled || workbenchUrl)
+        if (enabled || workbenchModule)
         {
             if (definition is not null)
             {
@@ -478,7 +472,7 @@ public sealed class WorkbenchDefinitionValidator(
     {
         const string sql = """
             SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(M_URL,''))),LTRIM(RTRIM(ISNULL(NEW_URL,''))),LTRIM(RTRIM(ISNULL(MODI_URL,''))),
+                   LTRIM(RTRIM(ISNULL(M_URL,''))),
                    LTRIM(RTRIM(ISNULL(FILTER,''))),
                    ISNULL(GROUP1,0),ISNULL(GROUP_EXP1,''),ISNULL(GROUP2,0),ISNULL(GROUP_EXP2,''),
                    ISNULL(GROUP3,0),ISNULL(GROUP_EXP3,''),ISNULL(GROUP4,0),ISNULL(GROUP_EXP4,''),
@@ -497,8 +491,8 @@ public sealed class WorkbenchDefinitionValidator(
         var expressions = new string[5];
         for (var i = 0; i < 5; i++)
         {
-            groups[i] = reader.GetBoolean(7 + i * 2);
-            expressions[i] = reader.IsDBNull(8 + i * 2) ? string.Empty : reader.GetString(8 + i * 2).Trim();
+            groups[i] = reader.GetBoolean(5 + i * 2);
+            expressions[i] = reader.IsDBNull(6 + i * 2) ? string.Empty : reader.GetString(6 + i * 2).Trim();
         }
         return new ModuleRow(
             moduleId,
@@ -507,8 +501,6 @@ public sealed class WorkbenchDefinitionValidator(
             string.IsNullOrWhiteSpace(reader.GetString(2)) ? null : reader.GetString(2),
             reader.GetString(3),
             reader.GetString(4),
-            reader.GetString(5),
-            reader.GetString(6),
             groups,
             expressions);
     }
@@ -889,8 +881,6 @@ public sealed class WorkbenchDefinitionValidator(
         string MasterTable,
         string? DetailTable,
         string MUrl,
-        string NewUrl,
-        string ModiUrl,
         string Filter,
         bool[] GroupEnabled,
         string[] GroupExpressions);

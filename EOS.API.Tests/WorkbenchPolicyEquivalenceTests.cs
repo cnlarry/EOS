@@ -16,15 +16,15 @@ namespace EOS.API.Tests;
 /// （404 / 403 / 400）与响应体里的错误码与文案。
 /// 这些退役判据只存在于本用例，不在生产代码里保留。
 ///
-/// 矩阵维度：写名单 ∈/∉ × 只读名单 ∈/∉ × NEW_URL / MODI_URL ∈{无值, 自定义页, 统一表单动作路由}
-/// × 权限位组合 × 表单模式 × 流程动作 × 幂等键；并按"定义可装配 / 装配不出表单"两档各跑一遍。
+/// 矩阵维度：写名单 ∈/∉ × 只读名单 ∈/∉ × 权限位组合 × 表单模式 × 流程动作 × 幂等键；
+/// 并按"定义可装配 / 装配不出表单"两档各跑一遍。
+///
+/// 迁移 321 删掉了 NEW_URL / MODI_URL / HELP_URL，"新增/编辑路由"这一维（无值 / 自定义页 /
+/// 统一表单动作路由）随之退场——基准里的 URL 项恒为空值档，与现行策略逐格一致。
 /// </summary>
 public class WorkbenchPolicyEquivalenceTests
 {
     private const int ModuleId = 1001;
-
-    private static readonly string?[] ActionUrls =
-        [null, "/admin/fields", $"/workbench/{ModuleId}/new"];
 
     private static readonly WorkbenchPolicyEquivalenceTests.Profile[] Profiles =
     [
@@ -400,17 +400,15 @@ public class WorkbenchPolicyEquivalenceTests
         foreach (var formAvailable in new[] { true, false })
             foreach (var writable in new[] { true, false })
                 foreach (var readOnly in new[] { true, false })
-                    foreach (var newUrl in ActionUrls)
-                        foreach (var modiUrl in ActionUrls)
-                            foreach (var profile in Profiles)
-                                yield return new Cell(formAvailable, writable, readOnly, newUrl, modiUrl, profile, RawDefinition(newUrl, modiUrl), RawForm(), RightsFor(profile));
+                    foreach (var profile in Profiles)
+                        yield return new Cell(formAvailable, writable, readOnly, profile, RawDefinition(), RawForm(), RightsFor(profile));
     }
 
-    private static WorkbenchDefinition RawDefinition(string? newUrl, string? modiUrl) => new(
+    // 定义里的路由字段已随迁移 321 删掉：基准与现行策略都只看"名单 + 权限"。
+    private static WorkbenchDefinition RawDefinition() => new(
         ModuleId, "测试模块", "T1001", null, [], [], null,
         HasAdd: false, HasEdit: false, DetailNoSave: false,
-        MasterPkOrder: [], DetailNoFields: string.Empty, HasWorkflow: false,
-        NewUrl: newUrl, ModiUrl: modiUrl);
+        MasterPkOrder: [], DetailNoFields: string.Empty, HasWorkflow: false);
 
     private static FormDefinition RawForm() => new(
         ModuleId, "测试模块", "T1001", null,
@@ -463,11 +461,11 @@ public class WorkbenchPolicyEquivalenceTests
         return (new WorkbenchAccessPolicy(source, new FakePermissions(cell.Rights, fieldAdminRights), Options.Create(settings)), source);
     }
 
-    /// <summary>写名单内、全权限、无自定义路由的一格：三条表单装配调用点都可达。</summary>
+    /// <summary>写名单内、全权限的一格：三条表单装配调用点都可达。</summary>
     private static Cell AllAllowedCell()
     {
         var profile = Profiles[^1];
-        return new Cell(true, true, false, null, null, profile, RawDefinition(null, null), RawForm(), RightsFor(profile));
+        return new Cell(true, true, false, profile, RawDefinition(), RawForm(), RightsFor(profile));
     }
 
     private static FormCall ExpectedFormCall(Cell cell, string mode, bool canSetup) => new(
@@ -516,12 +514,11 @@ public class WorkbenchPolicyEquivalenceTests
     }
 
     private sealed record Cell(
-        bool FormAvailable, bool FormEnabled, bool FormReadOnly, string? NewUrl, string? ModiUrl,
+        bool FormAvailable, bool FormEnabled, bool FormReadOnly,
         Profile RightsProfile, WorkbenchDefinition Definition, FormDefinition Form, ModuleRights Rights)
     {
         public override string ToString()
-            => $"formAvailable={FormAvailable} writable={FormEnabled} readOnly={FormReadOnly} newUrl={NewUrl ?? "<null>"} " +
-               $"modiUrl={ModiUrl ?? "<null>"} profile={RightsProfile.Name}";
+            => $"formAvailable={FormAvailable} writable={FormEnabled} readOnly={FormReadOnly} profile={RightsProfile.Name}";
     }
 
     private sealed class FakeDefinitionSource : IWorkbenchDefinitionSource
@@ -590,12 +587,11 @@ public class WorkbenchPolicyEquivalenceTests
             if (userId is null) return Denied("NOT_FOUND");
             if (!rights.CanBrowse) return Denied("NOT_FOUND");
             if (raw is null) return Denied("NOT_FOUND");
-            var addRoute = raw.NewUrl is not null && (!ModuleRouteValidator.IsUnifiedFormRoute(raw.NewUrl, moduleId) || formEnabled);
-            var editRoute = raw.ModiUrl is not null && (!ModuleRouteValidator.IsUnifiedFormRoute(raw.ModiUrl, moduleId) || formEnabled);
+            // URL 维度已随迁移 321 删除（NEW_URL/MODI_URL 恒无值）：新增/编辑只看名单。
             var definition = raw with
             {
-                HasAdd = addRoute || formEnabled,
-                HasEdit = editRoute || formEnabled || formReadOnly,
+                HasAdd = formEnabled,
+                HasEdit = formEnabled || formReadOnly,
                 CanDelete = rights.CanDelete,
             };
             return Allowed(definition);
@@ -687,9 +683,8 @@ public class WorkbenchPolicyEquivalenceTests
                 : new Decision("ALLOW", null, null, null, null);
 
         private static bool HasWritablePage(WorkbenchDefinition definition, bool formEnabled, int moduleId)
-            => formEnabled
-            || (definition.NewUrl is not null && !ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl, moduleId))
-            || (definition.ModiUrl is not null && !ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl, moduleId));
+            // 迁移 321 之后"可写页面入口"只有一处：统一表单写名单（URL 项已删除）
+            => formEnabled;
 
         private static bool Can(ModuleRights rights, PermissionAction action) => action switch
         {
@@ -711,12 +706,10 @@ public class WorkbenchPolicyEquivalenceTests
 
         private static WorkbenchDefinition Folded(WorkbenchDefinition? raw, bool formEnabled, bool formReadOnly, ModuleRights rights, int moduleId)
         {
-            var addRoute = raw!.NewUrl is not null && (!ModuleRouteValidator.IsUnifiedFormRoute(raw.NewUrl, moduleId) || formEnabled);
-            var editRoute = raw.ModiUrl is not null && (!ModuleRouteValidator.IsUnifiedFormRoute(raw.ModiUrl, moduleId) || formEnabled);
-            return raw with
+            return raw! with
             {
-                HasAdd = addRoute || formEnabled,
-                HasEdit = editRoute || formEnabled || formReadOnly,
+                HasAdd = formEnabled,
+                HasEdit = formEnabled || formReadOnly,
                 CanDelete = rights.CanDelete,
             };
         }

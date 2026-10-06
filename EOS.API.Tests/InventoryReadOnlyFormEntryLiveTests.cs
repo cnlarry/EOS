@@ -10,12 +10,12 @@ namespace EOS.API.Tests;
 ///
 /// 背景：模块 `1302 料件批号资料`（`INV_BATCH_M`）与 `1303 料件库存资料`（`INV_PRO_DEPOT`）
 /// 的主表由库存移动引擎维护，通用表单写入会绕过引擎直接改账，所以它们**不在写名单**里。
-/// 但它们的界面入口并非不存在：`MODULES.MODI_URL` 仍指向统一表单编辑模板，且挂着一批
+/// 但它们的界面入口并非不存在：承载页（`MODULES.M_URL`）是统一工作台，且挂着一批
 /// 用户点击触发的自定义按钮（改人工字段 / 冻结 / 解冻 / 预留 / 释放）。三者必须同时成立，
 /// 缺任何一件，"有入口"或"没有入口"就只是说法：
 ///   ① 配置侧——模块在 `UnifiedFormEditor.ReadOnlyModuleIds` 内、且**不在** `EnabledModuleIds` 内
 ///      （在只读名单 = 浏览态可进；不在写名单 = 新增/修改/删除端点仍 404）；
-///   ② 路由侧——`MODI_URL` 指向统一表单动作模板（否则列表双击没有目的地）；
+///   ② 路由侧——`M_URL` 指向统一工作台（否则列表双击没有目的地）；
 ///   ③ 动作侧——模块上仍有 `MANUAL` 动作行（自定义按钮的宿主，只有浏览态工具栏渲染它们）。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -55,16 +55,16 @@ public sealed class InventoryReadOnlyFormEntryLiveTests
         await connection.OpenAsync();
 
         await using (var command = new SqlCommand(
-            "SELECT RTRIM(MASTER_TABLE), ISNULL(MODI_URL, ''), ISNULL(M_URL, '') FROM dbo.MODULES WHERE M_IDX = @Id;",
+            "SELECT RTRIM(MASTER_TABLE), ISNULL(M_URL, '') FROM dbo.MODULES WHERE M_IDX = @Id;",
             connection))
         {
             command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
             await using var reader = await command.ExecuteReaderAsync();
             Assert.True(await reader.ReadAsync(), $"模块 {moduleId} 应存在。");
             Assert.Equal(masterTable, reader.GetString(0));
-            // 列表双击进浏览态靠它：清空即等于把入口摘掉（浏览态与自定义按钮都无处渲染）
-            Assert.Contains("{moduleId}", reader.GetString(1));
-            Assert.StartsWith("/workbench", reader.GetString(2));
+            // 列表双击进浏览态靠它：承载页必须是统一工作台（清空即等于把入口摘掉——
+            // 浏览态与自定义按钮都无处渲染）。新增/修改路由字段已随迁移 321 删除。
+            Assert.StartsWith("/workbench", reader.GetString(1));
         }
 
         await using (var command = new SqlCommand("""

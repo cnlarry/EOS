@@ -5,9 +5,11 @@ namespace EOS.API.Models;
 /// 它是**模块级事实**（同一物理表被多个模块共用时各模块版式互不影响），随工作台定义一起进快照。
 /// 定制粒度是「模块 × 表」：某表一旦有版式行，该表在表单上的字段集即完全由它决定，
 /// 未列出的字段视为「未加入表单」，不再回落到字段级的既有配置。
+///
+/// **栅格列数不在这里**：一行几列是页签级事实（<see cref="FormTabDefinition.Columns"/>，
+/// 库内 `MODULE_FORM_TAB.LAYOUT_COLUMNS` NOT NULL DEFAULT 4），模块级那一层自迁移 319 起不存在。
 /// </summary>
 public sealed record FormLayoutDefinition(
-    int Columns,
     IReadOnlyList<FormTabDefinition> Tabs,
     IReadOnlyList<FormLayoutRow> Master,
     IReadOnlyList<FormDetailLayoutRow> Detail,

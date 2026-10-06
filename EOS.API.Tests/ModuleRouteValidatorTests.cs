@@ -88,46 +88,34 @@ public class ModuleRouteValidatorTests
         Assert.Equal($"/fallback/modules/{moduleId}", ModuleRouteValidator.Resolve(url, moduleId));
     }
 
+    /// <summary>
+    /// 已退场的动作模板（NEW_URL / MODI_URL 时代）不得再解析成表单路由：一律落占位页，
+    /// 保存期也被 <see cref="ModuleRouteValidator.IsValidHostUrl"/> 拒掉（迁移 321 删了那三个字段）。
+    /// </summary>
     [Theory]
-    [InlineData("/workbench/{moduleId}/new", 1209, "/workbench/1209/new")]
-    [InlineData("/workbench/{moduleId}/edit", 1406, "/workbench/1406/edit")]
-    [InlineData("/workbench/{moduleId}/view", 1305, "/workbench/1305/view")]
-    [InlineData("/workbench/{moduleId}/edit?key=x", 1406, "/workbench/1406/edit?key=x")]
-    public void ResolveActionUrl_Templates_SubstituteModuleId(string url, int moduleId, string expected)
+    [InlineData("/workbench/{moduleId}/edit")]
+    [InlineData("/workbench/{moduleId}/new")]
+    [InlineData("/workbench/{moduleId}/view")]
+    [InlineData("/workbench/{moduleId}/edit?key=x")]
+    public void Resolve_RetiredActionTemplates_FallToPlaceholder(string url)
     {
-        Assert.Equal(expected, ModuleRouteValidator.ResolveActionUrl(url, moduleId));
+        Assert.Equal("/fallback/modules/1406", ModuleRouteValidator.Resolve(url, 1406));
+        Assert.False(ModuleRouteValidator.IsValidHostUrl(url));
     }
 
+    /// <summary>
+    /// 没声明承载页时的默认落点：单据模块（有主表）走统一工作台；没有主表的节点落占位页
+    /// （菜单侧另有"有无子模块"的目录判定，见 ApplicationController.HasOwnPage）。
+    /// </summary>
     [Theory]
-    [InlineData("/admin/tables?table=PRODUCT", 2302)]
-    [InlineData("/admin/menus", 2301)]
-    [InlineData("/import", 230902)]
-    public void ResolveActionUrl_ExactRoutes_ReturnAsIs(string url, int moduleId)
+    [InlineData(null, "PRODUCT", "/workbench/1201")]
+    [InlineData("", "PRODUCT", "/workbench/1201")]
+    [InlineData("  ", "COMPANY", "/workbench/1201")]
+    [InlineData(null, null, "/fallback/modules/1201")]
+    [InlineData("", "", "/fallback/modules/1201")]
+    public void Resolve_EmptyUrl_DefaultsToWorkbenchForDocumentModules(string? url, string? masterTable, string expected)
     {
-        Assert.Equal(url, ModuleRouteValidator.ResolveActionUrl(url, moduleId));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData(null)]
-    [InlineData("~/BOM/Product")]
-    [InlineData("~/COP/Return?m=1")]
-    [InlineData("/admin/nope")]
-    [InlineData("/workbench/1406")]
-    [InlineData("https://evil.example/x")]
-    [InlineData("javascript:alert(1)")]
-    [InlineData("//evil.example/x")]
-    public void ResolveActionUrl_InvalidOrUnknown_ReturnsNull(string? url)
-    {
-        Assert.Null(ModuleRouteValidator.ResolveActionUrl(url, 1406));
-    }
-
-    [Theory]
-    [InlineData("/workbench/{moduleId}/edit", 1406, "/workbench/1406/edit")]
-    [InlineData("/workbench/{moduleId}/new", 1209, "/workbench/1209/new")]
-    public void Resolve_ActionTemplates_MapToFormRoute(string url, int moduleId, string expected)
-    {
-        Assert.Equal(expected, ModuleRouteValidator.Resolve(url, moduleId));
+        Assert.Equal(expected, ModuleRouteValidator.Resolve(url, 1201, masterTable));
     }
 
     [Theory]
@@ -138,10 +126,10 @@ public class ModuleRouteValidatorTests
     [InlineData("/search-center", true)]
     [InlineData("/admin/tables", true)]
     [InlineData("/settings/system", true)]
-    [InlineData("/workbench/{moduleId}/new", true)]
     [InlineData("/fallback/modules/2307", true)]
     [InlineData("/workbench/1406", false)]
     [InlineData("/reports/129801", false)]
+    [InlineData("/workbench/{moduleId}/new", false)]   // 动作模板已退场（迁移 321）
     [InlineData("~/BOM/Product", false)]
     [InlineData("Comm/unknown_path", false)]
     [InlineData("https://evil.example/x", false)]
@@ -149,22 +137,6 @@ public class ModuleRouteValidatorTests
     public void IsValidHostUrl_Contract(string? url, bool expected)
     {
         Assert.Equal(expected, ModuleRouteValidator.IsValidHostUrl(url));
-    }
-
-    [Theory]
-    [InlineData(null, true)]
-    [InlineData("", true)]
-    [InlineData("/workbench/{moduleId}/new", true)]
-    [InlineData("/workbench/{moduleId}/edit", true)]
-    [InlineData("/admin/tables?table=PRODUCT", true)]
-    [InlineData("/admin/menus", true)]
-    [InlineData("~/BOM/Product", false)]
-    [InlineData("/workbench/1406/edit", false)]
-    [InlineData("/admin/nope", false)]
-    [InlineData("javascript:alert(1)", false)]
-    public void IsValidActionUrl_Contract(string? url, bool expected)
-    {
-        Assert.Equal(expected, ModuleRouteValidator.IsValidActionUrl(url));
     }
 
     [Theory]
@@ -179,22 +151,21 @@ public class ModuleRouteValidatorTests
     }
 
     /// <summary>
-    /// 统一表单动作路由的判定：只有本模块的 new/edit/view 命中。名单外的模块靠它把
-    /// "指向统一表单的 MODI_URL" 当无值处理（否则列表双击会开到一个必 404 的表单）。
+    /// 工作台模块判定：承载页是 /workbench，或**没声明承载页但有主表**（默认落统一工作台）。
+    /// 这是"能不能装配工作台定义 / 进模块列表 / 重建快照"的共同入口。
     /// </summary>
     [Theory]
-    [InlineData("/workbench/1303/edit", 1303, true)]
-    [InlineData("/workbench/1303/view", 1303, true)]
-    [InlineData("/workbench/1303/new", 1303, true)]
-    [InlineData("/workbench/1303/edit?key=x", 1303, true)]
-    [InlineData("/workbench/1303/edit", 1302, false)]      // 别的模块的编号不算
-    [InlineData("/admin/depot-stock-policy", 110310, false)] // 自定义承载页不是统一表单路由
-    [InlineData("/workbench/1303", 1303, false)]            // 列表页本身不是表单动作
-    [InlineData("/workbench/{moduleId}/edit", 1303, false)] // 未解析的模板：判定发生在解析之后
-    [InlineData("", 1303, false)]
-    [InlineData(null, 1303, false)]
-    public void IsUnifiedFormRoute_Classification(string? url, int moduleId, bool expected)
+    [InlineData("/workbench", "PRODUCT", true)]
+    [InlineData("/workbench/1201", "PRODUCT", true)]
+    [InlineData(null, "PRODUCT", true)]              // 没声明承载页的单据模块
+    [InlineData("", "PRODUCT", true)]
+    [InlineData("  ", "COMPANY", true)]
+    [InlineData(null, null, false)]                  // 纯目录节点
+    [InlineData("", "", false)]
+    [InlineData("/admin/menus", "PRODUCT", false)]   // 自定义承载页不是工作台模块
+    [InlineData("/reports", "PRODUCT", false)]
+    public void IsWorkbenchModule_Classification(string? url, string? masterTable, bool expected)
     {
-        Assert.Equal(expected, ModuleRouteValidator.IsUnifiedFormRoute(url, moduleId));
+        Assert.Equal(expected, ModuleRouteValidator.IsWorkbenchModule(url, masterTable));
     }
 }

@@ -529,7 +529,8 @@ export function ManualButtonsView({
         </div>
       ) : null}
       <div className="text-secondary small mt-2">
-        内置动作（批核、结案等受控注册码）不在这里，见「统一表单 › 内置动作（受控注册码）」。
+        内置动作（批核、结案等受控注册码）不在这里，也<strong>不需要配</strong>：它由能力（工作流 /
+        结案 / 权限位）与单据状态决定，随单据工具栏出现——此前那套「按注册码配白名单」的列已退役。
       </div>
     </section>
   )

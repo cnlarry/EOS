@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CellContext, ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { Component, createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { IconPlayerPlay, IconTrash } from '@tabler/icons-react'
+import { createPortal } from 'react-dom'
+import { IconDots, IconPlayerPlay, IconTrash } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
+import { COMMAND_ACTIONS } from '../../components/common/commandActions'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
@@ -19,6 +21,7 @@ import {
   type SituationDirtyField,
 } from '../assistant/situationSource'
 import { AttachmentDialog } from './AttachmentDialog'
+import { DocumentWorkbenchPage } from './DocumentWorkbenchPage'
 import { WorkflowTimeline, type WorkflowTimelineRow } from '../workflow/WorkflowTimeline'
 import { parseWorkbenchKey, workbenchAction, workbenchCopy, workbenchEdit, workbenchList, workbenchNew, workbenchView } from './workbenchPath'
 import { apiClient } from '../../services/api'
@@ -28,7 +31,8 @@ import { FormFieldRenderer, type ChooserAnchor } from './FormFieldRenderer'
 import { ChooserSourceMenu } from './ChooserSourceMenu'
 import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
-import { DEFAULT_FORM_COLUMNS, packFormSections } from './formLayout'
+import { packFormSections, resolveTabColumns } from './formLayout'
+import { normalizeFormOpenMode, readDialogShellHint, resolveDialogSize } from './formOpenMode'
 import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateField, validateMasterFields, type FieldErrors } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
@@ -101,6 +105,48 @@ interface WorkflowHistoryRow {
   date: string | null
 }
 
+/**
+ * 弹窗壳（打开方式=弹窗）：窗体尺寸与标题都由模块定义给出。
+ * 定义重取期间沿用上一次已知的值，窗体不因加载态而收掉再弹出。
+ */
+interface FormDialogShell {
+  title: string
+  width: number
+  height: number
+}
+
+/**
+ * 模块 → 弹窗壳 的进程内记忆。
+ * 「列表 → 新增/编辑」「浏览 → 编辑」都会重新挂载本页（路由不同、组件实例不同），
+ * 没有这份记忆时每次挂载都要等定义到达才知道用哪个容器，中间会闪一下**整页**加载态
+ * （弹窗一收一放，看着像在抖）。**写入权始终是服务端定义**：定义一到就用它覆盖本记忆，
+ * 所以改完打开方式/尺寸并发布后，最迟一次定义返回就切到新容器。
+ */
+const dialogShellMemory = new Map<string, FormDialogShell | null>()
+
+/**
+ * 弹窗方式下 footer **常显**的浏览态动作键（`back` 单独靠左）。
+ * 其余动作（含自定义按钮）收进「更多」：弹窗面积有限，把十来个按钮塞进一行既拥挤又难点，
+ * 而它们要么低频（打印/帮助/报表/结案），要么本来就开自己的窗体（附件/审批历史/复制）。
+ */
+const DIALOG_PRIMARY_ACTION_KEYS = new Set(['new', 'edit', 'delete', 'approve', 'deapprove'])
+
+/**
+ * 底图专用错误边界：底图只是"弹窗浮在工作台上"的观感层。它自身出问题（拿不到外壳上下文等）
+ * 绝不能把表单一起带走——失败就退化成不渲染底图，表单照常可用。
+ */
+class FormDialogUnderlayBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
+
 interface MasterFieldProps {
   field: FormFieldDefinition
   value: string
@@ -147,6 +193,8 @@ interface MasterFormGridProps {
   viewing: boolean
   canSetup: boolean
   masterAmountLocked: boolean
+  /** 当前页签的栅格列数（页签级事实，由外层按 activeTabNo 解析好传进来，见 resolveTabColumns） */
+  columns: number
   /** 正展开来源菜单的主表字段键 + 弹出方向（按钮与菜单连成一体） */
   chooserMenuKey: string | null
   chooserMenuDirection: 'down' | 'up'
@@ -157,7 +205,7 @@ interface MasterFormGridProps {
 }
 
 /** 主表字段网格（memo）：细节随主表值/错误变化时才重渲染，与明细网格相互隔离 */
-const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs, masterValues, fieldErrors, viewing, canSetup, masterAmountLocked, chooserMenuKey, chooserMenuDirection, onFieldChange, onOpenChooser, onFieldSetup, onFieldBlur }: MasterFormGridProps) {
+const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs, columns, masterValues, fieldErrors, viewing, canSetup, masterAmountLocked, chooserMenuKey, chooserMenuDirection, onFieldChange, onOpenChooser, onFieldSetup, onFieldBlur }: MasterFormGridProps) {
   /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截） */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (viewing || event.key !== 'Enter') return
@@ -172,9 +220,8 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
     const index = focusables.indexOf(target)
     ;(focusables[index + 1] ?? focusables[0])?.focus()
   }
-  // 统一表单固定一行四列（用户拍板：忽略各模块 FORM_COLUMNS 元数据，对齐既有实现密集表单）
-  const columns = DEFAULT_FORM_COLUMNS
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
+  // 有页签时只摆当前页签的字段；栅格列数取**该页签**的列数（外层已按 activeTabNo 解析好）
   const tabFields = visibleMaster.filter(field => !hasTabs || field.tabNo === activeTabNo)
   // 整节单栅格 + 显式装箱：排布规则与设计态**共用同一份**（packFormSections），
   // 否则"设计态看着是一行、运行态变成两行"。生命周期列不特判：位置由版式（设计态画板）决定。
@@ -621,6 +668,8 @@ export function FormEditorPage() {
   >(null)
   /** 标签右键「字段设置」菜单（仅 canSetup 时触发） */
   const [fieldSetupMenu, setFieldSetupMenu] = useState<{ field: FormFieldDefinition; x: number; y: number } | null>(null)
+  /** 弹窗 footer 的「更多」菜单落点（按钮视口矩形，菜单向下展开） */
+  const [toolbarMore, setToolbarMore] = useState<{ x: number; y: number } | null>(null)
   const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
   const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   /** 明细视图排序快照（物理行序）。null=未排序（视图顺序=物理顺序）。 */
@@ -1273,6 +1322,7 @@ export function FormEditorPage() {
   const openFieldSetup = useCallback((field: FormFieldDefinition, x: number, y: number) => setFieldSetupMenu({ field, x, y }), [])
   /** 字段设置菜单定位：贴近屏幕下缘时翻到落点上方，不被窗口裁掉。 */
   const fieldSetupPlacement = useMenuPlacement(fieldSetupMenu?.x ?? 0, fieldSetupMenu?.y ?? 0, fieldSetupMenu !== null)
+  const toolbarMorePlacement = useMenuPlacement(toolbarMore?.x ?? 0, toolbarMore?.y ?? 0, toolbarMore !== null)
 
   /**
    * 选择器取数来源：服务端下发 `sourceKey` 时走**注册数据源**（列、排序与默认次序都由服务端白名单给出
@@ -1314,12 +1364,60 @@ export function FormEditorPage() {
     ))
   }, [])
 
-  if (formQuery.isPending || (isEdit && recordQuery.isPending)) return <LoadingState label="正在加载表单…" />
-  if (formQuery.isError) return <section className="card"><div className="card-body text-center py-5">{describeError(formQuery.error)}</div></section>
-  if (isEdit && recordQuery.isError) return <section className="card"><div className="card-body text-center py-5">{describeError(recordQuery.error)}</div></section>
+  // 弹窗壳：打开方式=弹窗时才有值，窗体尺寸取模块配置。
+  // 首帧优先用导航带来的窗体提示（列表定义里已有这些值），其次用本模块的记忆——
+  // 两者都让首帧就把加载态放进窗体里，定义到达后再以定义为准覆盖。
+  const [dialogShell, setDialogShell] = useState<FormDialogShell | null>(() =>
+    readDialogShellHint(location.state) ?? dialogShellMemory.get(moduleId) ?? null)
+  useEffect(() => {
+    setDialogShell(readDialogShellHint(location.state) ?? dialogShellMemory.get(moduleId) ?? null)
+  }, [moduleId, location.state])
+  useEffect(() => {
+    const definition = formQuery.data
+    if (!definition) return
+    const next = normalizeFormOpenMode(definition.openMode) === 'DIALOG'
+      ? { title: definition.title, ...resolveDialogSize(definition.dialogWidth, definition.dialogHeight) }
+      : null
+    dialogShellMemory.set(moduleId, next)
+    setDialogShell(next)
+  }, [formQuery.data, moduleId])
+  const shell = dialogShell
+  const inDialog = shell !== null
+  /**
+   * 装进统一弹窗壳（非弹窗方式原样渲染）。两件事一起做，才像"在工作台上弹出窗口"：
+   * - 背后渲染该模块的工作台列表当底图：弹窗是浮在工作台上的，不是"先开个空白页再弹窗"
+   *   （底图 `inert` 冻结交互、不写地址、不上报助手处境，见 DocumentWorkbenchPage 的 underlay）；
+   * - 工具栏落在**窗体顶部**第一行（与旧系统 `ERP/UserControl/ModifyToolBar.ascx` 同位：
+   *   它放在编辑窗体的第一行、字段区之上），低频动作仍收进工具条末位的「更多」。
+   * 加载态与错误态也走这里，容器只随模块定义变。
+   */
+  const inFormShell = (content: ReactNode, toolbar?: ReactNode) => shell === null
+    ? content
+    : (
+      <>
+        <div className="erp-form-dialog-underlay" aria-hidden inert>
+          <FormDialogUnderlayBoundary>
+            <DocumentWorkbenchPage underlay />
+          </FormDialogUnderlayBoundary>
+        </div>
+        <Modal
+          title={shell.title}
+          onClose={back}
+          dialogClassName="erp-form-dialog"
+          dialogStyle={{ width: shell.width, height: shell.height }}
+        >
+          {toolbar}
+          {content}
+        </Modal>
+      </>
+    )
+
+  if (formQuery.isPending || (isEdit && recordQuery.isPending)) return inFormShell(<LoadingState label="正在加载表单…" />)
+  if (formQuery.isError) return inFormShell(<section className="card"><div className="card-body text-center py-5">{describeError(formQuery.error)}</div></section>)
+  if (isEdit && recordQuery.isError) return inFormShell(<section className="card"><div className="card-body text-center py-5">{describeError(recordQuery.error)}</div></section>)
   // 浏览态记录加载失败（如记录已被删除）：不渲染陈旧空白表单，给出明确错误与返回入口
   if (isView && recordQuery.isError) {
-    return (
+    return inFormShell(
       <section className="card">
         <div className="card-body text-center py-5 d-flex flex-column gap-3 align-items-center">
           <span>{describeError(recordQuery.error)}</span>
@@ -1328,16 +1426,20 @@ export function FormEditorPage() {
             <button type="button" className="btn btn-primary" onClick={back}>返回列表</button>
           </span>
         </div>
-      </section>
+      </section>,
     )
   }
 
   const form = formQuery.data
-  if (!form) return null
+  if (!form) return inFormShell(null)
   // 明细走金额汇总（明细表有 AMOUNT 列）时，主表金额列强制只读展示（保存后服务端权威聚合）
   const masterAmountLocked = form.detailFields.some(field => field.key.toUpperCase() === 'AMOUNT')
   const hasTabs = form.tabs.length > 0
   const activeTabNo = hasTabs ? activeTab : 1
+  // 栅格列数是**页签级事实**：取当前页签自己的列数（库内 NOT NULL DEFAULT 4）。
+  // 运行态、设计器画板与保存期夹取三处同取这一处解析（resolveTabColumns），
+  // 于是"页签 1 一行两列、页签 2 一行一列"在两端都成立。
+  const activeTabColumns = resolveTabColumns(form.tabs, activeTabNo)
   // Tab error badges: hidden tabs' errors shown as count badges
   const tabErrorCounts = new Map<number, number>()
   for (const field of form.masterFields) {
@@ -1350,33 +1452,10 @@ export function FormEditorPage() {
   const reportOptions = moduleReports.data?.reports ?? []
   const detailActionItems = (form.userActions ?? []).filter(action => action.placement === 'detail')
 
-  return (
-    <div className="d-flex flex-column erp-form-page">
-      {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
-      {warnings && warnings.length > 0 ? (
-        <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">
-          <span>{warnings.map(warning => warning.message).join('；')}</span>
-          <button type="button" className="btn-close" aria-label="关闭" onClick={() => setWarningsDismissed(true)} />
-        </div>
-      ) : null}
-      <section className="card erp-form-card">
-        <div className="card-body">
-          <div className="erp-form-toolbar">
-            {!isView ? (
-              <>
-                {isCopy && <span className="small text-secondary align-self-center">复制模式：以选中记录为模板，保存后生成新单据</span>}
-                <ErpCommandBar items={[
-                  { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => { if (validateClient()) save.mutate() } },
-                  { action: 'cancel', label: '取消', onClick: back },
-                ]} />
-                {form.canFileView && keyParam && (
-                  <ErpCommandBar items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
-                )}
-              </>
-            ) : (
-              // Browse-mode toolbar (fixed order, not affected by FORM_BUTTONS config):
-              // back/prev/next/new(primary)/copy/edit/delete/approve|deapprove/history/close|unclose/attach/print/help
-              <ErpCommandBar items={(() => {
+  // 浏览态动作（固定顺序，只由能力与权限决定；曾经的白名单配置列已随迁移 320 退役）：
+  // back/prev/next/new(primary)/copy/edit/delete/approve|deapprove/history/close|unclose/attach/print/report/help
+  // + 自定义按钮（单据级，排在标准动作之后）。
+  const viewItems: ErpCommandItem[] = isView ? (() => {
                 const currentKey = buildKey(form, masterValues)
                 const master = recordQuery.data?.master
                 // Document status (server-returned): CONFIRM_TAG / FINISHED_TAG
@@ -1387,7 +1466,7 @@ export function FormEditorPage() {
                 // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用；在途流程：编辑/删除禁用（按钮禁用而非隐藏，  语义）
                 const editDisabled = isFinished || isConfirmed || flowInProgress
                 const deleteDisabled = isFinished || isConfirmed || flowInProgress
-                const whitelistItems = buildViewToolbarItems(form, { master, isConfirmed, isFinished, flowInProgress, keyParam }, {
+                const capabilityItems = buildViewToolbarItems(form, { master, isConfirmed, isFinished, flowInProgress, keyParam }, {
                   openApprove: () => openApprove(),
                   deapprove: () => workflow.mutate({ action: 'deapprove' }),
                   endcase: () => finish.mutate('endcase'),
@@ -1411,11 +1490,11 @@ export function FormEditorPage() {
                   ...(form.canEdit && form.hasEdit && keyParam
                     ? [{ action: 'edit', disabled: editDisabled, onClick: () => navigate(workbenchEdit(moduleId, currentKey)) } satisfies ErpCommandItem]
                     : []),
-                  // 删除为浏览态标准动作：权限 canDelete ∧ 单据状态，不依赖 FORM_BUTTONS 配置
+                  // 删除为浏览态标准动作：权限 canDelete ∧ 单据状态，不依赖任何白名单配置
                   ...(form.canDelete && keyParam
                     ? [{ action: 'delete', variant: 'danger', disabled: deleteDisabled, onClick: () => void deleteRecord() } satisfies ErpCommandItem]
                     : []),
-                  ...whitelistItems.filter(item => item.action === 'approve' || item.action === 'deapprove'),
+                  ...capabilityItems.filter(item => item.action === 'approve' || item.action === 'deapprove'),
                   // A3：在途流程时显示「撤回」（发起人），撤回后可编辑并重新送审——与批核同位互斥
                   ...(flowInProgress && keyParam
                     ? [{ action: 'withdraw', loading: withdraw.isPending, onClick: () => withdraw.mutate() } satisfies ErpCommandItem]
@@ -1424,16 +1503,16 @@ export function FormEditorPage() {
                   ...(form.hasWorkflow && keyParam
                     ? [{ action: 'history', onClick: () => setHistoryOpen(true) } satisfies ErpCommandItem]
                     : []),
-                  ...whitelistItems.filter(item => item.action === 'endcase' || item.action === 'unendcase'),
+                  ...capabilityItems.filter(item => item.action === 'endcase' || item.action === 'unendcase'),
                   ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
-                  ...whitelistItems.filter(item => item.action === 'print'),
-                  // 报表：模块级动作，定序在**打印之后、帮助之前**（与 ADR-018 的按钮定序一致）。
-                  // 它是"看这个模块的报表"，不作用于当前这张单据，因此不受 FORM_BUTTONS 白名单控制；
+                  ...capabilityItems.filter(item => item.action === 'print'),
+                  // 报表：模块级动作，定序在**打印之后**（与 ADR-018 的按钮定序一致）。
+                  // 它是"看这个模块的报表"，不作用于当前这张单据，因此不受单据级动作集控制；
                   // 模块下没有可见报表时整项不渲染。
+                  // 「帮助」按钮已随迁移 321 退场（HELP_URL 物理删除，旧值本就不可达）。
                   ...(reportOptions.length > 0
                     ? [{ action: 'report', onClick: () => setReportListOpen(true) } satisfies ErpCommandItem]
                     : []),
-                  ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
                   // 自定义按钮（单据级）固定排在标准动作之后，顺序由配置的 SEQ 决定
                   //（配置只决定动作有无与相对顺序，不改变标准动作的固定位置）。
                   ...masterActionItems.map(action => ({
@@ -1446,16 +1525,80 @@ export function FormEditorPage() {
                     onClick: () => void documentAction.run(action),
                   } satisfies ErpCommandItem)),
                 ]
-              })()} />
-            )}
-          </div>
+  })() : []
+  /** 弹窗里收进「更多」的那些动作：除「返回」与主干动作外的全部（含自定义按钮）。 */
+  const dialogMoreItems = viewItems.filter(item =>
+    item.action !== 'back' && !DIALOG_PRIMARY_ACTION_KEYS.has(item.action))
+
+  // 工具栏：整页方式渲染在表单卡顶部（一行铺开）；弹窗方式交给统一弹窗的 footer——
+  // 弹窗面积有限，只常显「返回 + 主干动作」，其余收进「更多」，否则十几个按钮挤一行既违和又难点。
+  const formToolbar = (
+    <div className="erp-form-toolbar">
+      {!isView ? (
+        <>
+          {isCopy && <span className="small text-secondary align-self-center">复制模式：以选中记录为模板，保存后生成新单据</span>}
+          <ErpCommandBar items={[
+            { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => { if (validateClient()) save.mutate() } },
+            { action: 'cancel', label: '取消', onClick: back },
+          ]} />
+          {form.canFileView && keyParam && (
+            <ErpCommandBar items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
+          )}
+        </>
+      ) : !inDialog ? (
+        <ErpCommandBar items={viewItems} />
+      ) : (
+        // 弹窗：工具条贴窗体顶部一行左起排布（与旧系统 ModifyToolBar 同一位置），
+        // 仍只常显主干动作、其余进「更多」——窗体窄，十几个按钮一行排不下
+        <>
+          <ErpCommandBar items={viewItems.filter(item =>
+            item.action === 'back' || DIALOG_PRIMARY_ACTION_KEYS.has(item.action))} />
+          {dialogMoreItems.length > 0 ? (
+            <Button
+              size="sm"
+              className="erp-command-btn"
+              icon={<IconDots size={16} />}
+              aria-expanded={toolbarMore !== null}
+              onClick={event => {
+                if (toolbarMore) { setToolbarMore(null); return }
+                const rect = event.currentTarget.getBoundingClientRect()
+                setToolbarMore({ x: rect.right - 168, y: rect.bottom + 4 })
+              }}
+            >
+              更多
+            </Button>
+          ) : null}
+        </>
+      )}
+    </div>
+  )
+  // 弹窗打开方式：同一份表单内容换个容器（统一弹窗组件）——地址与路由不变，
+  // 这样"弹窗"不引入第二套渲染路径：保存、校验、脏位登记、权限判定全走同一条。
+  const formPage = (
+    <div className="d-flex flex-column erp-form-page">
+      {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
+      {warnings && warnings.length > 0 ? (
+        <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">
+          <span>{warnings.map(warning => warning.message).join('；')}</span>
+          <button type="button" className="btn-close" aria-label="关闭" onClick={() => setWarningsDismissed(true)} />
+        </div>
+      ) : null}
+      <section className="card erp-form-card">
+        <div className="card-body">
+          {inDialog ? null : formToolbar}
           {hasTabs ? (
             <ul className="nav nav-tabs erp-form-tabs">
               {form.tabs.map(tab => {
                 const errorCount = tabErrorCounts.get(tab.no) ?? 0
+                const tabColumns = resolveTabColumns(form.tabs, tab.no)
                 return (
                   <li className="nav-item" key={tab.no}>
-                    <button type="button" className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`} onClick={() => setActiveTab(tab.no)}>
+                    <button
+                      type="button"
+                      className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`}
+                      title={`${tab.title}：一行 ${tabColumns} 列`}
+                      onClick={() => setActiveTab(tab.no)}
+                    >
                       {tab.title}
                       {errorCount > 0 ? <span className="erp-tab-error-badge">{errorCount}</span> : null}
                     </button>
@@ -1467,7 +1610,9 @@ export function FormEditorPage() {
           <MasterFormGrid
             form={form}
             activeTabNo={activeTabNo}
+            // 弹窗与整页同一套：都摆页签、都只看当前页签的字段（列数按页签取，见 activeTabColumns）
             hasTabs={hasTabs}
+            columns={activeTabColumns}
             masterValues={masterValues}
             fieldErrors={fieldErrors}
             viewing={isView}
@@ -1702,10 +1847,52 @@ export function FormEditorPage() {
           </div>
         </div>
       ) : null}
+      {/* 弹窗 footer 的「更多」菜单：动作与整页工具栏逐项一致（图标+文字、同一顺序、同样禁用态）。
+          用 portal 挂到 body：菜单是浮层，落在窗体内部会被窗体的滚动/裁剪容器切掉。 */}
+      {toolbarMore && createPortal(
+        <div
+          className="erp-field-setup-overlay"
+          onClick={() => setToolbarMore(null)}
+          onContextMenu={event => { event.preventDefault(); setToolbarMore(null) }}
+        >
+          <div
+            ref={toolbarMorePlacement.ref}
+            className="erp-field-setup-menu erp-form-more-menu"
+            role="menu"
+            aria-label="更多动作"
+            style={{ left: toolbarMorePlacement.left, top: toolbarMorePlacement.top }}
+            onClick={event => event.stopPropagation()}
+          >
+            {dialogMoreItems.map(item => {
+              if (item.visible === false) return null
+              const action = COMMAND_ACTIONS[item.action]
+              return (
+                <button
+                  key={item.action}
+                  type="button"
+                  role="menuitem"
+                  className="erp-field-setup-item"
+                  disabled={item.disabled}
+                  title={item.title ?? action?.title}
+                  onClick={() => { setToolbarMore(null); item.onClick?.() }}
+                >
+                  <span className="d-flex align-items-center gap-2">
+                    {item.icon ?? action?.icon}
+                    {item.label ?? action?.title ?? item.action}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>,
+        document.body,
+      )}
       {/* 单据操作（自定义按钮）的参数表单与二次确认：探路返回的"将会发生什么"在这里给用户看 */}
       {documentAction.dialog}
     </div>
   )
+  // 弹窗方式下关闭走窗体右上角 X 或工具栏「返回 / 取消」，未保存改动照样由工作区脏位登记兜住
+  return inFormShell(formPage, formToolbar)
 }
 
 /**

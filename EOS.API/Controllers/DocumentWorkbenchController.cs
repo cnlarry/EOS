@@ -159,7 +159,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
 private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,string? headerIdempotencyKey,CancellationToken token)
     {
         // 批核/解批同属写路径，与新增/修改/删除共用同一道闸门：模块必须有**可写的页面入口**
-        // （统一表单写名单，或指向自定义页的 NEW_URL/MODI_URL），且当前用户具备该动作位——
+        // （统一表单写名单；迁移 321 之后这是"能写"的唯一真源），且当前用户具备该动作位——
         // 两条判据都在策略层，API 是最终权限边界，前端按钮显隐只改善体验。
         var decision=await policy.AuthorizeWorkflowAsync(UserId,moduleId,approve?PermissionAction.Approve:PermissionAction.Deapprove,token);
         if(!decision.Allowed)return Denied(decision.Denial!);

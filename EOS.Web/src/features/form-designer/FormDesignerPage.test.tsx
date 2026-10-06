@@ -39,10 +39,9 @@ const designState: DesignState = {
   title: '客户订单',
   masterTable: 'COP_ORDER_M',
   detailTable: 'COP_ORDER_D',
-  columns: 2,
   tabs: [
-    { no: 1, title: '' },
-    { no: 2, title: '明细信息' },
+    { no: 1, title: '', columns: 2 },
+    { no: 2, title: '明细信息', columns: 2 },
   ],
   master: {
     table: 'COP_ORDER_M',
@@ -76,6 +75,9 @@ const designState: DesignState = {
     pool: [],
   },
   baseUpdatedAt: '2026-09-25 05:00:00.000',
+  openMode: 'TAB',
+  dialogWidth: null,
+  dialogHeight: null,
 }
 
 function renderPage() {
@@ -132,6 +134,90 @@ describe('FormDesignerPage', () => {
     // 主表加字段走画布末尾；明细的选列与排序走明细面板标题栏右上角的「字段管理」
     expect(screen.getByRole('button', { name: /添加字段/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /字段管理/ })).toBeInTheDocument()
+  })
+
+  it('呈现配置入口在页签行右端：弹窗里改打开方式与窗体尺寸，随版式同一笔提交', async () => {
+    renderPage()
+    await screen.findByText('ORDER_NO')
+    // 入口在页签行最右端（原本的空白处），点开是「表单呈现」弹窗
+    fireEvent.click(screen.getByLabelText('表单呈现'))
+    const dialog = await screen.findByRole('dialog', { name: '表单呈现' })
+    fireEvent.change(within(dialog).getByLabelText('打开方式'), { target: { value: 'DIALOG' } })
+    fireEvent.change(within(dialog).getByLabelText('弹窗宽度（px）'), { target: { value: '900' } })
+    fireEvent.change(within(dialog).getByLabelText('弹窗高度（px）'), { target: { value: '600' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '完成' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledTimes(1))
+    const [, payload] = apiClientMock.put.mock.calls[0] as [string, {
+      openMode: string
+      dialogWidth: number | null
+      dialogHeight: number | null
+      tabs: { no: number; columns: number | null }[]
+    }]
+    expect(payload.openMode).toBe('DIALOG')
+    expect(payload.dialogWidth).toBe(900)
+    expect(payload.dialogHeight).toBe(600)
+    // 列数不在呈现配置里：它随页签提交（夹具两个页签都声明两列 → 提交 2）
+    expect(payload.tabs).toEqual([
+      { no: 1, title: '', columns: 2 },
+      { no: 2, title: '明细信息', columns: 2 },
+    ])
+  })
+
+  it('弹窗方式：画板锁到模块声明的窗体宽高（所见即所得）', async () => {
+    apiClientMock.get.mockResolvedValue({ ...designState, openMode: 'DIALOG', dialogWidth: 900, dialogHeight: 600 })
+    const { container } = renderPage()
+    await screen.findByText('ORDER_NO')
+    const canvas = container.querySelector<HTMLElement>('.erp-designer-canvas')
+    expect(canvas?.classList.contains('is-dialog')).toBe(true)
+    expect(canvas?.style.width).toBe('900px')
+    expect(canvas?.style.minHeight).toBe('600px')
+  })
+
+  it('切回本页签：窗体宽高被清掉（那两种方式不消费尺寸）', async () => {
+    apiClientMock.get.mockResolvedValue({ ...designState, openMode: 'DIALOG', dialogWidth: 900, dialogHeight: 600 })
+    const { container } = renderPage()
+    await screen.findByText('ORDER_NO')
+    fireEvent.click(screen.getByLabelText('表单呈现'))
+    const dialog = await screen.findByRole('dialog', { name: '表单呈现' })
+    fireEvent.change(within(dialog).getByLabelText('打开方式'), { target: { value: 'TAB' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '完成' }))
+
+    // 画板不再锁尺寸，宽高输入框禁用且值已清空
+    expect(container.querySelector('.erp-designer-canvas')?.classList.contains('is-dialog')).toBe(false)
+    fireEvent.click(screen.getByLabelText('表单呈现'))
+    expect(await screen.findByLabelText('弹窗宽度（px）')).toBeDisabled()
+    expect(screen.getByLabelText('弹窗宽度（px）')).toHaveValue(null)
+  })
+
+  it('页签右键「布局列数」：改该页签的列数并把越界跨度夹回来', async () => {
+    apiClientMock.get.mockResolvedValue({
+      ...designState,
+      columns: 4,
+      tabs: [{ no: 1, title: '', columns: 4 }],
+      master: {
+        ...designState.master,
+        layout: [row('PRO_NAME', { label: '产品名称', orderNo: 1, span: 4 })],
+      },
+    })
+    const { container } = renderPage()
+    await screen.findByText('产品名称')
+    expect(container.querySelector<HTMLElement>('.erp-designer-sections')?.style.getPropertyValue('--erp-form-cols')).toBe('4')
+
+    fireEvent.contextMenu(screen.getByRole('tab', { name: '默认' }), { clientX: 10, clientY: 10 })
+    fireEvent.click(screen.getByLabelText('一行 2 列'))
+    // 画板立刻按两列排，且该页签内 span=4 的行被夹到 2（调整即合规）
+    await waitFor(() => expect(container.querySelector<HTMLElement>('.erp-designer-sections')?.style.getPropertyValue('--erp-form-cols')).toBe('2'))
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledTimes(1))
+    const [, payload] = apiClientMock.put.mock.calls[0] as [string, {
+      tabs: { no: number; columns: number | null }[]
+      master: { key: string; span: number }[]
+    }]
+    expect(payload.tabs[0].columns).toBe(2)
+    expect(payload.master.find(item => item.key === 'PRO_NAME')?.span).toBe(2)
   })
 
   it('明细「字段管理」：已选列可上下排序，确认后明细表头按新顺序重排', async () => {

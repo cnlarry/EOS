@@ -7,7 +7,7 @@ import { MenuAdminPage, type MenuAdminModule } from './MenuAdminPage'
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminModule => ({
-  M_IDX: id, M_ALIAS: null, M_DESC: desc, M_URL: null, NEW_URL: null, MODI_URL: null, HELP_URL: null,
+  M_IDX: id, M_ALIAS: null, M_DESC: desc, M_URL: null,
   DETAIL_NO_FIELDS: null, DETAIL_NO_SAVE: false, SEARCH_1: false, SEARCH_2: false, M_P_IDX: parent,
   SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
   MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
@@ -17,11 +17,12 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
   GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
   GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
-  FORM_TABS: null, FORM_COLUMNS: null, FORM_BUTTONS: null,
+  FORM_TABS: null, FORM_COLUMNS: null,
   LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
   EFFECT_ENGINE_TAG: false,
+  REMARK: null,
 })
 
 const modules = [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), moduleNode(110101, '公司基本资料', 1101)]
@@ -190,6 +191,24 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/menus/11',
       expect.objectContaining({ module: expect.objectContaining({ M_DESC: '基本参数-改' }) })))
+  })
+
+  it('基础页签的「备注」可编辑，并随保存载荷一起提交', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+
+    // 备注是基础页签里的多行文本域（库列 MODULES.REMARK）：写"这个模块是干什么的"
+    const remark = screen.getByLabelText('备注')
+    expect(remark.tagName).toBe('TEXTAREA')
+    fireEvent.change(remark, { target: { value: '系统级参数维护：单位/币种/编码规则等' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/menus/11',
+      expect.objectContaining({
+        module: expect.objectContaining({ REMARK: '系统级参数维护：单位/币种/编码规则等' }),
+      })))
   })
 
   it('保存已有节点后仍停留在该节点，表单不被清空', async () => {
@@ -788,14 +807,18 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('主表过滤条件')).toHaveValue('(C_ID = 1)'))
   })
 
-  it('编辑表单按页签分组：基础/主表/子表/分组/统一表单', async () => {
+  it('编辑表单按页签分组：基础/主表/子表/分组（表单呈现不在这里）', async () => {
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
 
     expect(screen.getByRole('tab', { name: '基础' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByLabelText('页面链接（现代路由）')).toBeInTheDocument()
+    // 路由只剩一个承载页输入：新增/修改/帮助三个旧 URL 输入已随迁移 321 退场
+    expect(screen.getByLabelText('页面链接（承载页）')).toBeInTheDocument()
+    expect(screen.queryByLabelText('新增URL地址')).toBeNull()
+    expect(screen.queryByLabelText('修改URL地址')).toBeNull()
+    expect(screen.queryByLabelText('帮助文件URL地址')).toBeNull()
 
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     expect(screen.getByLabelText('操作主表名')).toBeInTheDocument()
@@ -808,11 +831,17 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: '分组' }))
     expect(screen.getByLabelText('表达式1（如 TABLE.COL、CASE 或日期函数）')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('tab', { name: '统一表单' }))
-    // 页签定义 / 每行对数已退役：改到单据页的「表单设计」里配置，此处只留说明
-    expect(screen.getByLabelText('内置动作（受控注册码）')).toBeInTheDocument()
+    // 「统一表单」页签已删（2026-10-06）：表单呈现（打开方式 / 弹窗宽高 / 一行几列）只在表单设计器里配，
+    // 模块管理既不显示也不写它——连只读摘要与设计器入口按钮都不再占一个页签。
+    // 同时确认三处更早退役的旧字段没有借尸还魂：页签定义 / 每行对数 / 内置动作（受控注册码）。
+    expect(screen.queryByRole('tab', { name: '统一表单' })).toBeNull()
     expect(screen.queryByLabelText('页签定义（FORM_TABS）')).toBeNull()
     expect(screen.queryByLabelText('每行对数（FORM_COLUMNS）')).toBeNull()
+    expect(screen.queryByLabelText('内置动作（受控注册码）')).toBeNull()
+    expect(screen.queryByLabelText('打开方式')).toBeNull()
+    expect(screen.queryByLabelText('弹窗宽度（px）')).toBeNull()
+    expect(screen.queryByLabelText('表单布局列数')).toBeNull()
+    expect(screen.queryByRole('button', { name: '打开表单设计器' })).toBeNull()
   })
 
   it('过滤条件构建器：未选择字段时给出错误并禁止保存', async () => {
@@ -960,7 +989,8 @@ describe('MenuAdminPage', () => {
 
     // 纯菜单节点（无主表也无副表）：三个行为页签都在，但点不动，且说明原因。
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
-    expect(screen.getAllByRole('tab')).toHaveLength(8)
+    // 7 个：基础/主表/子表/分组 + 三个行为页签（「统一表单」页签已删，2026-10-06）
+    expect(screen.getAllByRole('tab')).toHaveLength(7)
     for (const label of ['行为动作', '校验规则', '自定义按钮']) {
       expect(screen.getByRole('tab', { name: label })).toBeDisabled()
     }
@@ -1041,15 +1071,18 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('系统参数'))
   })
 
-  it('统一表单页签把「内置动作」与「自定义按钮」分清楚并互相指引', async () => {
+  it('内置动作（受控注册码）在 2301 整页不存在，自定义按钮页签自带说明', async () => {
     mockPageWithBusinessConfig()
-    renderPage()
-    await waitForMenuTree()
-    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
-    fireEvent.click(screen.getByRole('tab', { name: '统一表单' }))
+    // 行为配置页签要模块有操作主表/副表才点得动：进 110101 公司基本资料（openModuleTab 内含）
+    await openModuleTab('自定义按钮')
 
-    expect(screen.getByLabelText('内置动作（受控注册码）')).toBeInTheDocument()
-    expect(screen.getByText(/见「行为 › 自定义按钮」/)).toBeInTheDocument()
+    // 那一列已随迁移 320 退役；它当年的宿主页签（统一表单）也已删——整页不再有它的输入框
+    expect(screen.queryByLabelText('内置动作（受控注册码）')).toBeNull()
+    expect(screen.queryByRole('tab', { name: '统一表单' })).toBeNull()
+
+    // 说明搬到了自定义按钮页签里：内置动作不在这里、也不需要配（由能力 + 权限 + 单据状态决定）。
+    // 认 <strong> 那一小段：整段文案被 <strong> 切成多个文本节点，按整句匹配会碎。
+    await waitFor(() => expect(screen.getByText('不需要配')).toBeInTheDocument())
   })
 
   it('无模块配置权的账号不渲染行为页签，预演与说明书入口随之不出现', async () => {

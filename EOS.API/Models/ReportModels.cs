@@ -225,17 +225,7 @@ public sealed record ReportPdfMeta(
     string? TailText,
     IReadOnlyList<ReportSortScheme> SortSchemes);
 
-/// <summary>页头维护草稿（2202 页头设置）。</summary>
-public sealed record PrintHeaderDraft(
-    string HeaderId,
-    string? HeaderName,
-    string? CompanyName,
-    string? CompanyNameEn,
-    string? HeaderText,
-    string? LogoPath);
-
-/// <summary>表尾维护草稿（2204 表尾设置）。</summary>
-public sealed record PrintTailDraft(string TailId, string? TailName, string? TailText);
-
-/// <summary>页脚维护草稿（2203 页尾设置）。</summary>
-public sealed record PrintFooterDraft(string FooterId, string? FooterName, string? FooterText);
+// 三个"版式维护草稿"DTO（PrintHeaderDraft / PrintTailDraft / PrintFooterDraft）已随迁移 329 删除：
+// 它们服务的 2202 页头设置 / 2204 表尾设置 / 2203 页尾设置三个模块已整模块退役（ADR-009 §11 五页
+// 下线的最后遗留），且这三个 record 全仓零引用（grep 只命中定义处）——留着只会让下一个人以为
+// 还有条维护链。现代表单/报表版式的真源是版式资源表（REPORT_LAYOUT / REPORT_FORM_LAYOUT）。

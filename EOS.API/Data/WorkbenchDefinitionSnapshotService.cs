@@ -35,7 +35,10 @@ public sealed class WorkbenchDefinitionSnapshotService(
             FROM dbo.MODULES m WITH (NOLOCK)
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=m.M_IDX
             LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=m.M_IDX AND s.IS_CURRENT=1
+            -- 工作台模块：承载页 /workbench，或没声明承载页但有主表（默认走统一工作台，见迁移 321）；
+            -- 另有脏标记的一律列出（改了就得重发布）
             WHERE LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '/workbench%'
+               OR (LTRIM(RTRIM(ISNULL(m.M_URL,''))) = '' AND NULLIF(LTRIM(RTRIM(m.MASTER_TABLE)),'') IS NOT NULL)
                OR d.M_IDX IS NOT NULL
             ORDER BY m.M_IDX;
             """;

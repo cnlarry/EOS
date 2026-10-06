@@ -1,17 +1,22 @@
 namespace EOS.API.Data;
 
 /// <summary>
-/// 模块路由契约（M_URL / NEW_URL / MODI_URL 全量消费）：
-/// - M_URL 只存承载页路径（如 /reports、/workbench），菜单渲染时自动追加
-/// /{moduleId}；精确路径白名单（特殊页）原样返回；统一表单动作模板
-/// （/workbench/{moduleId}/new|edit|view）视为直达表单；外部/脚本链接
-/// 一律拒绝并回退占位页。
-/// - NEW_URL/MODI_URL 决定新增/编辑路由：允许统一表单动作模板（服务端替换
-/// {moduleId}）或精确现代路径（特殊页，可带查询串）；空值或非法值视为无值
-/// （返回 null），由调用方按统一表单白名单回退或隐藏按钮。
-/// - 承载判定（工作台/表单/打印/报表识别）统一由本类提供，替代各处私有前缀判断。
-/// - ：浏览器路由前缀由 /document-workbench 收敛为 /workbench（记录主键路径化，
-///）；API 路由 /api/v1/document-workbench 不变。
+/// 模块路由契约：**只有 M_URL 一个字段**（2026-10-06 收敛，迁移 321 删掉了 NEW_URL / MODI_URL / HELP_URL）。
+///
+/// M_URL = 模块承载页：
+/// - **空**：没声明承载页。单据模块（有主表）按"默认统一工作台"落 /workbench/{id}；
+///   无主表的节点是目录（有下级）或未接线模块（落占位页）——菜单侧另有"有无子模块"的判定。
+/// - **参数化承载页**（/workbench、/reports、/search-center）：菜单渲染时追加 /{moduleId}。
+/// - **精确路径白名单**（特殊页，如 /admin/menus）：原样返回。
+/// - **非法值**（`~/`、协议头、相对路径、反斜杠、以及已退场的动作模板）一律落占位页，
+///   让界面明确说"未接线"，而不是给一个点进去必错的外链。
+///
+/// 也提供"这个模块是不是统一工作台模块"的统一判定（承载页是 /workbench，或没声明承载页但有主表），
+/// 取代各处私有前缀判断——它同时是工作台定义、列表、浏览解析与快照重建的共同入口。
+///
+/// 曾经的 NEW_URL / MODI_URL（新增/修改路由）与 HELP_URL（帮助页）已物理删除：能不能新增/编辑
+/// 由统一表单名单（<see cref="EOS.API.Models.UnifiedFormEditorSettings"/>）与权限裁决，
+/// **不再由路由字段表达**——这正是本次收敛要消掉的那层"同一件事两个真源"。
 /// </summary>
 internal static class ModuleRouteValidator
 {
@@ -36,81 +41,42 @@ internal static class ModuleRouteValidator
         "/workflow/design", "/workflow/monitor",
     ];
 
-    /// <summary>统一表单动作模板：NEW_URL/MODI_URL（或 M_URL 直达表单）命中时替换 {moduleId}。</summary>
-    private static readonly string[] ActionTemplates =
-    [
-        "/workbench/{moduleId}/new",
-        "/workbench/{moduleId}/edit",
-        "/workbench/{moduleId}/view",
-    ];
-
     private static readonly System.Text.RegularExpressions.Regex PlaceholderRoutePattern =
         new(@"^/fallback/modules/\d+$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    public static string Resolve(string? rawUrl, int moduleId)
+    /// <summary>
+    /// 解析模块承载页。<paramref name="masterTable"/> 只用于"没声明承载页"的默认落点判断：
+    /// 有主表 ⇒ 这是单据模块，默认走统一工作台；没有主表 ⇒ 未接线，落占位页。
+    /// </summary>
+    public static string Resolve(string? rawUrl, int moduleId, string? masterTable = null)
     {
         var url = (rawUrl ?? string.Empty).Trim();
-        if (url.Length == 0 || IsForbiddenUrl(url)) return Placeholder(moduleId);
-        foreach (var template in ActionTemplates)
-        {
-            if (url.Equals(template, StringComparison.OrdinalIgnoreCase))
-                return Substitute(template, moduleId);
-        }
-        if (ParameterizedBases.Contains(url, StringComparer.OrdinalIgnoreCase))
-            return $"{url}/{moduleId}";
+        if (url.Length == 0)
+            return string.IsNullOrWhiteSpace(masterTable) ? Placeholder(moduleId) : $"/workbench/{moduleId}";
+        if (IsForbiddenUrl(url)) return Placeholder(moduleId);
+        if (ParameterizedBases.Contains(url, StringComparer.OrdinalIgnoreCase)) return $"{url}/{moduleId}";
         if (ExactRoutes.Contains(url, StringComparer.OrdinalIgnoreCase)) return url;
+        // 已退场的动作模板（/workbench/{moduleId}/new|edit|view）与任何未知形态一样落占位页
         return Placeholder(moduleId);
     }
 
-    /// <summary>
-    /// 解析新增/编辑动作路由（NEW_URL/MODI_URL）。
-    /// 命中统一表单动作模板则替换 {moduleId}；命中特殊页精确路径则原样返回（含查询串）；
-    /// 空值或非法值返回 null（视为无值，由调用方回退统一表单或隐藏按钮）。
-    /// </summary>
-    public static string? ResolveActionUrl(string? rawUrl, int moduleId)
-    {
-        var url = (rawUrl ?? string.Empty).Trim();
-        if (url.Length == 0 || IsForbiddenUrl(url) || !url.StartsWith('/')) return null;
-        var queryStart = url.IndexOf('?', StringComparison.Ordinal);
-        var path = queryStart >= 0 ? url[..queryStart] : url;
-        var query = queryStart >= 0 ? url[queryStart..] : string.Empty;
-        foreach (var template in ActionTemplates)
-        {
-            if (path.Equals(template, StringComparison.OrdinalIgnoreCase))
-                return Substitute(template, moduleId) + query;
-        }
-        return ExactRoutes.Contains(path, StringComparer.OrdinalIgnoreCase) ? url : null;
-    }
-
-    /// <summary>M_URL 契约校验（菜单管理保存用）：空值（目录节点）、承载页、精确路径、动作模板或迁移占位页。</summary>
+    /// <summary>M_URL 契约校验（菜单管理保存用）：空值（未声明）、承载页、精确路径或迁移占位页。</summary>
     public static bool IsValidHostUrl(string? rawUrl)
     {
         var url = (rawUrl ?? string.Empty).Trim();
         if (url.Length == 0 || IsForbiddenUrl(url) || !url.StartsWith('/')) return url.Length == 0;
         return ParameterizedBases.Contains(url, StringComparer.OrdinalIgnoreCase)
             || ExactRoutes.Contains(url, StringComparer.OrdinalIgnoreCase)
-            || ActionTemplates.Any(template => url.Equals(template, StringComparison.OrdinalIgnoreCase))
             || PlaceholderRoutePattern.IsMatch(url);
     }
 
-    /// <summary>NEW_URL/MODI_URL 契约校验（菜单管理保存用）：空值或可解析的现代动作路由。</summary>
-    public static bool IsValidActionUrl(string? rawUrl)
-        => string.IsNullOrWhiteSpace(rawUrl) || ResolveActionUrl(rawUrl, 0) is not null;
-
     /// <summary>
-    /// 已解析的 NEW_URL/MODI_URL 是否就是统一表单动作路由（`/workbench/{moduleId}/new|edit|view`）。
-    /// 这类路由的可达性由统一表单名单决定：名单之外留着它，界面会给出一个点进去必 404 的入口。
+    /// 统一工作台模块：承载页声明为 /workbench，或**没声明承载页但有主表**（默认落统一工作台）。
+    /// 这是"工作台定义能不能装配 / 列表能不能查 / 快照要不要重建"的共同判据。
     /// </summary>
-    public static bool IsUnifiedFormRoute(string? resolvedUrl, int moduleId)
-    {
-        if (string.IsNullOrWhiteSpace(resolvedUrl)) return false;
-        var url = resolvedUrl.Trim();
-        var queryStart = url.IndexOf('?', StringComparison.Ordinal);
-        var path = queryStart >= 0 ? url[..queryStart] : url;
-        return path.Equals(Substitute(ActionTemplates[0], moduleId), StringComparison.OrdinalIgnoreCase)
-            || path.Equals(Substitute(ActionTemplates[1], moduleId), StringComparison.OrdinalIgnoreCase)
-            || path.Equals(Substitute(ActionTemplates[2], moduleId), StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool IsWorkbenchModule(string? rawUrl, string? masterTable)
+        => IsWorkbenchUrl((rawUrl ?? string.Empty).Trim())
+           || (string.IsNullOrWhiteSpace(rawUrl) && !string.IsNullOrWhiteSpace(masterTable));
 
     /// <summary>工作台承载判定（工作台定义、统一表单、单据打印共用）。</summary>
     public static bool IsWorkbenchUrl(string url)
@@ -127,9 +93,6 @@ internal static class ModuleRouteValidator
         || url.Contains("javascript:", StringComparison.OrdinalIgnoreCase)
         || url.Contains("data:", StringComparison.OrdinalIgnoreCase)
         || url.Contains('\\');
-
-    private static string Substitute(string template, int moduleId) =>
-        template.Replace("{moduleId}", moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     private static string Placeholder(int moduleId) => $"/fallback/modules/{moduleId}";
 }

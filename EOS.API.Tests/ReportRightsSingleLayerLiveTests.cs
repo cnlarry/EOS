@@ -29,7 +29,12 @@ public sealed class ReportRightsSingleLayerLiveTests
     private static ModuleRightsRepository CreateRepository()
         => new(PolicyServiceFactory.Connections(RequireConnection()), NullLogger<ModuleRightsRepository>.Instance);
 
-    /// <summary>取一个"个人行明确授予 REPORT_TAG"的（账号, 模块）组合。</summary>
+    /// <summary>
+    /// 取一个"个人行明确授予 REPORT_TAG"、**且该模块名下确有报表**的（账号, 模块）组合。
+    /// 必须挑到真有报表的模块：这两条用例断言的是"权限点 → 能不能看/打/导出那张报表"，
+    /// 模块名下没有报表就无从断言。此前只按 (USER_ID, M_IDX) 取 TOP 1，本库会落在
+    /// `admin` 的目录节点（11 基本参数，0 张报表）上，于是永远报"该模块下没有报表"。
+    /// </summary>
     private static (string UserId, int ModuleId)? FindGranted()
     {
         using var connection = new SqlConnection(RequireConnection());
@@ -38,6 +43,7 @@ public sealed class ReportRightsSingleLayerLiveTests
             SELECT TOP 1 LTRIM(RTRIM(d.USER_ID)), d.M_IDX
             FROM dbo.SYSDD d WITH (NOLOCK)
             WHERE ISNULL(d.REPORT_TAG, 0) = 1
+              AND EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX = d.M_IDX)
             ORDER BY d.USER_ID, d.M_IDX;
             """, connection);
         using var reader = command.ExecuteReader();
@@ -45,6 +51,10 @@ public sealed class ReportRightsSingleLayerLiveTests
         return (reader.GetString(0), reader.GetInt32(1));
     }
 
+    /// <summary>
+    /// 取一个"个人行明确未授予 REPORT_TAG"、**且该模块名下确有报表**的（账号, 模块）组合。
+    /// "没授予"这一侧同样要挑到真有报表的模块——否则拿不到 reportId，断言不了"三者全禁"。
+    /// </summary>
     private static (string UserId, int ModuleId)? FindDenied()
     {
         using var connection = new SqlConnection(RequireConnection());
@@ -53,6 +63,7 @@ public sealed class ReportRightsSingleLayerLiveTests
             SELECT TOP 1 LTRIM(RTRIM(d.USER_ID)), d.M_IDX
             FROM dbo.SYSDD d WITH (NOLOCK)
             WHERE ISNULL(d.REPORT_TAG, 0) = 0
+              AND EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX = d.M_IDX)
             ORDER BY d.USER_ID, d.M_IDX;
             """, connection);
         using var reader = command.ExecuteReader();

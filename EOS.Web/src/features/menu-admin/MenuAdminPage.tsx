@@ -33,7 +33,6 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { notifyMenuChanged } from '../../services/menuEvents'
 import { ApiError } from '../../types/api'
-import { MANUAL_EVENT } from './documentActionConfig'
 import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 import { describeApiError } from '../../lib/errors'
@@ -43,15 +42,14 @@ import {
   type ModuleBusinessConfigDraft,
 } from './BusinessActionsPanel'
 
-/** 菜单编辑表单页签：前五个是模块定义，后三个按"谁触发"划分的行为配置。 */
-type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form' | 'actions' | 'rules' | 'manual'
+/** 菜单编辑表单页签：前四个是模块定义，后三个按"谁触发"划分的行为配置。 */
+type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'actions' | 'rules' | 'manual'
 
 const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
   { key: 'basic', label: '基础' },
   { key: 'master', label: '主表' },
   { key: 'detail', label: '子表' },
   { key: 'group', label: '分组' },
-  { key: 'form', label: '统一表单' },
   // 顺序按"常一起改的相邻"排：配了库存扣减通常紧接着配数量校验。
   { key: 'actions', label: '行为动作' },
   { key: 'rules', label: '校验规则' },
@@ -66,9 +64,6 @@ export interface MenuAdminModule {
   M_ALIAS: string | null
   M_DESC: string
   M_URL: string | null
-  NEW_URL: string | null
-  MODI_URL: string | null
-  HELP_URL: string | null
   DETAIL_NO_FIELDS: string | null
   DETAIL_NO_SAVE: boolean
   SEARCH_1: boolean
@@ -92,12 +87,20 @@ export interface MenuAdminModule {
   GROUP5: boolean; GROUP_EXP5: string | null; GROUP_DESC5: string | null
   FORM_TABS: string | null
   FORM_COLUMNS: number | null
-  FORM_BUTTONS: string | null
   LAST_UPDATE_BY: string | null
   LAST_UPDATE_DATE: string | null
   M_ICON: string | null
   Icon: string | null
   EFFECT_ENGINE_TAG: boolean
+  /**
+   * 模块备注：写"这个模块是干什么的"等附加信息，给后来接手的人看。
+   * 「基础」页签可编辑（2026-10-06 起）；库列 `MODULES.REMARK`（nvarchar(1000)，迁移 324
+   * 把它从那批旧系统遗产里单独留下），保存时空串落成 NULL。
+   */
+  REMARK: string | null
+  // 表单呈现配置（打开方式 / 弹窗宽高）与页签级一行几列都**不在这张模块行上**：
+  // 它们在表单设计器里配（打开方式与尺寸落 MODULES.FORM_OPEN_MODE 等三列，一行几列落
+  // MODULE_FORM_TAB.LAYOUT_COLUMNS）。模块管理只编辑模块自身的字段，不再投影呈现配置
   /** 只读展示字段：操作主/副表描述（服务端由 TABLES.T_DESC 解析，保存时忽略）。 */
   MASTER_TABLE_DESC?: string | null
   DETAIL_TABLE_DESC?: string | null
@@ -149,9 +152,6 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   M_ALIAS: null,
   M_DESC: '',
   M_URL: null,
-  NEW_URL: null,
-  MODI_URL: null,
-  HELP_URL: null,
   DETAIL_NO_FIELDS: null,
   DETAIL_NO_SAVE: false,
   SEARCH_1: false,
@@ -175,12 +175,12 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
   FORM_TABS: null,
   FORM_COLUMNS: null,
-  FORM_BUTTONS: null,
   LAST_UPDATE_BY: null,
   LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
   EFFECT_ENGINE_TAG: false,
+  REMARK: null,
 })
 
 interface TreeEntry {
@@ -250,13 +250,14 @@ function buildTree(modules: MenuAdminModule[]): TreeEntry[] {
   return roots
 }
 
-function Input({ label, value, onChange, type = 'text', placeholder, readOnly = false }: {
+function Input({ label, value, onChange, type = 'text', placeholder, readOnly = false, disabled = false }: {
   label: string
   value: string
   onChange: (value: string) => void
   type?: string
   placeholder?: string
   readOnly?: boolean
+  disabled?: boolean
 }) {
   const inputId = `erp-menu-field-${label.replace(/[^\w\u4e00-\u9fa5]+/g, '-')}`
   return (
@@ -269,6 +270,31 @@ function Input({ label, value, onChange, type = 'text', placeholder, readOnly = 
         value={value}
         placeholder={placeholder}
         readOnly={readOnly}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  )
+}
+
+/** 多行文本域：模块备注这类"写一段说明"的字段用（单行 Input 装不下，样式与 Input 同款）。 */
+function TextArea({ label, value, onChange, rows = 3, placeholder }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  rows?: number
+  placeholder?: string
+}) {
+  const inputId = `erp-menu-field-${label.replace(/[^\w\u4e00-\u9fa5]+/g, '-')}`
+  return (
+    <div className="mb-2">
+      <label className="form-label mb-1" htmlFor={inputId}>{label}</label>
+      <textarea
+        id={inputId}
+        className="form-control form-control-sm"
+        rows={rows}
+        value={value}
+        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
@@ -358,12 +384,10 @@ export function MenuAdminPage() {
       : [],
     enabled: Boolean(masterTableName),
   })
-  const approveButtonActions = (draft?.FORM_BUTTONS ?? '').split(';').map((part) => {
-    const eq = part.indexOf('=')
-    return (eq >= 0 ? part.slice(eq + 1) : part).trim().toLowerCase()
-  })
+  // 批核能力声明了、主表却没有状态位列：能力判定会拿不到状态，配置期就要提示。
+  // （曾经还看 FORM_BUTTONS 里有没有 approve/deapprove 码，该列已随迁移 320 退役。）
   const masterMissingConfirmTag = Boolean(masterTableName)
-    && (draft?.AUTO_APPROVE === true || approveButtonActions.includes('approve') || approveButtonActions.includes('deapprove'))
+    && draft?.AUTO_APPROVE === true
     && masterColumns.data !== undefined
     && !masterColumns.data.some((column) => column.name.toLowerCase() === 'confirm_tag')
 
@@ -390,10 +414,6 @@ export function MenuAdminPage() {
   const tree = useMemo(() => buildTree(filteredModules), [filteredModules])
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null
   const stateBadge = moduleStateBadge(draft, selected, defaultColumnDrafts != null || actionsDraft?.dirty === true)
-  // 已装载的自定义按钮数：统一表单页签用它交叉指引（未装载行为配置时为 0，不谎报数量）。
-  const manualActionCount = actionsDraft != null && actionsDraft.moduleId === draft?.M_IDX
-    ? actionsDraft.actions.filter((action) => action.eventCode === MANUAL_EVENT).length
-    : 0
 
   // 切换模块时丢弃上一模块的关联草稿与发布结果，避免误提交到新模块
   useEffect(() => {
@@ -1123,17 +1143,17 @@ export function MenuAdminPage() {
                             <Input label="菜单别名" value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
                           </div>
                         </div>
-                        <Input label="页面链接（现代路由）" value={draft.M_URL ?? ''} placeholder="如 /workbench、/admin/menus（承载页不带编号）" onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
-                        <div className="row g-2">
-                          <div className="col-6">
-                            <Input label="新增URL地址" value={draft.NEW_URL ?? ''} placeholder="/workbench/{moduleId}/new 或精确路径" onChange={(value) => patch((d) => ({ ...d, NEW_URL: value || null }))} />
-                          </div>
-                          <div className="col-6">
-                            <Input label="修改URL地址" value={draft.MODI_URL ?? ''} placeholder="/workbench/{moduleId}/edit 或精确路径" onChange={(value) => patch((d) => ({ ...d, MODI_URL: value || null }))} />
-                          </div>
-                        </div>
-                        <div className="text-secondary small mb-2">新增/修改 URL 留空表示回退统一表单；保存时按现代路由契约校验（承载页不带编号，动作路由支持 {'{moduleId}'} 模板）。</div>
-                        <Input label="帮助文件URL地址" value={draft.HELP_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, HELP_URL: value || null }))} />
+                        <Input label="页面链接（承载页）" value={draft.M_URL ?? ''} placeholder="留空=目录节点；单据模块填 /workbench；自定义页填真实路径" onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
+                        <div className="text-secondary small mb-2">承载页决定模块怎么开：留空 = 目录节点（只展开不跳转）；单据模块填 /workbench 走统一工作台；自定义页填真实路径（需同时登记服务端精确路径白名单与前端路由表）。新增/编辑能不能用由统一表单名单与权限决定——不再有单独的新增/修改路由配置。</div>
+                        {/* 备注：库列 MODULES.REMARK。写"这个模块是干什么的"，方便后来接手的人一眼看懂；
+                            它不参与任何运行期契约（不装配工作台定义、不进快照），纯粹是给人看的说明 */}
+                        <TextArea
+                          label="备注"
+                          value={draft.REMARK ?? ''}
+                          rows={3}
+                          placeholder="这个模块是干什么的、有什么口径约定——写给后来接手的人看"
+                          onChange={(value) => patch((d) => ({ ...d, REMARK: value || null }))}
+                        />
                       </>
                     )}
                     {formTab === 'master' && (
@@ -1247,30 +1267,6 @@ export function MenuAdminPage() {
                           </div>
                         ))}
                       </>
-                    )}
-                    {formTab === 'form' && (
-                      <div className="card mb-2 erp-menu-form-card">
-                        <div className="card-header py-2 px-3"><strong className="fs-6">统一表单设置</strong></div>
-                        <div className="card-body py-2 px-3 row g-2">
-                          <div className="col-12 text-secondary small">
-                            表单的<strong>页签</strong>与<strong>字段排布</strong>归模块级版式：在单据页右键进「表单设计」增改删页签、拖拽排布。
-                            统一表单固定一行四列（不随模块列数变化），此处不再配置页签定义与每行对数。
-                          </div>
-                          <div className="col-6">
-                            <Input
-                              label="内置动作（受控注册码）"
-                              value={draft.FORM_BUTTONS ?? ''}
-                              placeholder="受控注册码，如 GEN_ORDER;FINISH_CASE"
-                              onChange={(value) => patch((d) => ({ ...d, FORM_BUTTONS: value || null }))}
-                            />
-                          </div>
-                          <div className="col-12 text-secondary small">
-                            这里配的是批核、结案等受控注册码（内置动作）。
-                            {manualActionCount > 0 ? `另有 ${manualActionCount} 个自定义按钮` : '另有自定义按钮'}
-                            ，见「行为 › 自定义按钮」——两者都会出现在单据工具栏上，但来源与授权模型不同。
-                          </div>
-                        </div>
-                      </div>
                     )}
                     {canModuleConfig && (
                       // 与上面的页签条件同层级、不被 formTab 包裹：切页签只换视图，

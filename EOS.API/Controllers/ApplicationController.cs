@@ -103,9 +103,13 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         };
     }
 
-    /// <summary>模块自己是否承载页面（M_URL 非空且启用）：空 M_URL 的节点是纯目录，没有可打开的落点。</summary>
+    /// <summary>
+    /// 模块自己是否承载页面：声明了承载页（M_URL 非空），或是**单据模块**（有主表 ⇒ 默认落统一工作台）。
+    /// 两者都没有 = 纯目录节点，只展开不跳转。
+    /// </summary>
     private static bool HasOwnPage(NavigationModule module) =>
-        module.Enabled && !string.IsNullOrWhiteSpace(module.SourceUrl);
+        module.Enabled
+        && (!string.IsNullOrWhiteSpace(module.SourceUrl) || !string.IsNullOrWhiteSpace(module.MasterTable));
 
     private static object MenuLeaf(NavigationModule module, string rootIcon) => new
     {
@@ -122,9 +126,9 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             .ToList()
     };
 
-    // MODULES.M_URL 即模块页面链接，代码只做安全校验不做翻译。
+    // MODULES.M_URL 即模块页面链接，代码只做安全校验不做翻译；留空时单据模块默认走统一工作台。
     private static string RouteFor(NavigationModule module) =>
-        ModuleRouteValidator.Resolve(module.SourceUrl, module.Id);
+        ModuleRouteValidator.Resolve(module.SourceUrl, module.Id, module.MasterTable);
 
     private static string IconFor(int rootId, string rootLabel, IReadOnlyDictionary<string, string?> iconOverrides)
         => MenuIconResolver.Resolve(rootId, rootLabel, iconOverrides);

@@ -3,11 +3,22 @@
  *
  * 版式是**模块级**的：同一个字段在不同模块里可以排在不同的位置、藏或不藏；
  * 页签集合也属于模块。设计态只改版式，不改字段定义（标签/类型/必填/格式仍在字段维护）。
+ *
+ * 设计器同时持有**表单呈现配置**（打开方式 / 弹窗宽高，即 `MODULES.FORM_OPEN_MODE` 等三列）：
+ * 它与版式同一笔保存、同一次重发布，所以"保存即生效"——不像模块管理里的元数据草稿
+ * 那样要人工点发布（见 docs/guide/42 §三）。
+ * **栅格列数不在呈现配置里**：它是**页签级事实**（`MODULE_FORM_TAB.LAYOUT_COLUMNS`，见 `DesignTab.columns`）。
  */
 
 export interface DesignTab {
   no: number
   title: string
+  /**
+   * 该页签的布局列数 1..4（库内 `MODULE_FORM_TAB.LAYOUT_COLUMNS`，NOT NULL DEFAULT 4）。
+   * 同一个表单的不同页签可以一行几列各不相同（页签 1 一行两列、页签 2 一行一列）。
+   * 从服务端来可能缺省（历史快照），归一后一律是 1..4 的具体值。
+   */
+  columns?: number | null
 }
 
 /** 版式行：一行 = 一个字段在某张表（模块主表或明细表）表单上的位置与占位。 */
@@ -65,7 +76,11 @@ export interface DesignState {
   title: string
   masterTable: string
   detailTable: string | null
-  columns: number
+  /** 打开方式：TAB / NEWTAB / DIALOG（后端已规范化为大写）。 */
+  openMode: string
+  /** 弹窗宽高（px）：只有 DIALOG 方式下才有值，其余为 null（画板铺满可用区域）。 */
+  dialogWidth: number | null
+  dialogHeight: number | null
   tabs: DesignTab[]
   master: TableDesign
   detail: TableDesign
@@ -75,6 +90,8 @@ export interface DesignState {
 export interface TabInput {
   no: number
   title: string
+  /** 该页签的布局列数 1..4（写入侧一律落具体值，不提交 null） */
+  columns: number
 }
 
 export interface RowInput {
@@ -97,9 +114,14 @@ export interface DetailRowInput {
 export interface SavePayload {
   baseUpdatedAt: string | null
   idempotencyKey: string
+  /** 页签各带自己的布局列数（服务端按它写入 `MODULE_FORM_TAB.LAYOUT_COLUMNS`）。 */
   tabs: TabInput[]
   master: RowInput[]
   detail: DetailRowInput[]
+  /** 呈现配置三项随同一笔保存提交（服务端据此写 MODULES 并重发布，保存即生效）。 */
+  openMode: string
+  dialogWidth: number | null
+  dialogHeight: number | null
 }
 
 export interface SaveResponse {
@@ -131,7 +153,10 @@ export interface DesignDraft {
   /** 所属模块（导出/导入版式文件时要写进文件并核对，故草稿自带） */
   moduleId: number
   title: string
-  columns: number
+  /** 呈现配置：与版式同草稿、同一次提交（打开方式决定画板是不是按弹窗尺寸摆） */
+  openMode: string
+  dialogWidth: number | null
+  dialogHeight: number | null
   masterTable: string
   detailTable: string | null
   tabs: DesignTab[]

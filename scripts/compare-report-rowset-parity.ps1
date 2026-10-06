@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     报表的归属锚点从承载模块（REPORT.R_M_IDX）搬到业务模块（REPORT.M_IDX）、筛选条件随行
-    搬家（SYSQR_DEFAULT / SYSQR_DA / SYSQR_USER 的 M_IDX 被改指、SERIAL_NO 被重排）时，
+    搬家（SYSQR_DEFAULT / SYSQR_USER 的 M_IDX 被改指、SERIAL_NO 被重排）时，
     最容易出的错不是报错，而是**同一张报表悄悄换了一份数据**：条件挂错了模块、序号重排后
     与前端的筛选项错位、取数表跟着宿主变了——接口照样 200，列还有、行还有，只是内容不是原来那份。
 

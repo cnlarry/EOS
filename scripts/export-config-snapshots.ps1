@@ -7,11 +7,12 @@ logs/module-list.tsv / fields-config.tsv / modules-config.tsv / columns-config.t
 .DESCRIPTION
 候选集合：EOS.API/appsettings.json 的 formSettings.EnabledModuleIds（统一表单白名单，
 与 form-definition 放行一致）。四个快照：
-- module-list.tsv：白名单模块（M_IDX|M_ALIAS|M_DESC|MASTER_TABLE|DETAIL_TABLE|MODI_URL）；
+- module-list.tsv：白名单模块（M_IDX|M_ALIAS|M_DESC|MASTER_TABLE|DETAIL_TABLE）；
 - fields-config.tsv：白名单模块主/明细表 FIELDS（T_ID|F_ID，消费方只读前 2 列）；
-- modules-config.tsv：白名单模块配置（M_IDX|M_DESC|MASTER_TABLE|MODI_URL|FORM_BUTTONS）；
+- modules-config.tsv：白名单模块配置（M_IDX|M_DESC|MASTER_TABLE）；
   注：字段级 FIELDS 排布列（FORM_ORDER/TAB_NO/SPAN/NEW_LINE/CELL_*）与 MODULES 的页签/列数列已退役
-  （排布归 MODULE_FORM_LAYOUT），
+  （排布归 MODULE_FORM_LAYOUT），内置动作受控注册码那一列（FORM_BUTTONS）已随迁移 320 删除，
+  路由三列（NEW_URL / MODI_URL / HELP_URL）已随迁移 321 删除（只留 M_URL 承载页），
   本导出不再含这些列；`fields-config.tsv` 保留 FORM_OPTIONS（该列仍在使用，非排布配置）。
 - columns-config.tsv：白名单模块主/明细表物理列（TABLE_NAME|COLUMN_NAME）。
 覆盖导出（可重跑），供 scripts/layout-diff.mjs 等差异工具复用。
@@ -38,30 +39,18 @@ function Export-Tsv {
     Write-Host "  $Name：$($dt.Rows.Count) 行" -ForegroundColor Cyan
 }
 
-# 备份表缺失的旧页面路径覆盖（M86 现代化后 MODULES.MODI_URL 无旧路径，ADR-004 备份表部分缺失）
-$legacyUrlOverrides = @{
-    '180102' = '~/HR/EMPLOYEE.aspx'
-    '180110' = '~/HR/EMPLOYEE.aspx'
-    '180105' = '~/HR/EMPLOYEE_DIMISSION.aspx'
-    '180111' = '~/HR/EMPLOYEE_DIMISSION.aspx'
-}
-
 Write-Host "导出统一表单配置快照（白名单 $($enabled.Count) 模块）" -ForegroundColor Cyan
 
-# module-list.tsv：白名单模块（MODI_URL 取当前值，供 layout-diff/extract-layouts/
-# AcceptanceSemantics 提取旧页面。旧页面路径原来从 ADR-004 时期的一张备份快照回退，
-# 该快照已由迁移 315 退役，现只取 MODULES.MODI_URL——现代化后它已不再含旧路径。
+# module-list.tsv：白名单模块（M_IDX|M_ALIAS|M_DESC|MASTER_TABLE|DETAIL_TABLE）。
+# 旧页面路径列（NEW_URL / MODI_URL / HELP_URL）已随迁移 321 物理删除，不再导出。
 $moduleRows = Invoke-EosSqlTable -Query @"
 SET NOCOUNT ON;
 SELECT LTRIM(RTRIM(CAST(M_IDX AS varchar(20)))), LTRIM(RTRIM(ISNULL(M_ALIAS,''))), LTRIM(RTRIM(ISNULL(M_DESC,''))),
-       LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
-       LTRIM(RTRIM(ISNULL(MODI_URL,'')))
+       LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))
 FROM dbo.MODULES WHERE M_IDX IN $idList ORDER BY M_IDX;
 "@
 $moduleLines = foreach ($row in $moduleRows.Rows) {
-    $id = [string]$row[0]
-    $url = if ($legacyUrlOverrides.ContainsKey($id)) { $legacyUrlOverrides[$id] } else { [string]$row[5] }
-    ($row.ItemArray[0..4] + @($url) | ForEach-Object { if ($null -eq $_) { '' } else { [string]$_ } }) -join '|'
+    ($row.ItemArray | ForEach-Object { if ($null -eq $_) { '' } else { [string]$_ } }) -join '|'
 }
 [System.IO.File]::WriteAllLines((Join-Path $logs 'module-list.tsv'), $moduleLines, [System.Text.UTF8Encoding]::new($false))
 Write-Host "  module-list.tsv：$($moduleLines.Count) 行" -ForegroundColor Cyan
@@ -80,18 +69,14 @@ FROM dbo.FIELDS WHERE LTRIM(RTRIM(T_ID)) IN $tblList ORDER BY T_ID, F_ID;
 "@
 }
 
-# modules-config.tsv：白名单模块布局配置（MODI_URL 同样只取当前值，理由见上）
+# modules-config.tsv：白名单模块配置（M_IDX|M_DESC|MASTER_TABLE）
 $modConfigRows = Invoke-EosSqlTable -Query @"
 SET NOCOUNT ON;
-SELECT LTRIM(RTRIM(CAST(M_IDX AS varchar(20)))), LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-       LTRIM(RTRIM(ISNULL(MODI_URL,''))),
-       LTRIM(RTRIM(ISNULL(FORM_BUTTONS,'')))
+SELECT LTRIM(RTRIM(CAST(M_IDX AS varchar(20)))), LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,'')))
 FROM dbo.MODULES WHERE M_IDX IN $idList ORDER BY M_IDX;
 "@
 $modConfigLines = foreach ($row in $modConfigRows.Rows) {
-    $id = [string]$row[0]
-    $url = if ($legacyUrlOverrides.ContainsKey($id)) { $legacyUrlOverrides[$id] } else { [string]$row[3] }
-    ($row.ItemArray[0..2] + @($url) + @($row.ItemArray[4]) | ForEach-Object { if ($null -eq $_) { '' } else { [string]$_ } }) -join '|'
+    ($row.ItemArray | ForEach-Object { if ($null -eq $_) { '' } else { [string]$_ } }) -join '|'
 }
 [System.IO.File]::WriteAllLines((Join-Path $logs 'modules-config.tsv'), $modConfigLines, [System.Text.UTF8Encoding]::new($false))
 Write-Host "  modules-config.tsv：$($modConfigLines.Count) 行" -ForegroundColor Cyan

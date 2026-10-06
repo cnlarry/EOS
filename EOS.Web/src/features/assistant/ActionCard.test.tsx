@@ -44,8 +44,6 @@ function formDefinition(overrides: Partial<FormDefinition> = {}): FormDefinition
     detailNoFields: '',
     detailDfVerify: '',
     tabs: [],
-    columns: 4,
-    buttons: null,
     hasWorkflow: false,
     hasStatelessApprove: false,
     defaultValues: {},

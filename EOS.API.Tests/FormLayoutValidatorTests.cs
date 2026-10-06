@@ -39,7 +39,11 @@ public sealed class FormLayoutValidatorTests
         bool masterCustomized = true,
         bool detailCustomized = false,
         int columns = 3)
-        => new(columns, tabs ?? [new FormTabDefinition(1, "默认")], master, detail ?? [], masterCustomized, detailCustomized);
+        // 列数是页签级事实：夹具默认给每个页签声明 columns（默认 3），
+        // 想测"页签没声明列数"就显式传 columns: 4 或自己构造带 Columns 的页签
+        => new((tabs ?? [new FormTabDefinition(1, "默认")])
+                .Select(tab => tab.Columns is null ? tab with { Columns = columns } : tab).ToList(),
+            master, detail ?? [], masterCustomized, detailCustomized);
 
     [Fact]
     public void ValidLayout_ReportsNothing()

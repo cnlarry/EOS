@@ -11,10 +11,11 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("M_IDX")] int M_IDX,
     [property: JsonPropertyName("M_ALIAS")] string? M_ALIAS,
     [property: JsonPropertyName("M_DESC")] string M_DESC,
+    /// <summary>
+    /// 承载页（唯一路由字段）：空 = 目录节点/未声明（单据模块由主表判定，默认走统一工作台）；
+    /// `/workbench` = 统一工作台；精确路径 = 自定义承载页。见迁移 321 与 <see cref="ModuleRouteValidator"/>。
+    /// </summary>
     [property: JsonPropertyName("M_URL")] string? M_URL,
-    [property: JsonPropertyName("NEW_URL")] string? NEW_URL,
-    [property: JsonPropertyName("MODI_URL")] string? MODI_URL,
-    [property: JsonPropertyName("HELP_URL")] string? HELP_URL,
     [property: JsonPropertyName("DETAIL_NO_FIELDS")] string? DETAIL_NO_FIELDS,
     [property: JsonPropertyName("DETAIL_NO_SAVE")] bool DETAIL_NO_SAVE,
     [property: JsonPropertyName("SEARCH_1")] bool SEARCH_1,
@@ -50,7 +51,8 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("LAST_UPDATE_DATE")] DateTime? LAST_UPDATE_DATE,
     [property: JsonPropertyName("FORM_TABS")] string? FORM_TABS = null,
     [property: JsonPropertyName("FORM_COLUMNS")] int? FORM_COLUMNS = null,
-    [property: JsonPropertyName("FORM_BUTTONS")] string? FORM_BUTTONS = null,
+    // 内置动作「受控注册码」字段（FORM_BUTTONS）于迁移 320 退役并物理删列：
+    // 工具栏按钮由能力 + 权限决定，自定义按钮走 MODULE_BUSINESS_ACTION（另一条通路）。
     /// <summary>用户自选图标名（留空时按 NavigationIcons/根名关键字规则解析；仅一级菜单显示）。</summary>
     [property: JsonPropertyName("M_ICON")] string? M_ICON = null,
     /// <summary>只读展示字段：所在根菜单的侧栏图标名（服务端解析，前端保存时忽略）。</summary>
@@ -66,7 +68,18 @@ public sealed record MenuAdminModule(
     /// <summary>只读状态：当前生效的 Definition 快照版本（无则未发布）。</summary>
     [property: JsonPropertyName("PUBLISH_VERSION")] int? PublishVersion = null,
     /// <summary>只读状态：当前生效版本的发布时间。</summary>
-    [property: JsonPropertyName("PUBLISHED_AT")] DateTime? PublishedAt = null);
+    [property: JsonPropertyName("PUBLISHED_AT")] DateTime? PublishedAt = null,
+    /// <summary>
+    /// 模块备注：写"这个模块是干什么的"、口径约定等附加信息，给后来接手的人看。
+    /// 2301「基础」页签可编辑（2026-10-06 用户要求把它放出来）；空串按 NULL 落库。
+    /// </summary>
+    [property: JsonPropertyName("REMARK")] string? REMARK = null);
+    // 表单呈现配置（打开方式 / 弹窗宽高）不在这张只读投影里：模块管理只管模块自身的字段，
+    // 呈现配置与页签级一行几列都在——且只在——表单设计器里配（`FormLayoutRepository` 读写
+    // `MODULES.FORM_OPEN_MODE` 等三列与 `MODULE_FORM_TAB.LAYOUT_COLUMNS`）。
+    // 此前这三个字段只是 2301「统一表单」页签的只读摘要，该页签已删，投影随之收口。
+    // 迁移 324 把 MODULES 的八列旧系统遗产删了（CONFIRM_TAG/OWNER/OWNER_G/CONFIRM_DATE/
+    // CONFIRM_PERSON/CI/CREATE_PERSON/CREATE_DATE），REMARK 是那批里唯一留下的（用来写备注）。
 
 /// <summary>
 /// 菜单保存载荷：模块行 + 可选的行为动作/校验规则 + 可选的默认查询列，三者在同一事务内落库。

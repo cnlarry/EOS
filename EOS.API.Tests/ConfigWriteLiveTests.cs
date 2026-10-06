@@ -366,8 +366,8 @@ public sealed class ConfigWriteLiveTests : IDisposable
         {
             await ExecuteAsync(
                 """
-                INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,MODI_URL,MASTER_TABLE,EFFECT_ENGINE_TAG)
-                VALUES (@ModuleId,N'配置写用例模块',N'',N'',N'COMPANY',1);
+                INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,MASTER_TABLE,EFFECT_ENGINE_TAG)
+                VALUES (@ModuleId,N'配置写用例模块',N'',N'COMPANY',1);
                 """,
                 ("@ModuleId", moduleId));
             _modules.Add(moduleId);

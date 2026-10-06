@@ -31,7 +31,6 @@ export interface FormTabRow {
 
 /** 版式文档（推导结果 / 设计态草稿的形状）。 */
 export interface FormLayoutDoc {
-  columns: number
   /** 页签集合；空列表表示"未配置页签"，渲染侧兜底为单页签「默认」（不写库）。 */
   tabs: FormTabRow[]
   rows: FormLayoutRow[]
@@ -41,13 +40,41 @@ export interface FormLayoutDoc {
 export const FORM_ROW_SPAN_MAX = 3
 
 /**
- * 未声明列数时的栅格列数。
+ * 页签未声明列数时的栅格列数，与库内 `MODULE_FORM_TAB.LAYOUT_COLUMNS` 的 `DEFAULT 4` 同值。
  *
- * 取 4（不是 2）是因为**既有渲染就是这么排的**：统一表单历史上固定按 4 列排布，
- * 而实测 279 个工作台模块里有 140 个 `MODULES.FORM_COLUMNS` 为空——若默认成 2，
- * 这 140 个模块的表单会从每行 4 个字段变成每行 2 个，是纯粹的观感回退。
+ * 取 4（不是 2）是因为**既有渲染就是这么排的**：统一表单历史上固定按 4 列排布——若默认成 2，
+ * 这些模块的表单会从每行 4 个字段变成每行 2 个，是纯粹的观感回退。
+ * 这个常量只兜"历史快照里 `tabs[].columns` 为空"，库内那列是 NOT NULL。
  */
 export const DEFAULT_FORM_COLUMNS = 4
+
+/** 页签可声明的列数区间（与服务端 `FormLayoutDerivation`、库内 CHECK 约束同口径）。 */
+export const MIN_FORM_COLUMNS = 1
+export const MAX_FORM_COLUMNS = 4
+
+/**
+ * 列数解析：落在合法区间时用它，未下发或越界回落兜底值。
+ * 运行态与设计器都走这一处，免得"设计态按 2 列排、运行态按 4 列渲染"。
+ */
+export function resolveFormColumns(columns: number | null | undefined): number {
+  if (!Number.isFinite(columns)) return DEFAULT_FORM_COLUMNS
+  const value = Math.round(columns!)
+  return value >= MIN_FORM_COLUMNS && value <= MAX_FORM_COLUMNS ? value : DEFAULT_FORM_COLUMNS
+}
+
+/**
+ * **页签的布局列数**：取该页签声明的列数（`MODULE_FORM_TAB.LAYOUT_COLUMNS`，
+ * 库内 NOT NULL DEFAULT 4），缺值（历史快照）或越界回落 `DEFAULT_FORM_COLUMNS`。
+ *
+ * 列数是页签级事实——同一表单的页签 1 一行两列、页签 2 一行一列是允许的。
+ * 运行态渲染、设计器画板与保存期夹取三处都走这一处解析，否则"设计态排 2 列、运行态按 4 列渲染"。
+ */
+export function resolveTabColumns(
+  tabs: readonly { no: number; columns?: number | null }[] | null | undefined,
+  tabNo: number,
+): number {
+  return resolveFormColumns(tabs?.find(tab => tab.no === tabNo)?.columns)
+}
 
 /** 备注类/长文本字段：整行独占且占两行高（与服务端同一判据）。 */
 export function isWideTextField(field: Pick<FormFieldDefinition, 'key' | 'dataType'>): boolean {

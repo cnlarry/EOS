@@ -10,9 +10,13 @@ import {
   normalizeTabs,
   renameTab,
   resetRow,
+  setDialogSize,
   setHidden,
+  setOpenMode,
   setPlacement,
   setSection,
+  setTabColumns,
+  tabColumns,
   toDraft,
   toSavePayload,
   validateDraft,
@@ -74,8 +78,8 @@ function state(overrides: Partial<DesignState> = {}): DesignState {
     title: '客户订单',
     masterTable: 'COP_ORDER_M',
     detailTable: 'COP_ORDER_D',
-    columns: 2,
-    tabs: [{ no: 1, title: '' }],
+    // 一行几列只看页签（夹具默认两列，需要别的值时在用例里覆盖 tabs）
+    tabs: [{ no: 1, title: '', columns: 2 }],
     master: {
       table: 'COP_ORDER_M',
       layout: [row('A', { orderNo: 1 }), row('B', { orderNo: 2 }), row('C', { orderNo: 3 })],
@@ -87,6 +91,9 @@ function state(overrides: Partial<DesignState> = {}): DesignState {
       pool: [],
     },
     baseUpdatedAt: '2026-09-25 05:00:00.000',
+    openMode: 'TAB',
+    dialogWidth: null,
+    dialogHeight: null,
     ...overrides,
   }
 }
@@ -97,17 +104,18 @@ describe('toDraft', () => {
     expect(draft.master.map(item => item.key)).toEqual(['A', 'B', 'C'])
     expect(draft.masterPool.map(item => item.key)).toEqual(['D'])
     expect(draft.baseline.master.map(item => item.key)).toEqual(['A', 'B', 'C'])
-    expect(draft.columns).toBe(2)
+    // 列数随页签（模块级那层已随迁移 322 删除）
+    expect(draft.tabs[0].columns).toBe(2)
   })
 })
 
 describe('normalizeTabs', () => {
-  it('补常驻页签并按序号排序去重', () => {
-    expect(normalizeTabs([{ no: 3, title: '结尾' }, { no: 1, title: '主' }])).toEqual([
-      { no: 1, title: '主' },
-      { no: 3, title: '结尾' },
+  it('补常驻页签并按序号排序去重（未声明列数的页签落兜底 4 列）', () => {
+    expect(normalizeTabs([{ no: 3, title: '结尾' }, { no: 1, title: '主', columns: 2 }])).toEqual([
+      { no: 1, title: '主', columns: 2 },
+      { no: 3, title: '结尾', columns: 4 },
     ])
-    expect(normalizeTabs([])).toEqual([{ no: 1, title: '' }])
+    expect(normalizeTabs([])).toEqual([{ no: 1, title: '', columns: 4 }])
   })
 })
 
@@ -156,8 +164,8 @@ describe('setPlacement', () => {
     expect(next.master[0].rowSpan).toBe(3)
   })
 
-  it('单列模块只能占 1 列', () => {
-    const draft = toDraft(state({ columns: 1 }))
+  it('单列页签只能占 1 列', () => {
+    const draft = toDraft(state({ tabs: [{ no: 1, title: '', columns: 1 }] }))
     expect(setPlacement(draft, 'A', { span: 4 }).master[0].span).toBe(1)
   })
 })
@@ -255,6 +263,64 @@ describe('resetRow', () => {
   })
 })
 
+describe('呈现配置的草稿操作', () => {
+  it('切到非弹窗方式清掉窗体宽高（那两种方式不消费尺寸）', () => {
+    const dialog = toDraft(state({ openMode: 'DIALOG', dialogWidth: 900, dialogHeight: 600 }))
+    const back = setOpenMode(dialog, 'TAB')
+    expect(back.openMode).toBe('TAB')
+    expect(back.dialogWidth).toBeNull()
+    expect(back.dialogHeight).toBeNull()
+  })
+
+  it('弹窗宽高可单独改：未提交的那一项保持原值，留空即 null（按默认开窗）', () => {
+    const base = toDraft(state({ openMode: 'DIALOG', dialogWidth: 800, dialogHeight: 500 }))
+    const onlyWidth = setDialogSize(base, { width: 900 })
+    expect(onlyWidth.dialogWidth).toBe(900)
+    expect(onlyWidth.dialogHeight).toBe(500)
+    expect(setDialogSize(base, { width: null }).dialogWidth).toBeNull()
+  })
+
+  it('页签布局列数：改小列数时把该页签内越界的跨度夹回来（调整即合规）', () => {
+    const four = toDraft(state({ tabs: [{ no: 1, title: '', columns: 4 }, { no: 2, title: '明细', columns: 4 }], master: {
+      table: 'COP_ORDER_M',
+      layout: [row('A', { orderNo: 1, tabNo: 1, span: 4 }), row('B', { orderNo: 1, tabNo: 2, span: 4 })],
+      pool: [pool('D')],
+    } }))
+    const next = setTabColumns(four, 1, 2)
+    expect(tabColumns(next, 1)).toBe(2)
+    // 页签 1 的行夹到 2；页签 2 的行不受影响（列数是页签级事实）
+    expect(next.master.find(item => item.key === 'A')?.span).toBe(2)
+    expect(next.master.find(item => item.key === 'B')?.span).toBe(4)
+    expect(validateDraft(next)).toEqual([])
+  })
+
+  it('页签未声明列数时落兜底 4 列；越界值同样归一为 4 列', () => {
+    const draft = toDraft(state({ tabs: [{ no: 1, title: '' }] }))
+    expect(tabColumns(draft, 1)).toBe(4)
+    // 越界（直改库/旧文件）与服务端同口径：落回 4 列，而不是把 9 列带进画布
+    expect(normalizeTabs([{ no: 1, title: '', columns: 9 }])[0].columns).toBe(4)
+    expect(tabColumns(toDraft(state({ tabs: normalizeTabs([{ no: 1, title: '', columns: 9 }]) })), 1)).toBe(4)
+  })
+
+  it('新增页签沿用当前页签的列数', () => {
+    const draft = toDraft(state({ tabs: [{ no: 1, title: '', columns: 2 }] }))
+    const added = addTab(draft, '附带', tabColumns(draft, 1))
+    expect(added.tabs.find(tab => tab.no === 2)?.columns).toBe(2)
+  })
+
+  it('保存载荷带呈现配置三项，列数随各页签提交', () => {
+    const payload = toSavePayload(
+      setDialogSize(setOpenMode(toDraft(state({ tabs: [{ no: 1, title: '', columns: 3 }] })), 'DIALOG'), { width: 880, height: 620 }),
+      'stamp',
+      'key-1',
+    )
+    expect(payload.openMode).toBe('DIALOG')
+    expect(payload.dialogWidth).toBe(880)
+    expect(payload.dialogHeight).toBe(620)
+    expect(payload.tabs).toEqual([{ no: 1, title: '', columns: 3 }])
+  })
+})
+
 describe('toSavePayload', () => {
   it('提交顺序即排序（服务端会再重排 1..n），明细只带 key 与移出位', () => {
     const draft = toDraft(state())
@@ -266,7 +332,8 @@ describe('toSavePayload', () => {
       { key: 'PRO_NO', hidden: false },
       { key: 'QTY', hidden: false },
     ])
-    expect(payload.tabs).toEqual([{ no: 1, title: '' }])
+    // 页签自带布局列数（夹具的 1 号页签声明两列）：一律落具体值，不提交 null
+    expect(payload.tabs).toEqual([{ no: 1, title: '', columns: 2 }])
   })
 })
 
@@ -346,7 +413,9 @@ describe('分节与套用来源', () => {
   })
 
   it('套用来源：来源专属字段被丢弃，本模块多出的字段回到字段池', () => {
+    // 目标模块声明四列（来源的页签列数会随之套过来，见下）
     const target = toDraft(state({
+      tabs: [{ no: 1, title: '', columns: 4 }],
       master: {
         table: 'M',
         layout: [row('A', { tabNo: 1, orderNo: 1, span: 2 }), row('ONLY_MINE', { tabNo: 1, orderNo: 2 })],
@@ -357,7 +426,7 @@ describe('分节与套用来源', () => {
     const source: DesignState = state({
       moduleId: 9999,
       title: '来源模块',
-      tabs: [{ no: 1, title: '' }, { no: 2, title: '附带' }],
+      tabs: [{ no: 1, title: '', columns: 4 }, { no: 2, title: '附带', columns: 4 }],
       master: {
         table: 'M',
         layout: [
@@ -376,6 +445,15 @@ describe('分节与套用来源', () => {
     expect(applied.tabs.map(tab => tab.no)).toEqual([1, 2])
     // 本模块有、来源没有的字段回池，不凭空消失
     expect([...applied.masterPool.map(item => item.key)].sort()).toEqual(['ONLY_MINE', 'POOLED'])
+
+    // 跨度以**该行所属页签**的列数为上限（页签连同列数一起套过来）：来源页签 2 只有两列时，
+    // 它的 4 段格落到画布上是 2 段，否则套用后会出现本页签排不出来的跨度、保存被服务端拒
+    const narrowSource: DesignState = {
+      ...source,
+      tabs: [{ no: 1, title: '', columns: 4 }, { no: 2, title: '附带', columns: 2 }],
+    }
+    const clamped = applyTemplateDraft(target, narrowSource)
+    expect(clamped.master[0].span).toBe(2)
   })
 
   it('导出后导入同模块可往返一致，导入别模块的文件被拒', () => {

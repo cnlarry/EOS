@@ -76,6 +76,62 @@
   color: var(--tblr-secondary);
 }
 
+/* 页签行最右端：表单呈现入口（原本那块空白）。
+   它是"整张表单怎么开"的开关，与页签行同高——不再单占画布上方一行（那里放它很违和）。
+   选择器带 .erp-designer-present-item 前缀是为了压过 .erp-form-tabs .nav-link 的页签几何 */
+.erp-designer-present-item {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.erp-designer-present-item > .erp-designer-present {
+  margin-bottom: 0;
+  padding: 2px 10px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 6px;
+  background: var(--tblr-bg-surface);
+  font-size: 12px;
+  color: var(--tblr-secondary);
+  white-space: nowrap;
+}
+
+.erp-designer-present-item > .erp-designer-present:hover {
+  color: var(--tblr-primary);
+  border-color: var(--tblr-primary);
+}
+
+/* 「表单呈现」弹窗正文：打开方式 / 弹窗宽高 + 一句说明 */
+.erp-designer-present-fields {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.erp-designer-present-fields .erp-designer-muted {
+  width: 100%;
+}
+
+.erp-designer-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-field .form-select,
+.erp-designer-field .form-control {
+  width: auto;
+  min-width: 96px;
+}
+
+.erp-designer-field .form-control[type='number'] {
+  width: 88px;
+}
+
 .erp-designer-tools,
 .erp-designer-templates {
   display: flex;
@@ -107,6 +163,21 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* 弹窗方式：画板锁到模块声明的窗体尺寸（宽即运行态窗体宽，行内折行位置因此一致）。
+   不拉伸、比设计区窄时居中；**高度取下限**——内容超出时设计区继续滚动（拖拽的滚动补偿挂在
+   设计区上，这里再开一层滚动会让补偿算错），运行态则是在窗体内滚动。
+   内边距 10px：运行态弹窗里字段区与窗体边之间就是这一圈留白（那边是
+   `.erp-form-dialog .modal-body > .erp-form-page` 的 10px 12px 12px 内边距），
+   画板不留白的话字段会顶到窗体边线上，折行位置与运行态对不上 */
+.erp-designer-canvas.is-dialog {
+  flex: 0 0 auto;
+  margin: 0 auto;
+  padding: 10px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
 }
 
 /* 页签沿用运行态统一表单的页签样式（erp-form-tabs），此处只补设计态特有的关闭/新增按钮 */

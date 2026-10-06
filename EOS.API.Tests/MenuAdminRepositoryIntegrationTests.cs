@@ -327,7 +327,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         }
 
         var input = new MenuAdminModule(
-            M_IDX: 0, M_ALIAS: null, M_DESC: "自动编号测试", M_URL: null, NEW_URL: null, MODI_URL: null, HELP_URL: null,
+            M_IDX: 0, M_ALIAS: null, M_DESC: "自动编号测试", M_URL: null,
             DETAIL_NO_FIELDS: null, DETAIL_NO_SAVE: false, SEARCH_1: false, SEARCH_2: false, M_P_IDX: null,
             SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
             MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
@@ -337,7 +337,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
             GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
             GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
-            LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null, FORM_TABS: null, FORM_COLUMNS: null, FORM_BUTTONS: null,
+            LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null, FORM_TABS: null, FORM_COLUMNS: null,
             M_ICON: "product");
 
         var id = await _repository.SaveAsync(input, null, "IT", CancellationToken.None);
@@ -367,7 +367,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         }
 
         var input = new MenuAdminModule(
-            M_IDX: 0, M_ALIAS: null, M_DESC: "表校验测试", M_URL: null, NEW_URL: null, MODI_URL: null, HELP_URL: null,
+            M_IDX: 0, M_ALIAS: null, M_DESC: "表校验测试", M_URL: null,
             DETAIL_NO_FIELDS: null, DETAIL_NO_SAVE: false, SEARCH_1: false, SEARCH_2: false, M_P_IDX: null,
             SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
             MASTER_TABLE: "NOT_A_TABLE", FILTER: null, DETAIL_TABLE: null,

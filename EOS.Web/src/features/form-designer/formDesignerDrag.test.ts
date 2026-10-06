@@ -50,10 +50,9 @@ function state(): DesignState {
     title: '客户订单',
     masterTable: 'COP_ORDER_M',
     detailTable: 'COP_ORDER_D',
-    columns: 4,
     tabs: [
-      { no: 1, title: '' },
-      { no: 2, title: '其它' },
+      { no: 1, title: '', columns: 4 },
+      { no: 2, title: '其它', columns: 4 },
     ],
     master: {
       table: 'COP_ORDER_M',
@@ -71,6 +70,9 @@ function state(): DesignState {
       pool: [],
     },
     baseUpdatedAt: 'stamp',
+    openMode: 'TAB',
+    dialogWidth: null,
+    dialogHeight: null,
   }
 }
 

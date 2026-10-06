@@ -38,29 +38,6 @@ public sealed class WorkbenchDefinitionBuilder(
 
     private SqlConnection CreateConnection()=>connections.Create();
     /// <summary>
-    /// Parses MODULES.FORM_BUTTONS (e.g. '1=copy;2=approve;3=print') into a controlled button list.
-    /// Format: semicolon-separated 'index=action' entries; allowed actions are new/edit/delete/copy/
-    /// approve/deapprove/print/export/search. Empty or invalid entries are ignored (server-side
-    /// whitelist, raw config text is not trusted); an empty config returns null.
-    /// </summary>
-    private static IReadOnlyList<WorkbenchButton>? ParseFormButtons(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "new", "edit", "delete", "copy", "approve", "deapprove", "endcase", "unendcase", "print", "export", "search",
-        };
-        var result = new List<WorkbenchButton>();
-        foreach (var part in raw.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            var eq = part.IndexOf('=');
-            var action = eq >= 0 ? part[(eq + 1)..].Trim() : part.Trim();
-            if (allowed.Contains(action))
-                result.Add(new WorkbenchButton(action));
-        }
-        return result.Count > 0 ? result : null;
-    }
-    /// <summary>
     /// Whitelist validation for BROWSE_URL browse-link templates.
     /// Only in-site relative paths are allowed (starting with ~ and no external protocol), and every
     /// {placeholder} must be an authorized field of the same table (case-insensitive); otherwise null
@@ -144,8 +121,7 @@ public sealed class WorkbenchDefinitionBuilder(
         var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
         // 版式段是模块级事实，随快照冻结；历史快照没有该段时按当前配置补读（含默认推导）
         var formLayout = baseline.FormLayout ?? await FormLayoutReader.ReadAsync(
-            connection, moduleId, master, detail,
-            FormLayoutDerivation.DefaultColumns, token);
+            connection, moduleId, master, detail, token);
         return baseline with
         {
             MasterFields = masterFields,
@@ -172,11 +148,15 @@ public sealed class WorkbenchDefinitionBuilder(
         string? version,
         CancellationToken token)
     {
-        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,AUTO_APPROVE," +
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
                            // FORM_TABS / FORM_COLUMNS 已退役：**在原位返回 NULL 占位**，下游按位置取值不改，
                            // 等字段级配置彻底清理时再一并删掉这两段
-                           "NULL AS FORM_TABS,NULL AS FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2,HELP_URL " +
+                           "NULL AS FORM_TABS,NULL AS FORM_COLUMNS,IF_COPY,SEARCH_1,SEARCH_2," +
+                           // 表单打开方式同样取在原位之后追加：新增列只影响末尾序号，既有取位不动。
+                           // 路由只有 M_URL 一个字段（迁移 321 删掉了 NEW_URL / MODI_URL / HELP_URL）；
+                           // 栅格列数不在这里——它是页签级事实（MODULE_FORM_TAB.LAYOUT_COLUMNS，迁移 319 起就只此一处）
+                           "FORM_OPEN_MODE,FORM_DIALOG_WIDTH,FORM_DIALOG_HEIGHT " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -187,39 +167,36 @@ public sealed class WorkbenchDefinitionBuilder(
         }
         var title=reader.GetString(0).Trim(); var master=reader.IsDBNull(1)?"":reader.GetString(1).Trim();
         var detail=reader.IsDBNull(2)?null:reader.GetString(2).Trim(); if(detail is not null&&detail.Length==0)detail=null; var url=reader.IsDBNull(3)?"":reader.GetString(3);var defaultSort=reader.IsDBNull(4)?null:reader.GetString(4).Trim();
-        var modiUrl=reader.IsDBNull(5)?"":reader.GetString(5).Trim();
-        var detailNoSave=!reader.IsDBNull(6)&&reader.GetBoolean(6);
-        var detailNoFields=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
-        var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
-        var autoApprove=!reader.IsDBNull(9)&&reader.GetBoolean(9);
+        var detailNoSave=!reader.IsDBNull(5)&&reader.GetBoolean(5);
+        var detailNoFields=reader.IsDBNull(6)?"":reader.GetString(6).Trim();
+        var moduleFilter=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
+        var autoApprove=!reader.IsDBNull(8)&&reader.GetBoolean(8);
         var groupExpressions = new string[5];
         for (var i = 0; i < 5; i++)
         {
-            var offset = 10 + i * 2;
+            var offset = 9 + i * 2;
             var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
             var expression = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
             groupExpressions[i] = enabled ? expression : string.Empty;
         }
-        var formTabs = reader.IsDBNull(20) ? null : reader.GetString(20).Trim();
-        var formColumns = reader.IsDBNull(21) ? (int?)null : (int)reader.GetByte(21);
-        var formButtons = reader.IsDBNull(22) ? null : reader.GetString(22).Trim();
-        var newUrlRaw = reader.IsDBNull(23) ? string.Empty : reader.GetString(23).Trim();
-        var ifCopy = !reader.IsDBNull(24) && reader.GetBoolean(24);
-        var searchMaster = !reader.IsDBNull(25) && reader.GetBoolean(25);
-        var searchDetail = !reader.IsDBNull(26) && reader.GetBoolean(26);
-        var helpUrl = reader.IsDBNull(27) ? null : reader.GetString(27).Trim();
-        if (string.IsNullOrEmpty(helpUrl)) helpUrl = null;
+        var formTabs = reader.IsDBNull(19) ? null : reader.GetString(19).Trim();
+        var formColumns = reader.IsDBNull(20) ? (int?)null : (int)reader.GetByte(20);
+        var ifCopy = !reader.IsDBNull(21) && reader.GetBoolean(21);
+        var searchMaster = !reader.IsDBNull(22) && reader.GetBoolean(22);
+        var searchDetail = !reader.IsDBNull(23) && reader.GetBoolean(23);
+        // 表单呈现配置：打开方式非法/未配置一律回落本页签；宽高只在弹窗方式下带给前端
+        var formOpenMode = FormOpenModes.Normalize(reader.IsDBNull(24) ? null : reader.GetString(24));
+        var formDialogWidth = reader.IsDBNull(25) ? (int?)null : reader.GetInt32(25);
+        var formDialogHeight = reader.IsDBNull(26) ? (int?)null : reader.GetInt32(26);
         await reader.CloseAsync();
-        if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
+        // 工作台模块判定：承载页是 /workbench，或没声明承载页但有主表（默认落统一工作台，见迁移 321）。
+        if (!ModuleRouteValidator.IsWorkbenchModule(url, master) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
         {
             logger.LogWarning("模块 {ModuleId} 未通过工作台校验 url={Url} master={Master} detail={Detail}", moduleId, url, master, detail);
             return null;
         }
-        // NEW_URL/MODI_URL decide the add/edit routes: resolvable modern action routes are sent to
-        // the front end; empty or invalid values return null so the controller falls back or hides
-        // the buttons.
-        var resolvedNewUrl = ModuleRouteValidator.ResolveActionUrl(newUrlRaw, moduleId);
-        var resolvedModiUrl = ModuleRouteValidator.ResolveActionUrl(modiUrl, moduleId);
+        // 新增/编辑能力**不在定义里推导**：它由统一表单名单（UnifiedFormEditorSettings）在
+        // WorkbenchAccessPolicy.FoldRoutes 里按请求折叠（迁移 321 删掉了那三个路由列）。
         var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
             await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formOpenableModules,token);
         var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
@@ -254,7 +231,9 @@ public sealed class WorkbenchDefinitionBuilder(
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await WorkbenchBrowseResolver.ResolveAsync(connection,
                 await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formOpenableModules,token),NormalizeSort(defaultSort,master,masterFields),
-            resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
+            // HasAdd/HasEdit 在这里恒为 false：它由统一表单名单在请求期折叠（见 WorkbenchAccessPolicy.FoldRoutes）。
+            // 写成推导值会让"能不能写"多出一处可能与名单不一致的真源——迁移 321 之后只剩名单一处。
+            false,false,detailNoSave,
             masterPkOrder,detailNoFields,
             await WorkflowEngine.HasFlowAsync(connection,moduleId,token),
             string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
@@ -268,18 +247,18 @@ public sealed class WorkbenchDefinitionBuilder(
             groupExpressions,
             string.IsNullOrWhiteSpace(formTabs) ? null : formTabs,
             formColumns,
-            ParseFormButtons(formButtons),
             ifCopy,
             searchMaster,
             searchDetail,
-            resolvedNewUrl,
-            resolvedModiUrl,
-            helpUrl);
+            FormOpenMode: formOpenMode,
+            FormDialogWidth: FormOpenModes.IsDialog(formOpenMode) ? formDialogWidth : null,
+            FormDialogHeight: FormOpenModes.IsDialog(formOpenMode) ? formDialogHeight : null);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
-        // 版式：有版式行即定制（该表字段集完全由版式决定），无行则按字段级配置推导默认版式
+        // 版式：有版式行即定制（该表字段集完全由版式决定），无行则按字段级配置推导默认版式；
+        // 一行几列随页签（MODULE_FORM_TAB.LAYOUT_COLUMNS）
         var formLayout = await FormLayoutReader.ReadAsync(
-            connection, moduleId, master, detail, FormLayoutDerivation.DefaultColumns, token);
+            connection, moduleId, master, detail, token);
         return definition with { DefinitionVersion = version, FormLayout = formLayout };
     }
 
@@ -407,9 +386,9 @@ public sealed class WorkbenchDefinitionBuilder(
             masterFields=masterFields.Select(field=>field with { IsReadonly=true }).ToList();
             detailFields=detailFields.Select(field=>field with { IsReadonly=true }).ToList();
         }
-        // 页签只来自版式表（MODULE_FORM_TAB）；没有页签行时由前端兜底为常驻「默认」页签
+        // 页签只来自版式表（MODULE_FORM_TAB）；没有页签行时由前端兜底为常驻「默认」页签。
+        // 一行几列也在这里：每个页签自带列数（历史快照缺值时两侧按 4 列兜底）
         var tabs = definition.FormLayout?.Tabs ?? [];
-        var columns = definition.FormColumns is int formColumns and > 0 ? formColumns : 2;
         var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
         // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
         // 工具栏据此显隐批核/解批：有能力即显示，无能力即隐藏，不出现点后必败的死按钮。
@@ -430,11 +409,14 @@ public sealed class WorkbenchDefinitionBuilder(
             connection, userId, definition.ModuleId, token)).CanDesign;
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
-            tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
+            tabs,defaultValues,definition.HasWorkflow,
             definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
             canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
-            canAddNew,canEdit,definition.HelpUrl,canSetup,hasStatelessApprove,hasApproveCapability,
-            CanFormDesign: canFormDesign);
+            canAddNew,canEdit,canSetup,hasStatelessApprove,hasApproveCapability,
+            CanFormDesign: canFormDesign,
+            OpenMode: FormOpenModes.Normalize(definition.FormOpenMode),
+            DialogWidth: FormOpenModes.IsDialog(definition.FormOpenMode) ? definition.FormDialogWidth : null,
+            DialogHeight: FormOpenModes.IsDialog(definition.FormOpenMode) ? definition.FormDialogHeight : null);
     }
 
     /// <summary>已发布定义里启用的效果动作事件码（供批核能力判定；未启用/占位行不计）。</summary>

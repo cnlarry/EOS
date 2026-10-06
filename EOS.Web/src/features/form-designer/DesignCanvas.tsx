@@ -1,7 +1,8 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { IconListDetails, IconPlus } from '@tabler/icons-react'
-import { packFormSections } from '../document-workbench/formLayout'
+import { packFormSections, resolveTabColumns } from '../document-workbench/formLayout'
+import { normalizeFormOpenMode, resolveDialogSize } from '../document-workbench/formOpenMode'
 import { RESIDENT_TAB_NO, tabTitle } from './formDesignerDraft'
 import { dragId, type DropTarget } from './formDesignerDrag'
 import type { DesignDraft, DesignRow } from './types'
@@ -25,6 +26,10 @@ interface DesignCanvasProps {
   onRenameTab: (no: number, title: string) => void
   onAddTab: () => void
   onDeleteTab: (no: number) => void
+  /** 打开「表单呈现」配置弹窗（按钮在页签行最右端——那里本来就是空白） */
+  onOpenPresentation: () => void
+  /** 呈现配置摘要（按钮 title：打开方式与窗体尺寸一眼可见） */
+  presentationSummary: string
   /** 右键精修菜单（位置用视口坐标，菜单自己定位） */
   onRowContextMenu?: (key: string, x: number, y: number) => void
   onSectionContextMenu?: (sectionId: string, x: number, y: number) => void
@@ -56,6 +61,8 @@ export default function DesignCanvas({
   onRenameTab,
   onAddTab,
   onDeleteTab,
+  onOpenPresentation,
+  presentationSummary,
   onRowContextMenu,
   onSectionContextMenu,
   onTabContextMenu,
@@ -63,13 +70,26 @@ export default function DesignCanvas({
   const [renaming, setRenaming] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
+  // 栅格列数是**页签级事实**：画板按当前页签的列数排（页签 1 两列、页签 2 一列时各排各的），
+  // 与运行态同一处解析（resolveTabColumns）——画板折行位置必须与运行态一致
+  const columns = resolveTabColumns(draft.tabs, activeTabNo)
   const tabRows = draft.master.filter(row => row.tabNo === activeTabNo)
-  const sections = packFormSections(tabRows, draft.columns, { fillHoles: compact })
+  const sections = packFormSections(tabRows, columns, { fillHoles: compact })
   const dropKey = dropTarget?.kind === 'insert' || dropTarget?.kind === 'merge' ? dropTarget.key : null
   const dropClass = dropTarget?.kind === 'merge' ? 'is-drop-merge' : ''
+  // 画板尺寸 = 运行态容器尺寸：弹窗方式下就是模块声明的窗体宽高（所见即所得，
+  // 行内几个字段、在哪折行与运行态一致）；本页签/新页签方式表单占满可用区域，画板照旧铺满。
+  // 高度取 min-height 而不是 height：内容超出窗体时**设计区继续滚动**（拖拽的滚动补偿挂在设计区上），
+  // 运行态则是在窗体内滚动——高度上不硬裁，免得设计时看不到后面的字段。
+  const dialogSize = normalizeFormOpenMode(draft.openMode) === 'DIALOG'
+    ? resolveDialogSize(draft.dialogWidth, draft.dialogHeight)
+    : null
 
   return (
-    <div className="erp-designer-canvas">
+    <div
+      className={dialogSize ? 'erp-designer-canvas is-dialog' : 'erp-designer-canvas'}
+      style={dialogSize ? { width: dialogSize.width, minHeight: dialogSize.height } : undefined}
+    >
       <ul className="nav nav-tabs erp-form-tabs erp-designer-tabs" role="tablist">
         {draft.tabs.map(tab => (
           <DroppableTab
@@ -112,7 +132,7 @@ export default function DesignCanvas({
                   event.preventDefault()
                   onTabContextMenu?.(tab.no, event.clientX, event.clientY)
                 }}
-                title="单击切换，双击改名，右键删除页签；字段可拖到标签上移动到该页签"
+                title={`${tabTitle(tab)}（一行 ${resolveTabColumns(draft.tabs, tab.no)} 列）：单击切换，双击改名，右键改布局列数/删除页签；字段可拖到标签上移动到该页签`}
               >
                 {tabTitle(tab)}
               </button>
@@ -124,11 +144,24 @@ export default function DesignCanvas({
             +
           </button>
         </li>
+        {/* 页签行最右端（原本的空白处）：表单呈现配置入口。
+            放在这里而不是画布上方，是因为它是"整张表单的呈现方式"，与页签行同高更像窗体标题栏那一排 */}
+        <li className="nav-item erp-designer-present-item">
+          <button
+            type="button"
+            className="nav-link erp-designer-present"
+            aria-label="表单呈现"
+            title={`表单呈现：${presentationSummary}（打开方式与窗体尺寸）`}
+            onClick={onOpenPresentation}
+          >
+            {presentationSummary}
+          </button>
+        </li>
       </ul>
 
       <div
         className="erp-form-grid erp-designer-sections"
-        style={{ '--erp-form-cols': draft.columns } as CSSProperties}
+        style={{ '--erp-form-cols': columns } as CSSProperties}
       >
         {tabRows.length === 0 ? (
           <p className="erp-designer-empty">本页签还没有字段，点下方的「+」从字段池选择。</p>
@@ -146,7 +179,7 @@ export default function DesignCanvas({
             ) : null}
             <div
               className="erp-designer-grid"
-              style={{ gridTemplateColumns: `repeat(${draft.columns}, minmax(0, 1fr))` } as CSSProperties}
+              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } as CSSProperties}
             >
               {section.cells.map(({ cell, placement }) => (
                 <DesignerCell

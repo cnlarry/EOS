@@ -19,12 +19,13 @@ import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
+import { useOpenWorkbenchForm } from './formOpenMode'
 import { workbenchNew, workbenchView } from './workbenchPath'
 import { readListState, writeListState } from './listStateUrl'
 import { reportListFilters, reportSelection } from '../assistant/situationSource'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; browseKeyFields:string[]|null; isVirtual?:boolean }
-interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; newUrl?:string|null; modiUrl?:string|null; canDelete?:boolean }
+interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; canDelete?:boolean; /** 统一表单打开方式（本页签/新页签/弹窗）+ 弹窗尺寸，见 formOpenMode.ts */ formOpenMode?:string|null; formDialogWidth?:number|null; formDialogHeight?:number|null }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface NavigationGroupDef { index:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
@@ -33,9 +34,18 @@ interface ChooserSource { active:boolean; table:string|null; description:string|
 interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string|null; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null; options:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
-export function DocumentWorkbenchPage() {
+/**
+ * 统一工作台列表页。
+ *
+ * `underlay`：作为"弹窗打开方式的背景底图"渲染（统一表单弹窗浮在它上面）。
+ * 底图只负责看着像工作台，**不参与任何写路径**：不把列表状态写回地址（否则会改掉
+ * 表单页的地址）、不上报助手处境（用户此刻在表单里，不是在看列表），并被 `inert` 冻结交互。
+ */
+export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean } = {}) {
   const { hasPermission } = useAuth()
   const navigate=useNavigate()
+  /** 按模块声明的打开方式打开统一表单（新页签 / 弹窗 / 本页签） */
+  const openForm=useOpenWorkbenchForm()
   const { moduleId='' }=useParams()
   const queryClient=useQueryClient()
   const [searchParams,setSearchParams]=useSearchParams()
@@ -100,6 +110,7 @@ export function DocumentWorkbenchPage() {
     return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}
   },[groupMenuOpen])
   useEffect(()=>{
+    if(underlay)return
     if(!hydrated.current){hydrated.current=true;return}
     setSearchParams((current)=>{
       const state=writeListState({keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
@@ -109,7 +120,7 @@ export function DocumentWorkbenchPage() {
       if(groupValueParam)state.set('groupValue',groupValueParam)
       return state
     },{replace:true})
-  },[keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
+  },[underlay,keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
   const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
   const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
   const columnGroups=useMemo<ColumnSelectorGroup[]>(()=>{
@@ -208,17 +219,20 @@ export function DocumentWorkbenchPage() {
   })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
-  // 助手处境上报：列表筛选条件与选中行主键（服务端会再截断并按字段白名单校验）
+  // 助手处境上报：列表筛选条件与选中行主键（服务端会再截断并按字段白名单校验）。
+  // 底图模式不上报：那会儿用户在看表单，把"列表筛选/选中"报上去只会误导助手。
   useEffect(()=>{
+    if(underlay)return
     reportListFilters([...safeConditions,...Object.values(safeColumnFilters)].map(condition=>({
       field:condition.field,
       operator:condition.operator,
       value:condition.value??'',
     })))
-  },[safeConditions,safeColumnFilters])
+  },[underlay,safeConditions,safeColumnFilters])
   useEffect(()=>{
+    if(underlay)return
     reportSelection(Object.keys(selected))
-  },[selected])
+  },[underlay,selected])
   // 离开列表页即撤回上报，避免把上一页的筛选/选中带到别处
   useEffect(()=>()=>{
     reportListFilters([])
@@ -315,8 +329,11 @@ export function DocumentWorkbenchPage() {
   const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
   const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result});if(selectedKeys.length===1){const only=selectedKeys[0];setActiveKey(only)}else if(selectedKeys.length===0){setActiveKey(null)}}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
-  // Routing contract: NEW_URL/MODI_URL metadata wins when present; fall back to the unified form
-  const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??workbenchNew(moduleId))}
+  // 新增入口只有一处：统一表单（NEW_URL/MODI_URL 已随迁移 321 物理删除，不再有自定义新增页路由）。
+  // 按模块声明的打开方式开（本页签/新页签/弹窗）；弹窗方式把窗体标题与尺寸一并递过去，
+  // 表单页首帧就把加载态放进窗体，不闪整页加载态。
+  const formShellHint=()=>({dialogTitle:definition.data?.title,dialogWidth:definition.data?.formDialogWidth,dialogHeight:definition.data?.formDialogHeight})
+  const openNew=()=>{if(!definition.data?.hasAdd)return;openForm(workbenchNew(moduleId),{openMode:definition.data.formOpenMode,...formShellHint()})}
   const canOpenView=Boolean(definition.data?.hasEdit)
   // Double-click a master row to open browse mode (detail rows do not); query-only modules have no action.
   // Carries the current list display order (after sort/filter) as previous/next navigation context.
@@ -325,32 +342,17 @@ export function DocumentWorkbenchPage() {
     const key=definition.data.masterPkOrder.map(column=>String(row[column]??''))
     const navKeys=rows.map(item=>definition.data!.masterPkOrder.map(column=>String(item[column]??'')))
     const navIndex=navKeys.findIndex(candidate=>candidate.every((value,i)=>value===key[i]))
-    navigate(workbenchView(moduleId,key),{state:{navKeys,navIndex}})
+    openForm(workbenchView(moduleId,key),{openMode:definition.data.formOpenMode,...formShellHint(),state:{navKeys,navIndex}})
   }
   const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
-  // FORM_BUTTONS business actions: action whitelist mirrors the server.
-  // The list keeps only "new" plus list tools (export / query); document-level actions
-  // (edit/copy/delete/approve/close/print...) live in the unified form browse toolbar,
-  // and destructive actions require opening the browse view first.
-  const businessItems:ErpCommandItem[]=(definition.data?.buttons&&definition.data.buttons.length>0
-    ?definition.data.buttons
-    :[{action:'new'},{action:'export'}]).map((button)=>({
+  // 列表工具条只留「新增」+ 列表自身工具（导出 / 查询）：单据级动作
+  // （编辑/复制/删除/批核/结案/打印…）全在统一表单的浏览态工具条里，破坏性动作必须先打开单据看细节。
+  // （曾经这套内容由 `MODULES.FORM_BUTTONS` 白名单裁剪，该列已随迁移 320 退役且全库为空；
+  //   「查询」入口仍按模块的 SEARCH 位出现，见下方 businessItems 之后的补位。）
+  const businessItems:ErpCommandItem[]=[{action:'new'},{action:'export'}].map((button)=>({
     action:button.action,
-    visible:(()=>{
-      switch(button.action){
-        case 'new':return definition.data?.hasAdd
-        case 'export':return true
-        case 'search':return Boolean(definition.data?.searchMaster||definition.data?.searchDetail)
-        default:return false
-      }
-    })(),
-    onClick:(()=>{
-      switch(button.action){
-        case 'new':return openNew
-        case 'search':return openSearchCenter
-        default:return undefined
-      }
-    })(),
+    visible:button.action==='new'?definition.data?.hasAdd:true,
+    onClick:button.action==='new'?openNew:undefined,
     render:button.action==='export'?()=>exportButton:undefined,
     variant:button.action==='new'?'primary':undefined,
   }))

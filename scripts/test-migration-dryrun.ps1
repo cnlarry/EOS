@@ -24,7 +24,7 @@
 .EXAMPLE
     pwsh scripts/test-migration-dryrun.ps1 `
       -Path 'D:\repo\EOS.API\Data\Migrations\076_clear_unreachable_aftersave_sprocs.sql' `
-      -CheckSql "SELECT COUNT(*) FROM dbo.MODULES WHERE M_IDX IN (2205,2306,180218) AND EFFECT_ENGINE_TAG = 1"
+      -CheckSql "SELECT COUNT(*) FROM dbo.MODULES WHERE M_IDX IN (1505,2306,180218) AND EFFECT_ENGINE_TAG = 1"
 #>
 [CmdletBinding()]
 param(

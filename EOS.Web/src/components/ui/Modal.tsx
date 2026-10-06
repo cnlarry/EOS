@@ -15,11 +15,13 @@ export interface ModalProps {
   ariaLabel?: string
   /** 自定义 dialog 类（存量弹窗如 erp-dialog-md/lg、erp-chooser-dialog 等，C6 迁移期兼容）。 */
   dialogClassName?: string
+  /** dialog 内联样式：按配置给固定宽高（如统一表单的弹窗打开方式）。 */
+  dialogStyle?: CSSProperties
   /** body 内联样式（存量弹窗如审批历史 maxHeight 滚动）。 */
   bodyStyle?: CSSProperties
 }
 
-export function Modal({ title, onClose, children, footer, size, scrollable, ariaLabel, dialogClassName, bodyStyle }: ModalProps) {
+export function Modal({ title, onClose, children, footer, size, scrollable, ariaLabel, dialogClassName, dialogStyle, bodyStyle }: ModalProps) {
   const dialogClass = [
     'modal-dialog',
     'modal-dialog-centered',
@@ -29,7 +31,7 @@ export function Modal({ title, onClose, children, footer, size, scrollable, aria
   ].filter(Boolean).join(' ')
   return (
     <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label={ariaLabel ?? title}>
-      <div className={dialogClass}>
+      <div className={dialogClass} style={dialogStyle}>
         <div className="modal-content">
           <div className="modal-header">
             <h2 className="modal-title">{title}</h2>

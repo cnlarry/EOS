@@ -16,7 +16,9 @@
     扫描范围：EOS.API/**/*.cs（排除 bin/obj）、EOS.API.Tests/**/*.ps1、scripts/**/*.ps1。
     刻意排除：
     - EOS.API/Data/Migrations/**：迁移脚本本身就是在做退役动作，必然出现旧名；
-    - docs/、publish/：冻结文档与开源种子，不是运行时路径。
+    - docs/、publish/：冻结文档与开源种子，不是运行时路径；
+    - scripts/export-*.ps1：导出/归档工具**必须**能读退役前的表（职责就是删表前导一份副本），
+      如 export-sysdf-archive.ps1 读 dbo.SYSDF。
 
 .EXAMPLE
     pwsh scripts/check-retired-db-objects.ps1            # exit 0 = 无残留引用
@@ -63,6 +65,36 @@ $retiredObjects = @(
         Pattern       = '\.\s*(?:FORM_TABS|FORM_COLUMNS)\b'
         CaseSensitive = $true
     }
+    # 内置动作「受控注册码」退役（迁移 320）：工具栏动作只由能力 + 权限决定，自定义按钮走
+    # MODULE_BUSINESS_ACTION。判据与上面同款（点号修饰 + 全大写），避免误判 C# 侧 PascalCase 属性名。
+    [pscustomobject]@{
+        Name          = 'MODULES.FORM_BUTTONS'
+        Reason        = 'MODULES.FORM_BUTTONS（内置动作受控注册码）已退役并物理删列，见 Migrations/320_retire_form_buttons.sql'
+        Pattern       = '\.\s*FORM_BUTTONS\b'
+        CaseSensitive = $true
+    }
+    # 模块路由收敛（迁移 321）：只留 M_URL，新增/修改/帮助三条路由列物理删除。
+    # 判据同款（点号修饰 + 全大写），注释里不带点号的点名不算引用。
+    [pscustomobject]@{
+        Name          = 'MODULES.NEW_URL / MODI_URL / HELP_URL'
+        Reason        = '三条动作/帮助路由列已退役并物理删列（只留 M_URL），见 Migrations/321_url_consolidation.sql'
+        Pattern       = '\.\s*(?:NEW_URL|MODI_URL|HELP_URL)\b'
+        CaseSensitive = $true
+    }
+    # 零引用死表退役（迁移 322）。两张表用的是"带 dbo. 的 SQL 上下文"判据：
+    # TASK 是常见词（TASK_ID / WorkTask），裸词匹配会在一片无关代码上误报；
+    # 本仓 SQL 一律写 dbo.，故要求前缀。另外 MenuAdminModuleIdCascadeLiveTests 里保留的
+    # 历史基线语句写作小写 `update TASK set ...`（无 dbo.），正因如此不会被判成引用。
+    [pscustomobject]@{
+        Name          = 'SYSTEMP'
+        Reason        = '旧「组 × 模块」权限副本已退役删表（现代真源是 SYSDH / SYSDH_BUTTON），见 Migrations/322_retire_dead_tables.sql'
+        Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.SYSTEMP\b'
+    }
+    [pscustomobject]@{
+        Name          = 'TASK'
+        Reason        = '旧任务表已退役删表（零引用），见 Migrations/322_retire_dead_tables.sql'
+        Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.TASK\b'
+    }
     # 版式「微调」权限位退役（迁移 248）：版式设计权只保留完整设计一档。
     [pscustomobject]@{
         Name          = 'SYSDD/SYSDH 版式微调权限位'
@@ -107,6 +139,37 @@ $retiredObjects = @(
         Name    = 'INV_PRO_DEPOT_ORPHAN_DEPOT_BACKUP'
         Reason  = '孤立库别留底表（68 行 DEPOT_ID=YL、无登记、无依赖）已退役；68 行留档于 logs/c5-retire/orphan-backup-rows.json，见 Migrations/255_retire_orphan_invoice_and_backup_tables.sql'
         Pattern = '\bINV_PRO_DEPOT_ORPHAN_DEPOT_BACKUP\b'
+    }
+    # MODULES 八列旧系统遗产退役（迁移 324，2026-10-06 决策清单 #144）：批核状态/所有者/所有者组/
+    # 批核日期/批核人/公司别/建立人/建立日期。判据必须**限定 MODULES.**——CONFIRM_TAG / CREATE_DATE /
+    # CI 这些名字在业务主表上到处都是（合同、考勤、生产单自己就有批核位），裸名匹配会满仓误报。
+    # REMARK 没在退役之列（它是保留下来写备注的那一列）。
+    # 覆盖不到的形态（已知缺口，登记在案）：别名写法（`FROM dbo.MODULES m ... m.CONFIRM_TAG`）——
+    # 本仓 SQL 一律写 `MODULES.<列>`（不别名），别名形态若要判需要像 SYSDL.G_IDX 那样的别名分析，
+    # 收益不抵复杂度；真写出来也会在运行时立刻报"列名无效"，不会静默。
+    [pscustomobject]@{
+        Name          = 'MODULES 八列旧系统遗产'
+        Reason        = 'MODULES 的 CONFIRM_TAG/OWNER/OWNER_G/CONFIRM_DATE/CONFIRM_PERSON/CI/CREATE_PERSON/CREATE_DATE 已退役并物理删列（REMARK 保留），见 Migrations/324_drop_modules_legacy_columns.sql'
+        Pattern       = '(?i)MODULES\s*\.\s*(?:CONFIRM_TAG|CONFIRM_PERSON|CONFIRM_DATE|OWNER_G|OWNER|CI|CREATE_PERSON|CREATE_DATE)\b'
+    }
+    # 死模块与随行表退役（迁移 325）：2205 报表过滤条件设置 + 它的主表 SYSQR_DA；
+    # 旧操作日志表 SYSDF（数据留档 logs/archive/retire-324/SYSDF-*.csv）。
+    # 判据用"带 dbo. 的 SQL 上下文"（本仓 SQL 一律写 dbo.）：`OBJECT_ID('dbo.SYSDF','U')` 这类
+    # 存在性探针是**合法用法**（退役测试正是这么写的），不该被判成引用。
+    [pscustomobject]@{
+        Name          = 'SYSQR_DA'
+        Reason        = '旧报表条件定义表已随模块 2205 退役删表（真源是 SYSQR_DEFAULT.FILTER_TEMPLATE），见 Migrations/325_retire_dead_modules_and_tables.sql'
+        Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.SYSQR_DA\b'
+    }
+    [pscustomobject]@{
+        Name          = 'SYS_WORK_TASK'
+        Reason        = '旧开发团队「工作任务记录」的主表，已随模块 2308 整表退役（表内 0 行），见 Migrations/327_retire_work_task_module.sql'
+        Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.SYS_WORK_TASK\b'
+    }
+    [pscustomobject]@{
+        Name          = 'SYSDF'
+        Reason        = '旧操作日志表已退役删表（数据留档 logs/archive/retire-324/），见 Migrations/325_retire_dead_modules_and_tables.sql'
+        Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.SYSDF\b'
     }
     # 报表权限例外层结构退役（迁移 277）：整表 SYSDH_REPORT + SYSDD_REPORT 的三列勾选。
     # 判据用裸名 + 词边界：这两个名字不会与其它标识符混淆，命中即说明有人重新引用了已退役的结构
@@ -213,7 +276,17 @@ if ($SelfTest) {
         'SELECT f.F_ID, f.FORM_ORDER FROM dbo.FIELDS f ORDER BY f.FORM_ORDER;',
         'SELECT m.M_IDX, m.FORM_COLUMNS FROM dbo.MODULES m;',
         'SELECT l.F_ID FROM dbo.MODULE_FORM_LAYOUT l WHERE l.FORM_CELL_GROUP IS NOT NULL;',
-        'SELECT a.MODULE_ID, a.EFFECT_KEY FROM dbo.MODULE_BUSINESS_ACTION a;'
+        'SELECT a.MODULE_ID, a.EFFECT_KEY FROM dbo.MODULE_BUSINESS_ACTION a;',
+        'SELECT m.M_IDX, m.FORM_BUTTONS FROM dbo.MODULES m;',
+        'SELECT m.M_IDX, m.NEW_URL, m.MODI_URL, m.HELP_URL FROM dbo.MODULES m;',
+        'SELECT g.G_IDX FROM dbo.SYSTEMP g;',
+        'SELECT TASK_ID FROM dbo.TASK WHERE M_IDX=@Id;',
+        # 退役的 MODULES 八列（迁移 324）与死表（迁移 325）
+        'SELECT MODULES.M_IDX, MODULES.CONFIRM_TAG FROM dbo.MODULES WHERE MODULES.OWNER_G IS NULL;',
+        'SELECT MODULES.CI, MODULES.CREATE_PERSON, MODULES.CREATE_DATE FROM dbo.MODULES;',
+        'SELECT COUNT(*) FROM dbo.SYSQR_DA;',
+        'SELECT TOP 10 * FROM dbo.SYSDF WHERE M_IDX=@Id;',
+        'SELECT W.WORK_NO FROM dbo.SYS_WORK_TASK W WHERE W.W_M_IDX=@Id;'
     )
     foreach ($sample in $dirty) {
         if ((Get-RetiredHit -Text $sample).Count -eq 0) {
@@ -232,9 +305,20 @@ if ($SelfTest) {
         # C# 模型同名属性是 PascalCase：不区分大小写会把这两行误判
         'var columns = definition.FormColumns is int c and > 0 ? c : 2;',
         'CompareValue(mismatches, id, title, "formTabs", definition.FormTabs ?? "null");',
+        # 退役列只在注释里被点名（没有点号修饰）不算引用
+        '-- FORM_BUTTONS（内置动作受控注册码）已随迁移 320 退役，动作集由能力与权限决定',
+        '-- NEW_URL / MODI_URL / HELP_URL 已随迁移 321 物理删除，路由只留 M_URL',
+        # 历史基线语句（级联测试里逐字保留的原过程本体）：小写、不带 dbo.，不是活引用
+        'update TASK set M_IDX=@NEW_IDX where M_IDX=@OLD_IDX',
         # 改名后的正确形态，以及审计查询为保住对外属性名而保留的投影别名
         'SELECT s.M_IDX, s.VERSION FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WHERE s.IS_CURRENT = 1;',
-        'SELECT M_IDX AS MODULE_ID FROM dbo.AUDIT_EVENT;'
+        'SELECT M_IDX AS MODULE_ID FROM dbo.AUDIT_EVENT;',
+        # 同名列在别的主表上照常使用：退役判据限定 MODULES.，不能把合同/考勤的批核列一起判死
+        'SELECT c.CONFIRM_TAG, c.CONFIRM_PERSON, c.CONFIRM_DATE FROM dbo.CONTRACT c WHERE c.CI=@Ci;',
+        'SELECT e.CREATE_DATE, e.CREATE_PERSON FROM dbo.HR_EMPLOYEE e;',
+        # 退役对象的**存在性探针**是合法用法（退役测试就是这么断言的），只判 SQL 上下文
+        'SELECT OBJECT_ID(''dbo.SYSDF'',''U'') AS O;',
+        'SELECT OBJECT_ID(''dbo.SYS_WORK_TASK'',''U'') AS O;'
     )
     foreach ($sample in $clean) {
         if ((Get-RetiredHit -Text $sample).Count -gt 0) {
@@ -260,6 +344,9 @@ foreach ($area in @('EOS.API', 'EOS.API.Tests', 'scripts')) {
         if ($file.Extension -notin '.cs', '.ps1') { continue }
         if ($file.FullName -match '\\(bin|obj)\\') { continue }
         if ($file.FullName -match '\\Migrations\\') { continue }
+        # 导出/归档工具（scripts/export-*.ps1）**必须**能读退役前的表：它们的职责就是在删表之前
+        # 把数据导成副本（如 export-sysdf-archive.ps1 读 dbo.SYSDF）。排除它们，别把"归档口"判成残留引用。
+        if ($file.Name -like 'export-*.ps1') { continue }
         if ($file.FullName -eq $PSCommandPath) { continue }   # 本脚本自身持有退役清单
         $files.Add($file)
     }

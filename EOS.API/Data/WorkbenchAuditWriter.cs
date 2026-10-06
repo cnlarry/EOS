@@ -13,7 +13,8 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// Unified business audit writer: AUDIT_EVENT (+ AUDIT_FIELD_CHANGE for updates)
-/// is the only operation log store. SYSDF is history-only and never written.
+/// is the only operation log store. SYSDF（旧操作日志表）已随迁移 325 整表退役，
+/// 其数据留档于 logs/archive/retire-324/SYSDF-*.csv。
 /// Large/sensitive fields store only summary or SHA-256.
 /// Read paths (export/print/permission denial/log query trace) use
 /// WriteBestEffortAsync (separate connection, failures ignored).

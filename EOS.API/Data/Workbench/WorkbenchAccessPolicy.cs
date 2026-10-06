@@ -89,14 +89,11 @@ public sealed class WorkbenchAccessPolicy(
     public bool IsFormReadOnly(int moduleId) => formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
 
     /// <summary>
-    /// 模块是否有<b>可写</b>的页面入口：统一表单写名单，或 NEW_URL/MODI_URL 指向自定义页
-    /// （指向统一表单动作路由的模板只在写名单内成立）。批核/解批/结案/取消结案与
-    /// 新增/修改/删除共用这条判据——只读名单只放浏览，不放任何写动作；自定义承载页照旧。
+    /// 模块是否有<b>可写</b>的页面入口：**统一表单写名单**（迁移 321 之后这是唯一真源）。
+    /// 批核/解批/结案/取消结案与新增/修改/删除共用这条判据——只读名单只放浏览，不放任何写动作；
+    /// 自定义承载页（M_URL 是精确路径）不装配工作台定义，动作入口由页面自己负责。
     /// </summary>
-    public bool HasWritablePage(WorkbenchDefinition definition, int moduleId)
-        => IsFormWritable(moduleId)
-        || (definition.NewUrl is not null && !ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl, moduleId))
-        || (definition.ModiUrl is not null && !ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl, moduleId));
+    public bool HasWritablePage(int moduleId) => IsFormWritable(moduleId);
 
     /// <summary>写路径幂等键判定：空、全空白或超 128 字符即不合法（trim 后计长）。</summary>
     public static WorkbenchDenial? CheckIdempotencyKey(string? idempotencyKey)
@@ -105,8 +102,8 @@ public sealed class WorkbenchAccessPolicy(
             : null;
 
     /// <summary>
-    /// 列表/读路径的定义装配：要求登录、模块可浏览，并把 NEW_URL/MODI_URL 的可达性折叠进
-    /// <c>HasAdd</c>/<c>HasEdit</c>（名单之外的统一表单动作路由视为无值，界面不出必 404 的入口）。
+    /// 列表/读路径的定义装配：要求登录、模块可浏览，并把"能不能新增/编辑"折叠进
+    /// <c>HasAdd</c>/<c>HasEdit</c>（真源是统一表单名单，见 <see cref="FoldRoutes"/>）。
     /// </summary>
     public async Task<WorkbenchDecision<WorkbenchDefinitionAccess>> AuthorizeDefinitionAsync(
         string? userId, int moduleId, CancellationToken token)
@@ -182,7 +179,7 @@ public sealed class WorkbenchAccessPolicy(
     {
         var definition = await AuthorizeDefinitionAsync(userId, moduleId, token);
         if (definition.Denial is not null) return definition;
-        if (!HasWritablePage(definition.Value!.Definition, moduleId)) return DenyDefinition(WorkbenchDenialCodes.NoWritablePage);
+        if (!HasWritablePage(moduleId)) return DenyDefinition(WorkbenchDenialCodes.NoWritablePage);
         await RequireAsync(userId!, moduleId, action, token);
         return definition;
     }
@@ -268,22 +265,19 @@ public sealed class WorkbenchAccessPolicy(
         => permissions.RequireAsync(userId, moduleId, action, token);
 
     /// <summary>
-    /// NEW_URL/MODI_URL 指向自定义页时按自定义路由走；指向统一表单动作路由时，可达性由统一表单
-    /// 名单决定（写名单=可编辑，只读名单=只能浏览）。名单之外的模块把这类路由当"无值"。
+    /// 能力位折叠：**新增/编辑只看统一表单名单**——写名单 = 可新增可编辑，只读名单 = 只能浏览。
+    /// 迁移 321 删掉了 NEW_URL / MODI_URL，原先"自定义页路由也算有入口"那两条分支随之退场：
+    /// 自定义承载页（M_URL 是精确路径）本就不装配工作台定义，动作入口由页面自己负责。
     /// </summary>
     private WorkbenchDefinition FoldRoutes(WorkbenchDefinition definition, int moduleId, ModuleRights rights)
     {
         var formEnabled = IsFormWritable(moduleId);
-        var addRoute = definition.NewUrl is not null
-            && (!ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl, moduleId) || formEnabled);
-        var editRoute = definition.ModiUrl is not null
-            && (!ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl, moduleId) || formEnabled);
         return definition with
         {
-            HasAdd = addRoute || formEnabled,
-            // HasEdit 表达"本模块有可打开的表单界面"（写名单可编辑、只读名单只浏览、自定义页照旧）；
+            HasAdd = formEnabled,
+            // HasEdit 表达"本模块有可打开的表单界面"（写名单可编辑、只读名单只浏览）；
             // 是否真能进编辑态由写名单与下发的表单定义分别把关。
-            HasEdit = editRoute || formEnabled || IsFormReadOnly(moduleId),
+            HasEdit = formEnabled || IsFormReadOnly(moduleId),
             CanDelete = rights.CanDelete,
         };
     }

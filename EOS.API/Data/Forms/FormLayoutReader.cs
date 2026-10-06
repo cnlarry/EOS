@@ -19,10 +19,8 @@ internal static class FormLayoutReader
         int moduleId,
         string masterTable,
         string? detailTable,
-        int columns,
         CancellationToken token)
     {
-        var cols = columns > 0 ? columns : FormLayoutDerivation.DefaultColumns;
         var tabs = await ReadTabsAsync(connection, moduleId, token);
         var rowsByTable = await ReadLayoutRowsAsync(connection, moduleId, token);
 
@@ -58,14 +56,14 @@ internal static class FormLayoutReader
             }
         }
 
-        return new FormLayoutDefinition(cols, tabs, masterRows, detailRows, masterCustomized, detailCustomized);
+        return new FormLayoutDefinition(tabs, masterRows, detailRows, masterCustomized, detailCustomized);
     }
 
     private static async Task<IReadOnlyList<FormTabDefinition>> ReadTabsAsync(
         SqlConnection connection, int moduleId, CancellationToken token)
     {
         const string sql = """
-            SELECT TAB_NO, LTRIM(RTRIM(ISNULL(TAB_TITLE,'')))
+            SELECT TAB_NO, LTRIM(RTRIM(ISNULL(TAB_TITLE,''))), LAYOUT_COLUMNS
             FROM dbo.MODULE_FORM_TAB WITH (NOLOCK)
             WHERE M_IDX=@ModuleId ORDER BY TAB_NO;
             """;
@@ -76,7 +74,10 @@ internal static class FormLayoutReader
         while (await reader.ReadAsync(token))
         {
             var title = reader.GetString(1);
-            tabs.Add(new FormTabDefinition(reader.GetInt32(0), title.Length == 0 ? "默认" : title));
+            // 页签级布局列数：库内 NOT NULL DEFAULT 4（迁移 322），读取侧仍容一次 NULL——
+            // 只有"直改库/异常数据"才会碰上，交由 FormLayoutDerivation.ResolveTabColumns 兜底
+            var columns = reader.IsDBNull(2) ? (int?)null : reader.GetByte(2);
+            tabs.Add(new FormTabDefinition(reader.GetInt32(0), title.Length == 0 ? "默认" : title, columns));
         }
         return tabs;
     }

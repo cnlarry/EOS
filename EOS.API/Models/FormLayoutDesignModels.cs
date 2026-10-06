@@ -11,11 +11,19 @@ public sealed record FormLayoutDesignState(
     string Title,
     string MasterTable,
     string? DetailTable,
-    int Columns,
+    /// <summary>
+    /// 一行几列只看这里：**页签级**列数 1..4（库内 NOT NULL DEFAULT 4，模块级那层自迁移 319 起不存在）。
+    /// 画布按**当前页签**的列数排。
+    /// </summary>
     IReadOnlyList<FormTabDefinition> Tabs,
     FormLayoutTableDesign Master,
     FormLayoutTableDesign Detail,
-    string? BaseUpdatedAt);
+    string? BaseUpdatedAt,
+    /// <summary>打开方式（本页签 / 新页签 / 弹窗）：设计态据此把画板摆成运行态的样子。</summary>
+    string OpenMode = FormOpenModes.Tab,
+    /// <summary>弹窗宽高（px）：只有 <see cref="FormOpenModes.Dialog"/> 方式下才有值。</summary>
+    int? DialogWidth = null,
+    int? DialogHeight = null);
 
 public sealed record FormLayoutTableDesign(
     string Table,
@@ -62,15 +70,30 @@ public sealed record FormLayoutPoolField(
     bool Locked,
     string? LockReason);
 
-/// <summary>保存请求：整份版式的全量替换（页签 + 主表行 + 明细行）。</summary>
+/// <summary>
+/// 保存请求：整份版式的全量替换（页签 + 主表行 + 明细行）+ **表单呈现配置**
+/// （打开方式 / 弹窗宽高）。栅格列数不在呈现配置里——它是**页签级事实**，
+/// 随 <see cref="FormTabInput.Columns"/> 一起提交。
+///
+/// 呈现配置与版式同一笔保存、同一次重发布，所以"保存即生效"——不落在模块管理的
+/// "存草稿 → 人工发布"那条链上（那里是元数据编辑面，本处是呈现面）。
+/// 三项全为空时不动这几列：只存版式的调用方（含历史客户端）行为不变。
+/// </summary>
 public sealed record FormLayoutSaveRequest(
     string? BaseUpdatedAt,
     string? IdempotencyKey,
     IReadOnlyList<FormTabInput>? Tabs,
     IReadOnlyList<FormLayoutRowInput>? Master,
-    IReadOnlyList<FormDetailLayoutRowInput>? Detail);
+    IReadOnlyList<FormDetailLayoutRowInput>? Detail,
+    string? OpenMode = null,
+    int? DialogWidth = null,
+    int? DialogHeight = null);
 
-public sealed record FormTabInput(int No, string? Title);
+/// <summary>
+/// 页签输入：<paramref name="Columns"/> = 该页签的布局列数（1..4）；null = 按兜底 4 列落库
+/// （库内该列 NOT NULL DEFAULT 4，写入侧不落 NULL）。
+/// </summary>
+public sealed record FormTabInput(int No, string? Title, int? Columns = null);
 
 public sealed record FormLayoutRowInput(
     string Key,
@@ -95,12 +118,15 @@ public sealed record FormLayoutSaveResponse(
     string? DefinitionVersion,
     FormLayoutDesignState? State);
 
-/// <summary>可套用来源：只列共用同一主表的模块（跨主表套用会排出业务上不该出现的字段）。</summary>
+/// <summary>
+/// 可套用来源：只列共用同一主表的模块（跨主表套用会排出业务上不该出现的字段）。
+/// 不带列数：一行几列是**页签级**事实，套用时由来源页签的列数随行一起带过来、
+/// 再按目标页签的列数夹取（前端 `applyRows`）。
+/// </summary>
 public sealed record FormLayoutTemplate(
     int ModuleId,
     string Title,
     string MasterTable,
-    int Columns,
     bool HasDetail);
 
 public enum FormLayoutSaveStatus
