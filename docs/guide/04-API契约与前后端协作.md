@@ -142,3 +142,14 @@
 > 只读端点带**路径参数**时，冒烟脚本（`EOS.API.Tests/SmokeEndpoints.ps1`）要能给它填上**真实存在**的标识：
 > 已映射 `table` / `field`，其余名字会退化成占位 `1`——那样端点是在"不存在的键"上空跑成功，
 > 逐行读列的代码根本没执行，真正的 500 被静默放过。新增这类参数时到脚本的 `$pathParamValues` 里补一条。
+
+## 收口（迁移 319~329）：模块级契约的三处变化
+
+- **"能不能写"改由写名单判定**：`MODULES` 的 `NEW_URL` / `MODI_URL` / `HELP_URL` 三个路由列已删除，
+  `M_URL` 只表示**承载页**（空 = 目录节点或未声明，单据模块默认落统一工作台）。外部若按旧列判权限需跟着改。
+- **呈现配置随 `/form-definition` 下发**：`openMode`（`TAB` 本页签 / `NEWTAB` 新页签 / `DIALOG` 弹窗）、
+  `dialogWidth`、`dialogHeight` 与 `tabs[].columns`（一行几列，**页签级**）。定义里**没有**模块级的 `columns`
+  兜底段；历史快照缺页签列数时两端统一按 4 列兜底。非法打开方式与越界尺寸即 400，不会撞库约束变 500。
+- **`/admin/menus` 的模块投影收口**：`MenuAdminModule` 不再返回 `FORM_OPEN_MODE` / `FORM_DIALOG_WIDTH` /
+  `FORM_DIALOG_HEIGHT`（那三个字段只服务已删除的「统一表单」页签），新增 `REMARK`（模块备注，空串落 `NULL`）。
+  模块管理只读写模块自身的字段。
