@@ -31,8 +31,8 @@ jobs:
       run:
         working-directory: EOS.Web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -50,8 +50,8 @@ jobs:
     name: 后端（编译 / 离线测试）
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: 编译
@@ -69,7 +69,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # PR 下检出的是 GitHub 合成的 merge commit，而 GitHub 自动生成的合并提交必然
           # 不符合 Conventional Commits，会让提交信息门禁误报；改取 PR 分支头。
