@@ -336,6 +336,23 @@ function Step-Artifacts([string]$version, $repoMigrations) {
     # 迁移数量与最大编号从磁盘现算：写死会在下一个迁移落地时静默过期（本文件早先就写死过 282）
     $headNumber = ($repoMigrations | Where-Object { $null -ne $_.Number } |
         Sort-Object Number | Select-Object -Last 1).Number
+    # 基线覆盖到哪个编号同样从文件现算：这里曾写死 268，而 324~329 落地时基线被重导到 329，
+    # 写死的数字会让清单静默说谎（与上一行注释记的是同一个坑）。
+    $baselineFile = Join-Path $root 'db\bootstrap\40_journal_baseline.sql'
+    $baselineMax = $null
+    if (Test-Path -LiteralPath $baselineFile) {
+        $baselineMax = ([regex]::Matches((Get-Content -Raw -Encoding utf8 $baselineFile), 'Migrations\.(\d+)_') |
+            ForEach-Object { [int]$_.Groups[1].Value } | Sort-Object | Select-Object -Last 1)
+    }
+    $dbLine = if ($null -eq $baselineMax) {
+        "db: 迁移由 EOS.API 启动时执行；仓库内嵌迁移 $($repoMigrations.Count) 个（最新编号 $headNumber）；db/bootstrap 基线文件读不到，未标注覆盖范围"
+    }
+    elseif ($baselineMax -ge $headNumber) {
+        "db: 迁移由 EOS.API 启动时执行；仓库内嵌迁移 $($repoMigrations.Count) 个（最新编号 $headNumber）；db/bootstrap 基线已覆盖到 $baselineMax，新库灌完基线即终态、零迁移"
+    }
+    else {
+        "db: 迁移由 EOS.API 启动时执行；仓库内嵌迁移 $($repoMigrations.Count) 个（最新编号 $headNumber）；db/bootstrap 基线登记到迁移 $baselineMax，其后的脚本靠启动时 DbUp 补齐"
+    }
     $manifest = Join-Path $outDir 'MANIFEST.txt'
     @(
         "EOS release $version"
@@ -343,7 +360,7 @@ function Step-Artifacts([string]$version, $repoMigrations) {
         "built: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK')"
         "api: EOS.API 构建产物（含内嵌迁移脚本 / ReportFormats / 字体）"
         "web: EOS.Web 静态产物"
-        "db: 迁移由 EOS.API 启动时执行；仓库内嵌迁移 $($repoMigrations.Count) 个（最新编号 $headNumber）；db/bootstrap 基线登记到迁移 268，其后的脚本靠启动时 DbUp 补齐"
+        $dbLine
         # 单引号：这一行里的 ${VAR} 是给人看的配置写法，写成双引号会被 PowerShell 当变量展开成空串
         'note: 制品与清单不含连接串与密钥（配置只写 ${VAR} 环境变量引用，真值只存在于环境变量）'
     ) | Set-Content -Path $manifest -Encoding utf8
