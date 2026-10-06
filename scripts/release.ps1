@@ -552,7 +552,9 @@ try {
 
     "{`n  `"version`": `"$next`"`n}" | Set-Content -Path $versionFile -Encoding utf8
     $existing = Get-Content $changelogFile -Raw -Encoding utf8
-    $marker = '<!-- 新增版本时在文件顶部（本行之上）追加一节，勿修改历史节。 -->'
+    # 标记文字必须与 CHANGELOG.md 里那一行**逐字一致**：Replace 找不到就静默不插入（新节会丢），
+    # 改这里就必须同步改文件。措辞与代码行为一致：新节插在**本行之下**，故最新在上、旧的在下。
+    $marker = '<!-- 新增版本时在本行之下追加一节（最新在上、旧的在下），勿修改历史节。 -->'
     $updated = $existing.Replace($marker, "$marker`n`n$section")
     Set-Content -Path $changelogFile -Value $updated -Encoding utf8
     Pass "version.json → $next；CHANGELOG 已追加 $next 节（**需人工定稿**）"
