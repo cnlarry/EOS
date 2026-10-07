@@ -350,9 +350,16 @@ internal static class WorkbenchSql
         {
             return true;
         }
-        if (left is null || right is null)
+        // 空值的两种表示必须同口径：字符串读出时统一 Trim（库里存空串 → 空串），
+        // 提交侧把空/纯空白解析成 null；只把两者之一当"没有值"，
+        // 同一行没被动过的空值就会被判成"内容已被他人修改"（CONCURRENT_MODIFIED）。
+        if (left is null)
         {
-            return false;
+            return IsBlank(right);
+        }
+        if (right is null)
+        {
+            return IsBlank(left);
         }
         if (left is string leftText && right is string rightText)
         {
@@ -390,4 +397,7 @@ internal static class WorkbenchSql
 
     internal static bool IsNumeric(object value) => value is sbyte or byte or short or ushort or int or uint
         or long or ulong or float or double or decimal;
+
+    /// <summary>空串判据：纯空白字符串与 null 同义（字符列读出时已 Trim，空白只剩"没有值"这一种含义）。</summary>
+    private static bool IsBlank(object? value) => value is string text && string.IsNullOrWhiteSpace(text);
 }

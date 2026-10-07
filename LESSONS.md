@@ -651,3 +651,20 @@
   `INVALID_VALUE`"；真库用例 `FormNewDefaultDateSentinelLiveTests` 断言 180102 新增态默认值
   是**可解析日期**而不是 `'D'`。同类"元数据默认值只在服务端生效"的字段，都要问一句
   "客户端拿到的是它自己能懂的值吗"。
+
+### L78 读取侧把字符值 Trim 成空串、提交侧把空值解析成 null，"空"的两种表示被判成并发修改
+- **触发／症状**：统一表单改**老主档**（模块 110306 仓库资料，以及 1501 生产线资料、
+  110104 系统员工资料、18010110 宿舍设定这类早期导入的主档）任意字段，保存一律 400
+  `CONCURRENT_MODIFIED`（"字段内容已被他人修改，请刷新后重试"）；刷新重开、改哪个字段都一样，
+  而**同模块新建**的记录改得动——差别只在这条记录是导入来的、字符列里存的是空串。
+- **根因**：`WorkbenchCommandHandler.UpdateRecordAsync` 的并发快照把"客户端快照"与"库内现值"逐字段比。
+  库内现值经 `WorkbenchSql.ReadRowsAsync` 读出时**字符串统一 Trim**（库里空串 ⇒ 空串，NULL ⇒ null），
+  客户端提交的空值经 `RecordPayloadValidator.TryConvert` 解析成 **null**；而 `ValuesEqual` 只把 null 与 null
+  视为相等，null 与空串一律判不等 ⇒ 一条"空串列"就把整单判成被他人修改。老数据普遍把空值写成空串而非 NULL，
+  导入来的主档于是全都改不动；新建记录的同类列是 NULL，反而不暴露。
+- **处置**：`ValuesEqual` 把空值两侧同口径——一侧为 null、另一侧是纯空白字符串时视为相等（`IsBlank`）；
+  数值/布尔与 null 仍判不等。用同一函数判"字段是否变了"的审计前后值比对随之不再把"空串 → null"记成一次变更。
+- **防线**：`ValuesEqualTests.ValuesEqual_NullAndBlank` 钉住真值表；真库用例 `RecordEditConcurrencyLiveTests`
+  在自造库别上（`DEPOT`，`dryRun` 回滚）断言两件事：库内是空串的列提交空值**不**报并发冲突、
+  别人真改过的字段**仍**报 `CONCURRENT_MODIFIED`。教训泛化：凡"两侧各自归一化后再比对"，
+  都要问一句两边的空值表示是否同一套。
