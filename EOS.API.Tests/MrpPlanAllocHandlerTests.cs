@@ -229,21 +229,29 @@ public class MrpPlanAllocHandlerTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            var siblingBefore = await ReadDepotQtyAsync(connection, transaction, "ZCML", "ZLD2608080");
+            // 单据与料件都自造（本用例自己的键，事务结束回滚）：借库内真实生产单会让这条断言
+            // 随别人清理过什么而变红，而这条路径是**写入**，写真实单据也不合夹具纪律。
+            const string produceType = "ZZMRP";
+            const string thisNo = "ZZMRPTHIS01";
+            const string siblingNo = "ZZMRPSIB01";
+            const string proNo = "ZZMRPPRO01";
+            await SeedMaterialProvideFixtureAsync(connection, transaction, produceType, thisNo, siblingNo, proNo);
+
             var handler = new MrpPlanAllocHandler();
             using var paramsDoc = JsonDocument.Parse(ProduceParamsJson);
             var action = new EffectActionPlan(3, "APPROVE_EFFECT", "mrp-plan-alloc", null, true, "BLOCK", null, paramsDoc.RootElement, null, Array.Empty<EffectOpPlan>());
             var context = new ServiceEffectContext(connection, transaction, ProducePlan(), action,
-                EffectEvent.ApproveEffect, "ZCML,ZLD2608081", new[] { "ZCML", "ZLD2608081" }, "test");
+                EffectEvent.ApproveEffect, $"{produceType},{thisNo}", new[] { produceType, thisNo }, "test");
 
-            // NEED_QTY 0 with stock 10 -> min gives 0 (dev data has no positive NEED_QTY;
-            // the partial/full branches are covered by the SQL-shape test above).
+            // 夹具库存为 0 ⇒ min 走 0 侧；NEED_QTY 5 的那两条明细都该归 0（部分/全量分支由
+            // 上面那条 SQL 形状用例覆盖）。
             var affected = await handler.ExecuteAsync(context, CancellationToken.None);
             Assert.Equal(1, affected);
-            Assert.Equal(0, await ReadDepotQtyAsync(connection, transaction, "ZCML", "ZLD2608081"));
+            Assert.Equal(0, await ReadDepotQtyAsync(connection, transaction, produceType, thisNo));
 
-            // The baseline global update is gone: sibling documents are untouched.
-            Assert.Equal(siblingBefore, await ReadDepotQtyAsync(connection, transaction, "ZCML", "ZLD2608080"));
+            // THIS_DOC 作用域：兄弟单不在本单范围内，它的 DEPOT_QTY 必须保持夹具初值 7
+            // （退化成全局更新就会把它一起改掉）。
+            Assert.Equal(7, await ReadDepotQtyAsync(connection, transaction, produceType, siblingNo));
         }
         finally
         {
@@ -327,6 +335,28 @@ public class MrpPlanAllocHandlerTests
                 reader.IsDBNull(3) ? null : Convert.ToDouble(reader.GetValue(3)));
         }
         return result;
+    }
+
+    /// <summary>
+    /// 造 material-provide 需要的最小夹具：一条料件、两张生产单、每单一条明细。
+    /// 料件库存为 0（走 min 的 0 侧），兄弟单的 DEPOT_QTY 预置成 7——它用来证明"只改本单"。
+    /// 只给"非空且无默认值"的列，其余列走库内默认值。
+    /// </summary>
+    private static async Task SeedMaterialProvideFixtureAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        string produceType, string thisNo, string siblingNo, string proNo)
+    {
+        await using var command = new SqlCommand("""
+            INSERT INTO dbo.PRODUCT (PRO_NO, MRP_QTY) VALUES (@pro, 0);
+            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO) VALUES (@t, @thisNo), (@t, @sibNo);
+            INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, SERIAL_NO, PRO_NO, NEED_QTY, DEPOT_QTY)
+            VALUES (@t, @thisNo, 1, @pro, 5, 99), (@t, @sibNo, 1, @pro, 5, 7);
+            """, connection, transaction);
+        command.Parameters.Add("@t", System.Data.SqlDbType.NChar, 20).Value = produceType;
+        command.Parameters.Add("@thisNo", System.Data.SqlDbType.NChar, 40).Value = thisNo;
+        command.Parameters.Add("@sibNo", System.Data.SqlDbType.NChar, 40).Value = siblingNo;
+        command.Parameters.Add("@pro", System.Data.SqlDbType.NChar, 60).Value = proNo;
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task<double?> ReadDepotQtyAsync(
