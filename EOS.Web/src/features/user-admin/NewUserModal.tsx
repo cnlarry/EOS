@@ -1,6 +1,6 @@
 import { IconShield, IconUsers } from '@tabler/icons-react'
 import { useState } from 'react'
-import type { RowSelectionState } from '@tanstack/react-table'
+import type { RowSelectionState } from '../../lib/tanstackTable'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'

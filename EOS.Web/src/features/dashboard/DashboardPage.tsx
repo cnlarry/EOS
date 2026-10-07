@@ -1,5 +1,5 @@
 import { IconArrowUpRight, IconChecklist, IconClockHour4, IconEye, IconFolder, IconGitBranch } from '@tabler/icons-react'
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'

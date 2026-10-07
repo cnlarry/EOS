@@ -9,7 +9,7 @@ import {
   IconTrash,
   IconUsers,
 } from '@tabler/icons-react'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'

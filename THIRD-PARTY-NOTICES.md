@@ -40,7 +40,7 @@
 | react / react-dom | 19.3.0 | MIT |
 | react-router-dom | 7.18.4 | MIT |
 | @tanstack/react-query | 5.104.1 | MIT |
-| @tanstack/react-table | 8.21.3 | MIT |
+| @tanstack/react-table | 9.2.6 | MIT |
 | @tabler/core | 1.6.1 | MIT |
 | @tabler/icons-react | 3.48.0 | MIT |
 | zod | 4.6.5 | MIT |

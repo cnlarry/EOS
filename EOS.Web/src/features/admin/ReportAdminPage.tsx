@@ -1,6 +1,6 @@
 import { IconEdit, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
+import type { ColumnDef, RowData, RowSelectionState } from '../../lib/tanstackTable'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpFieldChooser } from '../../components/common/ErpFieldChooser'
@@ -35,7 +35,7 @@ interface ReportFormatOption { formatId: string; title: string; moduleId: number
 type ReportEditorState = { mode: 'new' } | { mode: 'edit'; row: ReportRow }
 type SortEditorState = { mode: 'new' } | { mode: 'edit'; row: SortRow }
 
-function selectColumn<T>(): ColumnDef<T, unknown> {
+function selectColumn<T extends RowData>(): ColumnDef<T, unknown> {
   return {
     id: 'select',
     enableSorting: false,

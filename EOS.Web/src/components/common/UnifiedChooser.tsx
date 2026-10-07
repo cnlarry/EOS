@@ -1,5 +1,5 @@
 import { IconAdjustmentsHorizontal, IconColumns, IconPlus, IconTrash } from '@tabler/icons-react'
-import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatFieldValue } from '../../features/document-workbench/fieldFormat'
 import { Button } from '../ui/Button'

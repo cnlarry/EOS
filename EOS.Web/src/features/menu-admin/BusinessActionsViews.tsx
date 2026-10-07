@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import {
   IconArrowDown,
   IconArrowUp,

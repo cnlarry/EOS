@@ -19,7 +19,7 @@
     "@tabler/core": "^1.6.1",
     "@tabler/icons-react": "^3.48.0",
     "@tanstack/react-query": "^5.104.1",
-    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table": "^9.2.6",
     "@xyflow/react": "^12.12.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

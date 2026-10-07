@@ -1,6 +1,6 @@
 import { IconArrowLeft, IconSearch } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpTable } from '../../components/common/ErpTable'

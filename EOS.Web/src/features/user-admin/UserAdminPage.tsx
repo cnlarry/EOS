@@ -1,6 +1,6 @@
 import { IconClick, IconKey, IconPlus, IconRefresh, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'

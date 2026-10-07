@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErpTable } from './ErpTable'
 
