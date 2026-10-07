@@ -37,13 +37,13 @@
 
 | 组件 | 版本 | 许可 |
 |---|---|---|
-| react / react-dom | 19.2.8 | MIT |
-| react-router-dom | 7.18.2 | MIT |
-| @tanstack/react-query | 5.101.4 | MIT |
+| react / react-dom | 19.3.0 | MIT |
+| react-router-dom | 7.18.4 | MIT |
+| @tanstack/react-query | 5.104.1 | MIT |
 | @tanstack/react-table | 8.21.3 | MIT |
-| @tabler/core | 1.4.0 | MIT |
-| @tabler/icons-react | 3.46.0 | MIT |
-| zod | 4.4.3 | MIT |
+| @tabler/core | 1.6.1 | MIT |
+| @tabler/icons-react | 3.48.0 | MIT |
+| zod | 4.6.5 | MIT |
 | @dnd-kit/core / @dnd-kit/modifiers | 6.3.1 / 9.0.0 | MIT |
 | @xyflow/react（React Flow） | 12.12.0 | MIT |
 | @dagrejs/dagre | 3.1.1 | MIT |
