@@ -48,6 +48,12 @@ function renderChooser(overrides: Partial<Parameters<typeof UnifiedChooser>[0]> 
 
 describe('UnifiedChooser', () => {
   beforeEach(() => {
+    // 用 mockReset 而不是只靠 afterEach 的 clearAllMocks：后者只清调用记录，
+    // **不清 mockResolvedValueOnce 的队列**。上一条用例若没把一次性返回值消耗完
+    // （例如触底没触发、第二页请求没发出），残留值会喂给下一条用例，
+    // 表现成"下一条用例突然拿不到自己的数据"——两条本来独立的断言被绑在一起。
+    apiClientMock.post.mockReset()
+    apiClientMock.get.mockReset()
     apiClientMock.post.mockResolvedValue({ columns, rows, total: 2 })
     apiClientMock.get.mockResolvedValue({ columns, rows, total: 2 })
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
@@ -166,6 +172,9 @@ describe('UnifiedChooser', () => {
     renderChooser()
     await waitFor(() => expect(screen.getByText('客户甲')).toBeInTheDocument())
     expect(screen.getByText(/已加载 2 条/)).toBeInTheDocument()
+    // 触底哨兵由 ErpTable 在"有数据且还有下一页"时挂载（onEndReached/hasMore 一起下发），
+    // 观察器随那次提交创建；先等它出现再触发，别把"挂载时机"当成"必然已就绪"。
+    await waitFor(() => expect(FakeIntersectionObserver.instances.length).toBeGreaterThan(0))
     const observer = FakeIntersectionObserver.instances.at(-1)!
     act(() => observer.trigger([{ isIntersecting: true } as IntersectionObserverEntry]))
     await waitFor(() => expect(screen.getByText('客户丙')).toBeInTheDocument())
