@@ -393,7 +393,6 @@ public sealed class WorkbenchDefinitionBuilder(
         // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
         // 工具栏据此显隐批核/解批：有能力即显示，无能力即隐藏，不出现点后必败的死按钮。
         var hasStatelessApprove = WorkflowStates.IsStatelessApproveCapable(
-            definition.AutoApprove,
             definition.EffectEngineEnabled,
             await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token));
         // 批核/解批入口能力（工具栏显隐）：流程 / 效果引擎接管 / 效果链 / 无副作用自动批核

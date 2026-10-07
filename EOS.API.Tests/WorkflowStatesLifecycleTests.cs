@@ -81,14 +81,17 @@ public class WorkflowStatesLifecycleTests
         Assert.Equal(expected, WorkflowStates.HasApproveCapability(autoApprove, effectEnabled, hasFlow));
     }
 
+    // 判据只认"无流程、无效果链"：**与 AUTO_APPROVE 无关**。曾经把它绑在自动批核上，后果是
+    // 关掉某个模块的自动批核（月结单要改成"建单 / 审核"两个权限位）时，它的手工批核入口
+    // 会一起消失（服务端 404 WORKFLOW_NOT_SUPPORTED）。
     [Theory]
-    [InlineData(true, false, false, true)]
-    [InlineData(true, true, false, false)]
-    [InlineData(true, false, true, false)]
-    [InlineData(false, false, false, false)]
-    public void IsStatelessApproveCapable_RequiresAutoWithoutSideEffects(
-        bool autoApprove, bool effectEnabled, bool hasFlow, bool expected)
+    [InlineData(false, false, true)]   // 无流程、无效果链 ⇒ 纯状态翻转可批核
+    [InlineData(false, true, false)]   // 有流程 ⇒ 走送审
+    [InlineData(true, false, false)]   // 有效果链 ⇒ 走效果链，不属"无副作用"
+    [InlineData(true, true, false)]
+    public void IsStatelessApproveCapable_OnlyRequiresNoFlowNoEffects(
+        bool effectEnabled, bool hasFlow, bool expected)
     {
-        Assert.Equal(expected, WorkflowStates.IsStatelessApproveCapable(autoApprove, effectEnabled, hasFlow));
+        Assert.Equal(expected, WorkflowStates.IsStatelessApproveCapable(effectEnabled, hasFlow));
     }
 }

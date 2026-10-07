@@ -299,17 +299,19 @@ public sealed class EffectSimulationLiveTests
         var noFlowModuleId = await FindNoFlowModuleAsync(connection, token);
         var approvals = CreateApprovals(Connections());
 
-        // 无副作用批核：自动批核 + 无引擎 + 无流程 —— 真实路径只翻转状态位。
+        // 无副作用批核：无引擎 + 无流程 —— 真实路径只翻转状态位（判据与 AUTO_APPROVE 无关）。
         var stateless = await approvals.CheckSimulationSupportedAsync(
-            connection, Definition(candidate.ModuleId, candidate.MasterTable, candidate.PkColumns,
+            connection, Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
                 autoApprove: true, effectEngine: false), approve: true, token);
         Assert.NotNull(stateless);
         Assert.Equal("SIMULATION_NOT_SUPPORTED", stateless!.ErrorCode);
         Assert.Contains("无副作用批核", stateless.ErrorMessage);
 
         // 引擎未接管：效果链根本不会被执行。
+        // 选**有流程**的模块：判据去掉 AUTO_APPROVE 之后，"无引擎且无流程"已归入上一条
+        // （无副作用批核），只有"无引擎但有流程"才会落到这一条。
         var noEngine = await approvals.CheckSimulationSupportedAsync(
-            connection, Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
+            connection, Definition(flowModuleId, candidate.MasterTable, candidate.PkColumns,
                 autoApprove: false, effectEngine: false), approve: true, token);
         Assert.NotNull(noEngine);
         Assert.Equal("SIMULATION_NOT_SUPPORTED", noEngine!.ErrorCode);

@@ -88,16 +88,21 @@ public static class WorkflowStates
         LifecycleColumns.Contains(fieldId, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 无副作用批核能力（自动批核模块且无效果链/流程定义）：
-    /// 保存路径的自动批核本就是纯状态翻转，显式批核/解批同口径。
+    /// 无副作用批核能力（既无效果链、又无流程定义）：这条路径的批核/解批与保存路径的自动批核
+    /// **同为纯状态翻转**（只改 CONFIRM_TAG 三列），显式批核/解批同口径。
+    ///
+    /// **判据不能绑在 `AUTO_APPROVE` 上**（曾经如此，已修）：自动批核只决定"保存之后要不要自动翻转
+    /// 状态"，与"能不能手工批核"是两件事。绑上去的后果是——把一个模块的自动批核关掉（例如月结单要
+    /// 改成"建单 / 审核"两个权限位），它的手工批核入口会**跟着一起消失**：服务端 404
+    /// `WORKFLOW_NOT_SUPPORTED`，前端工具栏也不显示按钮，于是"关了自动批核就再没人能审"。
+    ///
     /// 服务端分支与表单按钮显隐共用此判定，两边不得分叉。
     /// （遗留批核过程字段已物理删除，故不再有"批核 SP"这一维度。）
     /// </summary>
     internal static bool IsStatelessApproveCapable(
-        bool autoApprove,
         bool effectEnabled,
         bool hasFlow) =>
-        autoApprove && !effectEnabled && !hasFlow;
+        !effectEnabled && !hasFlow;
 
     /// <summary>
     /// 模块是否具备批核能力（"能力 → 列"单向强制的输入侧）。

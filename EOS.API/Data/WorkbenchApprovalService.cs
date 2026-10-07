@@ -268,10 +268,10 @@ public sealed class WorkbenchApprovalService(
     {
         var effectsEnabled = effectEngine.IsEnabledFor(definition);
         var hasFlow = await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token);
-        if (WorkflowStates.IsStatelessApproveCapable(definition.AutoApprove, effectsEnabled, hasFlow))
+        if (WorkflowStates.IsStatelessApproveCapable(effectsEnabled, hasFlow))
         {
             return NotSimulatable(
-                "该模块是无副作用批核（自动批核且无流程、无效果链）：真实批核只翻转状态位，没有效果链可预演。");
+                "该模块是无副作用批核（无流程、无效果链）：真实批核只翻转状态位，没有效果链可预演。");
         }
         if (!effectsEnabled)
         {
@@ -495,7 +495,7 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token,
         string? message = null)
     {
-        // 批核能力有两个来源：已发布定义的效果链（数据驱动）、自动批核模块的无副作用状态翻转。
+        // 批核能力有两个来源：已发布定义的效果链（数据驱动）、**无副作用的状态翻转**（无流程、无效果链）。
         // 遗留批核过程钩子（MODULES.UPDATE_SP）已物理删除，故不再有"静态登记批核过程"这一维度。
         var effectsEnabled = effectEngine.IsEnabledFor(definition);
         await using var connection = CreateConnection();
@@ -503,9 +503,8 @@ public sealed class WorkbenchApprovalService(
         // 流程定义一次查询，供无副作用判定与送审分支复用。
         var hasFlow = await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token);
         // 无副作用批核必须在能力守卫之前判定：它与按钮显隐共用同一条件，
-        // 否则按钮显示可点、请求却在守卫处被判不支持（自动批核模块无法手动解批）。
-        var stateless = WorkflowStates.IsStatelessApproveCapable(
-            definition.AutoApprove, effectsEnabled, hasFlow);
+        // 否则按钮显示可点、请求却在守卫处被判不支持（无副作用模块反而批核不了）。
+        var stateless = WorkflowStates.IsStatelessApproveCapable(effectsEnabled, hasFlow);
         if (!stateless && !effectsEnabled)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");
@@ -518,8 +517,8 @@ public sealed class WorkbenchApprovalService(
         {
             return FinishedRecordNotDeapprovable();
         }
-        // 无副作用批核/解批（自动批核且无批核过程/效果链/流程定义）：保存路径的自动批核
-        // 本就是纯状态翻转，显式动作同口径。有流程定义的仍走送审，有过程/效果链的仍走原路径。
+        // 无副作用批核/解批（无流程、无效果链）：与保存路径的自动批核同为纯状态翻转，显式动作同口径。
+        // 有流程定义的仍走送审，有效果链的仍走原路径。
         // 判定与表单按钮显隐共用 WorkflowStates.IsStatelessApproveCapable，两边不得分叉。
         if (stateless)
         {
