@@ -14,7 +14,15 @@
  * 全部改完后删除本文件。别在这里长期堆积新名字——它只该做翻译，不做扩展。
  */
 
-import type { CellContext as CoreCellContext } from '@tanstack/react-table'
+import type { CellContext as CoreCellContext, RowData as CoreRowData } from '@tanstack/react-table'
+import type { LegacyColumnDef } from '@tanstack/react-table/legacy'
+
+/**
+ * 列定义：v9 的 `LegacyColumnDef<TData extends RowData>` 把行数据约束到 `Record<string, unknown>`，
+ * 而本仓的行数据大量是 `interface`（接口没有隐式索引签名 ⇒ 过不了约束校验）。这里用交叉类型
+ * `TData & CoreRowData` 满足约束，同时保留 `TData` 的可读性（`row.original.xxx` 仍然有类型）。
+ */
+export type ColumnDef<TData = unknown, TValue = unknown> = LegacyColumnDef<TData & CoreRowData, TValue>
 
 // v8 式 API：v9 里改了名或搬到 legacy 入口的部分
 export {
@@ -29,7 +37,6 @@ export {
   getFacetedRowModel,
   getFacetedUniqueValues,
   getFacetedMinMaxValues,
-  type LegacyColumnDef as ColumnDef,
   type LegacyTable as Table,
   type LegacyRow as Row,
   type LegacyColumn as Column,
@@ -63,7 +70,7 @@ export {
  * 本仓按 v8 的 `<TData, TValue>` 用（2 处）。这里把 features 绑成 `any` 还原旧签名。
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type CellContext<TData extends RowData, TValue = unknown> = CoreCellContext<any, TData, TValue>
+export type CellContext<TData extends RowData, TValue = unknown> = CoreCellContext<any, TData & CoreRowData, TValue>
 
 /**
  * 行数据约束：v9 把它收紧成 `Record<string, unknown>`，而本仓大量用 `interface` 描述行数据

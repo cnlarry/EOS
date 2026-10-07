@@ -12,6 +12,8 @@ import {
   type TableFeatures,
   type VisibilityState,
 } from '../../lib/tanstackTable'
+// 仅此处需要 v9 原始的行数据约束（模块增强的泛型必须与 v9 声明逐字一致），桥接层对外给的是放宽口径
+import type { RowData as CoreRowData } from '@tanstack/react-table'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
@@ -218,9 +220,13 @@ export function ErpTable<TData>({
   }, [onEndReached])
 
   const table = useReactTable({
-    data,
+    // 桥接层的列定义把行类型映射成 `TData & RowData`（为满足 v9 的索引签名约束），
+    // 表格实例推出的行类型因此比入参窄一层：入参与选择状态各窄化一次。运行期无差别。
+    data: data as (TData & CoreRowData)[],
     columns,
-    state: { sorting: resolvedSorting, rowSelection, columnVisibility },
+    // v9 的行选择状态只记被选中的行（Record<string, true>），本仓按 v8 记 true/false；
+    // 多出来的 false 项在 v9 里是假值、不参与判定，故此处直接窄化即可。
+    state: { sorting: resolvedSorting, rowSelection: rowSelection as Record<string, true>, columnVisibility },
     manualSorting: !clientSideSorting,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
@@ -228,7 +234,7 @@ export function ErpTable<TData>({
     getRowId,
     onSortingChange: updateSorting,
     onRowSelectionChange: (updater) =>
-      onRowSelectionChange?.(typeof updater === 'function' ? updater(rowSelection) : updater),
+      onRowSelectionChange?.(typeof updater === 'function' ? updater(rowSelection as Record<string, true>) : updater),
     onColumnVisibilityChange: (updater) =>
       onColumnVisibilityChange?.(typeof updater === 'function' ? updater(columnVisibility) : updater),
   })
@@ -823,7 +829,8 @@ export function ErpTable<TData>({
 declare module '@tanstack/react-table' {
   // 泛型参数必须与 v9 的声明一致（否则 TS2428）：v9 是
   // <TFeatures extends TableFeatures, TData extends RowData, TValue extends CellData>
-  interface ColumnMeta<TFeatures extends TableFeatures, TData extends RowData, TValue extends CellData = CellData> {
+  // 泛型参数必须与 v9 的声明逐字一致（含 in/out 修饰符），否则 TS2428
+  interface ColumnMeta<in out TFeatures extends TableFeatures, in out TData extends CoreRowData, TValue extends CellData = CellData> {
     className?: string
     headerClassName?: string
     /** 仅作用于数据单元格（优先级高于 className） */
