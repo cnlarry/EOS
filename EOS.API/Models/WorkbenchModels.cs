@@ -55,8 +55,6 @@ public sealed record WorkbenchDefinition(
     IReadOnlySet<string>? FilterFieldKeys = null,
     string UserId = "",
     string? ExecTag = null,
-    bool HasOwnerColumn = true,
-    bool HasOwnerGroupColumn = true,
     ModuleBusinessRule? BusinessRule = null,
     bool AutoApprove = false,
     [property: JsonIgnore] IReadOnlyList<string> GroupExpressions = default!,

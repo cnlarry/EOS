@@ -91,8 +91,8 @@ public sealed class EffectValidationQtyScopeLiveTests
     {
         await using (var master = new SqlCommand("""
             IF NOT EXISTS (SELECT 1 FROM dbo.PUR_RECEIVE_M WHERE RECEIVE_TYPE=@T AND RECEIVE_NO=@N)
-                INSERT INTO dbo.PUR_RECEIVE_M (RECEIVE_TYPE, RECEIVE_NO, RECEIVE_DATE, CI, CREATE_PERSON, LAST_UPDATE_BY)
-                VALUES (@T, @N, '2026-09-17', 'E2E', 'E2E', 'E2E');
+                INSERT INTO dbo.PUR_RECEIVE_M (RECEIVE_TYPE, RECEIVE_NO, RECEIVE_DATE, CREATE_PERSON, LAST_UPDATE_BY)
+                VALUES (@T, @N, '2026-09-17', 'E2E', 'E2E');
             """, connection, transaction))
         {
             master.Parameters.Add("@T", SqlDbType.NVarChar, 10).Value = ScopeType;

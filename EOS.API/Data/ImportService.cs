@@ -105,9 +105,6 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
         // 审计列不参与用户映射，但允许服务端填充写入
         foreach(var audit in new[]{"CREATE_PERSON","CREATE_DATE","LAST_UPDATE_BY","LAST_UPDATE_DATE"})
             fieldMap.TryAdd(audit,new ImportField(audit,audit,"nvarchar",false,false));
-        // 数据归属三列同样服务端持有：导入行归属导入人（与统一表单新建覆盖回填同口径）
-        foreach(var owned in new[]{"OWNER","OWNER_G","CI"})
-            fieldMap.TryAdd(owned,new ImportField(owned,owned,"nvarchar",false,false));
         var columns=new List<ImportColumn>();
         foreach(var mapping in request.Mapping)
         {
@@ -164,24 +161,6 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
                 values["CREATE_DATE"]=now;
                 values["LAST_UPDATE_BY"]=employeeName;
                 values["LAST_UPDATE_DATE"]=now;
-                // 归属列仅目标表真实存在时回填（ definition 已做物理存在校验），缺列即跳过。
-                if(definition.Fields.Any(field=>field.Key.Equals("OWNER",StringComparison.OrdinalIgnoreCase)))
-                    values["OWNER"]=userId;
-                if(definition.Fields.Any(field=>field.Key.Equals("OWNER_G",StringComparison.OrdinalIgnoreCase)))
-                {
-                    var primaryGroup=await WorkbenchSql.GetPrimaryGroupAsync(connection,transaction,userId,token);
-                    if(primaryGroup is not null)values["OWNER_G"]=primaryGroup;
-                }
-                if(definition.Fields.Any(field=>field.Key.Equals("CI",StringComparison.OrdinalIgnoreCase)))
-                {
-                    var company=await WorkbenchSql.GetUserCompanyAsync(connection,transaction,userId,token);
-                    if(company is null)
-                    {
-                        logger.LogWarning("导入用户无公司归属，回填默认公司 userId={UserId} table={Table}",userId,request.Table);
-                        company=WorkflowStates.DefaultCompanyId;
-                    }
-                    values["CI"]=company;
-                }
                 var insertColumns=values.Keys.Where(key=>fieldMap.ContainsKey(key)).ToList();
                 var sql=$"INSERT INTO dbo.[{request.Table}] ({string.Join(',',insertColumns.Select(column=>$"[{column}]"))}) VALUES ({string.Join(',',insertColumns.Select((_,index)=>$"@v{index}"))});";
                 await using var command=new SqlCommand(sql,connection,transaction);

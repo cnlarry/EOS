@@ -7,7 +7,7 @@ public class GroupExpressionParserTests
 {
     private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
-        "DEPT_ID", "SALES_ID", "OWNER", "PAY_DATE", "FINISHED_TAG", "QUOTE_DATE", "QTY",
+        "DEPT_ID", "SALES_ID", "PAY_DATE", "FINISHED_TAG", "QUOTE_DATE", "QTY",
         "COUNT_MONTH", "IN_DATE", "SORT_ID", "CLIENT_ID", "APPROVE_STATE", "PURCHASE_ID",
     };
 
@@ -26,9 +26,9 @@ public class GroupExpressionParserTests
     [Fact]
     public void Compiles_ColumnConcatWithTablePrefix()
     {
-        var ok = GroupExpressionParser.TryCompile("CLIENT.SALES_ID+CLIENT.OWNER", "CLIENT", Allowed, out var compiled);
+        var ok = GroupExpressionParser.TryCompile("CLIENT.SALES_ID+CLIENT.PAY_DATE", "CLIENT", Allowed, out var compiled);
         Assert.True(ok);
-        Assert.Equal("[SALES_ID]+[OWNER]", compiled);
+        Assert.Equal("[SALES_ID]+[PAY_DATE]", compiled);
     }
 
     [Fact]

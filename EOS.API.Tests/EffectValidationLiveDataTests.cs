@@ -72,7 +72,7 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             await using (var seed = new SqlCommand(
-                "INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, IS_BASE, CURR_RATE, CI) VALUES (N'ADR12ZZ', N'集成测试币别', 1, 1, 'E2E');",
+                "INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, IS_BASE, CURR_RATE) VALUES (N'ADR12ZZ', N'集成测试币别', 1, 1);",
                 connection, transaction))
             {
                 await seed.ExecuteNonQueryAsync(token);
@@ -101,7 +101,7 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             await using (var seed = new SqlCommand(
-                "INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, IS_BASE, CURR_RATE, CI) VALUES (N'ADR12ZY', N'集成测试币别', 0, 7.2, 'E2E');",
+                "INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, IS_BASE, CURR_RATE) VALUES (N'ADR12ZY', N'集成测试币别', 0, 7.2);",
                 connection, transaction))
             {
                 await seed.ExecuteNonQueryAsync(token);
@@ -574,8 +574,8 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             await using (var seed = new SqlCommand("""
-                INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, CI)
-                    VALUES (N'ADR12CUR1', N'集成测试本位币', 2, 1, N'ADR12', GETDATE(), 0, N'');
+                INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG)
+                    VALUES (N'ADR12CUR1', N'集成测试本位币', 2, 1, N'ADR12', GETDATE(), 0);
                 INSERT INTO dbo.INV_CHECK_STOCK_D (CHECK_STOCK_TYPE, CHECK_STOCK_NO, SERIAL_NO, CHECK_QTY)
                     VALUES (N'ADR12', N'ADR12STOCK1', 1, -5);
                 """, connection, transaction))

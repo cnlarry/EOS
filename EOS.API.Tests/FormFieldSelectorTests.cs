@@ -269,16 +269,14 @@ public class FormFieldSelectorTests
     }
 
     [Fact]
-    public void OwnershipColumns_HiddenInNewAndEdit_ShownReadonlyInView()
+    public void RetiredOwnershipColumns_AreRenderedAsPlainFields()
     {
+        // 归属三列（CI/OWNER/OWNER_G）已随列下线，不再按系统列隔离：
+        // 新增/编辑态与浏览态都按普通字段渲染（可见性由 FIELDS 元数据决定）。
         var rows = new[] { Row("CI"), Row("OWNER"), Row("OWNER_G"), Row("A") };
-        Assert.Equal(["A"], Select(rows, "new").Select(field => field.Key));
-        Assert.Equal(["A"], Select(rows, "edit").Select(field => field.Key));
-        var viewed = Select(rows, "view");
-        Assert.Equal(4, viewed.Count);
-        foreach (var field in viewed.Where(field => field.Key != "A"))
-        {
-            Assert.True(field.IsReadonly);
-        }
+
+        Assert.Equal(["CI", "OWNER", "OWNER_G", "A"], Select(rows, "new").Select(field => field.Key));
+        Assert.Equal(["CI", "OWNER", "OWNER_G", "A"], Select(rows, "edit").Select(field => field.Key));
+        Assert.Equal(4, Select(rows, "view").Count);
     }
 }

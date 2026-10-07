@@ -77,8 +77,7 @@ JOIN dbo.FIELDS f ON f.T_ID = o.name AND f.F_ID = c.name
 WHERE c.is_nullable = 0 AND c.is_identity = 0 AND c.default_object_id = 0
   AND f.IS_VISIBLE = 1 AND ISNULL(f.IS_READONLY, 0) = 0 AND ISNULL(f.IS_VERIFY, 0) = 0
   AND c.name NOT IN (N'SERIAL_NO', N'CREATE_PERSON', N'CREATE_DATE', N'LAST_UPDATE_BY', N'LAST_UPDATE_DATE',
-                     N'CONFIRM_PERSON', N'CONFIRM_DATE', N'FINISHED_PERSON', N'FINISHED_DATE',
-                     N'CI', N'OWNER', N'OWNER_G');
+                     N'CONFIRM_PERSON', N'CONFIRM_DATE', N'FINISHED_PERSON', N'FINISHED_DATE');
 '@
 
 # 模块级版式把「用户可填的必填列」标成不显示（版式表未落库时跳过）
@@ -89,8 +88,7 @@ JOIN dbo.FIELDS f ON f.T_ID = LTRIM(RTRIM(l.T_ID)) AND LTRIM(RTRIM(f.F_ID)) = LT
 WHERE l.IS_HIDDEN = 1 AND COALESCE(f.IS_VERIFY, 0) = 1
   AND COALESCE(f.IS_VISIBLE, 1) = 1 AND COALESCE(f.IS_READONLY, 0) = 0 AND COALESCE(f.IS_VIRTUAL, 0) = 0
   AND LTRIM(RTRIM(f.F_ID)) NOT IN (N'SERIAL_NO', N'CREATE_PERSON', N'CREATE_DATE', N'LAST_UPDATE_BY', N'LAST_UPDATE_DATE',
-                                   N'CONFIRM_PERSON', N'CONFIRM_DATE', N'FINISHED_PERSON', N'FINISHED_DATE',
-                                   N'CI', N'OWNER', N'OWNER_G')
+                                   N'CONFIRM_PERSON', N'CONFIRM_DATE', N'FINISHED_PERSON', N'FINISHED_DATE')
 ORDER BY l.M_IDX, l.T_ID, l.F_ID;
 "@
 

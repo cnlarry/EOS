@@ -82,8 +82,8 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         // 自造哨兵行：货记在『未指定位置』上（库存表里 '-' 就是"没记位置"）。
         await ExecAsync(connection,
             $"""
-            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG,CI)
-            VALUES (@pro,@depot,N'-',N'',@qty,N'DbUp',SYSDATETIME(),0,N'');
+            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+            VALUES (@pro,@depot,N'-',N'',@qty,N'DbUp',SYSDATETIME(),0);
             """,
             ("@pro", TestProduct), ("@depot", Depot), ("@qty", StartQty));
     }

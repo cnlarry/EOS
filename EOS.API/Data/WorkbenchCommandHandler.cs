@@ -186,35 +186,6 @@ public sealed class WorkbenchCommandHandler(
         RecordPayloadValidator.ApplyDefaults(form.MasterFields, values);
         FormDefaultRules.Apply(definition.ModuleId, form.MasterFields, values);
 
-        // 数据归属三列服务端独占写入：新建一律按当前会话覆盖（客户端提交值直接丢弃，
-        // 此前 TryAdd 会让伪造的 OWNER 生效，属归属伪造缺口）；更新时保持创建归属不变。
-        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER", token))
-        {
-            values["OWNER"] = userId;
-        }
-        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER_G", token))
-        {
-            var primaryGroup = await WorkbenchSql.GetPrimaryGroupAsync(connection, transaction, userId, token);
-            if (primaryGroup is not null)
-            {
-                values["OWNER_G"] = primaryGroup;
-            }
-            else
-            {
-                values.Remove("OWNER_G");
-            }
-        }
-        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CI", token))
-        {
-            var company = await WorkbenchSql.GetUserCompanyAsync(connection, transaction, userId, token);
-            if (company is null)
-            {
-                logger.LogWarning("用户无公司归属，回填默认公司 userId={UserId}", userId);
-                company = WorkflowStates.DefaultCompanyId;
-            }
-            values["CI"] = company;
-        }
-
         // 领域规则：自动单号 + 默认单别
         var businessRule = definition.BusinessRule;
         if (businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })

@@ -12,7 +12,7 @@ public sealed class WorkbenchScopeFilterTests
     private static readonly IReadOnlySet<string> FilterKeys =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CLIENT_ID", "SALES_ID" };
 
-    private static WorkbenchDefinition Definition(string execTag = "Z", bool hasOwner = true, bool hasOwnerGroup = true) =>
+    private static WorkbenchDefinition Definition(string execTag = "Z") =>
         new(
             ModuleId: 1401,
             Title: "客户基本资料",
@@ -31,60 +31,33 @@ public sealed class WorkbenchScopeFilterTests
             FilterFieldKeys: FilterKeys,
             UserId: "u1",
             ExecTag: execTag,
-            HasOwnerColumn: hasOwner,
-            HasOwnerGroupColumn: hasOwnerGroup,
             GroupExpressions: ["", "", "", "", ""]);
 
-    [Fact]
-    public void ExecTagB_AddsOwnerPredicate_WithParameterizedUser()
+    [Theory]
+    [InlineData("Z")]
+    [InlineData("A")]
+    [InlineData("")]
+    public void ExecTag_NoScopeValues_AreAccepted(string execTag)
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
-        var predicates = new List<string>();
-        using var command = new SqlCommand();
 
-        filter.ApplyExecTagScope(Definition(execTag: "B"), predicates, command);
-
-        Assert.Contains("[OWNER]=@execOwner", predicates);
-        Assert.Equal("u1", command.Parameters["@execOwner"].Value);
-    }
-
-    [Fact]
-    public void ExecTagB_WithoutOwnerColumn_ThrowsFailClosed()
-    {
-        var filter = new WorkbenchScopeFilter(new ApiMetrics());
-        var predicates = new List<string>();
-        using var command = new SqlCommand();
-
-        Assert.Throws<DataFilterUnsupportedException>(
-            () => filter.ApplyExecTagScope(Definition(execTag: "B", hasOwner: false), predicates, command));
-        Assert.Empty(predicates);
-    }
-
-    [Fact]
-    public void ExecTagZ_AddsNoPredicate()
-    {
-        var filter = new WorkbenchScopeFilter(new ApiMetrics());
-        var predicates = new List<string>();
-        using var command = new SqlCommand();
-
-        filter.ApplyExecTagScope(Definition(execTag: "Z"), predicates, command);
-
-        Assert.Empty(predicates);
+        filter.ApplyExecTagScope(Definition(execTag: execTag));
     }
 
     [Theory]
+    [InlineData("B")]
+    [InlineData("C")]
+    [InlineData("D")]
+    [InlineData("E")]
     [InlineData("Q")]
     [InlineData("F")]
     [InlineData("BB")]
-    public void ExecTagUnknown_ThrowsFailClosed(string execTag)
+    public void ExecTag_RetiredOrUnknownValues_ThrowFailClosed(string execTag)
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
-        var predicates = new List<string>();
-        using var command = new SqlCommand();
 
         Assert.Throws<DataFilterUnsupportedException>(
-            () => filter.ApplyExecTagScope(Definition(execTag: execTag), predicates, command));
-        Assert.Empty(predicates);
+            () => filter.ApplyExecTagScope(Definition(execTag: execTag)));
     }
 
     [Fact]
@@ -122,12 +95,12 @@ public sealed class WorkbenchScopeFilterTests
         var predicates = new List<string>();
         using var command = new SqlCommand();
 
-        filter.ApplyDetailScope(Definition(execTag: "B"), null, "CLIENT", ["CLIENT_ID"], predicates, command);
+        filter.ApplyDetailScope(Definition(), "CLIENT.SALES_ID='YW2-08'", "CLIENT", ["CLIENT_ID"], predicates, command);
 
         var predicate = Assert.Single(predicates);
         Assert.Contains("EXISTS (SELECT 1 FROM dbo.[CLIENT]", predicate);
         Assert.Contains("[CLIENT_ID]=dbo.[CLIENT].[CLIENT_ID]", predicate);
-        Assert.Contains("[OWNER]=@execOwner", predicate);
+        Assert.Contains("[SALES_ID]", predicate);
     }
 
     [Fact]
@@ -143,28 +116,25 @@ public sealed class WorkbenchScopeFilterTests
     }
 
     [Fact]
-    public void TryBuildRecordScopePredicate_CombinesDataFilterAndExecTag()
+    public void TryBuildRecordScopePredicate_CompilesDataFilter()
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
         var ok = filter.TryBuildRecordScopePredicate(
-            Definition(execTag: "B"), "CLIENT.SALES_ID='YW2-08'",
-            out var predicate, out var parameters);
+            Definition(), "CLIENT.SALES_ID='YW2-08'", out var predicate, out var parameters);
 
         Assert.True(ok);
         Assert.Contains("[SALES_ID]", predicate);
-        Assert.Contains("[OWNER]=@df1", predicate);
-        Assert.Equal(2, parameters.Count);
-        Assert.Equal("YW2-08", parameters[0]);
-        Assert.Equal("u1", parameters[1]);
+        Assert.Equal("YW2-08", Assert.Single(parameters));
     }
 
     [Fact]
     public void TryBuildRecordScopePredicate_UnsupportedDataFilter_ReturnsFalse()
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
         var ok = filter.TryBuildRecordScopePredicate(
-            Definition(), "CLIENT.SALES_ID IN (SELECT 1 FROM dbo.x)",
-            out var predicate, out var parameters);
+            Definition(), "CLIENT.SALES_ID IN (SELECT 1 FROM dbo.x)", out var predicate, out var parameters);
 
         Assert.False(ok);
         Assert.Equal(string.Empty, predicate);
@@ -172,10 +142,13 @@ public sealed class WorkbenchScopeFilterTests
     }
 
     [Theory]
+    [InlineData("B")]
+    [InlineData("C")]
+    [InlineData("D")]
+    [InlineData("E")]
     [InlineData("Q")]
-    [InlineData("F")]
     [InlineData("BB")]
-    public void RecordScope_UnknownExecTag_ReturnsFalseFailClosed(string execTag)
+    public void RecordScope_RetiredOrUnknownExecTag_ReturnsFalseFailClosed(string execTag)
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
 
@@ -188,14 +161,17 @@ public sealed class WorkbenchScopeFilterTests
     }
 
     [Theory]
+    [InlineData("B")]
+    [InlineData("C")]
+    [InlineData("D")]
+    [InlineData("E")]
     [InlineData("Q")]
-    [InlineData("F")]
-    public void ChooserScope_UnknownExecTag_ReturnsFalseFailClosed(string execTag)
+    public void ChooserScope_RetiredOrUnknownExecTag_ReturnsFalseFailClosed(string execTag)
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
 
         var ok = filter.TryBuildChooserScopePredicate(
-            "CLIENT", null, null, null, execTag, "u1", true, true, FilterKeys,
+            "CLIENT", null, null, null, execTag, FilterKeys,
             out var predicate, out var parameters);
 
         Assert.False(ok);
@@ -204,59 +180,29 @@ public sealed class WorkbenchScopeFilterTests
     }
 
     [Fact]
-    public void RecordScope_ExecTagD_WithoutOwnerGroupColumn_ReturnsFalseFailClosed()
-    {
-        var filter = new WorkbenchScopeFilter(new ApiMetrics());
-
-        var ok = filter.TryBuildRecordScopePredicate(
-            Definition(execTag: "D", hasOwnerGroup: false), null, out _, out _);
-
-        Assert.False(ok);
-    }
-
-    [Fact]
-    public void ChooserScope_ExecTagB_QualifiesOwnerColumnWithSourceTable()
+    public void ChooserScope_ModuleFilterAppliesWhenSourceIsMasterTable()
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
 
         var ok = filter.TryBuildChooserScopePredicate(
-            "CLIENT", null, null, null, "B", "u1", true, true, FilterKeys,
+            "CLIENT", "CLIENT.SALES_ID='YW2-08'", "CLIENT", null, "Z", FilterKeys,
             out var predicate, out var parameters);
 
         Assert.True(ok);
-        Assert.Equal("[CLIENT].[OWNER]=@df0", predicate);
-        Assert.Equal("u1", Assert.Single(parameters));
+        Assert.Contains("[SALES_ID]", predicate);
+        Assert.Equal("YW2-08", Assert.Single(parameters));
     }
 
-    [Theory]
-    [InlineData("C", "[CLIENT].[OWNER]", "f_get_underling(@df0)")]
-    [InlineData("E", "[CLIENT].[OWNER_G]", "f_get_underling(@df0)")]
-    public void ChooserScope_UnderlingTags_UseSourceTableQualifierAndSingleParameter(
-        string execTag, string expectedColumn, string expectedCall)
+    [Fact]
+    public void ChooserScope_NoScopeInputs_YieldsEmptyPredicate()
     {
         var filter = new WorkbenchScopeFilter(new ApiMetrics());
 
         var ok = filter.TryBuildChooserScopePredicate(
-            "CLIENT", null, null, null, execTag, "u1", true, true, FilterKeys,
-            out var predicate, out var parameters);
+            "CLIENT", null, null, null, "Z", FilterKeys, out var predicate, out var parameters);
 
         Assert.True(ok);
-        Assert.Contains(expectedColumn, predicate);
-        Assert.Contains(expectedCall, predicate);
-        Assert.Equal("u1", Assert.Single(parameters));
-    }
-
-    [Fact]
-    public void RecordScope_ExecTagE_EmitsSingleOwnerGroupParameter()
-    {
-        var filter = new WorkbenchScopeFilter(new ApiMetrics());
-
-        var ok = filter.TryBuildRecordScopePredicate(
-            Definition(execTag: "E"), null, out var predicate, out var parameters);
-
-        Assert.True(ok);
-        Assert.Contains("[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER", predicate);
-        Assert.Contains("f_get_underling(@df0)", predicate);
-        Assert.Equal("u1", Assert.Single(parameters));
+        Assert.Equal(string.Empty, predicate);
+        Assert.Empty(parameters);
     }
 }

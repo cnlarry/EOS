@@ -148,13 +148,13 @@ public sealed class BatchChooserLiveTests
                 ("@Pro", Product));
             // 三个有效期（过期 / 明天 / 十天后）+ 一个不受管控；都有余量，才会出现在候选里
             await ExecuteAsync(connection,
-                "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG, CI) "
-                + "VALUES (@B1, @Pro, 10, 0, @D1, N'ADR25CH', SYSDATETIME(), 0, 0, N''), "
-                + "       (@B2, @Pro, 10, 0, @D2, N'ADR25CH', SYSDATETIME(), 0, 0, N''), "
-                + "       (@B3, @Pro, 10, 0, @D3, N'ADR25CH', SYSDATETIME(), 0, 0, N''), "
-                + "       (@B4, @Pro, 10, 0, NULL, N'ADR25CH', SYSDATETIME(), 0, 0, N''), "
+                "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG) "
+                + "VALUES (@B1, @Pro, 10, 0, @D1, N'ADR25CH', SYSDATETIME(), 0, 0), "
+                + "       (@B2, @Pro, 10, 0, @D2, N'ADR25CH', SYSDATETIME(), 0, 0), "
+                + "       (@B3, @Pro, 10, 0, @D3, N'ADR25CH', SYSDATETIME(), 0, 0), "
+                + "       (@B4, @Pro, 10, 0, NULL, N'ADR25CH', SYSDATETIME(), 0, 0), "
                 // 无余量的批次不该出现在候选里（与既有批次来源的过滤口径一致）
-                + "       (N'ADR25CHLOT_EMPTY', @Pro, 5, 5, @D1, N'ADR25CH', SYSDATETIME(), 0, 0, N'');",
+                + "       (N'ADR25CHLOT_EMPTY', @Pro, 5, 5, @D1, N'ADR25CH', SYSDATETIME(), 0, 0);",
                 ("@Pro", Product),
                 ("@B1", ExpiredBatch), ("@D1", asOf.AddDays(-1)),
                 ("@B2", SoonBatch), ("@D2", asOf.AddDays(1)),

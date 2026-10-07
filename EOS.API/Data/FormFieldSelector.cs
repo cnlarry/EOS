@@ -64,11 +64,10 @@ internal static class FormFieldSelector
     private static readonly IReadOnlySet<string> HiddenStatusTags = new HashSet<string>(
         WorkflowStates.LifecycleTagColumns, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>生命周期系统列（状态位 + 经办人/日期 + 归属三列）：浏览态一律只读显示。</summary>
+    /// <summary>生命周期系统列（状态位 + 经办人/日期）：浏览态一律只读显示。</summary>
     private static bool IsLifecycleSystemColumn(string key) =>
         HiddenStatusTags.Contains(key)
-        || WorkflowStates.LifecycleActorColumns.Contains(key, StringComparer.OrdinalIgnoreCase)
-        || WorkflowStates.OwnershipColumns.Contains(key, StringComparer.OrdinalIgnoreCase);
+        || WorkflowStates.LifecycleActorColumns.Contains(key, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 解析 FIELDS.FORM_OPTIONS（KEY=VALUE;KEY=VALUE），非法项跳过（容错，不抛错）。
@@ -143,10 +142,8 @@ internal static class FormFieldSelector
         {
             if (!seen.Add(row.Key)) continue; // 防御：同名元数据行只取第一条
             if (HiddenStatusTags.Contains(row.Key) && mode != "view") continue;
-            // 系统列组（生命周期经办人/日期）与归属三列（CI/OWNER/OWNER_G）
-            // 在新增/编辑态隐藏，仅浏览态只读显示。
-            if (mode != "view" && (WorkflowStates.LifecycleActorColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase)
-                || WorkflowStates.OwnershipColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase))) continue;
+            // 系统列组（生命周期经办人/日期）在新增/编辑态隐藏，仅浏览态只读显示。
+            if (mode != "view" && WorkflowStates.LifecycleActorColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase)) continue;
             if (row.IsCost && !canViewCost) continue;
             if (row.IsSecrecy && !canViewSecrecy) continue;
             if (deniedView.Contains(row.Key)) continue;

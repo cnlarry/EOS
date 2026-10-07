@@ -124,16 +124,16 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{StockTable} WHERE PRO_NO=@pro AND DEPOT_ID=@depot AND LOCATION_NO=@loc AND BATCH_NO=N'')
-                INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,COST_PRICE,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG,CI)
-                VALUES (@pro,@depot,@loc,N'',@qty,@price,N'DbUp',SYSDATETIME(),0,N'');
+                INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,COST_PRICE,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                VALUES (@pro,@depot,@loc,N'',@qty,@price,N'DbUp',SYSDATETIME(),0);
             """,
             ("@pro", TestProduct), ("@depot", _depot), ("@loc", TestLocation), ("@qty", StartQty), ("@price", CostPrice));
         // 盘点单：一行有盈亏（105 vs 100）、一行无盈亏（10 vs 10，不得转出）
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no)
-                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,COUNT_DATE,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE,CI)
-                VALUES (@type,@no,@depot,SYSDATETIME(),1,N'DbUp',SYSDATETIME(),N'');
+                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,COUNT_DATE,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE)
+                VALUES (@type,@no,@depot,SYSDATETIME(),1,N'DbUp',SYSDATETIME());
             """,
             ("@type", TestType), ("@no", TestNo), ("@depot", _depot));
         await ExecAsync(connection,
@@ -166,9 +166,9 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO))=@pro)
-                INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG,CI)
+                INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
                 SELECT @pro, N'转单用例料号', (SELECT TOP 1 UNIT_ID FROM dbo.PRODUCT WHERE LTRIM(RTRIM(ISNULL(UNIT_ID,N'')))<>N'' ORDER BY PRO_NO),
-                       N'DbUp', SYSDATETIME(), 0, N'';
+                       N'DbUp', SYSDATETIME(), 0;
             """,
             ("@pro", TestProduct));
     }

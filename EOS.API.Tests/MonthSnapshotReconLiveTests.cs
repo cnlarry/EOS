@@ -48,8 +48,8 @@ public sealed class MonthSnapshotReconLiveTests
             await ExecuteAsync(connection, transaction, """
                 DELETE FROM dbo.INV_PRO_MONTH_M WHERE CONFIRM_TAG = 1;
                 DELETE FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @Mt;
-                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                    VALUES (@Mt, @Mn, '2099-12-31', 1, N'ADR20G', GETDATE(), 'ADR20G');
+                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                    VALUES (@Mt, @Mn, '2099-12-31', 1, N'ADR20G', GETDATE());
                 """, ("@Mt", monthType), ("@Mn", monthNo));
 
             // 完整快照：把当前余额逐键搬进月结明细（期末在未来 ⇒ 其后流水那条腿为空）
@@ -123,8 +123,8 @@ public sealed class MonthSnapshotReconLiveTests
             await ExecuteAsync(connection, transaction, """
                 DELETE FROM dbo.INV_PRO_MONTH_M WHERE CONFIRM_TAG = 1;
                 DELETE FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @Mt;
-                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                    VALUES (@Mt, @Mn, @PeriodEnd, 1, N'ADR20H', GETDATE(), 'ADR20H');
+                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                    VALUES (@Mt, @Mn, @PeriodEnd, 1, N'ADR20H', GETDATE());
                 """, ("@Mt", monthType), ("@Mn", monthNo), ("@PeriodEnd", PeriodEnd));
 
             // 期末当天 12:00 的一笔流水：属于该期，绝不能被算进"其后流水"

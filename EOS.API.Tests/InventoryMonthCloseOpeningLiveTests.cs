@@ -134,21 +134,21 @@ public sealed class InventoryMonthCloseOpeningLiveTests
                        (@Pro, '2024-01-20', 'ADR20T', 'ADR20002', 1, 'I', 5, 5, @Depot);
 
             -- 期 A：更早的已批核期（用于证伪"跨月求和"）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES ('ADR20', @A, '2023-06-30', 1, N'ADR20', GETDATE(), 'ADR20');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES ('ADR20', @A, '2023-06-30', 1, N'ADR20', GETDATE());
             INSERT INTO dbo.INV_PRO_MONTH_D (MONTH_TYPE, MONTH_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, PRICE)
                 VALUES ('ADR20', @A, 1, @Pro, @Depot, 7, 5);
 
             -- 期 B：最近一期已批核，两个批次明细（用于证伪"取单行"）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES ('ADR20', @B, '2023-12-31', 1, N'ADR20', GETDATE(), 'ADR20');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES ('ADR20', @B, '2023-12-31', 1, N'ADR20', GETDATE());
             INSERT INTO dbo.INV_PRO_MONTH_D (MONTH_TYPE, MONTH_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, PRICE, LOCATION_NO, BATCH_NO)
                 VALUES ('ADR20', @B, 1, @Pro, @Depot, 60, 5, N'-', 'ADR20B1'),
                        ('ADR20', @B, 2, @Pro, @Depot, 40, 5, N'-', 'ADR20B2');
 
             -- 期 C：更晚的**草稿**（未批核；用于证伪"选月不过滤批核位"）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES ('ADR20', @C, '2024-01-05', 0, N'ADR20', GETDATE(), 'ADR20');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES ('ADR20', @C, '2024-01-05', 0, N'ADR20', GETDATE());
             INSERT INTO dbo.INV_PRO_MONTH_D (MONTH_TYPE, MONTH_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, PRICE)
                 VALUES ('ADR20', @C, 1, @Pro, @Depot, 999, 5);
             """, token,

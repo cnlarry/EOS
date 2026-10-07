@@ -96,18 +96,18 @@ public sealed class DocumentActionMaterialIssueLiveTests : IAsyncLifetime
         // A 料分两行（7 + 3 = 10），B 料 2，C 料无库存行
         await ExecAsync(connection,
             $"""
-            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG,CI)
-            VALUES (@pa,@d,@a,N'',7,N'DbUp',SYSDATETIME(),0,N''),
-                   (@pa,@d,@b,N'',3,N'DbUp',SYSDATETIME(),0,N''),
-                   (@pb,@d,@a,N'',2,N'DbUp',SYSDATETIME(),0,N'');
+            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+            VALUES (@pa,@d,@a,N'',7,N'DbUp',SYSDATETIME(),0),
+                   (@pa,@d,@b,N'',3,N'DbUp',SYSDATETIME(),0),
+                   (@pb,@d,@a,N'',2,N'DbUp',SYSDATETIME(),0);
             """,
             ("@pa", ProductA), ("@pb", ProductB), ("@d", TestDepot),
             ("@a", BinA), ("@b", BinB));
         // 领料单：A 行需求 10，B 行需求 5，C 行需求 4（无库存）
         await ExecAsync(connection,
             $"""
-            INSERT INTO dbo.{MasterTable} (GET_TYPE,GET_NO,GET_DATE,CREATE_PERSON,CREATE_DATE,CI)
-            VALUES (@type,@no,SYSDATETIME(),N'DbUp',SYSDATETIME(),N'');
+            INSERT INTO dbo.{MasterTable} (GET_TYPE,GET_NO,GET_DATE,CREATE_PERSON,CREATE_DATE)
+            VALUES (@type,@no,SYSDATETIME(),N'DbUp',SYSDATETIME());
             INSERT INTO dbo.{DetailTable} (GET_TYPE,GET_NO,SERIAL_NO,PRO_NO,DEPOT_ID,QTY,SEND_QTY)
             VALUES (@type,@no,1,@pa,@d,10,0),
                    (@type,@no,2,@pb,@d,5,0),

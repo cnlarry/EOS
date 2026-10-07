@@ -333,8 +333,8 @@ public sealed class BatchExpiryLiveTests
         {
             await ExecuteAsync(connection, transaction,
                 "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, "
-                + "CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG, CI) "
-                + "VALUES (N'EXLOT1', @Pro, @InSum, @OutSum, @Effect, N'ADR25EX', SYSDATETIME(), 0, 0, N'')",
+                + "CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG) "
+                + "VALUES (N'EXLOT1', @Pro, @InSum, @OutSum, @Effect, N'ADR25EX', SYSDATETIME(), 0, 0)",
                 ("@Pro", Product), ("@InSum", row.InSum), ("@OutSum", row.OutSum), ("@Effect", row.EffectDate));
         }
     }

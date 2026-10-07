@@ -210,8 +210,8 @@ public sealed class MonthCloseSnapshotHalfStockLiveTests : IAsyncLifetime
 
     private async Task SeedMonthAsync(DateTime monthDate, bool confirmed) =>
         await UseAsync(connection => ExecAsync(connection, """
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES (@type, @no, @date, @tag, N'ZZHSB', GETDATE(), 'ZZHSB');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES (@type, @no, @date, @tag, N'ZZHSB', GETDATE());
             """, ("@type", MonthType), ("@no", confirmed ? PrevMonthNo : MonthNo),
             ("@date", monthDate.Date), ("@tag", confirmed)));
 

@@ -240,8 +240,6 @@ public sealed class WorkbenchDefinitionBuilder(
             await ReadFilterFieldKeys(connection,master,canViewCost,canViewSecrecy,deniedMasterFields,token),
             userId.Trim(),
             string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
-            await WorkbenchSql.ColumnExistsAsync(connection,null,master,"OWNER",token),
-            await WorkbenchSql.ColumnExistsAsync(connection,null,master,"OWNER_G",token),
             businessRule,
             autoApprove,
             groupExpressions,

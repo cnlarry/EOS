@@ -33,8 +33,6 @@ public sealed class WorkbenchDefinitionSnapshotRoundTripTests
             FilterFieldKeys: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CLIENT_ID", "SALES_ID" },
             UserId: "",
             ExecTag: "Z",
-            HasOwnerColumn: true,
-            HasOwnerGroupColumn: true,
             BusinessRule: new ModuleBusinessRule(1401, true, "CLIENT_ID", "X"),
             AutoApprove: false,
             GroupExpressions: ["", "", "", "", ""],

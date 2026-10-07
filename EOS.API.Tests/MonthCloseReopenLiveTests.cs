@@ -182,8 +182,8 @@ public sealed class MonthCloseReopenLiveTests
         await ExecuteAsync(connection, transaction, """
             DELETE FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @Type;
             INSERT INTO dbo.INV_PRO_MONTH_M
-                (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES (@Type, @No, '2023-12-31', 0, NULL, NULL, N'ADR20D', GETDATE(), 'ADR20D');
+                (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE, CREATE_PERSON, CREATE_DATE)
+                VALUES (@Type, @No, '2023-12-31', 0, NULL, NULL, N'ADR20D', GETDATE());
             """, ("@Type", MonthType), ("@No", MonthNo));
 
     private static async Task<(bool? Tag, string? Person, DateTime? Date)> ReadConfirmAsync(

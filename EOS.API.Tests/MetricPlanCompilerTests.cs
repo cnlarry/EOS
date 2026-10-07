@@ -83,9 +83,9 @@ public sealed class MetricPlanCompilerTests
     {
         var plan = MetricPlanCompiler.Compile(
             Parse("SUM(AMOUNT_TAX)"), "COP_ORDER_D", null, [],
-            "COP_ORDER_M", ["ORDER_NO"], "[OWNER]=@df0", ["u1"]);
+            "COP_ORDER_M", ["ORDER_NO"], "[CLIENT_ID]=@df0", ["u1"]);
         Assert.Contains("EXISTS (SELECT 1 FROM dbo.[COP_ORDER_M] WITH (NOLOCK)" +
-                        " WHERE [ORDER_NO]=dbo.[COP_ORDER_D].[ORDER_NO] AND ([OWNER]=@scope0))", plan.Sql);
+                        " WHERE [ORDER_NO]=dbo.[COP_ORDER_D].[ORDER_NO] AND ([CLIENT_ID]=@scope0))", plan.Sql);
         Assert.Equal("u1", plan.Parameters.Single(p => p.Name == "@scope0").Value);
     }
 
@@ -94,8 +94,8 @@ public sealed class MetricPlanCompilerTests
     {
         var plan = MetricPlanCompiler.Compile(
             Parse("COUNT(DISTINCT EMP_ID)"), "HR_EMPLOYEE", null, [],
-            "HR_EMPLOYEE", [], "[OWNER]=@df0", ["u1"]);
-        Assert.Equal("SELECT COUNT(DISTINCT [EMP_ID]) FROM dbo.[HR_EMPLOYEE] WITH (NOLOCK) WHERE ([OWNER]=@scope0);",
+            "HR_EMPLOYEE", [], "[EMP_NO]=@df0", ["u1"]);
+        Assert.Equal("SELECT COUNT(DISTINCT [EMP_ID]) FROM dbo.[HR_EMPLOYEE] WITH (NOLOCK) WHERE ([EMP_NO]=@scope0);",
             plan.Sql);
     }
 

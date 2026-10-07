@@ -45,8 +45,7 @@ internal static class FormLayoutFactsBuilder
 
     private static readonly HashSet<string> LifecycleColumns = new(
         WorkflowStates.LifecycleActorColumns
-            .Concat(WorkflowStates.LifecycleTagColumns)
-            .Concat(WorkflowStates.OwnershipColumns),
+            .Concat(WorkflowStates.LifecycleTagColumns),
         StringComparer.OrdinalIgnoreCase);
 
     /// <summary>用户能自己填的字段：可见、非只读、非虚拟，且不由服务端独占填充。</summary>

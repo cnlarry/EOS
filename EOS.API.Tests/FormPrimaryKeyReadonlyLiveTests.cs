@@ -158,9 +158,9 @@ public sealed class FormPrimaryKeyReadonlyLiveTests : IAsyncLifetime
     private static async Task SeedAsync(SqlConnection connection) =>
         await ExecAsync(connection, """
             INSERT INTO dbo.DEPOT
-                (DEPOT_ID, DEPOT_NAME, TEL, ADDRESS, PRINCIPAL, REMARK, MRP, CI, OWNER, OWNER_G,
+                (DEPOT_ID, DEPOT_NAME, TEL, ADDRESS, PRINCIPAL, REMARK, MRP,
                  CREATE_PERSON, CREATE_DATE, CONFIRM_TAG)
-            VALUES (@id, @name, N'', N'', N'', N'', 1, N'DEFAULT', N'', N'', N'ZZPKR', SYSDATETIME(), 0);
+            VALUES (@id, @name, N'', N'', N'', N'', 1, N'ZZPKR', SYSDATETIME(), 0);
             """, ("@id", TestDepot), ("@name", TestDepotName));
 
     private static Task<string?> DepotNameAsync(SqlConnection connection) =>

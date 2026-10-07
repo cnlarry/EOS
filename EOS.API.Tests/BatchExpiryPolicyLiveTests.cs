@@ -357,8 +357,8 @@ public sealed class BatchExpiryPolicyLiveTests
                 VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A');
             INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, EXPIRY_MODE)
                 VALUES (@Depot, 0, N'FIXED', 1, 0, 1, 1, @ExpiryMode);
-            INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG, CI)
-                VALUES (@Batch, @Pro, 10, @Expired, N'ADR25PX', SYSDATETIME(), 0, 0, N'');
+            INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG)
+                VALUES (@Batch, @Pro, 10, @Expired, N'ADR25PX', SYSDATETIME(), 0, 0);
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, USEABLE_QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@Pro, @Depot, N'-', @Batch, 10, 10, 10, 5, 50);
             INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, LAST_UPDATE_BY)
@@ -407,8 +407,8 @@ public sealed class BatchExpiryPolicyLiveTests
         if (existingExpiry is { } expiry)
         {
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG, CI) "
-                + "VALUES (@Batch, @Pro, 0, @Effect, N'ADR25PX', SYSDATETIME(), 0, 0, N'')",
+                "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG) "
+                + "VALUES (@Batch, @Pro, 0, @Effect, N'ADR25PX', SYSDATETIME(), 0, 0)",
                 ("@Batch", Batch), ("@Pro", Product), ("@Effect", expiry));
         }
     }

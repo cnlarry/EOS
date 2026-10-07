@@ -16,7 +16,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
 
         const string sql = """
             SELECT l.USER_ID,
-                   -- 主组取自用户-组关联表（口径与 WorkbenchSql.GetPrimaryGroupAsync 一致：G_IDX 最小者）。
+                   -- 主组取自用户-组关联表（G_IDX 最小者）。
                    -- 用户与用户组是多对多关系，账号表不承载"那个组"，只有关联表是它的唯一存储。
                    (SELECT TOP 1 LTRIM(RTRIM(gu.G_IDX)) FROM dbo.SYSDG_USER gu WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(gu.USER_ID))=LTRIM(RTRIM(l.USER_ID)) ORDER BY gu.G_IDX) AS G_IDX,

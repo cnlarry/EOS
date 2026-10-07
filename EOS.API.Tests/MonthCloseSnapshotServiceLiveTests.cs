@@ -282,14 +282,14 @@ public sealed class MonthCloseSnapshotServiceLiveTests
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY) VALUES (@Pro, @Depot, 9999);
 
             -- 上一期（已批核）：100 @ 5
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES (@Type, @Opening, '2023-12-31', 1, N'ZZMC', GETDATE(), 'ZZMC');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES (@Type, @Opening, '2023-12-31', 1, N'ZZMC', GETDATE());
             INSERT INTO dbo.INV_PRO_MONTH_D (MONTH_TYPE, MONTH_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, PRICE)
                 VALUES (@Type, @Opening, 1, @Pro, @Depot, 100, 5);
 
             -- 本期（未批核，待生成）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES (@Type, @Subject, '2024-01-31', 0, N'ZZMC', GETDATE(), 'ZZMC');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES (@Type, @Subject, '2024-01-31', 0, N'ZZMC', GETDATE());
 
             -- 本期收发：+30 入（批次 ZZMCB1）、−20 出
             INSERT INTO dbo.INV_DEPOT_LOG (PRO_NO, MUTUALITY_DATE, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, IN_OUT, QTY, PRICE, DEPOT_ID, LOCATION_NO, BATCH_NO)

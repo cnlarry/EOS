@@ -174,8 +174,8 @@ public sealed class InventoryPeriodServiceLiveTests
             // 再关一期：期末 = 今天 ⇒ 非批核方向写的"当前时间"落在这期之内
             //（这正是"单据在开账期、反向流水却落进已关账期"的形态）
             await ExecuteAsync(connection, transaction, """
-                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                    VALUES (@Type, N'ADR20C003', @Today, 1, N'ADR20C', GETDATE(), 'ADR20C');
+                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                    VALUES (@Type, N'ADR20C003', @Today, 1, N'ADR20C', GETDATE());
                 """, ("@Type", MonthType), ("@Today", DateTime.Today));
 
             var error = await Assert.ThrowsAsync<PeriodClosedException>(() =>
@@ -211,9 +211,9 @@ public sealed class InventoryPeriodServiceLiveTests
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE) VALUES (@Pro, N'ADR20C 关账料件', N'规格C', '3');
 
             -- 已批核期（期末 2023-12-31）与草稿期（期末 2024-02-29）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES (@Type, @Closed, '2023-12-31', 1, N'ADR20C', GETDATE(), 'ADR20C'),
-                       (@Type, @Draft, '2024-02-29', 0, N'ADR20C', GETDATE(), 'ADR20C');
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                VALUES (@Type, @Closed, '2023-12-31', 1, N'ADR20C', GETDATE()),
+                       (@Type, @Draft, '2024-02-29', 0, N'ADR20C', GETDATE());
 
             -- 一张单的流水在已关账期内，另一张在开账期
             INSERT INTO dbo.INV_DEPOT_LOG (PRO_NO, MUTUALITY_DATE, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, IN_OUT, QTY, PRICE, DEPOT_ID, LOCATION_NO)

@@ -268,11 +268,11 @@ public sealed class BatchExpiryReportLiveTests
                 INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR25RP 临期仓');
                 INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, SEQ_NO, STATUS)
                     VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A');
-                INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG, CI)
-                    VALUES (N'ADR25RPLOT_EXPIRED', @Pro, 5, 0, @Expired, N'ADR25RP', SYSDATETIME(), 0, 0, N''),
-                           (N'ADR25RPLOT_NEAR', @Pro, 3, 0, @Near, N'ADR25RP', SYSDATETIME(), 0, 0, N''),
-                           (N'ADR25RPLOT_FAR', @Pro, 7, 0, @Far, N'ADR25RP', SYSDATETIME(), 0, 0, N''),
-                           (N'ADR25RPLOT_NONE', @Pro, 2, 0, NULL, N'ADR25RP', SYSDATETIME(), 0, 0, N'');
+                INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG)
+                    VALUES (N'ADR25RPLOT_EXPIRED', @Pro, 5, 0, @Expired, N'ADR25RP', SYSDATETIME(), 0, 0),
+                           (N'ADR25RPLOT_NEAR', @Pro, 3, 0, @Near, N'ADR25RP', SYSDATETIME(), 0, 0),
+                           (N'ADR25RPLOT_FAR', @Pro, 7, 0, @Far, N'ADR25RP', SYSDATETIME(), 0, 0),
+                           (N'ADR25RPLOT_NONE', @Pro, 2, 0, NULL, N'ADR25RP', SYSDATETIME(), 0, 0);
                 INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, USEABLE_QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
                     VALUES (@Pro, @Depot, N'-', N'ADR25RPLOT_EXPIRED', 5, 5, 0, 1, 5),
                            (@Pro, @Depot, N'-', N'ADR25RPLOT_NEAR', 3, 3, 0, 1, 3),

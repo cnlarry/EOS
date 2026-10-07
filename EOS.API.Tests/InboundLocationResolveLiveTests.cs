@@ -168,9 +168,9 @@ public sealed class InboundLocationResolveLiveTests
         await ExecuteAsync(connection, transaction, """
             INSERT INTO dbo.INV_OCCUR_IN_M
                 (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE,
-                 CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE, CI)
+                 CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE)
                 VALUES (@Lt, @No, CONVERT(datetime, '2026-09-01', 120), 0, NULL, NULL,
-                        N'ADR20I', GETDATE(), N'ADR20I', GETDATE(), 'ADR20I');
+                        N'ADR20I', GETDATE(), N'ADR20I', GETDATE());
             INSERT INTO dbo.INV_OCCUR_IN_D
                 (OCCUR_TYPE, OCCUR_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, PRICE, LOCATION_NO)
                 VALUES (@Lt, @No, 1, @Pro, @Depot, 1, 0, @Location);

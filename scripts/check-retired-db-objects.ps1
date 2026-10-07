@@ -152,6 +152,17 @@ $retiredObjects = @(
         Reason        = 'MODULES 的 CONFIRM_TAG/OWNER/OWNER_G/CONFIRM_DATE/CONFIRM_PERSON/CI/CREATE_PERSON/CREATE_DATE 已退役并物理删列（REMARK 保留），见 Migrations/324_drop_modules_legacy_columns.sql'
         Pattern       = '(?i)MODULES\s*\.\s*(?:CONFIRM_TAG|CONFIRM_PERSON|CONFIRM_DATE|OWNER_G|OWNER|CI|CREATE_PERSON|CREATE_DATE)\b'
     }
+    # 行归属三列退役（迁移 334）：CI / OWNER / OWNER_G 从全库物理删列
+    # （DEPT.CI / SYSDN.CI 保留——那是部门/员工的公司归属，不是行归属；WF_APPROVE.OWNER 是
+    # 同名列，语义为审批待办人，也保留）。判据只用**方括号写法**：动态 SQL 对列的引用一律写成
+    # [列名]，这正是退役掉的执行范围谓词的唯一形态。点号写法（`SYSDN n ... n.CI`）无法与保留列
+    # 区分——别名 `n` 不等于 `SYSDN`，按点号判会把合法的公司归属引用一起判死。
+    # 前置断言 `(?<![\w\]])` 用来排除 C# 的数组索引形态（`arr[ci]`）。
+    [pscustomobject]@{
+        Name    = '行归属三列 CI/OWNER/OWNER_G'
+        Reason  = 'CI / OWNER / OWNER_G 已退役并物理删列（DEPT.CI / SYSDN.CI 与 WF_APPROVE.OWNER 保留），见 Migrations/334_drop_row_ownership_columns.sql'
+        Pattern = '(?<![\w\]])\[(?:OWNER_G|OWNER|CI)\]'
+    }
     # 死模块与随行表退役（迁移 325）：2205 报表过滤条件设置 + 它的主表 SYSQR_DA；
     # 旧操作日志表 SYSDF（数据留档 logs/archive/retire-324/SYSDF-*.csv）。
     # 判据用"带 dbo. 的 SQL 上下文"（本仓 SQL 一律写 dbo.）：`OBJECT_ID('dbo.SYSDF','U')` 这类
@@ -286,7 +297,11 @@ if ($SelfTest) {
         'SELECT MODULES.CI, MODULES.CREATE_PERSON, MODULES.CREATE_DATE FROM dbo.MODULES;',
         'SELECT COUNT(*) FROM dbo.SYSQR_DA;',
         'SELECT TOP 10 * FROM dbo.SYSDF WHERE M_IDX=@Id;',
-        'SELECT W.WORK_NO FROM dbo.SYS_WORK_TASK W WHERE W.W_M_IDX=@Id;'
+        'SELECT W.WORK_NO FROM dbo.SYS_WORK_TASK W WHERE W.W_M_IDX=@Id;',
+        # 退役的行归属三列（迁移 334）：方括号写法是动态 SQL 的真实形态
+        'SELECT 1 FROM dbo.CLIENT WHERE [OWNER]=@UserId;',
+        'SELECT 1 FROM dbo.CLIENT WHERE [OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER);',
+        'SELECT [CI] FROM dbo.DEPOT;'
     )
     foreach ($sample in $dirty) {
         if ((Get-RetiredHit -Text $sample).Count -eq 0) {
@@ -318,7 +333,11 @@ if ($SelfTest) {
         'SELECT e.CREATE_DATE, e.CREATE_PERSON FROM dbo.HR_EMPLOYEE e;',
         # 退役对象的**存在性探针**是合法用法（退役测试就是这么断言的），只判 SQL 上下文
         'SELECT OBJECT_ID(''dbo.SYSDF'',''U'') AS O;',
-        'SELECT OBJECT_ID(''dbo.SYS_WORK_TASK'',''U'') AS O;'
+        'SELECT OBJECT_ID(''dbo.SYS_WORK_TASK'',''U'') AS O;',
+        # 保留列不算引用：DEPT/SYSDN 的公司归属列（点号写法，别名无法与退役列区分）与
+        # WF_APPROVE 的同名列 OWNER
+        'SELECT n.CI, d.CI FROM dbo.SYSDN n INNER JOIN dbo.DEPT d ON d.DEPT_ID=n.DEPT_ID;',
+        'SELECT a.OWNER FROM dbo.WF_APPROVE a WHERE a.M_IDX=@Id;'
     )
     foreach ($sample in $clean) {
         if ((Get-RetiredHit -Text $sample).Count -gt 0) {

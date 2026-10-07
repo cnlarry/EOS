@@ -106,10 +106,10 @@ public sealed class WorkbenchBrowseResolverTests
     [Trait("Category", "Integration")]
     public async Task Resolve_SpecialPageTarget_PlainText()
     {
-        var field = await ReadFieldAsync("CLIENT", "OWNER"); // BROWSE_M_IDX=2306（用户权限设定，特殊页）
+        var field = await ReadFieldAsync("WFFORM_FLOW", "EXEC_PERSON"); // BROWSE_M_IDX=2101（流程设计，特殊页）
         if (field is null || ConnectionString.Value is null) return;
 
-        var resolved = await ResolveAsync(field, new HashSet<int> { 2306 });
+        var resolved = await ResolveAsync(field, new HashSet<int> { 2101 });
         Assert.NotNull(resolved);
         Assert.Null(resolved.BrowseModuleId);
         Assert.Null(resolved.BrowseKeyFields);
@@ -144,7 +144,7 @@ public sealed class WorkbenchBrowseResolverTests
         ["CLIENT_ID"] = "COP_ORDER_M",
         ["ACCOUNT_NO"] = "COP_RECEIPT_D",
         ["CLIENT_NAME"] = "COP_ORDER_M",
-        ["OWNER"] = "CLIENT",
+        ["EXEC_PERSON"] = "WFFORM_FLOW",
     };
 
     /// <summary>从 FIELDS 读取真实 BROWSE 元数据构造 WorkbenchField（无连接串或无记录时返回 null）。</summary>

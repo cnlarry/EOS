@@ -109,10 +109,10 @@ public class RecordPayloadValidatorTests
     {
         Assert.True(RecordPayloadValidator.IsAuditColumn("CREATE_PERSON"));
         Assert.True(RecordPayloadValidator.IsAuditColumn("last_update_date"));
-        Assert.True(RecordPayloadValidator.IsAuditColumn("OWNER"));
-        Assert.True(RecordPayloadValidator.IsAuditColumn("owner_g"));
-        Assert.True(RecordPayloadValidator.IsAuditColumn("CI"));
         Assert.False(RecordPayloadValidator.IsAuditColumn("REMARK"));
+        // 归属三列（CI/OWNER/OWNER_G）已随列下线，不再是服务端持有列。
+        Assert.False(RecordPayloadValidator.IsAuditColumn("OWNER"));
+        Assert.False(RecordPayloadValidator.IsAuditColumn("CI"));
     }
 
     [Theory]

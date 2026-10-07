@@ -34,14 +34,14 @@ public static class WorkflowStates
     public const char WithdrawnTask = 'W';
 
     /// <summary>
-    /// 单据生命周期列全集（系统列组 + 归属三列）：单据主表的标准系统列。
+    /// 单据生命周期列全集：单据主表的标准系统列
+    /// （建立/修改/批核/结案的人与日期，以及批核/结案状态位）。
     /// </summary>
     public static readonly string[] LifecycleColumns =
     [
         "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
         "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE",
         "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE",
-        "OWNER", "OWNER_G", "CI",
     ];
 
     /// <summary>
@@ -67,21 +67,7 @@ public static class WorkflowStates
         ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE"];
 
     /// <summary>
-    /// 数据归属三列：CI=行公司（取当前用户所属公司），OWNER=建单用户账号，
-    /// OWNER_G=建单用户主组。服务端独占写入（新建覆盖回填、更新忽略客户端提交），
-    /// 表单新增/编辑态隐藏、浏览态只读。
-    /// </summary>
-    public static readonly string[] OwnershipColumns = ["CI", "OWNER", "OWNER_G"];
-
-    /// <summary>
-    /// 归属兜底公司：会话用户无公司归属时回填此值并记警告。
-    /// 哨兵公司（COMPANY.COMPANY_ID='DEFAULT'），不得指向任何真实客户公司——
-    /// 否则无法归属的行会被静默算到该客户名下。
-    /// </summary>
-    public const string DefaultCompanyId = "DEFAULT";
-
-    /// <summary>
-    /// 是否单据生命周期系统列（系统列组，全 13 列含归属三列）。
+    /// 是否单据生命周期系统列（系统列组）。
     /// 字段管理侧据此打标：默认隐藏、结构只读、不可删除。
     /// </summary>
     internal static bool IsLifecycleColumn(string fieldId) =>

@@ -113,9 +113,9 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
             await ExecAsync(connection,
                 """
                 IF NOT EXISTS (SELECT 1 FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO))=@pro)
-                    INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG,CI)
+                    INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
                     SELECT @pro, N'子制令用例料号', (SELECT TOP 1 UNIT_ID FROM dbo.PRODUCT WHERE LTRIM(RTRIM(ISNULL(UNIT_ID,N'')))<>N'' ORDER BY PRO_NO),
-                           N'DbUp', SYSDATETIME(), 0, N'';
+                           N'DbUp', SYSDATETIME(), 0;
                 """,
                 ("@pro", pro));
         }

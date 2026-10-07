@@ -110,8 +110,8 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no)
-                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE,CI)
-                VALUES (@type,@no,@depot,0,N'DbUp',SYSDATETIME(),N'');
+                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE)
+                VALUES (@type,@no,@depot,0,N'DbUp',SYSDATETIME());
             """,
             ("@type", TestType), ("@no", TestNo), ("@depot", stock.Depot));
         await ExecAsync(connection,

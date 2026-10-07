@@ -281,7 +281,6 @@ function Get-RealisticValue {
         }
         if ($label -match '备注|说明|描述|其它|other|remark') { return @{ Value = (& $trim "自动化验收$label"); Source = 'text'; Resolved = $true } }
         if ($label -match '名称|姓名|品名|描述') { return @{ Value = (& $trim "测试$label"); Source = 'text'; Resolved = $true } }
-        if ($Field.key -eq 'CI') { return @{ Value = 'A'; Source = 'company'; Resolved = $true } }
         return @{ Value = (& $trim "$Prefix-$label-$Seq"); Source = 'text'; Resolved = $true }
     }
     return @{ Value = $null; Source = 'unknown-type'; Resolved = $false }

@@ -91,8 +91,8 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE PURCHASE_TYPE=@type AND PURCHASE_NO=@no)
-                INSERT INTO dbo.{MasterTable} (PURCHASE_TYPE,PURCHASE_NO,SUPPLIER_ID,CURR_RATE,FINISHED_TAG,CREATE_PERSON,CREATE_DATE,CI)
-                VALUES (@type,@no,@sup,1,0,N'DbUp',SYSDATETIME(),N'');
+                INSERT INTO dbo.{MasterTable} (PURCHASE_TYPE,PURCHASE_NO,SUPPLIER_ID,CURR_RATE,FINISHED_TAG,CREATE_PERSON,CREATE_DATE)
+                VALUES (@type,@no,@sup,1,0,N'DbUp',SYSDATETIME());
             INSERT INTO dbo.{DetailTable}
                 (PURCHASE_TYPE,PURCHASE_NO,SERIAL_NO,PRO_NO,UNIT_ID,CURR_ID,TAX_ID,TAX_TYPE,TAX_RATE,PRICE,REBATE,QTY,CURR_RATE)
             VALUES (@type,@no,1,@pro1,@unit,@curr,@tax,N'O',13,5,100,2,1),

@@ -53,28 +53,6 @@ internal static class WorkbenchSql
         return result;
     }
 
-    /// <summary>取用户主组（SYSDG_USER 首组，G_IDX 最小），用于 OWNER_G 回填。</summary>
-    internal static async Task<int?> GetPrimaryGroupAsync(SqlConnection connection, SqlTransaction transaction, string userId, CancellationToken token)
-    {
-        await using var command = new SqlCommand("SELECT TOP 1 G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@UserId ORDER BY G_IDX;", connection, transaction);
-        command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
-        return await command.ExecuteScalarAsync(token) as int?;
-    }
-
-    /// <summary>取用户所属公司（SYSDL→SYSDN.CI），用于 CI 回填；无归属返回 null（调用方兜底）。</summary>
-    internal static async Task<string?> GetUserCompanyAsync(SqlConnection connection, SqlTransaction transaction, string userId, CancellationToken token)
-    {
-        const string sql = """
-            SELECT LTRIM(RTRIM(n.CI)) FROM dbo.SYSDL l WITH (NOLOCK)
-            INNER JOIN dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = l.EMP_ID
-            WHERE LTRIM(RTRIM(l.USER_ID)) = @UserId;
-            """;
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId.Trim();
-        var result = await command.ExecuteScalarAsync(token) as string;
-        return string.IsNullOrWhiteSpace(result) ? null : result;
-    }
-
     internal static async Task<bool> ColumnExistsAsync(SqlConnection connection, SqlTransaction? transaction, string table, string column, CancellationToken token)
     {
         const string sql = "SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=@Column;";

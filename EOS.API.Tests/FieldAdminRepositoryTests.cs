@@ -235,7 +235,7 @@ public sealed class FieldAdminRepositoryTests
     [InlineData("confirm_tag")]
     [InlineData("FINISHED_PERSON")]
     [InlineData("CREATE_DATE")]
-    [InlineData("OWNER_G")]
+    [InlineData("LAST_UPDATE_DATE")]
     public async Task Delete_SystemColumn_RejectedBeforeOpeningConnection(string fieldId)
     {
         var repository = CreateRepository();

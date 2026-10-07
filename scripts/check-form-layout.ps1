@@ -38,7 +38,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
 # 生命周期/审计列：由服务端写入，不属于"用户可填"，被隐藏不算违规
-$systemColumnList = "N'CREATE_PERSON', N'CREATE_DATE', N'LAST_UPDATE_BY', N'LAST_UPDATE_DATE', N'CONFIRM_PERSON', N'CONFIRM_DATE', N'FINISHED_PERSON', N'FINISHED_DATE', N'CI', N'OWNER', N'OWNER_G'"
+$systemColumnList = "N'CREATE_PERSON', N'CREATE_DATE', N'LAST_UPDATE_BY', N'LAST_UPDATE_DATE', N'CONFIRM_PERSON', N'CONFIRM_DATE', N'FINISHED_PERSON', N'FINISHED_DATE'"
 
 # ① 主从成对（模块级版式）：字段级 `FIELDS.FORM_CELL_*` 已退役，判据只落在版式表上
 $orphanLayoutSql = @'

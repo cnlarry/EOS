@@ -112,13 +112,12 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
         await command.ExecuteNonQueryAsync();
     }
 
-    private static WorkbenchDefinition Definition(JsonElement? actions, string execTag = "Z", bool hasOwnerColumn = true) =>
+    private static WorkbenchDefinition Definition(JsonElement? actions, string execTag = "Z") =>
         new(ModuleId: ModuleId, Title: "仓库资料", MasterTable: MasterTable, DetailTable: null,
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
             MasterPkOrder: ["DEPOT_ID"], DetailNoFields: "", HasWorkflow: false,
             UserId: TestUserId,
             ExecTag: execTag,
-            HasOwnerColumn: hasOwnerColumn,
             FilterFieldKeys: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "DEPOT_ID", "DEPOT_NAME" },
             BusinessActions: actions);
 
@@ -362,9 +361,9 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
         var depotId = await AnyDepotIdAsync();
         var action = DocumentActionProbeHandler.ActionKey;
 
-        // EXEC_TAG=B 需要 OWNER 列；模块主表没有该列时不得退化为"全可见"。
+        // EXEC_TAG=B/C/D/E 依赖行归属列，该能力已随列下线：不得退化为"全可见"。
         var result = await Executor().ExecuteAsync(
-            Definition(Actions(ManualRow(action)), execTag: "B", hasOwnerColumn: false), Form(), action,
+            Definition(Actions(ManualRow(action)), execTag: "B"), Form(), action,
             new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
 
         Assert.Equal(DocumentActionStatus.FilterUnsupported, result.Status);

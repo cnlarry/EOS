@@ -72,10 +72,8 @@ public sealed class WorkbenchChooserService(
                 moduleMasterTable = moduleReader.GetString(1);
             }
         }
-        var hasOwner = await WorkbenchSql.ColumnExistsAsync(connection, null, table, "OWNER", token);
-        var hasOwnerGroup = await WorkbenchSql.ColumnExistsAsync(connection, null, table, "OWNER_G", token);
         if (!scopeFilter.TryBuildChooserScopePredicate(table, moduleFilter, moduleMasterTable, dataFilter, execTag,
-                userId, hasOwner, hasOwnerGroup, allowedFields, out var basePredicate, out var baseParameters))
+                allowedFields, out var basePredicate, out var baseParameters))
         {
             logger.LogWarning("选择器数据范围无法构建（fail-closed）table={Table} module={Module}", table, scopeModuleId);
             return new FormChooserResult([], [], 0);

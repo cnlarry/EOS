@@ -238,8 +238,8 @@ public sealed class StocktakeScopeGenerateLiveTests
 
             // 范围为空用 NULLIF 归一：空串与未填在单头是同一件事
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO dbo.INV_CHECK_STOCK_M (CHECK_STOCK_TYPE, CHECK_STOCK_NO, DEPOT_ID, LOCATION_ROOT_NO, CHECK_DATE, CREATE_PERSON, CI) "
-                + "VALUES (N'PD', @no, @depot, NULLIF(@scope, N''), SYSDATETIME(), N'adr27', N'')",
+                "INSERT INTO dbo.INV_CHECK_STOCK_M (CHECK_STOCK_TYPE, CHECK_STOCK_NO, DEPOT_ID, LOCATION_ROOT_NO, CHECK_DATE, CREATE_PERSON) "
+                + "VALUES (N'PD', @no, @depot, NULLIF(@scope, N''), SYSDATETIME(), N'adr27')",
                 ("@no", documentNo), ("@depot", Depot), ("@scope", scope ?? string.Empty));
 
             if (seedManualDetail)
@@ -308,13 +308,13 @@ public sealed class StocktakeScopeGenerateLiveTests
         // 库别级三字段（INIT_QTY / COST_PRICE / COST_AMOUNT）同键必须一致：
         // 同一 (料号, 库别) 的每一行都写同一个值，否则违反库别级字段的同键一致性口径。
         await ExecuteAsync(connection, transaction, """
-            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT, LOCATION_NO, BATCH_NO, CREATE_PERSON, CREATE_DATE, CI)
-                VALUES (@p1, @d, 5, 20, 5, 3, 60, N'A-R1-B1', N'',      N'adr27', SYSDATETIME(), N''),
-                       (@p1, @d, 7, 20, 7, 3, 60, N'A-R1-B1', N'LOT-A', N'adr27', SYSDATETIME(), N''),
-                       (@p2, @d, 4, 12, 4, 2, 24, N'A-R1-B2', N'LOT-A', N'adr27', SYSDATETIME(), N''),
-                       (@p2, @d, 9, 12, 9, 2, 24, N'B-R1-B1', N'LOT-B', N'adr27', SYSDATETIME(), N''),
-                       (@p2, @d, 3, 12, 3, 2, 24, N'-',       N'',      N'adr27', SYSDATETIME(), N''),
-                       (@p3, @o, 6, 6,  6, 1, 6,  N'A',       N'',      N'adr27', SYSDATETIME(), N'');
+            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT, LOCATION_NO, BATCH_NO, CREATE_PERSON, CREATE_DATE)
+                VALUES (@p1, @d, 5, 20, 5, 3, 60, N'A-R1-B1', N'',      N'adr27', SYSDATETIME()),
+                       (@p1, @d, 7, 20, 7, 3, 60, N'A-R1-B1', N'LOT-A', N'adr27', SYSDATETIME()),
+                       (@p2, @d, 4, 12, 4, 2, 24, N'A-R1-B2', N'LOT-A', N'adr27', SYSDATETIME()),
+                       (@p2, @d, 9, 12, 9, 2, 24, N'B-R1-B1', N'LOT-B', N'adr27', SYSDATETIME()),
+                       (@p2, @d, 3, 12, 3, 2, 24, N'-',       N'',      N'adr27', SYSDATETIME()),
+                       (@p3, @o, 6, 6,  6, 1, 6,  N'A',       N'',      N'adr27', SYSDATETIME());
             """, ("@p1", ProductA), ("@p2", ProductB), ("@p3", ProductOther),
                  ("@d", Depot), ("@o", OtherDepot));
 
