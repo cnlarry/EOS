@@ -512,6 +512,14 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "数据校验未通过。", validation.Errors);
         }
+        // 主档编号（主键）不可改：编辑态的表单定义已把它标成只读，这里是绕过定义的第二道闸——
+        // 提交值与记录键同值算"原样回传"，不同值直接拒（写入侧跳过主键列，静默丢弃会让人以为改成功了）。
+        var immutableKeyErrors = RecordPayloadValidator.CheckImmutableKeys(pkColumns, keyValues, validation.Converted);
+        if (immutableKeyErrors.Count > 0)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,
+                RecordPayloadValidator.ImmutableKeyCode, RecordPayloadValidator.ImmutableKeyMessage, immutableKeyErrors);
+        }
         var merged = new Dictionary<string, object?>(current, StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in validation.Converted)
         {
@@ -535,6 +543,8 @@ public sealed class WorkbenchCommandHandler(
         var sets = new List<(string Column, object? Value)>();
         foreach (var (key, value) in validation.Converted)
         {
+            // 主键列不进 SET：走到这里的主键值已由 CheckImmutableKeys 校过与记录键同值，等于没改
+            // （键是记录的定位条件，改键不是"改字段"而是"换一条记录"）。
             if (pkColumns.Contains(key, StringComparer.OrdinalIgnoreCase))
             {
                 continue;

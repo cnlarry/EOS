@@ -304,6 +304,9 @@ public sealed class WorkbenchDefinitionBuilder(
         // 前端写进内存的值既不回显、又不提交，等于白选。
         var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token,includeVirtual:true);
         var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
+        // 主档编号（主表主键）在编辑态一律只读：它是记录对外的身份，改它会把单据/账务的引用改断。
+        // 施加在版式之前——版式只排布，不回答"能不能改"。
+        masterFields=FormFieldSelector.LockPrimaryKeysOnEdit(masterFields,mode);
         // 权限过滤（上一步）→ 版式裁剪字段集 → 版式排序与属性。未定制的表原样保留，
         // 故零配置模块的字段集与顺序与改造前逐字一致。
         masterFields=FormLayoutDerivation.ApplyMasterLayout(masterFields,definition.FormLayout);

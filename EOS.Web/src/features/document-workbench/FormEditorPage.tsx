@@ -829,6 +829,14 @@ export function FormEditorPage() {
     clearServerNotice()
   }, [])
 
+  /**
+   * 定位当前记录的键：编辑/浏览态一律取 URL 路径主键（`keyParam`，权威且同步），不用界面值拼。
+   * 界面值在记录尚未回填时是空的，而主档编号在编辑态又已是只读字段——用界面值拼键会把请求打到
+   * 不存在的记录上（表现是"记录不存在"，且服务端只按 Information 记，报障编号在日志里搜不到）。
+   */
+  const recordKey = (): string =>
+    keyParam ?? JSON.stringify(buildKey(formQuery.data!, masterValues))
+
   const save = useMutation({
     mutationFn: async () => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
@@ -876,8 +884,7 @@ export function FormEditorPage() {
       if (detailSerials.some(item => item !== null)) body.detailSerials = detailSerials
       if (isEdit) {
         body.original = originalRef.current
-        const key = buildKey(formQuery.data, masterValues)
-        return apiClient.put<RecordSaveResponse>(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`, body)
+        return apiClient.put<RecordSaveResponse>(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(recordKey())}`, body)
       }
       return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/record`, body)
     },
@@ -918,9 +925,8 @@ export function FormEditorPage() {
   const workflow = useMutation({
     mutationFn: async ({ action, message }: { action: 'approve' | 'deapprove'; message?: string }) => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
-      const key = buildKey(formQuery.data, masterValues)
       return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, {
-        key: JSON.stringify(key),
+        key: recordKey(),
         idempotencyKey: newIdempotencyKey(),
         message: message?.trim() || undefined,
       })
@@ -952,8 +958,7 @@ export function FormEditorPage() {
   const finish = useMutation({
     mutationFn: async (action: 'endcase' | 'unendcase') => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
-      const key = buildKey(formQuery.data, masterValues)
-      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key), idempotencyKey: newIdempotencyKey() })
+      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, { key: recordKey(), idempotencyKey: newIdempotencyKey() })
     },
     onSuccess: async (_, action) => {
       window.alert(action === 'endcase' ? '结案成功。' : '取消结案成功。')
@@ -1011,8 +1016,7 @@ export function FormEditorPage() {
   const withdraw = useMutation({
     mutationFn: async () => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
-      const key = buildKey(formQuery.data, masterValues)
-      return apiClient.post<{ message?: string }>('/workflow/withdraw', { moduleId, key })
+      return apiClient.post<{ message?: string }>('/workflow/withdraw', { moduleId, key: recordKey() })
     },
     onSuccess: async (response) => {
       window.alert(response.message ?? '流程已撤回，单据可修改后重新提交。')

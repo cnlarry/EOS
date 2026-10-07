@@ -244,6 +244,30 @@ public class FormFieldSelectorTests
         }
     }
 
+    /// <summary>
+    /// 主档编号（主表主键）在编辑态只读、新增/复制态可填：编号是记录对外的身份，单据、库存账、
+    /// 报表都按它的值引用，改了就把引用改断；而手填编号的主档要靠新增态建档，不能一起禁掉。
+    /// 只读的是"能不能改"，不是"由服务端填充"——编号仍要显示在表单上。
+    /// </summary>
+    [Fact]
+    public void LockPrimaryKeysOnEdit_LocksMasterKeysOnlyInEditMode()
+    {
+        var fields = Select([Row("DEPOT_ID", isPrimaryKey: true, required: true), Row("DEPOT_NAME")]);
+
+        var edit = FormFieldSelector.LockPrimaryKeysOnEdit(fields, "edit");
+        var lockedKey = edit.Single(field => field.Key == "DEPOT_ID");
+        Assert.True(lockedKey.IsReadonly);
+        Assert.False(lockedKey.ServerFilled);
+        Assert.True(lockedKey.IsRequired);
+        Assert.False(edit.Single(field => field.Key == "DEPOT_NAME").IsReadonly);
+
+        foreach (var mode in new[] { "new", "view" })
+        {
+            var untouched = FormFieldSelector.LockPrimaryKeysOnEdit(fields, mode);
+            Assert.False(untouched.Single(field => field.Key == "DEPOT_ID").IsReadonly);
+        }
+    }
+
     [Fact]
     public void OwnershipColumns_HiddenInNewAndEdit_ShownReadonlyInView()
     {

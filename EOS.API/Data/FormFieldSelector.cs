@@ -105,6 +105,28 @@ internal static class FormFieldSelector
         return trimmed;
     }
 
+    /// <summary>
+    /// 编辑态把**主档编号（主表主键）**标为只读：编号是记录对外的身份，单据、库存余额、批次账、
+    /// 报表条件都按它的值引用，改写它等于把引用改断（余额与流水会挂在一个不存在的编号上）。
+    ///
+    /// <para>
+    /// 只作用于主表字段集；新增/复制态保持可填——手填编号的主档靠它建档，自动编号的键本来就由
+    /// 服务端持有；浏览态本就全只读。判定放在这里而不是 `FIELDS.IS_READONLY`：那个位与模式无关，
+    /// 置 1 会把新增态一起禁掉（编号就填不了了）。
+    /// </para>
+    ///
+    /// <para>
+    /// 只读是**体验**，边界在服务端保存路径（<c>RecordPayloadValidator.CheckImmutableKeys</c> 直接拒
+    /// 提交值不等于记录键的主键列）——不这么分层，构造请求仍可改编号。明细行的身份是
+    /// 「主表键 + 项次」（服务端按既有项次保留），明细主键里的属性列随整行重写，故不在此列。
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<FormFieldDefinition> LockPrimaryKeysOnEdit(
+        IReadOnlyList<FormFieldDefinition> masterFields, string mode)
+        => mode != "edit"
+            ? masterFields
+            : masterFields.Select(field => field.IsPrimaryKey ? field with { IsReadonly = true } : field).ToList();
+
     public static IReadOnlyList<FormFieldDefinition> Select(
         IReadOnlyList<FormFieldRow> rows,
         string mode,

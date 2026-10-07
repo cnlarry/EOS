@@ -49,6 +49,36 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
+    public void ImmutableKeys_RejectChangedKeyValuesAndAllowEcho()
+    {
+        // 主键是记录对外的身份：改它等于"换一条记录"，不是"改一个字段"。只读且必填的主键会通过
+        // 上面"只读联动字段放行"的口径，所以要独立成闸；同值回传（前端把必填只读字段原样带回）
+        // 与未提交都不算改。
+        var converted = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["DEPOT_ID"] = "GZHS2",
+            ["DEPOT_NAME"] = "改名后的仓库",
+        };
+        var error = Assert.Single(RecordPayloadValidator.CheckImmutableKeys(["DEPOT_ID"], ["GZHSC"], converted));
+        Assert.Equal("DEPOT_ID", error.Field);
+        Assert.Equal(RecordPayloadValidator.ImmutableKeyCode, error.Code);
+
+        converted["DEPOT_ID"] = " gzhsc ";
+        Assert.Empty(RecordPayloadValidator.CheckImmutableKeys(["DEPOT_ID"], ["GZHSC"], converted));
+        Assert.Empty(RecordPayloadValidator.CheckImmutableKeys(["DEPOT_ID"], ["GZHSC"],
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["DEPOT_NAME"] = "改名后的仓库" }));
+
+        // 数值主键跨类型比较：TryConvert 产出 int，键是 JSON 里的字符串
+        var numeric = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["ID"] = 12 };
+        Assert.Single(RecordPayloadValidator.CheckImmutableKeys(["ID"], ["11"], numeric));
+        Assert.Empty(RecordPayloadValidator.CheckImmutableKeys(["ID"], ["12"], numeric));
+
+        // 复合主键逐列检查，只报真的改了的那一列
+        var composite = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["T"] = "O", ["NO"] = "N2" };
+        Assert.Equal("NO", Assert.Single(RecordPayloadValidator.CheckImmutableKeys(["T", "NO"], ["O", "N1"], composite)).Field);
+    }
+
+    [Fact]
     public void ReadonlyButLinkedFields_AreAccepted()
     {
         // 只读的**联动**字段仍放行，与前端 writableFields 同一把尺子：

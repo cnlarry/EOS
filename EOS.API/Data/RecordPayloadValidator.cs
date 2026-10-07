@@ -32,6 +32,54 @@ internal static class RecordPayloadValidator
     public static bool IsAuditColumn(string field) => AuditColumns.Contains(field);
 
     /// <summary>
+    /// 主键（主档编号/单据号）被改动的错误码与文案。主键是记录对外的身份：单据、库存账、批次账、
+    /// 报表条件都按它的**值**引用，改它等于把那些引用改断。
+    /// </summary>
+    public const string ImmutableKeyCode = "PRIMARY_KEY_IMMUTABLE";
+
+    public const string ImmutableKeyMessage = "主档编号是记录的身份，建立后不可修改。";
+
+    /// <summary>
+    /// 主键不可改的独立闸门（修改路径专用）：提交值与记录键**同值**视为"原样回传"（忽略），
+    /// 不同值一律拒绝。
+    ///
+    /// <para>
+    /// 为什么不靠只读位：本类对"只读且必填"的字段是**放行**的——那是给只读联动列留的口子
+    /// （如由币别带出的汇率），主键会被顺带放过去；而写入侧"跳过主键列"的写法又会让改动
+    /// 静默丢弃，调用方以为改成功了。编辑态只读只是界面体验，服务端必须自己说清这件事。
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<FieldError> CheckImmutableKeys(
+        IReadOnlyList<string> pkColumns,
+        IReadOnlyList<string> keyValues,
+        IReadOnlyDictionary<string, object?> submitted)
+    {
+        List<FieldError>? errors = null;
+        for (var index = 0; index < pkColumns.Count && index < keyValues.Count; index++)
+        {
+            if (!submitted.TryGetValue(pkColumns[index], out var value) || value is null)
+            {
+                continue;
+            }
+            if (IsSameKey(value, keyValues[index]))
+            {
+                continue;
+            }
+            (errors ??= []).Add(new FieldError(pkColumns[index], ImmutableKeyMessage, ImmutableKeyCode));
+        }
+        return errors ?? (IReadOnlyList<FieldError>)[];
+    }
+
+    /// <summary>
+    /// "还是同一个键"的判据：值相等（含数值主键的跨类型比较），或只差大小写/首尾空白。
+    /// 与库内 CI 排序规则一致——记录本来就是按 URL 里的键查出来的，大小写不同不是"改了编号"。
+    /// </summary>
+    private static bool IsSameKey(object? submitted, string keyValue) =>
+        WorkbenchSql.ValuesEqual(submitted, keyValue)
+        || (submitted is string text
+            && string.Equals(text.Trim(), keyValue.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
     /// decimal/numeric 超精度校验：precision/scale 源自 sys.types 随 form-definition 下发。
     /// 仅 decimal/numeric 启用——float 无精度语义、money 固定 scale=4，均不适用。
     /// 校验为拒绝式（不做静默舍入），与服务端 decimal away-from-zero 语义一致。

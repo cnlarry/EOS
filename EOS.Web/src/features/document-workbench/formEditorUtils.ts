@@ -147,10 +147,14 @@ export function canonicalizeDecimalValue(raw: string): string {
  * 只读可见字段随保存提交（与服务端规则一致）：ONLY_CHOOSE 带选择器字段（CURR_ID/TAX_ID）
  * 与只读必填联动字段（如 CURR_RATE，由币别带出）必须提交，否则服务端必填校验失败；
  * displayOnly/serverFilled/虚拟字段仍不提交（服务端维护）。
+ *
+ * 主键例外：主档编号是记录的身份，服务端在编辑态把它标成只读、并拒收与记录键不同的值。
+ * 它不进提交体（也就不用进并发快照）——"只读但必填"那条口子是给联动列留的，不是给身份键留的。
  */
 export function writableFields(fields: FormFieldDefinition[]): FormFieldDefinition[] {
   return fields.filter(field => field.isVisible && !field.serverFilled && !field.isVirtual && !field.displayOnly
-    && (!field.isReadonly || field.isRequired || field.choosers.some(source => source.active && source.table)))
+    && (!field.isReadonly
+      || (!field.isPrimaryKey && (field.isRequired || field.choosers.some(source => source.active && source.table)))))
 }
 
 /** 统一选择器标题：字段标签 + 数据源描述（多选后缀由 UnifiedChooser 内部追加） */

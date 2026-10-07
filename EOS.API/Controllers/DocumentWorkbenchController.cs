@@ -332,7 +332,10 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     {
         // Return warnings (e.g. auto-approval failure) with the save response; front end shows them in a banner
         RecordAccessStatus.Ok=>Ok(new{key=result.Key,flowStarted=result.FlowStarted,warnings=result.Warnings}),
-        RecordAccessStatus.NotFound=>NotFound(),
+        // 写路径的 NotFound 必须带错误体：服务端早已算好 errorCode/errorMessage（如 RECORD_NOT_FOUND、
+        // WORKFLOW_NOT_SUPPORTED），裸 NotFound() 会把它们丢掉——响应体只剩框架默认的 "Not Found"，
+        // 请求也随之按 Information 记，Warning+ 的文件日志里查不到（用户给的报障编号在服务端搜不到）。
+        RecordAccessStatus.NotFound=>NotFound(ApiProblem.Create(StatusCodes.Status404NotFound,result.ErrorCode??ApiErrorCodes.NotFound,result.ErrorMessage??"记录不存在或已被删除。")),
         RecordAccessStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。")),
         RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。")),
         RecordAccessStatus.ConcurrentModified=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"CONCURRENT_MODIFIED","字段内容已被他人修改，请刷新后重试！").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),

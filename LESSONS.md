@@ -668,3 +668,21 @@
   在自造库别上（`DEPOT`，`dryRun` 回滚）断言两件事：库内是空串的列提交空值**不**报并发冲突、
   别人真改过的字段**仍**报 `CONCURRENT_MODIFIED`。教训泛化：凡"两侧各自归一化后再比对"，
   都要问一句两边的空值表示是否同一套。
+
+### L79 编辑态主键可编辑：改了编号，保存请求就打到别的记录上（404 且日志里查不到）
+- **触发／症状**：统一表单里改主档编号（如仓库编号）再保存，报 "Not Found"；用户给的报障编号
+  在服务端**搜不到**（`EOS.API` 文件日志里既无 `http_request` 也无审计行），而"只改名称"保存正常。
+- **根因**：三处各表了一半态度。① 前端保存用**界面上的字段值**拼记录键（`buildKey(form, masterValues)`），
+  改了编号，键就变成新编号；② 服务端按新键查不到行 → `MapSaveResult` 返回**裸 `NotFound()`**（空错误体），
+  状态码 404 且错误码为空 ⇒ 中间件按 **Information** 记，Warning+ 的文件日志里什么都没有；
+  ③ 写入侧本来就**跳过主键列**（`UPDATE` 的 `SET` 不含主键），即便键对得上，改编号也只会被静默丢弃。
+- **处置**：主档编号（主表主键）在**编辑态**只读（`FormFieldSelector.LockPrimaryKeysOnEdit`；新增/复制态可填，
+  手填编号的主档要靠它建档；判定不落 `FIELDS.IS_READONLY`——那个位与模式无关，置 1 会连新增一起禁掉）；
+  写路径另设一道闸：提交值不等于记录键即 400 `PRIMARY_KEY_IMMUTABLE`
+  （`RecordPayloadValidator.CheckImmutableKeys`，同值回传算"原样回传"）；前端的写请求键一律取
+  URL 路径主键（`keyParam`）；写路径的 404 带错误体（`RECORD_NOT_FOUND` 等），日志里留得下。
+- **防线**：`FormFieldSelectorTests.LockPrimaryKeysOnEdit_*`、`RecordPayloadValidatorTests.ImmutableKeys_*`
+  （同值/大小写/数值/复合主键真值表）、真库用例 `FormPrimaryKeyReadonlyLiveTests`（编辑态只读 + 新增态可填 +
+  改编号被拒 + 只改名称照常保存）、前端 `formEditorUtils.writableFields.test.ts`。
+  教训泛化：**凡"按界面值定位既有记录"的地方都要问一句——界面值能不能被改成别的记录**；
+  身份键（主键）是定位条件，不是可改字段。
