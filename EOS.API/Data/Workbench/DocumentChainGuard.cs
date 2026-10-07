@@ -9,15 +9,15 @@ namespace EOS.API.Data.Workbench;
 /// **依据只有一处**：`FIELD_RELATION` 里 `RELATION_KIND = 'EFFECT'` 的登记边 —— 它由业务动作的定位键
 /// 派生，并有 `scripts/verify-field-relation-edges.ps1` 全量核验。表里每行是一个**键列对**：
 /// `FROM_TABLE.FROM_COLUMN`（下游）↔ `TO_TABLE.TO_COLUMN`（上游），`KEY_ORDINAL` 是复合键位序；
-/// 同一个 `RELATION_NAME` 下的若干行合起来才是一条边。方向以"**被引用方是上游**"为准
-/// （`BusinessFlowRepository` 里已用两个独立数据源互证过这个方向）。
+/// 同一个 `(FROM_TABLE, TO_TABLE)` 下的若干行合起来才是一条边（如同类型 + 同单号两个键列）。
+/// 方向以"**被引用方是上游**"为准（`BusinessFlowRepository` 里用两个独立数据源互证过这个方向）。
 ///
 /// 口径（2026-10-07 用户拍板，见 docs/guide/48-生命周期与审批流.md）：
 /// <list type="bullet">
 /// <item>**批核**：上游未批核时本单没有来源，批核要被拦住（B 未批核则批核 C 应被拒）。</item>
 /// <item>**解批**：下游已批核时不许解批（引用链逐级解开：A→B→C，解批 A 要求 B 未批核）。</item>
 /// <item>**查不到就放行**（宁可漏拦、不可误拦）：对面表没有 `CONFIRM_TAG` 列、键列读不到值、
-/// 边落在明细/中间表上 —— 一律视为"这条链看不全"，不拦。</item>
+/// 边没登记在 <see cref="AllowedEdges"/> 里 —— 一律视为"这条链看不全"，不拦。</item>
 /// </list>
 ///
 /// 解批**不删除任何下游单据**；这里只拒绝"下游还站着"的情形。
@@ -28,6 +28,27 @@ internal static class DocumentChainGuard
     internal const string UpstreamNotConfirmedCode = "UPSTREAM_NOT_CONFIRMED";
 
     internal sealed record ChainBlock(string Code, string Message);
+
+    /// <summary>
+    /// 允许参与校验的边（**下游表 → 上游表**）。
+    ///
+    /// **为什么必须有这份清单**：元数据里**没有"单据 / 主档"的标记**（`MODULES` 只有
+    /// `DETAIL_TABLE` / `AUTO_APPROVE` / `EFFECT_ENGINE_TAG` 可看），而 `FIELD_RELATION` 的 EFFECT 边
+    /// 把两类引用混在了一起：真正该管的"单据链"（订单变更单 → 订单），和"引用基础资料"
+    /// （制令单 → 产品、发货单 → 客户、采购单 → 厂商）。后者一旦纳入就是**大规模误拦**——
+    /// 实测 `CLIENT` 375 行里 242 行未批核、`PRODUCT` 1917 行里 599 行未批核、`SUPPLIER` 170/433，
+    /// 凡引用了这些主档的单据都会批核不了。
+    ///
+    /// 因此这里**只认显式登记的边**：没登记就当作"这条链看不全"，放行（与"查不到就放行"同一条口径）。
+    /// 往清单里加一条 = 确认那一对确实是"单据 → 单据"。**宁可先窄后宽，不要先宽后收**。
+    /// </summary>
+    private static readonly HashSet<string> AllowedEdges = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "COP_ORDER_CHANGE_M|COP_ORDER_M",        // 销售订单变更单 → 销售订单
+        "MOC_PRODUCE_CHANGE_M|MOC_PRODUCE_M",    // 制令变更 → 制令单
+        "MOU_APPLY_M|MOU_ASSESS_M",              // 开模申请单 → 模具评估单
+        "MOU_ACCEPT_M|MOU_APPLY_M",              // 模具承认单 → 开模申请单
+    };
 
     /// <summary>返回 null 表示放行。</summary>
     public static async Task<ChainBlock?> CheckAsync(
@@ -43,84 +64,112 @@ internal static class DocumentChainGuard
         if (edges.Count == 0)
             return null;
 
-        // 每次检查都需要"本单在边上的那几列的值"：批核时它们是本单的 FROM_COLUMN（下游列），
-        // 解批时是本单的 TO_COLUMN（上游列）。按列名去重后一次读出。
+        // 每条边都要用"本单在边上那几列的值"去对面表匹配。按列名去重后一次读出本单行。
         var ownColumns = edges
-            .Select(edge => new { edge.SelfColumn, edge.SelfTable })
-            .Where(item => string.Equals(item.SelfTable, masterTable, StringComparison.OrdinalIgnoreCase))
-            .Select(item => item.SelfColumn)
+            .SelectMany(edge => edge.Keys.Select(key => key.SelfColumn))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (ownColumns.Count == 0)
-            return null;
-
         var ownValues = await ReadColumnsAsync(connection, transaction, masterTable, pkOrder, keyValues, ownColumns, token);
         if (ownValues is null)
-            return null;   // 本单行读不到：交给上层既有前置闸去报"记录不存在"
+            return null;   // 本单行读不到：交给上层既有的"记录不存在"闸去报
 
         foreach (var edge in edges)
         {
-            var selfValue = ownValues.GetValueOrDefault(edge.SelfColumn);
-            if (string.IsNullOrWhiteSpace(selfValue))
-                continue;   // 键列没值 ⇒ 这条边看不全，放行
-
             if (!await OppositeTableHasConfirmTagAsync(connection, transaction, edge.OtherTable, token))
-                continue;   // 对面不是"有批核状态的单据"（明细/中间表/主档）⇒ 不拦
+                continue;   // 对面没有批核状态位（明细表 / 纯主档）⇒ 这条链到此为止，不拦
 
-            var hit = await FindOppositeRowAsync(connection, transaction, edge, selfValue, approve, token);
+            // 复合键必须**每一列都有值**才拿它定位：缺一列就说明这条边看不全，放行。
+            var match = new List<(string Column, string Value)>();
+            foreach (var key in edge.Keys)
+            {
+                var value = ownValues.GetValueOrDefault(key.SelfColumn);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    match.Clear();
+                    break;
+                }
+                match.Add((key.OtherColumn, value));
+            }
+            if (match.Count == 0)
+                continue;
+
+            var hit = await FindOppositeRowAsync(connection, transaction, edge, match, approve, token);
             if (hit is null)
                 continue;
 
-            var otherValue = hit;
+            var description = $"{hit.ColumnName} = {hit.ColumnValue}";
             return approve
                 ? new ChainBlock(UpstreamNotConfirmedCode,
-                    $"上游单据 {edge.OtherTable} 尚未批核（{edge.OtherColumn} = {otherValue}），本单没有来源，不能批核。")
+                    $"上游单据 {edge.OtherTable} 尚未批核（{description}），本单没有来源，不能批核。")
                 : new ChainBlock(DownstreamConfirmedCode,
-                    $"下游单据 {edge.OtherTable} 已批核（{edge.OtherColumn} = {otherValue}），请先解批下游单，再解批本单。");
+                    $"下游单据 {edge.OtherTable} 已批核（{description}），请先解批下游单，再解批本单。");
         }
         return null;
     }
 
-    /// <summary>一条边：本单那一侧的列、对面表与对面列。一个 <c>RELATION_NAME</c> 下的多行会合并成一条。</summary>
-    private sealed record Edge(
-        string SelfTable, string SelfColumn, string OtherTable, string OtherColumn, string MatchValue);
+    /// <summary>一个复合键列对：本单那侧的列 ↔ 对面表的列。方向按 <c>approve</c> 决定。</summary>
+    private sealed record EdgeKey(string SelfColumn, string OtherColumn);
+
+    /// <summary>一条登记边：本单表、对面表，以及这条边的全部键列对。</summary>
+    private sealed record Edge(string SelfTable, string OtherTable, IReadOnlyList<EdgeKey> Keys);
+
+    /// <summary>命中的对面行：用于文案的列与值（属性名避开 <c>Value</c>，免得与 Nullable 的 Value 混淆）。</summary>
+    private sealed record OppositeHit(string ColumnName, string ColumnValue);
 
     /// <summary>
-    /// 读出与本单相关的登记边。批核时找"本单是下游"的边（`FROM_TABLE = 本单主表`），
+    /// 读出与本单相关、且**已登记**的边。批核时找"本单是下游"的边（`FROM_TABLE = 本单主表`），
     /// 解批时找"本单是上游"的边（`TO_TABLE = 本单主表`）。
-    /// 同一条边有多个键列时，按"第一个键列"匹配即可——多键列是**定位用**的复合键，
-    /// 单列匹配会放宽，但方向对、且只用于"是否存在已批核/未批核的对面单据"这一个判断。
+    /// 同一对表的多行（复合键的各列）在这里合并成一条边 —— 只用第一列匹配会退化成"按类型匹配"，
+    /// 把同类型的其它单据也算进来（那是实打实的误拦）。
     /// </summary>
     private static async Task<List<Edge>> ReadEdgesAsync(
         SqlConnection connection, SqlTransaction? transaction, string masterTable, bool approve, CancellationToken token)
     {
-        var column = approve ? "FROM_TABLE" : "TO_TABLE";
+        var filterColumn = approve ? "FROM_TABLE" : "TO_TABLE";
         await using var command = new SqlCommand($"""
             SELECT LTRIM(RTRIM(FROM_TABLE)), LTRIM(RTRIM(FROM_COLUMN)),
                    LTRIM(RTRIM(TO_TABLE)), LTRIM(RTRIM(TO_COLUMN)), ISNULL(KEY_ORDINAL, 0)
             FROM dbo.FIELD_RELATION
             WHERE RELATION_KIND = N'EFFECT'
-              AND {column} = @MasterTable
+              AND {filterColumn} = @MasterTable
               AND LTRIM(RTRIM(FROM_TABLE)) <> LTRIM(RTRIM(TO_TABLE))
-            ORDER BY LTRIM(RTRIM(FROM_TABLE)), LTRIM(RTRIM(TO_TABLE)), ISNULL(KEY_ORDINAL, 0);
+            ORDER BY LTRIM(RTRIM(FROM_TABLE)), LTRIM(RTRIM(TO_TABLE)), ISNULL(KEY_ORDINAL, 0), RELATION_ID;
             """, connection, transaction);
         command.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable.Trim();
 
-        var edges = new List<Edge>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token))
+        var order = new List<string>();
+        var keysByPair = new Dictionary<string, List<EdgeKey>>(StringComparer.OrdinalIgnoreCase);
+        await using (var reader = await command.ExecuteReaderAsync(token))
         {
-            var fromTable = reader.GetString(0);
-            var fromColumn = reader.GetString(1);
-            var toTable = reader.GetString(2);
-            var toColumn = reader.GetString(3);
-            var edge = approve
-                ? new Edge(fromTable, fromColumn, toTable, toColumn, fromColumn)
-                : new Edge(toTable, toColumn, fromTable, fromColumn, toColumn);
-            // 同一条边只会取到第一个键列（ORDER BY KEY_ORDINAL），其余键列是同一条边的其他列。
-            if (seen.Add($"{edge.SelfTable}|{edge.SelfColumn}|{edge.OtherTable}|{edge.OtherColumn}"))
-                edges.Add(edge);
+            while (await reader.ReadAsync(token))
+            {
+                var fromTable = reader.GetString(0);
+                var fromColumn = reader.GetString(1);
+                var toTable = reader.GetString(2);
+                var toColumn = reader.GetString(3);
+                // 只认显式登记的单据链（见 AllowedEdges）：其余边一律当作"看不全"，放行。
+                if (!AllowedEdges.Contains($"{fromTable}|{toTable}"))
+                    continue;
+                var pair = $"{fromTable}|{toTable}";
+                if (!keysByPair.TryGetValue(pair, out var keys))
+                {
+                    keys = new List<EdgeKey>();
+                    keysByPair[pair] = keys;
+                    order.Add(pair);
+                }
+                keys.Add(approve
+                    ? new EdgeKey(fromColumn, toColumn)   // 本单 = 下游：本单列是 FROM_COLUMN
+                    : new EdgeKey(toColumn, fromColumn));  // 本单 = 上游：本单列是 TO_COLUMN
+            }
+        }
+
+        var edges = new List<Edge>();
+        foreach (var pair in order)
+        {
+            var parts = pair.Split('|');
+            edges.Add(approve
+                ? new Edge(parts[0], parts[1], keysByPair[pair])   // 本单是下游
+                : new Edge(parts[1], parts[0], keysByPair[pair])); // 本单是上游
         }
         return edges;
     }
@@ -145,7 +194,7 @@ internal static class DocumentChainGuard
         return values;
     }
 
-    /// <summary>对面表是否有批核状态位。没有就不拦（它多半是明细表或主档，链到此为止）。</summary>
+    /// <summary>对面表是否有批核状态位。没有就不拦（它多半是明细表或纯主档，链到此为止）。</summary>
     private static async Task<bool> OppositeTableHasConfirmTagAsync(
         SqlConnection connection, SqlTransaction? transaction, string table, CancellationToken token)
     {
@@ -158,19 +207,25 @@ internal static class DocumentChainGuard
 
     /// <summary>
     /// 在对面表里找一条"违反口径"的行：批核时找**未批核**的上游行，解批时找**已批核**的下游行。
-    /// 返回被命中的列值（用于文案），没命中返回 null。
+    /// 命中的列值用于文案；没命中返回 null。
     /// </summary>
-    private static async Task<string?> FindOppositeRowAsync(
-        SqlConnection connection, SqlTransaction? transaction, Edge edge, string selfValue, bool approve, CancellationToken token)
+    private static async Task<OppositeHit?> FindOppositeRowAsync(
+        SqlConnection connection, SqlTransaction? transaction, Edge edge,
+        IReadOnlyList<(string Column, string Value)> match, bool approve, CancellationToken token)
     {
         var confirmPredicate = approve ? "ISNULL(CONFIRM_TAG,0) = 0" : "ISNULL(CONFIRM_TAG,0) = 1";
+        var predicates = string.Join(" AND ", match.Select((item, index) => $"[{item.Column}] = @v{index}"));
+        var display = $"[{match[0].Column}]";
         await using var command = new SqlCommand($"""
-            SELECT TOP 1 CONVERT(nvarchar(100), [{edge.OtherColumn}])
+            SELECT TOP 1 CONVERT(nvarchar(100), {display})
             FROM dbo.[{edge.OtherTable}]
-            WHERE [{edge.OtherColumn}] = @Value AND {confirmPredicate};
+            WHERE {predicates} AND {confirmPredicate};
             """, connection, transaction);
-        command.Parameters.Add("@Value", SqlDbType.NVarChar, 100).Value = selfValue.Trim();
+        for (var index = 0; index < match.Count; index++)
+            command.Parameters.Add($"@v{index}", SqlDbType.NVarChar, 100).Value = match[index].Value;
         var result = await command.ExecuteScalarAsync(token);
-        return result is null || result is DBNull ? null : result.ToString()?.Trim();
+        return result is null || result is DBNull
+            ? null
+            : new OppositeHit(match[0].Column, result.ToString()?.Trim() ?? string.Empty);
     }
 }
