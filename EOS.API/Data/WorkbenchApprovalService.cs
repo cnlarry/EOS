@@ -563,9 +563,13 @@ public sealed class WorkbenchApprovalService(
     }
 
     /// <summary>
-    /// 无副作用批核/解批（自动批核模块且无批核过程/效果链/流程定义）：
-    /// 仅翻转 CONFIRM_TAG（+经办人/日期）并写审计；解批保留 NOT_BACK_FIELDS 前置校验。
+    /// 无副作用批核/解批（无流程、无效果链）：先过 APPROVE / DEAPPROVE 阶段的**声明式校验闸**，
+    /// 再翻转 CONFIRM_TAG（+经办人/日期）并写审计；解批另保留 NOT_BACK_FIELDS 前置校验。
     /// 与保存路径的自动批核对称（那边无能力即纯状态翻转）。
+    ///
+    /// **校验闸这一步不能省**：它是模块的声明式校验目录，与"谁负责执行批核"无关——
+    /// 引擎接管路径一直先过它，无副作用路径漏掉就等于把"挂在批核阶段的规则"悄悄作废
+    /// （月结单的"没生成快照不许关账"正是这么漏掉的）。
     /// </summary>
     private async Task<RecordSaveResult> StatelessApproveAsync(
         SqlConnection connection,
@@ -576,12 +580,15 @@ public sealed class WorkbenchApprovalService(
         string userId,
         CancellationToken token)
     {
-        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+        // 校验闸 → 状态翻转 → 审计走**同一事务**：校验不过时状态与审计都不落库
+        // （与引擎接管路径 RunApprovalCoreAsync 同形）。早退返回时未提交，事务随之回滚。
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CONFIRM_TAG", token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                 $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
-        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
+        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction);
         if (originalState is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
@@ -592,31 +599,42 @@ public sealed class WorkbenchApprovalService(
         }
         if (!approve && originalState.Value.Tag == true)
         {
-            var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token);
+            var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token, transaction);
             if (noBack is not null)
             {
                 return noBack;
             }
         }
+        // 声明式校验闸（APPROVE / DEAPPROVE 阶段）先过：与引擎接管路径（RunApprovalCoreAsync）
+        // 共用同一批规则。少了这一步，"挂在批核阶段的规则"在无副作用模块上会**静默不生效**——
+        // 月结单的"该期快照明细为空不许关账"就是这么漏掉的（批核返回 200、账已关、快照仍空）。
+        var stage = approve ? EffectEvent.ApproveEffect : EffectEvent.Deapprove;
+        if (await effectEngine.ValidateStageAsync(connection, transaction, definition, stage, keyValues, token) is { } blocked)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", blocked);
+        }
         var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var confirmSql = approve
             ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};"
             : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyWhere};";
-        await using var confirmCommand = new SqlCommand(confirmSql, connection);
-        confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
-        WorkbenchSql.AddKeyParameters(confirmCommand, definition.MasterPkOrder, keyValues);
-        if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
+        await using (var confirmCommand = new SqlCommand(confirmSql, connection, transaction))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
-                approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
+            confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
+            WorkbenchSql.AddKeyParameters(confirmCommand, definition.MasterPkOrder, keyValues);
+            if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
+            {
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
+                    approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
+            }
         }
         logger.LogInformation("统一表单{Action}（无副作用） module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
-        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
             approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1,
             fieldChanges: ConfirmStateChanges(
                 originalState,
-                await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token)),
+                await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction)),
             token);
+        await transaction.CommitAsync(token);
         return RecordSaveResult.Success(keyValues);
     }
 
