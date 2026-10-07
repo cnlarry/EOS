@@ -84,7 +84,7 @@ function SetPasswordModal({ user, onClose, onSaved }: SetPasswordModalProps) {
 
 const pageSize = 50
 
-/** 用户权限设定（2306 定制页）：用户列表（无感翻页）+ 行级操作；权限/报表权限为完整子页面，所属组为弹窗。 */
+/** 用户权限设定（2306 定制页）：用户列表（无感翻页）+ 行级操作；权限为完整子页面，所属组为弹窗。 */
 export function UserAdminPage() {
   const navigate = useNavigate()
   const { bootstrap } = useAuth()

@@ -433,7 +433,7 @@ button, input, select { font: inherit; }
    给设置项区域一个**自己的滚动位**：命令栏（保存/刷新）与页头因此固定不动，不会出现"往下滚就找不着
    保存按钮"。与字段设置页同思路——页面级不出滚动条，滚动下放到内容容器。 */
 .erp-assistant-settings-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-/* 报表权限矩阵页：表格区作为内部滚动容器（吸顶表头随表内滚动） */
+/* 列表页块：表格区作为内部滚动容器（吸顶表头随表内滚动）。原用于报表权限矩阵页，该矩阵已随 ADR-024 D16 退场。 */
 .erp-full-list-page .erp-report-matrix-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .erp-full-list-page .erp-report-matrix-body .erp-table-shell { flex: 1 1 auto; min-height: 0; }
 /* ==========================================================================

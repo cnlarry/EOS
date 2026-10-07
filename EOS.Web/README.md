@@ -49,7 +49,10 @@ src/
 - `/workbench/:moduleId`：通用工作台；
 - `/workbench/:moduleId/new|edit/:key|view/:key|copy`：统一表单单据操作；
 - `/admin/*`：系统管理（用户、权限、菜单、表字段、报表设置、用户组）；
-- `/reports`、`/search-center`：报表与查询中心；
+- `/reports/:moduleId`：按**归属模块**列报表的**跳转段**（只负责挑出该模块该开哪一张，随即把地址换成报表身份地址）；
+- `/report/:reportId`：报表的**规范地址**——报表编号即身份，模块号由服务端解析（地址里塞模块号换权限这条路已被堵死）；
+- `/report-center`（含 `/report-center/inbox`）：**报表中心**，报表的唯一目录入口（**不进左侧菜单**）；
+- `/search-center/:moduleId?`：按模块检索（检索面由业务模块的检索位决定，已无"××查询中心"壳模块菜单）；
 - `/settings/*`：个人资料与系统参数。
 
 路由保护分认证与权限两级；前端权限只改善体验，后端仍会对每个请求重新授权。

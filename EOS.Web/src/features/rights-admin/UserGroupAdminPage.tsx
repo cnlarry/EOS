@@ -18,7 +18,8 @@ type EditorState = { mode: 'new' } | { mode: 'edit'; group: UserGroupSummary }
 /**
  * 用户组管理（2305 定制页）：
  * 组主档新增/编辑用弹窗，删除带严格守卫（服务端拒绝删除仍有关联成员的组）；
- * 组权限 / 报表权限 / 成员为完整子页面，不经工作台承载。
+ * 组权限 / 成员为完整子页面，不经工作台承载。报表权限的逐报表例外矩阵已退场——
+ * 唯一真源是归属模块的 REPORT_TAG（ADR-024 D16），管理面不再有第二处可配。
  */
 export function UserGroupAdminPage() {
   const navigate = useNavigate()
@@ -44,7 +45,7 @@ export function UserGroupAdminPage() {
     const id = group.groupId.trim()
     const name = group.groupDescription || id
     if (!window.confirm(
-      `确定删除用户组「${name}」（${id}）吗？\n将同时删除该组的模块权限与报表权限；仍关联成员的组会被拒绝删除。`,
+      `确定删除用户组「${name}」（${id}）吗？\n将同时删除该组的模块权限；仍关联成员的组会被拒绝删除。`,
     )) return
     remove.mutate(id)
   }, [remove])
@@ -128,7 +129,7 @@ export function UserGroupAdminPage() {
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void groups.refetch()}>刷新</Button>
           <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>
         </div>}
-        header={groups.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {groups.data.length} 个用户组{keyword.trim() ? `，筛选后 ${filtered.length} 个` : ''}；操作列提供组权限/报表权限/成员/编辑/删除，双击行也可编辑。</div> : undefined}
+        header={groups.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {groups.data.length} 个用户组{keyword.trim() ? `，筛选后 ${filtered.length} 个` : ''}；操作列提供组权限/成员/编辑/删除，双击行也可编辑。</div> : undefined}
       >
         {groups.isPending ? <LoadingState label="正在加载用户组…" /> : groups.isError ? <ErrorState message={errorMessage} onRetry={() => void groups.refetch()} /> : (
           <ErpTable
