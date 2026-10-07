@@ -249,9 +249,10 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SERVER_FILL_MISSING", "存在服务端必填字段未登记填充规则。", fillErrors);
         }
-        // 只读联动列（汇率等）前端不会提交：在落库前补齐，INSERT 与明细判据读的是同一份值
+        // 只读联动列（汇率/税率等）前端不会提交：在落库前补齐，INSERT 与明细判据读的是同一份值
         var derived = await MasterDerivedColumnFiller.FillAsync(
-            connection, transaction, definition, form.MasterFields, values, request.Details, token);
+            connection, transaction, definition, form.MasterFields, values, request.Details, token,
+            validation.Converted.Keys);
         if (derived.Error is { } derivedError)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, derivedError.Code, derivedError.Message, [derivedError]);
@@ -516,9 +517,11 @@ public sealed class WorkbenchCommandHandler(
         {
             merged[key] = value;
         }
-        // 与新增路径同一落点、同一口径：只读联动列在写主表前补齐（记录里既有的非空值不覆盖）
+        // 与新增路径同一落点、同一口径：只读联动列在写主表前补齐；来源列本次被改（换币别/税别）
+        // 时按新来源重取，否则记录里既有的联动值会留在改过来源的单据上。
         var derivedUpdate = await MasterDerivedColumnFiller.FillAsync(
-            connection, transaction, definition, form.MasterFields, merged, request.Details, token);
+            connection, transaction, definition, form.MasterFields, merged, request.Details, token,
+            validation.Converted.Keys);
         if (derivedUpdate.Error is { } derivedUpdateError)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, derivedUpdateError.Code, derivedUpdateError.Message, [derivedUpdateError]);

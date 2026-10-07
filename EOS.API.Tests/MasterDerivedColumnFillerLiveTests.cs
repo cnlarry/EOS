@@ -23,8 +23,9 @@ public class MasterDerivedColumnFillerLiveTests
     private static WorkbenchDefinition Definition(string masterTable, string? detailTable, string detailNoFields) =>
         new(0, "test", masterTable, detailTable, [], [], null, true, true, true, [], detailNoFields, false);
 
-    private static FormFieldDefinition Field(string key, string dataType) =>
-        new(key, key, dataType, 100, null, false, null, null, null, true, true, false, false, null,
+    /// <summary>构造表单字段定义；默认只读（联动列在单据上普遍只读），要验"用户可填"时显式传 false。</summary>
+    private static FormFieldDefinition Field(string key, string dataType, bool isReadonly = true) =>
+        new(key, key, dataType, 100, null, false, null, null, null, isReadonly, true, false, false, null,
             [], false, false, false, false, false, false, null);
 
     private static Dictionary<string, object?> Values(params (string Key, object? Value)[] items)
@@ -190,5 +191,135 @@ public class MasterDerivedColumnFillerLiveTests
         Assert.Null(result.Error);
         Assert.Empty(result.Filled);
         Assert.False(values.ContainsKey("PURCHASE_NO"));
+    }
+
+    /// <summary>单据侧的税率由税别带出：期望值是主档里的税率（真库数据，不写死数值）。</summary>
+    [Fact]
+    public async Task TaxRate_IsFilledFromTaxMaster()
+    {
+        await using var connection = await OpenAsync();
+        await using var lookup = new SqlCommand("SELECT TOP 1 TAX_RATE FROM dbo.TAX WHERE LTRIM(RTRIM(TAX_ID))=N'TAX02';", connection);
+        var expected = await lookup.ExecuteScalarAsync();
+        Assert.NotNull(expected);
+
+        var values = Values(("TAX_ID", "TAX02"));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float")], values, null, CancellationToken.None);
+
+        Assert.Null(result.Error);
+        Assert.Equal(Convert.ToDouble(expected), Convert.ToDouble(values["TAX_RATE"]));
+        Assert.Single(result.Filled);
+        Assert.Equal("TAX_RATE", result.Filled[0].Column);
+    }
+
+    /// <summary>没有来源就不补：缺值仍由 DETAIL_NO_FIELDS 判据按原样拒绝。</summary>
+    [Fact]
+    public async Task TaxRate_IsNotFilled_WhenSourceIsEmpty()
+    {
+        await using var connection = await OpenAsync();
+        var values = Values(("CLIENT_ID", "C0001"));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float")], values, null, CancellationToken.None);
+
+        Assert.Null(result.Error);
+        Assert.Empty(result.Filled);
+        Assert.False(values.ContainsKey("TAX_RATE"));
+    }
+
+    /// <summary>来源有值而主档查不到 ⇒ 具名拒绝，不静默按 0% 算税额。</summary>
+    [Fact]
+    public async Task TaxRate_UnknownTax_FailsClosed()
+    {
+        await using var connection = await OpenAsync();
+        var values = Values(("TAX_ID", "ZZ-NO-SUCH-TAX"));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float")], values, null, CancellationToken.None);
+
+        Assert.NotNull(result.Error);
+        Assert.Equal("TAX_NOT_FOUND", result.Error!.Code);
+        Assert.Equal("TAX_ID", result.Error.Field);
+        Assert.Empty(result.Filled);
+        Assert.False(values.ContainsKey("TAX_RATE"));
+    }
+
+    /// <summary>税率可写的模块：本次提交了就认用户填的值，不拿主档顶掉它。</summary>
+    [Fact]
+    public async Task TaxRate_SubmittedValue_IsNotOverwritten_WhenFieldIsWritable()
+    {
+        await using var connection = await OpenAsync();
+        var values = Values(("TAX_ID", "TAX02"), ("TAX_RATE", 5d));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float", isReadonly: false)], values, null, CancellationToken.None,
+            ["TAX_ID", "TAX_RATE"]);
+
+        Assert.Null(result.Error);
+        Assert.Empty(result.Filled);
+        Assert.Equal(5d, values["TAX_RATE"]);
+    }
+
+    /// <summary>
+    /// 税率只读的模块：提交进来的税率一概不作数。构造请求塞一个假税率（99）就能改写税额基础，
+    /// 而它本应由主档决定——这里断言落库前被主档值覆盖。
+    /// </summary>
+    [Fact]
+    public async Task TaxRate_SubmittedValue_IsOverridden_WhenFieldIsReadonly()
+    {
+        await using var connection = await OpenAsync();
+        await using var lookup = new SqlCommand("SELECT TOP 1 TAX_RATE FROM dbo.TAX WHERE LTRIM(RTRIM(TAX_ID))=N'TAX02';", connection);
+        var expected = await lookup.ExecuteScalarAsync();
+        Assert.NotNull(expected);
+
+        var values = Values(("TAX_ID", "TAX02"), ("TAX_RATE", 99d));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float")], values, null, CancellationToken.None,
+            ["TAX_ID", "TAX_RATE"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(Convert.ToDouble(expected), Convert.ToDouble(values["TAX_RATE"]));
+        Assert.Single(result.Filled);
+    }
+
+    /// <summary>
+    /// 改了税别就必须按新税别重取税率：记录里带过来的旧值（999 是刻意造的旧值）不能留在
+    /// 改过来源的单据上——留着就是"税别与税率不一致"，而这正是联动列要防的事。
+    /// </summary>
+    [Fact]
+    public async Task TaxRate_IsRefilled_WhenSourceColumnIsResubmitted()
+    {
+        await using var connection = await OpenAsync();
+        await using var lookup = new SqlCommand("SELECT TOP 1 TAX_RATE FROM dbo.TAX WHERE LTRIM(RTRIM(TAX_ID))=N'TAX02';", connection);
+        var expected = await lookup.ExecuteScalarAsync();
+        Assert.NotNull(expected);
+
+        var values = Values(("TAX_ID", "TAX02"), ("TAX_RATE", 999d));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float")], values, null, CancellationToken.None,
+            ["TAX_ID"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(Convert.ToDouble(expected), Convert.ToDouble(values["TAX_RATE"]));
+        Assert.Single(result.Filled);
+    }
+
+    /// <summary>来源列没动（值来自记录）⇒ 保持原值：不因"顺带保存"把人工维护过的联动值顶掉。</summary>
+    [Fact]
+    public async Task TaxRate_IsKept_WhenSourceColumnIsNotResubmitted()
+    {
+        await using var connection = await OpenAsync();
+        var values = Values(("TAX_ID", "TAX02"), ("TAX_RATE", 999d));
+        var result = await MasterDerivedColumnFiller.FillAsync(
+            connection, null, Definition("COP_ORDER_M", "COP_ORDER_D", "CLIENT_ID"),
+            [Field("TAX_RATE", "float")], values, null, CancellationToken.None,
+            ["CLIENT_ID"]);
+
+        Assert.Null(result.Error);
+        Assert.Empty(result.Filled);
+        Assert.Equal(999d, values["TAX_RATE"]);
     }
 }

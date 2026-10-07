@@ -48,9 +48,12 @@ internal static class MasterDerivedColumnFiller
         string? AmbiguousMessage = null);
 
     /// <summary>
-    /// 首批覆盖两类已实测成立的联动：币别带出汇率（任一含这两列的主表），
-    /// 采购变更单引用采购单（单别+单号才唯一，服务端无法由单别反查）。
-    /// 将来补其它联动列（如税别带税率）只在这里加一条，并在同一提交里附取证结论。
+    /// 已实测成立的联动列：币别带出汇率、税别带出税率（都按主表的来源列查主档），
+    /// 以及采购变更单由明细带出采购单号（单别+单号才唯一，服务端无法由单别反查）。
+    ///
+    /// 税率必须登记的原因：单据侧的 `TAX_RATE` 多为只读——前端不会提交，而金额复算取
+    /// 「明细税率 → 主表税率 → 0」，主表税率空着就按 0% 算税额。税率是税别主档的事实，
+    /// 只在税别维护里配一次，单据按选中的税别带出。
     /// </summary>
     internal static readonly IReadOnlyList<Rule> Rules =
     [
@@ -64,6 +67,15 @@ internal static class MasterDerivedColumnFiller
             NotFoundCode: "CURRENCY_NOT_FOUND",
             NotFoundMessage: "币别主档中不存在该币别，无法带出汇率。"),
         new Rule(
+            TargetColumn: "TAX_RATE",
+            Source: DerivedSource.MasterLookup,
+            SourceColumn: "TAX_ID",
+            LookupTable: "TAX",
+            LookupKeyColumn: "TAX_ID",
+            LookupValueColumn: "TAX_RATE",
+            NotFoundCode: "TAX_NOT_FOUND",
+            NotFoundMessage: "税别主档中不存在该税别，无法带出税率。"),
+        new Rule(
             TargetColumn: "PURCHASE_NO",
             Source: DerivedSource.DetailCarry,
             MasterTable: "PUR_PURCHASE_CHANGE_M",
@@ -74,6 +86,11 @@ internal static class MasterDerivedColumnFiller
     /// <summary>补齐结果：<paramref name="Error"/> 非空即应中止保存；<paramref name="Filled"/> 是本次实际写入的列。</summary>
     internal sealed record FillResult(FieldError? Error, IReadOnlyList<(string Column, object? Value)> Filled);
 
+    /// <param name="submittedColumns">
+    /// 本次请求实际提交的主表列。联动列跟着来源列走，所以要把"本次提交"与"记录里的旧值"分开：
+    /// 目标列被提交 ⇒ 用户填的优先；来源列被提交（换了税别/币别）⇒ 按新来源重取，
+    /// 否则改过来源的单据会留着上一个来源的联动值。为空表示调用方不作区分（退化为"非空即保留"）。
+    /// </param>
     internal static async Task<FillResult> FillAsync(
         SqlConnection connection,
         SqlTransaction? transaction,
@@ -81,7 +98,8 @@ internal static class MasterDerivedColumnFiller
         IReadOnlyList<FormFieldDefinition> masterFields,
         IDictionary<string, object?> masterValues,
         IReadOnlyList<IReadOnlyDictionary<string, string?>>? details,
-        CancellationToken token)
+        CancellationToken token,
+        IEnumerable<string>? submittedColumns = null)
     {
         var filled = new List<(string Column, object? Value)>();
         foreach (var rule in Rules)
@@ -91,8 +109,10 @@ internal static class MasterDerivedColumnFiller
             {
                 continue;
             }
-            // 已有非空值（本次提交的或记录里既有的）保持原值，补齐只负责"空的时候填上"
-            if (HasValue(masterValues, rule.TargetColumn)) continue;
+            // 目标列本次被提交、且该字段对用户可写：用户填的值优先，补齐不覆盖
+            if (IsUserEditable(masterFields, rule.TargetColumn) && WasSubmitted(submittedColumns, rule.TargetColumn)) continue;
+            // 目标列非空、且来源列这次没动（值来自记录）：保持原值，补齐只负责"该有值却没有"的时候
+            if (!WasSubmitted(submittedColumns, rule.SourceColumn) && HasValue(masterValues, rule.TargetColumn)) continue;
             if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, rule.TargetColumn, token))
             {
                 continue;
@@ -203,6 +223,23 @@ internal static class MasterDerivedColumnFiller
         return RecordPayloadValidator.TryConvert(field.DataType, distinct[0], out var converted)
             ? new CarriedValue(converted, false)
             : new CarriedValue(null, false);
+    }
+
+    /// <summary>本次请求是否提交过该列（列名大小写不敏感；调用方不传提交列时一律 false）。</summary>
+    private static bool WasSubmitted(IEnumerable<string>? submittedColumns, string? column)
+        => submittedColumns is not null
+            && column is not null
+            && submittedColumns.Contains(column, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 该字段用户能否直接填。判据取字段的只读位（与提交侧同一真源）：只读字段的值来自选择器
+    /// 回填或服务端，用户改不了，所以**它的提交值不作数**——否则构造一个请求塞进假的税率/汇率
+    /// 就能改写税额与金额的输入，而联动列只能由主档决定。字段不在表单定义里同样按"改不了"处理。
+    /// </summary>
+    private static bool IsUserEditable(IReadOnlyList<FormFieldDefinition> fields, string column)
+    {
+        var field = fields.FirstOrDefault(item => item.Key.Equals(column, StringComparison.OrdinalIgnoreCase));
+        return field is { IsReadonly: false };
     }
 
     private static bool HasValue(IDictionary<string, object?> values, string column)
