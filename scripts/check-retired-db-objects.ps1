@@ -193,8 +193,8 @@ $retiredObjects = @(
         Pattern = '\bSYSDH_REPORT\b'
     }
     [pscustomobject]@{
-        Name          = 'SYSDD_REPORT 逐报表勾选列'
-        Reason        = 'SYSDD_REPORT.PREVIEW_TAG/PRINT_TAG/EXPORT_TAG 已退役（表保留给用户状态列），见 Migrations/277_report_permission_layer_retire.sql'
+        Name          = '逐报表勾选列（原 SYSDD_REPORT，现 REPORT_USER_STATE）'
+        Reason        = 'PREVIEW_TAG/PRINT_TAG/EXPORT_TAG 已退役（表保留给用户状态列；迁移 336 又把它改名为 REPORT_USER_STATE），见 Migrations/277_report_permission_layer_retire.sql'
         Pattern       = '\b(?:PREVIEW_TAG|PRINT_TAG|EXPORT_TAG)\b'
         CaseSensitive = $true
     }

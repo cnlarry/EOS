@@ -44,15 +44,17 @@ Check '迁移 279 条件去重' (Has $applied '279') ''
 Check '迁移 280 注释订正' (Has $applied '280') ''
 
 Write-Output ''
-Write-Output '== ② SYSDD_REPORT 注释 =='
+Write-Output '== ② REPORT_USER_STATE 表名与注释（迁移 336 由 SYSDD_REPORT 改名） =='
+$oldTableName = @(Invoke-EosSqlQuery -Query "SELECT CASE WHEN OBJECT_ID('dbo.SYSDD_REPORT','U') IS NULL THEN 'gone' ELSE 'still-there' END;")
+Check '旧表名 SYSDD_REPORT 已不存在' (-not (Has $oldTableName 'still-there')) ($oldTableName -join '')
 $tableComment = @(Invoke-EosSqlQuery -Query @"
 SELECT CAST(value AS varchar(300)) FROM sys.extended_properties
-WHERE major_id = OBJECT_ID('dbo.SYSDD_REPORT') AND minor_id = 0 AND name = 'MS_Description';
+WHERE major_id = OBJECT_ID('dbo.REPORT_USER_STATE') AND minor_id = 0 AND name = 'MS_Description';
 "@)
 $columnComment = @(Invoke-EosSqlQuery -Query @"
 SELECT CAST(ep.value AS varchar(300)) FROM sys.extended_properties ep
 JOIN sys.columns c ON c.object_id = ep.major_id AND c.column_id = ep.minor_id
-WHERE ep.major_id = OBJECT_ID('dbo.SYSDD_REPORT') AND c.name = 'M_IDX' AND ep.name = 'MS_Description';
+WHERE ep.major_id = OBJECT_ID('dbo.REPORT_USER_STATE') AND c.name = 'M_IDX' AND ep.name = 'MS_Description';
 "@)
 Check '表注释不再自称"报表权限"' (-not (Has $tableComment '报表权限')) ($tableComment -join '')
 Check 'M_IDX 注释不再是"权限ID"' (-not (Has $columnComment '权限ID')) ($columnComment -join '')
