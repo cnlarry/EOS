@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 
 using EOS.API.Data.Effects;
 using EOS.API.Data.Inventory;
+using EOS.API.Data.Workbench;
 using EOS.API.Models;
 
 namespace EOS.API.Data;
@@ -250,6 +251,14 @@ public sealed class WorkbenchApprovalService(
             {
                 return noBack;
             }
+        }
+        // 单据上下游状态守卫：批核查上游（上游未批核 ⇒ 本单没有来源），解批查下游（下游还批核着 ⇒ 链没解开）。
+        // 判据只来自 FIELD_RELATION 的 EFFECT 登记边，"查不到就放行"的口径见 DocumentChainGuard。
+        if (await DocumentChainGuard.CheckAsync(
+                connection, transaction, definition.MasterTable, definition.MasterPkOrder, keyValues, approve, token)
+            is { } chainBlock)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, chainBlock.Code, chainBlock.Message);
         }
         return null;
     }
@@ -612,6 +621,14 @@ public sealed class WorkbenchApprovalService(
         if (await effectEngine.ValidateStageAsync(connection, transaction, definition, stage, keyValues, token) is { } blocked)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", blocked);
+        }
+        // 与引擎接管路径同口径：上下游状态守卫也要过（无副作用模块的批核/解批同样会动状态，
+        // 而解批正是会把"上游退回去、下游还站着"这个中间态制造出来的那一步）。
+        if (await DocumentChainGuard.CheckAsync(
+                connection, transaction, definition.MasterTable, definition.MasterPkOrder, keyValues, approve, token)
+            is { } chainBlock)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, chainBlock.Code, chainBlock.Message);
         }
         var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var confirmSql = approve
