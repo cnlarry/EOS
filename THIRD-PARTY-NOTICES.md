@@ -14,11 +14,11 @@
 
 | 组件 | 版本 | 许可 |
 |---|---|---|
-| Microsoft.Data.SqlClient | 7.0.2 | MIT |
-| Microsoft.AspNetCore.OpenApi | 10.0.10 | MIT |
-| Microsoft.OpenApi | 2.11.0 | MIT |
-| DbUp（dbup-sqlserver / dbup-core） | 5.0.40 / 5.0.37 | MIT |
-| System.Drawing.Common | 10.0.11 | MIT |
+| Microsoft.Data.SqlClient | 7.1.1 | MIT |
+| Microsoft.AspNetCore.OpenApi | 10.0.12 | MIT |
+| Microsoft.OpenApi | 2.12.0 | MIT |
+| DbUp（dbup-sqlserver / dbup-core） | 7.2.0 / 6.1.1 | MIT |
+| System.Drawing.Common | 10.0.12 | MIT |
 | ZXing.Net | 0.16.11 | **Apache-2.0** |
 | QuestPDF | 2026.7.3 | **QuestPDF Community License**（见第四节） |
 
@@ -26,10 +26,10 @@
 
 | 组件 | 版本 | 许可 |
 |---|---|---|
-| Microsoft.NET.Test.Sdk | 17.11.1 | MIT |
-| Microsoft.AspNetCore.SignalR.Client | 10.0.10 | MIT |
-| xunit | 2.9.2 | Apache-2.0 |
-| xunit.runner.visualstudio | 2.8.2 | Apache-2.0 |
+| Microsoft.NET.Test.Sdk | 18.10.1 | MIT |
+| Microsoft.AspNetCore.SignalR.Client | 10.0.12 | MIT |
+| xunit | 2.9.3 | Apache-2.0 |
+| xunit.runner.visualstudio | 4.0.0 | Apache-2.0 |
 
 ## 二、前端（npm，`EOS.Web`）
 
