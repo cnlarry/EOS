@@ -245,10 +245,17 @@ function Step-Version([string]$current) {
 
 function Step-ChangelogSection($subjects, [string]$version, [string]$previousTag, $migrations = @()) {
     $groups = [ordered]@{ Added = @(); Changed = @(); Fixed = @(); 'Removed' = @(); Security = @() }
+    # 破坏性变更**单独收**：类型前缀对"是不是破坏性"没有发言权——`chore(db)!` 的 type 是 chore，
+    # 但它可能是实打实的破坏性变更（例：行归属三列全库下线，迁移 334/335）。早先这里按 type 分组、
+    # 把带 `!` 的提交当噪音静默丢掉，于是那种变更**根本没进草稿**，只能靠人记得去补——
+    # 而"人工定稿"恰恰是最不该依赖"记得"的环节。
+    $breaking = @()
     foreach ($subject in $subjects) {
-        if ($subject -match '^(\w+)(\([^)]*\))?!?:\s*(.+)$') {
-            $type = $Matches[1]
-            $text = $Matches[3].Trim()
+        if ($subject -match '^(?<type>\w+)(\((?<scope>[^)]*)\))?(?<bang>!)?:\s*(?<text>.+)$') {
+            $type = $Matches['type']
+            $text = $Matches['text'].Trim()
+            # 带 `!` 的提交只进 BREAKING 区，不再重复出现在类型分组里（0.2.0 / 0.3.0 的定稿版式即如此）。
+            if ($Matches['bang']) { $breaking += $text; continue }
         } else {
             $type = 'other'
             $text = $subject.Trim()
@@ -274,7 +281,19 @@ function Step-ChangelogSection($subjects, [string]$version, [string]$previousTag
         "> 草稿：由提交信息按类型分组生成（$head，共 $($subjects.Count) 条）。",
         $dbLine,
         '> **人工定稿要求**：删掉面向内部的条目、把面向用户的改动改写成业务语言；',
-        '> 破坏性变更必须在下方新增 **BREAKING** 小节说明影响与迁移方式。', '')
+        '> 破坏性变更必须在 **BREAKING** 小节里写清影响面与升级方式——该小节由脚本预置（若有），',
+        '> 但脚本只认提交**主题**里的 `!`：破坏性若只写在提交正文的 `BREAKING CHANGE` 里，需人工移入。', '')
+    # BREAKING 区排在类型分组之前——与 0.2.0 / 0.3.0 的定稿版式一致：破坏性变更最先说。
+    $hasBreaking = $breaking.Count -gt 0
+    if ($hasBreaking) {
+        $lines += '### BREAKING'
+        $lines += ''
+        $lines += '> 下面这些条目自带破坏性标记（提交主题的 `!`）：**逐条写清影响面与升级方式再发布**；'
+        $lines += '> 它们**不再**重复出现在下方的类型分组里。'
+        $lines += ''
+        foreach ($item in $breaking) { $lines += "- $item" }
+        $lines += ''
+    }
     $labels = @{ Added = '新增'; Changed = '变更'; Fixed = '修复'; Removed = '移除'; Security = '安全' }
     foreach ($key in $groups.Keys) {
         if ($groups[$key].Count -eq 0) { continue }
@@ -283,7 +302,9 @@ function Step-ChangelogSection($subjects, [string]$version, [string]$previousTag
         foreach ($item in $groups[$key]) { $lines += "- $item" }
         $lines += ''
     }
-    if ($groups.Added.Count + $groups.Changed.Count + $groups.Fixed.Count + $groups.Removed.Count -eq 0) {
+    if (-not $hasBreaking -and $groups.Added.Count + $groups.Changed.Count + $groups.Fixed.Count + $groups.Removed.Count -eq 0) {
+        # 一条都没归进任何分组（全是 docs/chore/test 这类不面向用户的类型）时的兜底：
+        # 宁可全列出来让人自己删，也不静默产出一个空节。
         $lines += '### 变更'
         $lines += ''
         foreach ($subject in $subjects) { $lines += "- $subject" }
