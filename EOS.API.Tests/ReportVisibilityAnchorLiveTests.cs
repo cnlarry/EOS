@@ -49,7 +49,7 @@ public sealed class ReportVisibilityAnchorLiveTests
         var offenders = Collect("""
             SELECT TOP 20 CONCAT(LTRIM(RTRIM(d.USER_ID)), '|', CAST(d.M_IDX AS varchar(20)), '|',
                                  LTRIM(RTRIM(d.REPORT_ID)), '|归属=', CAST(r.M_IDX AS varchar(20)))
-            FROM dbo.SYSDD_REPORT d WITH (NOLOCK)
+            FROM dbo.REPORT_USER_STATE d WITH (NOLOCK)
             INNER JOIN dbo.REPORT r WITH (NOLOCK) ON LTRIM(RTRIM(r.REPORT_ID)) = LTRIM(RTRIM(d.REPORT_ID))
             WHERE d.M_IDX <> r.M_IDX
             ORDER BY d.USER_ID, d.REPORT_ID;
@@ -64,7 +64,7 @@ public sealed class ReportVisibilityAnchorLiveTests
     {
         var offenders = Collect("""
             SELECT TOP 20 CONCAT(LTRIM(RTRIM(d.USER_ID)), '|', CAST(d.M_IDX AS varchar(20)), '|', LTRIM(RTRIM(d.REPORT_ID)))
-            FROM dbo.SYSDD_REPORT d WITH (NOLOCK)
+            FROM dbo.REPORT_USER_STATE d WITH (NOLOCK)
             INNER JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = d.M_IDX
             WHERE m.M_URL = '/reports'
             ORDER BY d.USER_ID, d.REPORT_ID;
@@ -79,8 +79,8 @@ public sealed class ReportVisibilityAnchorLiveTests
     {
         // 表为空时上面两条断言都会通过，那不是"验证过了"，而是"没东西可验"。
         // 这条把底数钉住：例外行存在，且全部锚在归属模块上。
-        var total = Count("SELECT COUNT(*) FROM dbo.SYSDD_REPORT WITH (NOLOCK);");
-        Assert.True(total > 0, "SYSDD_REPORT 为空：锚点断言在空表上会恒真，无法证明归位正确。");
+        var total = Count("SELECT COUNT(*) FROM dbo.REPORT_USER_STATE WITH (NOLOCK);");
+        Assert.True(total > 0, "REPORT_USER_STATE 为空：锚点断言在空表上会恒真，无法证明归位正确。");
     }
 
     /// <summary>
@@ -122,7 +122,7 @@ public sealed class ReportVisibilityAnchorLiveTests
     {
         var offenders = Collect("""
             SELECT TOP 10 CONCAT(LTRIM(RTRIM(d.USER_ID)), '|', CAST(d.M_IDX AS varchar(20)), '|', LTRIM(RTRIM(d.REPORT_ID)))
-            FROM dbo.SYSDD_REPORT d WITH (NOLOCK)
+            FROM dbo.REPORT_USER_STATE d WITH (NOLOCK)
             WHERE NOT EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK)
                               WHERE LTRIM(RTRIM(r.REPORT_ID)) = LTRIM(RTRIM(d.REPORT_ID)))
             ORDER BY d.USER_ID, d.REPORT_ID;

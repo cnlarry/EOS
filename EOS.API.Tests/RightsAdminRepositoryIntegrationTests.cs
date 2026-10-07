@@ -173,7 +173,7 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
         await ExecuteNonQueryAsync($"""
             DELETE FROM dbo.SYSDD WHERE USER_ID=N'{_userId}';
             DELETE FROM dbo.SYSDH WHERE G_IDX=N'{_groupId}';
-            DELETE FROM dbo.SYSDD_REPORT WHERE USER_ID=N'{_userId}';
+            DELETE FROM dbo.REPORT_USER_STATE WHERE USER_ID=N'{_userId}';
             DELETE FROM dbo.SYSDG_USER WHERE USER_ID=N'{_userId}' OR G_IDX=N'{_groupId}';
             DELETE FROM dbo.SYSDG WHERE G_IDX=N'{_groupId}';
             DELETE FROM dbo.SYSDL WHERE USER_ID=N'{_userId}';

@@ -13,7 +13,7 @@ namespace EOS.API.Controllers;
 /// 报表中心：列表明细型报表的目录入口。
 /// 撤 22 个 XX98 菜单节点后，全部报表经本控制器查询、按业务域分组展示；
 /// 单据打印仍走统一表单工具栏（ReportController Pdf / PrintController，机制不动）。
-/// 权限语义（P1）：模块级 REPORT_TAG 为可见性真源，SYSDD_REPORT 降级为 override 收紧。
+/// 权限语义（P1）：模块级 REPORT_TAG 为可见性真源，REPORT_USER_STATE 降级为 override 收紧。
 /// 目录只返回「用户对模块有报表可见性（REPORT_TAG）」的报表。
 /// </summary>
 [ApiController]
@@ -49,7 +49,7 @@ public sealed class ReportCenterController(
             FROM dbo.REPORT r WITH (NOLOCK)
             INNER JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = r.M_IDX
             LEFT JOIN dbo.MODULES dom WITH (NOLOCK) ON dom.M_IDX = m.M_P_IDX
-            LEFT JOIN dbo.SYSDD_REPORT p WITH (NOLOCK) ON p.USER_ID = @UserId AND p.M_IDX = r.M_IDX AND p.REPORT_ID = r.REPORT_ID
+            LEFT JOIN dbo.REPORT_USER_STATE p WITH (NOLOCK) ON p.USER_ID = @UserId AND p.M_IDX = r.M_IDX AND p.REPORT_ID = r.REPORT_ID
             WHERE (
                 EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK)
                         WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX AND ISNULL(d.REPORT_TAG, 0) = 1)
@@ -86,7 +86,7 @@ public sealed class ReportCenterController(
     }
 
     /// <summary>
-    /// 收藏开关与收藏排序：写 SYSDD_REPORT（upsert，保持 override 收紧语义）。
+    /// 收藏开关与收藏排序：写 REPORT_USER_STATE（upsert，保持 override 收紧语义）。
     /// 只覆盖本次提交的字段——未提交的（SORT_IDX）保持原值，避免一次收藏开关顺带清空收藏顺序。
     /// </summary>
     [HttpPost("favorite")]
@@ -105,12 +105,12 @@ public sealed class ReportCenterController(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            IF EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
-                UPDATE dbo.SYSDD_REPORT
+            IF EXISTS (SELECT 1 FROM dbo.REPORT_USER_STATE WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
+                UPDATE dbo.REPORT_USER_STATE
                 SET FAVORITE_TAG=@FavoriteTag, SORT_IDX=ISNULL(@SortIdx, SORT_IDX)
                 WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
             ELSE IF @FavoriteTag = 1
-                INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX)
+                INSERT INTO dbo.REPORT_USER_STATE (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX)
                 VALUES (@UserId,@ModuleId,@ReportId,@FavoriteTag,@SortIdx);
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -143,11 +143,11 @@ public sealed class ReportCenterController(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            IF EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
-                UPDATE dbo.SYSDD_REPORT SET LAST_RUN_AT=@LastRunAt
+            IF EXISTS (SELECT 1 FROM dbo.REPORT_USER_STATE WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
+                UPDATE dbo.REPORT_USER_STATE SET LAST_RUN_AT=@LastRunAt
                 WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
             ELSE
-                INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,LAST_RUN_AT)
+                INSERT INTO dbo.REPORT_USER_STATE (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,LAST_RUN_AT)
                 VALUES (@UserId,@ModuleId,@ReportId,0,@LastRunAt);
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -183,11 +183,11 @@ public sealed class ReportCenterController(
                 if (!permission.Rights.CanBrowse) return Forbid();
 
                 const string sql = """
-                    IF EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
-                        UPDATE dbo.SYSDD_REPORT SET FAVORITE_TAG=1, SORT_IDX=@SortIdx
+                    IF EXISTS (SELECT 1 FROM dbo.REPORT_USER_STATE WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
+                        UPDATE dbo.REPORT_USER_STATE SET FAVORITE_TAG=1, SORT_IDX=@SortIdx
                         WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
                     ELSE
-                        INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX)
+                        INSERT INTO dbo.REPORT_USER_STATE (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX)
                         VALUES (@UserId,@ModuleId,@ReportId,1,@SortIdx);
                     """;
                 await using var command = new SqlCommand(sql, connection, transaction);

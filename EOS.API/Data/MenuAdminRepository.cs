@@ -688,7 +688,10 @@ public sealed class MenuAdminRepository(
         GetString(reader, 1), GetString(reader, 2) ?? string.Empty, GetString(reader, 3), GetString(reader, 4),
         GetBool(reader, 5), GetBool(reader, 6), GetBool(reader, 7),
         reader.IsDBNull(8) ? null : reader.GetInt32(8),
-        reader.GetInt32(9), GetBool(reader, 10), GetBool(reader, 11), GetBool(reader, 12),
+        // SORT_IDX 在库里是**可空**的（节点未排序时就是 NULL）：直接 GetInt32 会在
+        // 「可空标志位为 NULL 时列表照常返回」这条口径下整列崩掉（SqlNullValueException）。
+        // NULL 按"未排序"处理，取 0。
+        reader.IsDBNull(9) ? 0 : reader.GetInt32(9), GetBool(reader, 10), GetBool(reader, 11), GetBool(reader, 12),
         GetBool(reader, 13), GetString(reader, 14),
         GetString(reader, 15), GetString(reader, 16), GetString(reader, 17),
         GetString(reader, 18), GetString(reader, 19),
@@ -1008,7 +1011,7 @@ public sealed class MenuAdminRepository(
         UPDATE dbo.MODULES SET M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX;
         UPDATE dbo.MODULES SET M_ROOT_IDX=@NEW_IDX WHERE M_ROOT_IDX=@OLD_IDX;
         UPDATE dbo.SYSDD SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
-        UPDATE dbo.SYSDD_REPORT SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.REPORT_USER_STATE SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         UPDATE dbo.SYSDH SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         UPDATE dbo.SYSQR SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX;
         UPDATE dbo.FIELDS SET BROWSE_M_IDX=@NEW_IDX WHERE BROWSE_M_IDX=@OLD_IDX;

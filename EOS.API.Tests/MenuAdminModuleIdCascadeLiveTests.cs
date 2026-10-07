@@ -44,7 +44,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     private static readonly string[] Targets =
     [
         "MODULES.M_IDX", "MODULES.M_P_IDX", "MODULES.M_ROOT_IDX",
-        "SYSDD.M_IDX", "SYSDD_REPORT.M_IDX", "SYSDH.M_IDX",
+        "SYSDD.M_IDX", "REPORT_USER_STATE.M_IDX", "SYSDH.M_IDX",
         "SYSQR.R_M_IDX",
         "FIELDS.BROWSE_M_IDX", "FIELD_DATASOURCE.SOURCE_M_IDX",
         "WFFORM.WF_M_IDX", "WFFORM_FLOW.WF_M_IDX", "WF_MONITOR.WF_M_IDX",
@@ -71,7 +71,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         "update MODULES set M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX",
         "update MODULES set M_ROOT_IDX=@NEW_IDX WHERE M_ROOT_IDX=@OLD_IDX",
         "update SYSDD set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
-        "update SYSDD_REPORT set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
+        "update REPORT_USER_STATE set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update SYSDH set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         $"update {RetiredGroupTable} set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update REPORT set R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
@@ -225,7 +225,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_P_IDX) VALUES (99903, N'级联测试-子节点', @Old);
             INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_ROOT_IDX) VALUES (99904, N'级联测试-根引用', @Old);
             INSERT INTO dbo.SYSDD (USER_ID, M_IDX) VALUES (N'ADR12CAST', @Old);
-            INSERT INTO dbo.SYSDD_REPORT (USER_ID, M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
+            INSERT INTO dbo.REPORT_USER_STATE (USER_ID, M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
             INSERT INTO dbo.SYSDH (G_IDX, M_IDX) VALUES (99901, @Old);
             INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORT', @Old);
             INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORTQ', @Old);
