@@ -5,6 +5,11 @@ version: 2
 updates:
   - package-ecosystem: nuget
     directory: /EOS.API
+    commit-message:
+      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
+      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
+      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      prefix: "chore(deps)"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -13,6 +18,11 @@ updates:
         patterns: ["*"]
   - package-ecosystem: nuget
     directory: /EOS.API.Tests
+    commit-message:
+      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
+      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
+      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      prefix: "chore(deps)"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -21,6 +31,11 @@ updates:
         patterns: ["*"]
   - package-ecosystem: npm
     directory: /EOS.Web
+    commit-message:
+      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
+      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
+      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      prefix: "chore(deps)"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -29,6 +44,11 @@ updates:
         patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
+    commit-message:
+      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
+      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
+      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      prefix: "chore(deps)"
     schedule:
       interval: monthly
     groups:
