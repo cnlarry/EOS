@@ -16,6 +16,17 @@ updates:
     groups:
       nuget-api:
         patterns: ["*"]
+    ignore:
+      # Microsoft.OpenApi 3.x 超出 Microsoft.AspNetCore.OpenApi 10.0.12 的依赖约束
+      # （>= 2.12.0 && < 3.0.0），升上去就是 NU1608 且本仓把警告当错误 ⇒ 还原即失败。
+      # 这不是我们能收口的版本冲突，等上游放开 3.x 再解除本条。
+      - dependency-name: "Microsoft.OpenApi"
+        update-types: ["version-update:semver-major"]
+      # QuestPDF 2026.9.1 让 Program.cs 的 FontManager 调用变成过时 API，本仓把警告当错误；
+      # 只挡这一个版本（它的版本号是日期式的，按 semver-major 挡会连未来所有版本一起挡死），
+      # 等过时 API 的适配做完再放开。
+      - dependency-name: "QuestPDF"
+        versions: ["2026.9.1"]
   - package-ecosystem: nuget
     directory: /EOS.API.Tests
     commit-message:
@@ -29,6 +40,13 @@ updates:
     groups:
       nuget-tests:
         patterns: ["*"]
+    ignore:
+      # 同 EOS.API 条目（理由写在那边）：Microsoft.OpenApi 3.x 触 NU1608（上游约束 < 3.0.0），
+      # QuestPDF 2026.9.1 触发过时 API 而本仓把警告当错误。
+      - dependency-name: "Microsoft.OpenApi"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "QuestPDF"
+        versions: ["2026.9.1"]
   - package-ecosystem: npm
     directory: /EOS.Web
     commit-message:
