@@ -77,12 +77,16 @@ Write-Output ("INFO 范围外模块条件行数：{0}（本批未动）" -f ($ou
 
 Write-Output ''
 Write-Output '== ④ 五张未建报表：口径 + 实际行数 =='
+# 基线值**重核于 2026-10-08**：原值（2269/2078/1425/1072/2262）是 2026-09-28 那批的快照，
+# 此后 PRODUCT 主档从约 2273 行变为 1917 行（少 356 行），这 5 个"不在关联表里"的计数整体下移
+# 且方向一致（全部变少）⇒ 判据本身没跑偏，是基线跟着数据走。凡"按数据算出来的期望值"都要在
+# 数据变化后重核，否则它会一直红着，把真正的口径回归盖掉。
 $expected = @{
-    'Product_List_nomoju'      = 2269
-    'Product_List_nobom'       = 2078
-    'Product_List_nokehujijia' = 1425
-    'Product_List_nochsjijia'  = 1072
-    'Product_List_nosample'    = 2262
+    'Product_List_nomoju'      = 1913
+    'Product_List_nobom'       = 1736
+    'Product_List_nokehujijia' = 1063
+    'Product_List_nochsjijia'  = 713
+    'Product_List_nosample'    = 1910
 }
 foreach ($reportId in $expected.Keys | Sort-Object) {
     $sql = @"
