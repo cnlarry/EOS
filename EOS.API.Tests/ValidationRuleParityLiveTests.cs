@@ -213,12 +213,15 @@ public sealed class ValidationRuleParityLiveTests
 
         // 冻结的是"黄金集建在哪批语料上"这一事实，不是校验规则本身：语料变化即样本面变化，
         // 必须重走口径核对（改这里等于重新登记黄金集地基）。
-        Assert.Equal(187, rules.Count);
+        // 2026-10-07（迁移 331）：给月结单（1304）挂了一条 APPROVE 阶段的 custom-validation
+        // ——"该期快照明细为空不许关账"。于是总数 187→188、有规则的模块数 96→97、分布多一项。
+        Assert.Equal(188, rules.Count);
         Assert.Equal(167, rules.Count(rule => rule.Stage == "SAVE"));
-        Assert.Equal(96, rules.Select(rule => rule.ModuleId).Distinct().Count());
+        Assert.Equal(97, rules.Select(rule => rule.ModuleId).Distinct().Count());
         Assert.Equal(
             new[]
             {
+                "custom-validation|APPROVE=1",
                 "custom-validation|DELETE=1",
                 "custom-validation|SAVE=6",
                 "duplicate-check|SAVE=19",
