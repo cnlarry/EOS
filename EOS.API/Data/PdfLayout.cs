@@ -8,7 +8,11 @@ namespace EOS.API.Data;
 /// <summary>QuestPDF 通用布局常量与工具（字体 / 纸张 / LOGO / 值格式化）。</summary>
 internal static class PdfLayout
 {
-    /// <summary>启动时经 FontManager.RegisterFontWithCustomName 注册的中文字体。</summary>
+    /// <summary>
+    /// 报表 PDF 用的中文字体族名：启动时以 FontManager.RegisterFontFromStream 注册
+    /// `Fonts/NotoSansCJKsc-Regular.otf`，此处必须与**字体文件里的族名**一致
+    /// （QuestPDF 2026.9 起不再支持自定义名注册；Program.RegisterPdfFont 会在启动时核对并报错）。
+    /// </summary>
     public const string FontFamily = "Noto Sans CJK SC";
 
     public static PageSize PageSizeFor(string? paper, bool landscape = false)

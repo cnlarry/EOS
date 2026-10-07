@@ -54,7 +54,7 @@ public sealed class ReportListPdfLiveParityTests
             "EOS.API", "Fonts", "NotoSansCJKsc-Regular.otf");
         fontPath = Path.GetFullPath(fontPath);
         if (File.Exists(fontPath))
-            QuestPDF.Drawing.FontManager.RegisterFontWithCustomName(PdfLayout.FontFamily, File.OpenRead(fontPath));
+            QuestPDF.Drawing.FontManager.RegisterFontFromStream(File.OpenRead(fontPath));
     }
 
     private static int CountPages(byte[] pdf)

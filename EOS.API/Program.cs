@@ -588,8 +588,22 @@ static void RegisterPdfFont()
 {
     var fontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "NotoSansCJKsc-Regular.otf");
     if (!File.Exists(fontPath)) return;
-    // 进程内只注册一次；QuestPDF 内部持有字体数据，流保持打开由进程回收
-    QuestPDF.Drawing.FontManager.RegisterFontWithCustomName("Noto Sans CJK SC", File.OpenRead(fontPath));
+    // 进程内只注册一次；QuestPDF 内部持有字体数据，流保持打开由进程回收。
+    // QuestPDF 2026.9 起不再支持「自定义名注册」：改用 RegisterFontFromStream，族名以字体文件里的为准，
+    // 报表侧依旧按 PdfLayout.FontFamily 引用。下面顺手核对一次族名——对不上时打一条 ERROR，
+    // 免得等到出报表 PDF 才发现中文没生效（这类故障在 PDF 里表现为方框，排查成本高）。
+    QuestPDF.Drawing.FontManager.RegisterFontFromStream(File.OpenRead(fontPath));
+
+    var families = QuestPDF.Drawing.FontManager.GetRegisteredFonts()
+        .Select(font => font.FamilyName)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    if (!families.Contains(EOS.API.Data.PdfLayout.FontFamily, StringComparer.OrdinalIgnoreCase))
+    {
+        Console.Error.WriteLine(
+            $"[启动] PDF 中文字体族名核对未通过：字体文件里没有族名「{EOS.API.Data.PdfLayout.FontFamily}」，"
+            + $"实际注册到的族名有：{string.Join(" / ", families)}");
+    }
 }
 
 /// <summary>
