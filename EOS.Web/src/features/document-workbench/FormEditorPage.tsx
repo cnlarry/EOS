@@ -839,22 +839,37 @@ export function FormEditorPage() {
       }
       const values: Record<string, string> = {}
       for (const field of writableFields(formQuery.data.masterFields)) values[field.key] = toSubmit(field)
-      const details = detailRows.map(row => {
+      // 完全空白的**新行**不进提交体：新建时表单常带出一个空行，用户只填主表就保存——
+      // 那个空行会被服务端逐行必填校验拒掉（"该字段必填"），可用户其实什么都没录错。
+      // 只滤"无项次 + 可写字段全空"的行：既有行（带项次）一律保留、交回项次机制处理，
+      // 免得把"清空既有行"误当成"删行"。
+      const writableDetailFields = writableFields(formQuery.data.detailFields)
+      const submitDetailValue = (field: FormFieldDefinition, raw: string | undefined): string =>
+        fieldVariant(field) === 'decimal' ? canonicalizeDecimalValue(raw ?? '') : (raw ?? '').trim()
+      const isBlankNewRow = (row: (typeof detailRows)[number]): boolean =>
+        !(row.SERIAL_NO && String(row.SERIAL_NO).trim()) &&
+        !writableDetailFields.some(field => submitDetailValue(field, row[field.key]) !== '')
+      const keptRows = detailRows.filter(row => !isBlankNewRow(row))
+      const details = keptRows.map(row => {
         const detail: Record<string, string> = {}
-        for (const field of writableFields(formQuery.data?.detailFields ?? [])) {
-          const raw = row[field.key] ?? ''
-          detail[field.key] = fieldVariant(field) === 'decimal' ? canonicalizeDecimalValue(raw) : raw.trim()
-        }
+        for (const field of writableDetailFields) detail[field.key] = submitDetailValue(field, row[field.key])
         return detail
       })
-      const body: SaveRecordRequest = { values, details, idempotencyKey: idempotencyRef.current }
+      // 新增模式下明细为空就**不带 details**：服务端把"提交了空明细"与"没提交明细"当两条路走——
+      // 要求明细的模块（MODULES.DETAIL_NO_SAVE=1）只拒绝前者（"该模块无明细资料不可保存"），
+      // 而这类模块的明细往往由动作生成（月结单的「生成快照」就是），新增时本就该是空的。
+      // 编辑模式保留 details:[] 的"清空明细"语义，不动。
+      const body: SaveRecordRequest = { values, idempotencyKey: idempotencyRef.current }
+      if (details.length > 0 || isEdit) body.details = details
       const chooserSources = Object.keys(masterChooserSourcesRef.current).length > 0
         ? { ...masterChooserSourcesRef.current }
         : null
-      const detailChooserSources = detailRows.map(row => readDetailChooserSources(row))
+      // 这两组与 details 必须**按同一批行**下发：被滤掉的行若在这里留下占位，
+      // 服务端就会拿到错位的项次/来源，把值写到别的行上。
+      const detailChooserSources = keptRows.map(row => readDetailChooserSources(row))
       // 明细项次是行身份：把各行**原有的**项次回传（新行没有则给 null），
       // 服务端据此保留既有号、只给新行分配未占用的号——删行不再让其余行静默改号。
-      const detailSerials = detailRows.map(row => (row.SERIAL_NO && String(row.SERIAL_NO).trim()) || null)
+      const detailSerials = keptRows.map(row => (row.SERIAL_NO && String(row.SERIAL_NO).trim()) || null)
       // 只在本会话确实选过来源时才下发，未重选的字段保持服务端既有记忆
       if (chooserSources) body.chooserSources = chooserSources
       if (detailChooserSources.some(item => item !== null)) body.detailChooserSources = detailChooserSources

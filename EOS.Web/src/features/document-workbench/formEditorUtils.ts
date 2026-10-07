@@ -6,7 +6,13 @@ import { createId } from '../../lib/uuid'
 /** 统一表单保存载荷（主表 values + 明细 details，edit 时带 original 并发快照； 强制幂等键） */
 export interface SaveRecordRequest {
   values: Record<string, string>
-  details: Record<string, string>[]
+  /**
+   * 明细行。**可省略**——"没提交明细"与"提交了空明细"在服务端是两条路：
+   * 前者是"不碰明细"，后者是"把明细清空"，而要求明细的模块（`MODULES.DETAIL_NO_SAVE=1`）
+   * 只拒绝后者（`DETAIL_REQUIRED`「该模块无明细资料不可保存」）。新增且明细为空时省略，
+   * 才不会把"建单"这一步堵死（月结单的明细本就由「生成快照」生成）。
+   */
+  details?: Record<string, string>[]
   original?: Record<string, string>
   idempotencyKey?: string
   /** 本次提交里用户在界面上选过的来源（字段键 → 来源序号）；未重选的字段不下发 */

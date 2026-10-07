@@ -826,8 +826,11 @@ describe('FormEditorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/document-workbench/1209/record',
-      expect.objectContaining({ values: { PRO_NO: 'P9', EDITION: '', QTY: '5', FLAG: '1' }, details: [] }),
+      // 新增模式下明细为空**不带 details**：带空数组会被"要求明细"的模块按 DETAIL_REQUIRED 拒掉
+      expect.objectContaining({ values: { PRO_NO: 'P9', EDITION: '', QTY: '5', FLAG: '1' } }),
     ))
+    const addBody = apiClientMock.post.mock.calls.find(([path]) => path === '/document-workbench/1209/record')?.[1] as { details?: unknown }
+    expect(addBody?.details).toBeUndefined()
     // Save request must carry an idempotency key
     const saveBody = apiClientMock.post.mock.calls.find(([path]) => path === '/document-workbench/1209/record')?.[1] as { idempotencyKey?: string }
     expect(saveBody?.idempotencyKey).toBeTruthy()
