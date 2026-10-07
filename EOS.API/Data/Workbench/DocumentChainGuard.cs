@@ -16,8 +16,10 @@ namespace EOS.API.Data.Workbench;
 /// <list type="bullet">
 /// <item>**批核**：上游未批核时本单没有来源，批核要被拦住（B 未批核则批核 C 应被拒）。</item>
 /// <item>**解批**：下游已批核时不许解批（引用链逐级解开：A→B→C，解批 A 要求 B 未批核）。</item>
-/// <item>**查不到就放行**（宁可漏拦、不可误拦）：对面表没有 `CONFIRM_TAG` 列、键列读不到值、
-/// 边没登记在 <see cref="AllowedEdges"/> 里 —— 一律视为"这条链看不全"，不拦。</item>
+/// <item>**豁免只有一条**：对面表**没有 `CONFIRM_TAG` 列**（那种表没有"批核状态"可言，无从校验）。
+/// 另有两条"这条链看不全"的技术性放行：对面表里没有匹配的行、键列在本单上读不到值。
+/// **除此之外没有例外** —— 单据引用基础资料（制令单→产品、发货单→客户、采购单→厂商）同样要查
+/// 上游是否批核；"引用了未审核的主档"本来就该拦住，那是数据没审核，不是误拦。</item>
 /// </list>
 ///
 /// 解批**不删除任何下游单据**；这里只拒绝"下游还站着"的情形。
@@ -28,27 +30,6 @@ internal static class DocumentChainGuard
     internal const string UpstreamNotConfirmedCode = "UPSTREAM_NOT_CONFIRMED";
 
     internal sealed record ChainBlock(string Code, string Message);
-
-    /// <summary>
-    /// 允许参与校验的边（**下游表 → 上游表**）。
-    ///
-    /// **为什么必须有这份清单**：元数据里**没有"单据 / 主档"的标记**（`MODULES` 只有
-    /// `DETAIL_TABLE` / `AUTO_APPROVE` / `EFFECT_ENGINE_TAG` 可看），而 `FIELD_RELATION` 的 EFFECT 边
-    /// 把两类引用混在了一起：真正该管的"单据链"（订单变更单 → 订单），和"引用基础资料"
-    /// （制令单 → 产品、发货单 → 客户、采购单 → 厂商）。后者一旦纳入就是**大规模误拦**——
-    /// 实测 `CLIENT` 375 行里 242 行未批核、`PRODUCT` 1917 行里 599 行未批核、`SUPPLIER` 170/433，
-    /// 凡引用了这些主档的单据都会批核不了。
-    ///
-    /// 因此这里**只认显式登记的边**：没登记就当作"这条链看不全"，放行（与"查不到就放行"同一条口径）。
-    /// 往清单里加一条 = 确认那一对确实是"单据 → 单据"。**宁可先窄后宽，不要先宽后收**。
-    /// </summary>
-    private static readonly HashSet<string> AllowedEdges = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "COP_ORDER_CHANGE_M|COP_ORDER_M",        // 销售订单变更单 → 销售订单
-        "MOC_PRODUCE_CHANGE_M|MOC_PRODUCE_M",    // 制令变更 → 制令单
-        "MOU_APPLY_M|MOU_ASSESS_M",              // 开模申请单 → 模具评估单
-        "MOU_ACCEPT_M|MOU_APPLY_M",              // 模具承认单 → 开模申请单
-    };
 
     /// <summary>返回 null 表示放行。</summary>
     public static async Task<ChainBlock?> CheckAsync(
@@ -147,9 +128,6 @@ internal static class DocumentChainGuard
                 var fromColumn = reader.GetString(1);
                 var toTable = reader.GetString(2);
                 var toColumn = reader.GetString(3);
-                // 只认显式登记的单据链（见 AllowedEdges）：其余边一律当作"看不全"，放行。
-                if (!AllowedEdges.Contains($"{fromTable}|{toTable}"))
-                    continue;
                 var pair = $"{fromTable}|{toTable}";
                 if (!keysByPair.TryGetValue(pair, out var keys))
                 {
