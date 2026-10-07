@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { CellContext, ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
+import type { CellContext, ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { Component, createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'

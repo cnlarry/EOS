@@ -1,4 +1,4 @@
-import type { SortingState } from '@tanstack/react-table'
+import type { SortingState } from '../../lib/tanstackTable'
 import type { QueryCondition } from '../../components/common/queryCondition'
 
 export interface WorkbenchListState {

@@ -1,4 +1,4 @@
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef, RowData } from '../../lib/tanstackTable'
 import type { MouseEvent } from 'react'
 
 /**
@@ -6,7 +6,7 @@ import type { MouseEvent } from 'react'
  * 单选语义由外部维护 selectedKey（radio 只认勾选事件，避免浏览器对“失去选中”
  * 也触发 change）；点击 radio 不冒泡，行点击由页面自行决定。
  */
-export function radioSelectColumn<T>(name: string, selectedKey: string | null, onSelect: (rowId: string) => void): ColumnDef<T, unknown> {
+export function radioSelectColumn<T extends RowData>(name: string, selectedKey: string | null, onSelect: (rowId: string) => void): ColumnDef<T, unknown> {
   return {
     id: 'select',
     enableSorting: false,

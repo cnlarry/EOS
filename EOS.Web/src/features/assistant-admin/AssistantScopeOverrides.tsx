@@ -1,7 +1,7 @@
 import { IconSearch, IconTrash, IconUserPlus } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'

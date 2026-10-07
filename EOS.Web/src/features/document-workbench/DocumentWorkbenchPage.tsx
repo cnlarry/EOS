@@ -1,6 +1,6 @@
 import { IconFileExport, IconZoomScan } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'

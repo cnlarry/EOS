@@ -1,6 +1,6 @@
 import { IconRefresh } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { useMemo, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'

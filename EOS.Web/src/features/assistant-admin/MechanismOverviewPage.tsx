@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { useMemo } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'

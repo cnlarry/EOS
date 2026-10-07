@@ -4,11 +4,14 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
+  type CellData,
   type ColumnDef,
+  type RowData,
   type RowSelectionState,
   type SortingState,
+  type TableFeatures,
   type VisibilityState,
-} from '@tanstack/react-table'
+} from '../../lib/tanstackTable'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
@@ -21,7 +24,7 @@ const VIRTUAL_MIN_ROWS = 80
 /** 可视区上/下行数缓冲，保证滚动过程中新入视口的行已被渲染 */
 const VIRTUAL_OVERSCAN = 12
 
-interface ErpTableProps<TData> {
+interface ErpTableProps<TData extends RowData> {
   columns: ColumnDef<TData, unknown>[]
   data: TData[]
   getRowId?: (row: TData, index: number) => string
@@ -818,7 +821,9 @@ export function ErpTable<TData>({
 }
 
 declare module '@tanstack/react-table' {
-  interface ColumnMeta<TData, TValue> {
+  // 泛型参数必须与 v9 的声明一致（否则 TS2428）：v9 是
+  // <TFeatures extends TableFeatures, TData extends RowData, TValue extends CellData>
+  interface ColumnMeta<TFeatures extends TableFeatures, TData extends RowData, TValue extends CellData = CellData> {
     className?: string
     headerClassName?: string
     /** 仅作用于数据单元格（优先级高于 className） */

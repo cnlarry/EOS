@@ -7,7 +7,7 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { describeApiError } from '../../lib/errors'
 
 interface Subscription {

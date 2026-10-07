@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { IconEye, IconRefresh } from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'

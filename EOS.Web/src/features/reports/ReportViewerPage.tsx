@@ -17,7 +17,7 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { alignClass, formatFieldValue } from '../document-workbench/fieldFormat'
-import type { ColumnDef, VisibilityState } from '@tanstack/react-table'
+import type { ColumnDef, VisibilityState } from '../../lib/tanstackTable'
 import { describeApiError } from '../../lib/errors'
 
 interface ReportOption { label: string; value: string }
