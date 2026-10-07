@@ -46,7 +46,7 @@ public class ReportListPdfSmokeTests
             AppContext.BaseDirectory, "..", "..", "..", "..",
             "EOS.API", "Fonts", "NotoSansCJKsc-Regular.otf"));
         if (File.Exists(fontPath))
-            QuestPDF.Drawing.FontManager.RegisterFontWithCustomName(PdfLayout.FontFamily, File.OpenRead(fontPath));
+            QuestPDF.Drawing.FontManager.RegisterFontFromStream(File.OpenRead(fontPath));
     }
 
     /// <summary>
