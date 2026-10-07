@@ -1,6 +1,9 @@
+/* 配色开关由 Tabler 独占：Tabler 用 [data-bs-theme=light|dark] 切 color-scheme，
+   1.6 起所有颜色值改走 light-dark()，于是 color-scheme 成了深色模式的唯一开关。
+   此处不得再声明 color-scheme——它与 Tabler 的 :root 同特异性、又后加载，
+   会把开关钉在"跟随系统偏好"，使 data-bs-theme 切到 dark 也不改变任何颜色。 */
 :root {
   font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
-  color-scheme: light dark;
 }
 
 /* 弹窗正文字体统一 12px（标题/按钮等特殊元素除外） */

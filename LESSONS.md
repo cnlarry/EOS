@@ -18,7 +18,7 @@
 | 六、发布与版本（L48–L50） | 打标签、CHANGELOG、gh 凭据 | 发布 |
 | 七、并发协作与文档（L51–L55） | 共享文件、暂存范围、文档同步 | 多会话并行 / 提交 / 改手册 |
 | 八、构建、工具链与环境（L56–L62、L68） | dotnet、sqlcmd、长驻进程、Playwright | 构建失败 / 脚本卡住 / 工具起不来 |
-| 九、前端界面（L63） | 表格列与输入控件、焦点 | 改前端表格 / 加可编辑列 |
+| 九、前端界面（L63、L76） | 表格列与输入控件、焦点、样式库升级与主题开关 | 改前端表格 / 加可编辑列 / 换样式库 |
 | 十、模型接入与助手编排（L64） | 模型输出通道、回答净化 | 接模型 / 改助手对话编排 |
 | 十一、指标与口径（L65） | 口径来源模块、行过滤归属 | 加口径 / 改指标取数 |
 
@@ -560,6 +560,20 @@
   行值取 `row.original`，错误 / 来源菜单 / 回调等运行期数据经 context 下发——不要塞进 `meta`（列定义每次渲染重建）。
 - **防线**：断言 DOM 节点同一性——连续 `fireEvent.change` 之后
   `expect(输入框查询()[1]).toBe(改动前那个节点)`，并断言 `document.activeElement` 仍是它（只看 `toHaveValue` 抓不到重挂）。
+
+### L76 样式库升级把配色的实现机制换掉，`color-scheme` 从无害声明变成唯一开关
+
+- **触发／症状**：白天/黑夜模式切换按钮点了没反应——`data-bs-theme` 属性、localStorage、按钮文案都正常翻转，
+  但页面颜色一点不变（`body` 背景仍是浅色）；`lint`、`build`、单测全绿。
+- **根因**：`@tabler/core` 1.4.0 → 1.6.1 后颜色值改走 CSS 原生 `light-dark()`
+  （`--tblr-bg-surface: light-dark(#fff, oklch(26.86% 0 0deg))`），取哪个分支完全由 `color-scheme` 决定；
+  而 `EOS.Web/src/styles/app.css` 的 `:root` 里原本有一句 `color-scheme: light dark`（1.4 时代与配色无关、写着无害）。
+  `:root` 与 Tabler 的 `[data-bs-theme=dark]` 特异性相同、app.css 又是后加载 ⇒ 这句把开关钉在"跟随系统偏好"，
+  `data-bs-theme` 切到 `dark` 也不改变任何颜色。
+- **处置**：删掉 app.css 里那句 `color-scheme`，开关交回 Tabler（`[data-bs-theme=light|dark]` 各自声明 `color-scheme`）。
+- **防线**：无自动门禁——属性、存储、断言全对，`light-dark()` 在 jsdom 里也不参与计算，单测抓不到；
+  **判据只能靠浏览器实测**：切换后 `getComputedStyle` 的 `color-scheme` 与 `body` 背景色必须**同时**翻转。
+  换样式库/样式库大版本升级后，把"主题切换"补进冒烟项。
 
 ## 十、模型接入与助手编排
 
