@@ -36,8 +36,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         await connection.OpenAsync(token);
         // moduleId 是报表的**归属模块**（业务模块），不是承载页：数据集（主表/子表/过滤）、
         // 查询条件、字段级与行级权限都按它判定。
+        // M_DESC / MASTER_TABLE 在库内可空（模块可以没有主表），必须与下面两列一样兜住 NULL：
+        // 直接 GetString 读 NULL 列会抛 SqlNullValueException，让"空主表的报表"整页 500。
         const string moduleSql="""
-            SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),
+            SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))),LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),LTRIM(RTRIM(ISNULL(FILTER,'')))
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """;

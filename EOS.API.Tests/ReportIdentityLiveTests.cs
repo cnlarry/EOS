@@ -74,4 +74,37 @@ public sealed class ReportIdentityLiveTests
         var name = await CreateRepository().FindModuleNameAsync(moduleId, CancellationToken.None);
         Assert.False(string.IsNullOrWhiteSpace(name));
     }
+
+    /// <summary>
+    /// 主表为 NULL 的模块取报表定义，必须按"没有数据源"返回空，而不是把 NULL 当异常抛出去。
+    /// `MODULES.MASTER_TABLE` 是可空列（库内有十来个模块为 NULL，多为目录节点），漏兜 NULL 时
+    /// `reader.GetString` 抛 <c>SqlNullValueException</c>，整个模块的报表页 500——与数据权限无关。
+    /// </summary>
+    /// <remarks>
+    /// 期望值取自库内：这些模块一个都查不到默认报表（唯一有报表的那个模块也不是默认报表），
+    /// 所以解析结果必须为空。样本变了这条会红，提醒重新核对，而不是静默放过。
+    /// </remarks>
+    [Fact]
+    public async Task 主表为NULL的模块取定义返回空而不抛异常()
+    {
+        var moduleIds = new List<int>();
+        using (var connection = new SqlConnection(RequireConnection()))
+        {
+            connection.Open();
+            using var command = new SqlCommand(
+                "SELECT M_IDX FROM dbo.MODULES WITH (NOLOCK) WHERE MASTER_TABLE IS NULL ORDER BY M_IDX;", connection);
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) moduleIds.Add(reader.GetInt32(0));
+        }
+        Assert.NotEmpty(moduleIds);
+
+        var repository = CreateRepository();
+        foreach (var moduleId in moduleIds)
+        {
+            var definition = await repository.GetDefinitionAsync(
+                moduleId, "admin", canViewCost: true, canViewSecrecy: true,
+                new HashSet<string>(), null, CancellationToken.None);
+            Assert.Null(definition);
+        }
+    }
 }
