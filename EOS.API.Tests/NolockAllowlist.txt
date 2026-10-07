@@ -73,3 +73,4 @@ EOS.API/Features/Assistant/Situation/SituationFactsReader.cs
 EOS.API/Features/Assistant/Tools/EnumMetricsTool.cs
 EOS.API/Features/Assistant/Tools/ModuleFlowGateway.cs
 EOS.API/Features/Assistant/Tools/RecordHistoryTool.cs
+EOS.API/Data/ReportAggregateRegistry.cs

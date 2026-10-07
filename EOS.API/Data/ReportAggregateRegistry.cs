@@ -495,9 +495,61 @@ public static class ReportAggregateRegistry
     /// <summary>临期判定的基准日：日期粒度，不带时间（带时间会让"今天到期"在当天下午算成已过期）。</summary>
     private const string BatchExpiryAsOf = "CAST(GETDATE() AS date)";
 
+    /// <summary>
+    /// 菜单管理明细（`SYS_Modules_List`）：系统自身的模块清单。
+    ///
+    /// 它原先挂在模块 230901（产品可用库存重计）名下——那是个"就近安置"的空壳归属：该模块没有主表，
+    /// 报表按 ADR-024 的可达性判据（归属模块有主表 **或** 已登记汇总数据源）解析失败，长期 404。
+    /// 报表要的就是 `MODULES` 表本身，故按汇总报表登记，让它真正可达。
+    /// </summary>
+    private static readonly ReportAggregate SysModulesList = new(
+        "SYS_Modules_List",
+        """
+        SELECT M_IDX, M_ALIAS, M_DESC, M_P_IDX, SORT_IDX, M_TAG, M_URL, MASTER_TABLE, DETAIL_TABLE, REMARK
+        FROM dbo.MODULES WITH (NOLOCK)
+        """,
+        "M_IDX",
+        [],
+        [
+            new ReportColumn("M_IDX", "模块编号", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("M_ALIAS", "模块别名", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("M_DESC", "菜单名称", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("M_P_IDX", "上级模块", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("SORT_IDX", "排序号", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("M_TAG", "可见", "bit", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("M_URL", "页面链接", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MASTER_TABLE", "主表", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DETAIL_TABLE", "副表", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("REMARK", "备注", "nvarchar", null, IsCost: false, IsSecrecy: false),
+        ]);
+
+    /// <summary>
+    /// 数据表信息明细（`SYS_Talbles_List`，编号沿用旧系统的拼写）：数据字典里登记的表清单。
+    /// 与上一条同理——原挂在模块 230902（基本资料导入）名下，该模块无主表 ⇒ 长期 404；
+    /// 数据源就是 `TABLES` 表本身，按汇总报表登记。
+    /// </summary>
+    private static readonly ReportAggregate SysTablesList = new(
+        "SYS_Talbles_List",
+        """
+        SELECT T_ID, T_DESC, T_TYPE, T_KIND, CAN_IMPORT, T_REMARK
+        FROM dbo.TABLES WITH (NOLOCK)
+        """,
+        "T_ID",
+        [],
+        [
+            new ReportColumn("T_ID", "表名", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("T_DESC", "表描述", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("T_TYPE", "类型", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("T_KIND", "种类", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("CAN_IMPORT", "可导入", "bit", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("T_REMARK", "备注", "nvarchar", null, IsCost: false, IsSecrecy: false),
+        ]);
+
     private static readonly Dictionary<string, ReportAggregate> Map =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            [SysModulesList.ReportId] = SysModulesList,
+            [SysTablesList.ReportId] = SysTablesList,
             [BatchExpiry.ReportId] = BatchExpiry,
             [HrEmployeeStatus.ReportId] = HrEmployeeStatus,
             [HrEmployeeProvince.ReportId] = HrEmployeeProvince,

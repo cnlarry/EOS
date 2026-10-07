@@ -15,6 +15,10 @@ public sealed class ReportAggregateRegistryTests
         "HR_Employee_6", "HR_Employee_7", "HR_Diary_1",
         "INV_Pro_Depot_1", "INV_Pro_Depot_1_H", "INV_Pro_Depot_1_sum",
         "INV_Batch_Expiry_1",
+        // ADR-024 收尾（2026-10-08）：这两张系统清单报表原先挂在没有主表的空壳模块名下、
+        // 长期 404（归属模块 230901/230902 无主表、报表也未登记汇总源）。
+        // 数据源就是 MODULES / TABLES 表本身，按汇总报表登记后真正可达。
+        "SYS_Modules_List", "SYS_Talbles_List",
     ];
 
     [Fact]
