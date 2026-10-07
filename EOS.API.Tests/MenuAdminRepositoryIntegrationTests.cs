@@ -617,7 +617,10 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            SELECT M_IDX,SORT_IDX FROM dbo.MODULES WITH (NOLOCK)
+            -- SORT_IDX 可空（节点未排序时就是 NULL），读侧按"未排序=0"取，
+            -- 与产品代码 MenuAdminRepository.ReadModule 的口径一致——否则真库里遇到
+            -- 一条 NULL 就让整条用例崩在 GetInt32 上，掩盖了它真正要断言的东西。
+            SELECT M_IDX,ISNULL(SORT_IDX,0) FROM dbo.MODULES WITH (NOLOCK)
             WHERE ISNULL(M_P_IDX,0)=@Parent
             ORDER BY SORT_IDX,M_IDX;
             """, connection);
@@ -639,7 +642,10 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            SELECT M_IDX,SORT_IDX FROM dbo.MODULES WITH (NOLOCK)
+            -- SORT_IDX 可空（节点未排序时就是 NULL），读侧按"未排序=0"取，
+            -- 与产品代码 MenuAdminRepository.ReadModule 的口径一致——否则真库里遇到
+            -- 一条 NULL 就让整条用例崩在 GetInt32 上，掩盖了它真正要断言的东西。
+            SELECT M_IDX,ISNULL(SORT_IDX,0) FROM dbo.MODULES WITH (NOLOCK)
             WHERE ISNULL(M_P_IDX,0)=@Parent
             ORDER BY SORT_IDX,M_IDX;
             """, connection);
