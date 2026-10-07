@@ -42,6 +42,22 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    ignore:
+      # 分组把 21 个包塞进一个 PR，其中四个是**跨大版本**的迁移，不能和补丁级升级一起合：
+      #   · @tanstack/react-table 8 → 9（泛型签名变了，MyTasksPage 等表的 cell 里 row.original 退化成 unknown）
+      #   · typescript 6 → 7、vitest 4 → 5（含 @vitest/coverage-v8）、jsdom 29 → 30
+      # 这三类各自需要一次专门迁移（先跑通 tsc 与用例，再谈升）。此处按 semver-major 挡住，
+      # 让同一分组里的补丁/次版本升级能单独落地；跨大版本那一批等专门任务时再放开。
+      - dependency-name: "@tanstack/react-table"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     commit-message:
