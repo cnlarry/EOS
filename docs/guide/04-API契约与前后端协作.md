@@ -153,3 +153,11 @@
 - **`/admin/menus` 的模块投影收口**：`MenuAdminModule` 不再返回 `FORM_OPEN_MODE` / `FORM_DIALOG_WIDTH` /
   `FORM_DIALOG_HEIGHT`（那三个字段只服务已删除的「统一表单」页签），新增 `REMARK`（模块备注，空串落 `NULL`）。
   模块管理只读写模块自身的字段。
+
+## 收口（迁移 334/335）：`WorkbenchDefinition` 去掉两个归属列探测位
+
+`hasOwnerColumn` / `hasOwnerGroupColumn` 两个布尔位（原先由 `sys.columns` 探测主表有没有 `OWNER` /
+`OWNER_G` 列，供 `EXEC_TAG` 的 B/C/D/E 数据范围过滤使用）已随行归属三列全库下线一并删除。
+响应里不再出现这两个字段；`execTag` 仍在，但只有 `Z` / `A` / 空 表示"无附加范围"，
+`B`/`C`/`D`/`E` 与未知取值一律拒绝（fail-closed，不降级为全量查询）。前端若按这两个布尔位做过显隐，可删；
+要按条件限制行可见性用 `DATA_FILTER`（见 [21-授权模型](./21-授权模型.md)）。
