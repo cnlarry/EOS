@@ -102,11 +102,13 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.CURR c WHERE LTRIM(RTRIM(c.CURR_ID)) = v.CUR
 GO
 
 -- ================================================================ 税别与税别类型
+-- 税率是税别主档的事实：单据侧只读的 TAX_RATE 由服务端按单据选中的 TAX_ID 带出，
+-- 主档留 0 就会按 0% 算税额。取值依据见迁移 330 的取证段。
 INSERT dbo.TAX (TAX_ID, TAX_NAME, TAX_RATE, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
 SELECT v.TAX_ID, v.TAX_NAME, v.TAX_RATE, 1, GETDATE(), GETDATE()
 FROM (VALUES
     (N'TAX01', N'转厂',   0.0),
-    (N'TAX02', N'增值税', 0.0),
+    (N'TAX02', N'增值税', 13.0),
     (N'TAX05', N'不含税', 0.0),
     (N'TAX06', N'出口',   0.0)
 ) v(TAX_ID, TAX_NAME, TAX_RATE)
