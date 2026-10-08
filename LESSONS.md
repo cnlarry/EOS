@@ -421,6 +421,20 @@
 - **防线**：无门禁，靠脚本在"改"与"删"前各解批一次（`EOS.API.Tests/AcceptanceCrud.ps1:284`/`:299`、
   `E2eBaseDataCrud.ps1`）；手工复核按同一顺序。
 
+### L83 列宽保存写的是"表级"字段宽度，会让共用该表的其它模块快照静默落后
+- **触发／症状**：`check-snapshot-staleness.ps1` 报 `1405 销售订单` 静默落后（`Stale && !Dirty`），
+  差异只在几个明细字段宽度（`AMOUNT` 53→56 等 6 项），而 `1405` 当天谁也没动过。
+- **根因**：前端保存列宽走 `PUT /api/v1/document-workbench/{moduleId}/column-widths`，它把宽度写回
+  **按 `T_ID`** 的 `FIELDS.DISPLAY_LENGTH`（表级）。受影响的是**所有主表或明细表等于该表的模块**，
+  而写路径只把本模块当变更对象（此例 `14999`，且它还没有快照）⇒ 其它模块既不标脏也不重发布，
+  快照静默落后。明细表共用的情形尤其隐蔽：改一张列表的列宽，改的是单据表单的明细字段宽度。
+- **处置**：先看 `FIELDS.LAST_UPDATE_BY/LAST_UPDATE_DATE` 与同期 `AUDIT_EVENT`——`LAST_UPDATE_BY`
+  是**用户名**（如 `管理员`）说明是应用层写的，`EOS-MIG` 才是迁移写的；`AUDIT_EVENT` 里
+  `REQUEST_PATH=…/{moduleId}/column-widths`、`RESOURCE_KEY=column-widths:<表名>`、`CLIENT_TYPE=1`
+  （Web 前端）可直接定位到那次保存。确认后重发布受影响的模块即可一致。
+- **防线**：改字段元数据的写路径应把**所有主表/明细表等于该表**的模块标脏（当前没有，已登记 §6）；
+  排查"某模块莫名落后"时按上面两条线索先查应用层写入，不要先怀疑迁移。
+
 ## 五、测试写法
 
 ### L40 断言要能失败，假断言比没有断言更糟
