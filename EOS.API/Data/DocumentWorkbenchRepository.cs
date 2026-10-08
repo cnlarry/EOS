@@ -285,10 +285,10 @@ public sealed class DocumentWorkbenchRepository(
         const string sql = """
             SELECT m.M_IDX, LTRIM(RTRIM(m.M_DESC))
             FROM dbo.MODULES m WITH (NOLOCK)
+            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX AND n.NODE_KIND=N'WORKBENCH'
             WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)), '') IS NOT NULL
+              -- 形态之外还要有可操作的主表：助手列的是"能办事的模块"，无主表的工作台形态没有单据可办
               AND NULLIF(LTRIM(RTRIM(m.MASTER_TABLE)), '') IS NOT NULL
-              -- 承载页：声明 /workbench，或没声明（有主表即默认走统一工作台，见迁移 321）
-              AND LTRIM(RTRIM(ISNULL(m.M_URL, ''))) IN ('', '/workbench')
               AND (@Keyword = '' OR m.M_DESC LIKE @LikeKeyword)
             ORDER BY m.SORT_IDX, m.M_IDX;
             """;

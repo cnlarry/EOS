@@ -59,6 +59,32 @@ const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
 /** 行为配置页签：共用一份草稿与同一个常驻容器。 */
 const BEHAVIOR_TAB_KEYS: MenuFormTab[] = ['actions', 'rules', 'manual']
 
+/**
+ * 菜单节点形态。判据在**服务端**（`dbo.V_MODULE_NODE` + `ModuleRouteValidator.ResolveKind`，
+ * 同一规则的两侧实现），这里只消费 `NODE_KIND`，不重算——前端重算会变成第三处判据。
+ *
+ * 三形态能配的东西完全不同，所以 2301 按形态决定露出哪些页签：
+ * - `WORKBENCH`  统一工作台模块：全部配置面（主表/子表/分组/行为动作/校验规则/自定义按钮）；
+ * - `CUSTOMPAGE` 自定义承载页：业务由该页面自己解释，只有基础 + 数据源锚点，主表/副表只读；
+ * - `DIRECTORY`  目录节点：只承担层级/排序/图标/权限锚点，没有可配项。
+ */
+type NodeKind = 'WORKBENCH' | 'CUSTOMPAGE' | 'DIRECTORY'
+
+const NODE_KIND_LABELS: Record<NodeKind, { title: string; hint: string }> = {
+  WORKBENCH: {
+    title: '统一工作台模块',
+    hint: '由统一工作台承载：主表/子表、分组、行为动作、校验规则、自定义按钮都在这里配置，保存后需发布才生效。',
+  },
+  CUSTOMPAGE: {
+    title: '自定义承载页',
+    hint: '业务由该页面自己解释，不装配工作台定义：这里只维护基础信息与"数据源"（报表数据集、搜索中心、统一选择器按它取数）。主表/副表由开发团队定义，只读。',
+  },
+  DIRECTORY: {
+    title: '目录节点',
+    hint: '只承担菜单层级、排序、图标与权限锚点。改名、启停、排序、移动、删除都在左侧菜单上直接操作。',
+  },
+}
+
 export interface MenuAdminModule {
   M_IDX: number
   M_ALIAS: string | null
@@ -108,6 +134,12 @@ export interface MenuAdminModule {
   DIRTY_TAG?: boolean
   PUBLISH_VERSION?: number | null
   PUBLISHED_AT?: string | null
+  /**
+   * **只读**形态判定（服务端算，保存时忽略）：`WORKBENCH` / `CUSTOMPAGE` / `DIRECTORY`。
+   * 缺值（旧响应、测试夹具）按 `WORKBENCH` 处理——漏判的代价是"多显示几个页签"，
+   * 而不是把真正要配的东西藏起来。
+   */
+  NODE_KIND?: string | null
 }
 
 /** 发布校验结果与发布结果（与后端 WorkbenchPublishResult 对应）。 */
@@ -191,11 +223,13 @@ interface TreeEntry {
 /**
  * 模块状态的直观提示：未保存 > 已保存未发布 > 已发布（未发布过则提示未发布）。
  * 「已保存未发布」表示运行时仍按当前生效快照版本执行，发布后新配置才生效。
+ * `publishable=false`（不是统一工作台模块）时"发布"这件事不存在，只保留未保存提示。
  */
 function moduleStateBadge(
   draft: MenuAdminModule | null,
   selected: MenuAdminModule | null,
   hasExtraDrafts = false,
+  publishable = true,
 ): { label: string; className: string; title: string } | null {
   if (!draft) return null
   if (!selected) {
@@ -204,6 +238,7 @@ function moduleStateBadge(
   if (hasExtraDrafts || JSON.stringify(draft) !== JSON.stringify(selected)) {
     return { label: '已修改未保存', className: 'bg-warning-subtle text-warning', title: '当前表单有改动尚未保存。' }
   }
+  if (!publishable) return null
   if (selected.DIRTY_TAG) {
     return {
       label: '已保存未发布',
@@ -278,12 +313,13 @@ function Input({ label, value, onChange, type = 'text', placeholder, readOnly = 
 }
 
 /** 多行文本域：模块备注这类"写一段说明"的字段用（单行 Input 装不下，样式与 Input 同款）。 */
-function TextArea({ label, value, onChange, rows = 3, placeholder }: {
+function TextArea({ label, value, onChange, rows = 3, placeholder, readOnly = false }: {
   label: string
   value: string
   onChange: (value: string) => void
   rows?: number
   placeholder?: string
+  readOnly?: boolean
 }) {
   const inputId = `erp-menu-field-${label.replace(/[^\w\u4e00-\u9fa5]+/g, '-')}`
   return (
@@ -295,16 +331,22 @@ function TextArea({ label, value, onChange, rows = 3, placeholder }: {
         rows={rows}
         value={value}
         placeholder={placeholder}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
   )
 }
 
-function Checkbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+function Checkbox({ label, checked, onChange, disabled = false }: {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+}) {
   return (
     <label className="form-check form-switch mb-2">
-      <input className="form-check-input" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input className="form-check-input" type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       <span className="form-check-label">{label}</span>
     </label>
   )
@@ -314,6 +356,13 @@ export function MenuAdminPage() {
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [draft, setDraft] = useState<MenuAdminModule | null>(null)
+  /**
+   * 浏览态 / 编辑态：**选中节点只展示，点「编辑」才可输入**。
+   * 理由有两条：改名、启停、排序、移动、删除都在左侧菜单上直接操作，选中节点往往是为此而来，
+   * 一选中就摆出可输入的表单容易被误改；而配置面（主表/分组/行为动作）本就该是一次显式动作。
+   * 新增节点直接进编辑态（它还没有任何内容可浏览）。
+   */
+  const [editing, setEditing] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set())
   const [defaultColumnsOpen, setDefaultColumnsOpen] = useState<null | { table: 'master' | 'detail' }>(null)
   const [defaultColumnGroups, setDefaultColumnGroups] = useState<ColumnSelectorGroup[]>([])
@@ -342,17 +391,6 @@ export function MenuAdminPage() {
   const canModuleConfig = capabilitiesQuery.data?.canModuleConfig === true
   // 无主/副表的模块没有可挂载的行为配置：三个行为页签禁用并说明原因，而不是进得去却空转。
   const hasTables = draft != null && (draft.MASTER_TABLE != null || draft.DETAIL_TABLE != null)
-  const formTabs = useMemo(
-    () => MENU_FORM_TABS
-      .filter((tab) => canModuleConfig || !BEHAVIOR_TAB_KEYS.includes(tab.key))
-      .map((tab) => (BEHAVIOR_TAB_KEYS.includes(tab.key) && !hasTables
-        ? { ...tab, disabled: true, disabledReason: '该模块未配置操作主表/副表，没有可挂载的行为配置' }
-        : tab)),
-    [canModuleConfig, hasTables],
-  )
-  useEffect(() => {
-    if (!canModuleConfig && BEHAVIOR_TAB_KEYS.includes(formTab)) setFormTab('basic')
-  }, [canModuleConfig, formTab])
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
   // 行为动作/校验规则草稿：由行为动作页签上报（未打开该页签时为 null，保存时保持不动）
@@ -384,13 +422,6 @@ export function MenuAdminPage() {
       : [],
     enabled: Boolean(masterTableName),
   })
-  // 批核能力声明了、主表却没有状态位列：能力判定会拿不到状态，配置期就要提示。
-  // （曾经还看 FORM_BUTTONS 里有没有 approve/deapprove 码，该列已随迁移 320 退役。）
-  const masterMissingConfirmTag = Boolean(masterTableName)
-    && draft?.AUTO_APPROVE === true
-    && masterColumns.data !== undefined
-    && !masterColumns.data.some((column) => column.name.toLowerCase() === 'confirm_tag')
-
   const byId = useMemo(() => new Map((modules.data?.modules ?? []).map((module) => [module.M_IDX, module])), [modules.data])
   const filteredModules = useMemo(() => {
     const query = treeQuery.trim().toLowerCase()
@@ -413,7 +444,58 @@ export function MenuAdminPage() {
   }, [modules.data, treeQuery])
   const tree = useMemo(() => buildTree(filteredModules), [filteredModules])
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null
-  const stateBadge = moduleStateBadge(draft, selected, defaultColumnDrafts != null || actionsDraft?.dirty === true)
+  // 形态取自服务端投影；**新增节点还没有形态**（服务端保存时才算），按"全都能配"展示，
+  // 让用户先把节点定义出来（承载页与主表正是这几种形态的输入）。
+  // 缺值（旧响应、测试夹具）同样按 WORKBENCH 处理：漏判的代价是多显示几个页签，
+  // 而不是把真正要配的东西藏起来。
+  const nodeKind: NodeKind | null = selected == null
+    ? null
+    : (selected.NODE_KIND === 'CUSTOMPAGE' || selected.NODE_KIND === 'DIRECTORY'
+      ? selected.NODE_KIND
+      : 'WORKBENCH')
+  const isCustomPage = nodeKind === 'CUSTOMPAGE'
+  // 统一工作台（含新增）：分组与行为三类配置才有消费方；工作台定义不装配的节点配了也是空转。
+  const isWorkbenchShape = nodeKind === null || nodeKind === 'WORKBENCH'
+  // 自定义承载页的数据源锚点：主表/副表由开发团队定义（报表数据集、搜索中心与选择器按它取数），
+  // 只读；没有数据源表的那一栏不出现（12 个自定义承载页只有页面、没有数据源）。
+  const showMasterTab = !isCustomPage || draft?.MASTER_TABLE != null
+  const showDetailTab = !isCustomPage || draft?.DETAIL_TABLE != null
+  const formTabs = useMemo(
+    () => MENU_FORM_TABS
+      .filter((tab) => {
+        if (tab.key === 'master') return showMasterTab
+        if (tab.key === 'detail') return showDetailTab
+        if (tab.key === 'group') return isWorkbenchShape
+        if (BEHAVIOR_TAB_KEYS.includes(tab.key)) return isWorkbenchShape && canModuleConfig
+        return true
+      })
+      .map((tab) => {
+        if (!BEHAVIOR_TAB_KEYS.includes(tab.key)) return tab
+        // 浏览态里这三个页签看得见、点不开：它们的内容本身就是编辑面板（预演/保存都在里面），
+        // 而"看一眼配了什么"的需求由「编辑」一步满足，不必额外做一套只读渲染。
+        if (!editing) return { ...tab, disabled: true, disabledReason: '浏览态：点「编辑」后可配置行为动作 / 校验规则 / 自定义按钮' }
+        if (!hasTables) return { ...tab, disabled: true, disabledReason: '该模块未配置操作主表/副表，没有可挂载的行为配置' }
+        return tab
+      }),
+    [canModuleConfig, hasTables, isWorkbenchShape, showMasterTab, showDetailTab, editing],
+  )
+  // 形态或权限变化后，当前页签可能已经不在名单里（例如从工作台模块切到目录节点）：
+  // 渲染时直接落回基础页签，而不是用副作用去改状态（那会多一次渲染，且中间一帧是空白的）。
+  const activeFormTab: MenuFormTab = formTabs.some((tab) => tab.key === formTab) ? formTab : 'basic'
+  // 批核能力声明了、主表却没有状态位列：能力判定会拿不到状态，配置期就要提示。
+  // （曾经还看 FORM_BUTTONS 里有没有 approve/deapprove 码，该列已随迁移 320 退役。）
+  // 只对统一工作台模块提示：自动批核只在工作台保存链上生效，其余形态的该标志位不会被消费。
+  const masterMissingConfirmTag = isWorkbenchShape
+    && Boolean(masterTableName)
+    && draft?.AUTO_APPROVE === true
+    && masterColumns.data !== undefined
+    && !masterColumns.data.some((column) => column.name.toLowerCase() === 'confirm_tag')
+  const stateBadge = moduleStateBadge(
+    draft,
+    selected,
+    defaultColumnDrafts != null || actionsDraft?.dirty === true,
+    isWorkbenchShape,
+  )
 
   // 切换模块时丢弃上一模块的关联草稿与发布结果，避免误提交到新模块
   useEffect(() => {
@@ -568,11 +650,12 @@ export function MenuAdminPage() {
       await queryClient.invalidateQueries({ queryKey: ['module-business-config', savedId] })
       notifyMenuChanged()
       setSelectedId(savedId)
-      // 保存后保持该节点处于编辑态：用刷新后的列表数据回填草稿；列表尚未包含该节点时
-      // 回退为本次提交的内容，避免表单被清空、需要用户重新在左侧选中。
+      // 保存后回到浏览态，并用刷新后的列表数据回填表单（含服务端重算的 NODE_KIND）；
+      // 列表尚未包含该节点时回退为本次提交的内容，避免表单被清空、需要用户重新在左侧选中。
       const data = queryClient.getQueryData<{ total: number; modules: MenuAdminModule[] }>(['menu-admin', 'modules'])
       const fresh = data?.modules.find((module) => module.M_IDX === savedId)
       setDraft(fresh ? { ...fresh } : { ...input, M_IDX: savedId })
+      setEditing(false)
       setDefaultColumnDrafts(null)
       setPublishResult(null)
       setPublishError(null)
@@ -768,12 +851,15 @@ export function MenuAdminPage() {
     setEnabled.mutate({ id: module.M_IDX, enabled: !module.M_TAG })
   }
 
-  /** 取消编辑：丢弃模块表单、默认查询列与行为动作的未保存改动。 */
+  /** 取消编辑：丢弃改动、退回浏览态（新增节点没有可回退的原样，直接清掉表单）。 */
   const discardDraft = () => {
     setDraft(selected ? { ...selected } : null)
     setDefaultColumnDrafts(null)
     setPublishResult(null)
     setPublishError(null)
+    setEditing(false)
+    // 行为页签在浏览态是禁用的，别把用户停在一个点不开的页签上
+    if (BEHAVIOR_TAB_KEYS.includes(formTab)) setFormTab('basic')
     // 面板的装载点只在切换模块或显式重新加载时推进，故取消时也要推一次，让它回到服务端配置。
     setConfigReloadSignal((signal) => signal + 1)
     if (selectedId != null) void queryClient.invalidateQueries({ queryKey: ['module-business-config', selectedId] })
@@ -783,6 +869,8 @@ export function MenuAdminPage() {
     closeContextMenu()
     setSelectedId(null)
     setDraft(emptyDraft(module.M_IDX))
+    setFormTab('basic')
+    setEditing(true)
     setExpandedIds((current) => {
       const next = new Set(current)
       next.add(module.M_IDX)
@@ -922,6 +1010,7 @@ export function MenuAdminPage() {
     setSelectedId(module.M_IDX)
     setDraft({ ...module })
     setFormTab('basic')
+    setEditing(false)
   }
 
   const startNewRoot = () => {
@@ -929,6 +1018,7 @@ export function MenuAdminPage() {
     setSelectedId(null)
     setDraft(emptyDraft(null))
     setFormTab('basic')
+    setEditing(true)
   }
 
   const startNewChild = () => {
@@ -940,6 +1030,7 @@ export function MenuAdminPage() {
     setSelectedId(null)
     setDraft(emptyDraft(selectedId))
     setFormTab('basic')
+    setEditing(true)
   }
 
   const renderTree = (entries: TreeEntry[], depth: number) =>
@@ -1059,7 +1150,10 @@ export function MenuAdminPage() {
           <div className="ms-auto d-flex gap-2">
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewRoot}>新增根节点</Button>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewChild}>新增子节点</Button>
-            <Button size="sm" icon={<IconHistory size={16} />} title="查看该模块的历史发布版本" disabled={selectedId == null} onClick={() => setVersionsOpen(true)}>版本历史</Button>
+            {/* 发布快照只属于统一工作台模块：其余形态没有快照可看，按钮不出现 */}
+            {isWorkbenchShape && (
+              <Button size="sm" icon={<IconHistory size={16} />} title="查看该模块的历史发布版本" disabled={selectedId == null} onClick={() => setVersionsOpen(true)}>版本历史</Button>
+            )}
             <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void modules.refetch()}>刷新</Button>
           </div>
         </div>
@@ -1132,23 +1226,39 @@ export function MenuAdminPage() {
             <div className="col-lg-7">
               {draft ? (
                 <div className="p-3 erp-menu-form">
-                  <TabbedPanel tabs={formTabs} activeKey={formTab} onActiveKeyChange={setFormTab}>
-                    {formTab === 'basic' && (
+                  {/*
+                    形态说明条：三形态能配的东西完全不同，先讲清这个节点是什么、右侧为什么只给这些。
+                    新增节点还没有形态（服务端保存时才算），此时按"全都能配"展示，让用户先把它定义出来。
+                  */}
+                  <div className="alert alert-secondary py-2 px-3 small mb-2" role="note">
+                    <span className="fw-semibold">
+                      {nodeKind ? NODE_KIND_LABELS[nodeKind].title : '新增节点（形态在保存时确定）'}
+                    </span>
+                    <span className="ms-2">
+                      {nodeKind
+                        ? NODE_KIND_LABELS[nodeKind].hint
+                        : '填好承载页（与主表）后保存，服务端据此判定它是统一工作台模块、自定义承载页还是目录节点。'}
+                    </span>
+                    {!editing && <span className="ms-2 text-secondary">当前为浏览态，点「编辑」才能修改。</span>}
+                  </div>
+                  <TabbedPanel tabs={formTabs} activeKey={activeFormTab} onActiveKeyChange={setFormTab}>
+                    {activeFormTab === 'basic' && (
                       <>
                         <div className="row g-2">
                           <div className="col-6">
-                            <Input label="菜单名称" value={draft.M_DESC} onChange={(value) => patch((d) => ({ ...d, M_DESC: value }))} />
+                            <Input label="菜单名称" readOnly={!editing} value={draft.M_DESC} onChange={(value) => patch((d) => ({ ...d, M_DESC: value }))} />
                           </div>
                           <div className="col-6">
-                            <Input label="菜单别名" value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
+                            <Input label="菜单别名" readOnly={!editing} value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
                           </div>
                         </div>
-                        <Input label="页面链接（承载页）" value={draft.M_URL ?? ''} placeholder="留空=目录节点；单据模块填 /workbench；自定义页填真实路径" onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
-                        <div className="text-secondary small mb-2">承载页决定模块怎么开：留空 = 目录节点（只展开不跳转）；单据模块填 /workbench 走统一工作台；自定义页填真实路径（需同时登记服务端精确路径白名单与前端路由表）。新增/编辑能不能用由统一表单名单与权限决定——不再有单独的新增/修改路由配置。</div>
+                        <Input label="页面链接（承载页）" readOnly={!editing} value={draft.M_URL ?? ''} placeholder="留空=目录节点；单据模块填 /workbench；自定义页填真实路径" onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
+                        <div className="text-secondary small mb-2">承载页决定这个节点怎么开：留空 = 目录节点（只展开不跳转）；单据模块填 /workbench 走统一工作台；自定义页填真实路径（需同时登记服务端精确路径白名单与前端路由表）。保存后服务端据此定形态，右侧随之只留下该形态真正用得上的配置项。新增/编辑能不能用由统一表单名单与权限决定——不再有单独的新增/修改路由配置。</div>
                         {/* 备注：库列 MODULES.REMARK。写"这个模块是干什么的"，方便后来接手的人一眼看懂；
                             它不参与任何运行期契约（不装配工作台定义、不进快照），纯粹是给人看的说明 */}
                         <TextArea
                           label="备注"
+                          readOnly={!editing}
                           value={draft.REMARK ?? ''}
                           rows={3}
                           placeholder="这个模块是干什么的、有什么口径约定——写给后来接手的人看"
@@ -1156,24 +1266,38 @@ export function MenuAdminPage() {
                         />
                       </>
                     )}
-                    {formTab === 'master' && (
+                    {activeFormTab === 'master' && (
                       <>
                         <div className="row g-2">
                           <div className="col-6">
-                            <Input label="操作主表名" readOnly value={draft.MASTER_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, MASTER_TABLE: value || null }))} />
+                            <Input label={isCustomPage ? '数据源主表名' : '操作主表名'} readOnly value={draft.MASTER_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, MASTER_TABLE: value || null }))} />
                             <div className="d-flex gap-2">
-                              <Button size="sm" onClick={() => openTableChooser('master')}>选择…</Button>
-                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE || selectedId == null}>默认列</Button>
-                              <Button size="sm" variant="ghost" title="清除操作主表名" onClick={() => patch((d) => ({ ...d, MASTER_TABLE: null, MASTER_TABLE_DESC: null }))}>清除</Button>
+                              {!isCustomPage && (
+                                <Button size="sm" onClick={() => openTableChooser('master')} disabled={!editing}>选择…</Button>
+                              )}
+                              {isWorkbenchShape && (
+                                <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!editing || !draft.MASTER_TABLE || selectedId == null}>默认列</Button>
+                              )}
+                              {!isCustomPage && (
+                                <Button size="sm" variant="ghost" title="清除操作主表名" disabled={!editing} onClick={() => patch((d) => ({ ...d, MASTER_TABLE: null, MASTER_TABLE_DESC: null }))}>清除</Button>
+                              )}
                             </div>
+                            {isCustomPage && (
+                              <div className="text-secondary small">
+                                主表由开发团队定义：报表数据集、搜索中心与统一选择器都按它取数，改这里会打断那些消费方，故只读。
+                              </div>
+                            )}
                           </div>
                           <div className="col-6">
-                            <Input label="主表过滤条件" readOnly value={draft.FILTER ?? ''} onChange={(value) => patch((d) => ({ ...d, FILTER: value || null }))} />
+                            <Input label={isCustomPage ? '数据源过滤条件' : '主表过滤条件'} readOnly value={draft.FILTER ?? ''} onChange={(value) => patch((d) => ({ ...d, FILTER: value || null }))} />
                             <div className={filterStatus.className}>{filterStatus.text}</div>
                             <div className="d-flex gap-2">
-                              <Button size="sm" title="构建主表过滤条件" onClick={() => setFilterBuilderOpen(true)} disabled={!draft.MASTER_TABLE}>构建…</Button>
-                              <Button size="sm" variant="ghost" title="清除主表过滤条件" onClick={() => patch((d) => ({ ...d, FILTER: null }))}>清除</Button>
+                              <Button size="sm" title="构建主表过滤条件" onClick={() => setFilterBuilderOpen(true)} disabled={!editing || !draft.MASTER_TABLE}>构建…</Button>
+                              <Button size="sm" variant="ghost" title="清除主表过滤条件" disabled={!editing} onClick={() => patch((d) => ({ ...d, FILTER: null }))}>清除</Button>
                             </div>
+                            {isCustomPage && (
+                              <div className="text-secondary small">同一条件也是报表的数据范围与选择器的数据范围（它们不经快照、实时读这里），所以自定义承载页也保留可编辑。</div>
+                            )}
                           </div>
                         </div>
                         {masterMissingConfirmTag && (
@@ -1181,67 +1305,90 @@ export function MenuAdminPage() {
                             主表缺少 CONFIRM_TAG：当前配置具备批核能力（自动批核/批核过程/批核按钮），发布时将被 lifecycle_columns 门拦截。请补列后重发布，或关闭批核能力。
                           </div>
                         )}
-                        <div className="row g-2">
-                          <div className="col-6">
-                            <Input label="排序字段" readOnly value={draft.SORT_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, SORT_FIELDS: value || null }))} />
-                            <div className="d-flex gap-2">
-                              <Button size="sm" title="选择排序字段" onClick={() => setFieldPicker({ target: 'sortFields' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
-                              <Button size="sm" variant="ghost" title="清除排序字段" onClick={() => patch((d) => ({ ...d, SORT_FIELDS: null }))}>清除</Button>
+                        {isWorkbenchShape && (
+                          <>
+                            <div className="row g-2">
+                              <div className="col-6">
+                                <Input label="排序字段" readOnly value={draft.SORT_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, SORT_FIELDS: value || null }))} />
+                                <div className="d-flex gap-2">
+                                  <Button size="sm" title="选择排序字段" onClick={() => setFieldPicker({ target: 'sortFields' })} disabled={!editing || !draft.MASTER_TABLE}>选择…</Button>
+                                  <Button size="sm" variant="ghost" title="清除排序字段" disabled={!editing} onClick={() => patch((d) => ({ ...d, SORT_FIELDS: null }))}>清除</Button>
+                                </div>
+                              </div>
+                              <div className="col-6">
+                                <Input label="字段有值时不可解批（主表）" readOnly value={draft.NOT_BACK_FIELDS_M ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: value || null }))} />
+                                <div className="d-flex gap-2">
+                                  <Button size="sm" title="选择不可解批主表字段" onClick={() => setFieldPicker({ target: 'notBackM' })} disabled={!editing || !draft.MASTER_TABLE}>选择…</Button>
+                                  <Button size="sm" variant="ghost" title="清除不可解批主表字段" disabled={!editing} onClick={() => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: null }))}>清除</Button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="col-6">
-                            <Input label="字段有值时不可解批（主表）" readOnly value={draft.NOT_BACK_FIELDS_M ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: value || null }))} />
-                            <div className="d-flex gap-2">
-                              <Button size="sm" title="选择不可解批主表字段" onClick={() => setFieldPicker({ target: 'notBackM' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
-                              <Button size="sm" variant="ghost" title="清除不可解批主表字段" onClick={() => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: null }))}>清除</Button>
+                            <div className="text-secondary small fw-semibold mt-2 mb-1">单据行为</div>
+                            <div className="d-flex flex-wrap gap-3">
+                              <Checkbox label="自动批核" disabled={!editing} checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked }))} />
+                              <Checkbox label="可以复制" disabled={!editing} checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
+                              <Checkbox label="异常记录不可保存" disabled={!editing} checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
+                              <Checkbox label="效果引擎（灰度开关）" disabled={!editing} checked={draft.EFFECT_ENGINE_TAG} onChange={(checked) => patch((d) => ({ ...d, EFFECT_ENGINE_TAG: checked }))} />
                             </div>
-                          </div>
-                        </div>
-                        <div className="text-secondary small fw-semibold mt-2 mb-1">单据行为</div>
-                        <div className="d-flex flex-wrap gap-3">
-                          <Checkbox label="通用查询（主表）" checked={draft.SEARCH_1} onChange={(checked) => patch((d) => ({ ...d, SEARCH_1: checked }))} />
-                          <Checkbox label="自动批核" checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked }))} />
-                          <Checkbox label="可以复制" checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
-                          <Checkbox label="异常记录不可保存" checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
-                          <Checkbox label="效果引擎（灰度开关）" checked={draft.EFFECT_ENGINE_TAG} onChange={(checked) => patch((d) => ({ ...d, EFFECT_ENGINE_TAG: checked }))} />
+                          </>
+                        )}
+                        {/* 通用查询两面都留着：搜索中心（/search-center）是独立于承载页的可达面，
+                            只要有主表就能用，与"由谁承载"无关。 */}
+                        <div className="d-flex flex-wrap gap-3 mt-2">
+                          <Checkbox label="通用查询（主表）" disabled={!editing} checked={draft.SEARCH_1} onChange={(checked) => patch((d) => ({ ...d, SEARCH_1: checked }))} />
                         </div>
                       </>
                     )}
-                    {formTab === 'detail' && (
+                    {activeFormTab === 'detail' && (
                       <>
                         <div className="row g-2">
                           <div className="col-6">
-                            <Input label="操作副表名" readOnly value={draft.DETAIL_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_TABLE: value || null }))} />
+                            <Input label={isCustomPage ? '数据源副表名' : '操作副表名'} readOnly value={draft.DETAIL_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_TABLE: value || null }))} />
                             <div className="d-flex gap-2">
-                              <Button size="sm" onClick={() => openTableChooser('detail')}>选择…</Button>
-                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE || selectedId == null}>默认列</Button>
-                              <Button size="sm" variant="ghost" title="清除操作副表名" onClick={() => patch((d) => ({ ...d, DETAIL_TABLE: null, DETAIL_TABLE_DESC: null }))}>清除</Button>
+                              {!isCustomPage && (
+                                <Button size="sm" onClick={() => openTableChooser('detail')} disabled={!editing}>选择…</Button>
+                              )}
+                              {isWorkbenchShape && (
+                                <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!editing || !draft.DETAIL_TABLE || selectedId == null}>默认列</Button>
+                              )}
+                              {!isCustomPage && (
+                                <Button size="sm" variant="ghost" title="清除操作副表名" disabled={!editing} onClick={() => patch((d) => ({ ...d, DETAIL_TABLE: null, DETAIL_TABLE_DESC: null }))}>清除</Button>
+                              )}
                             </div>
+                            {isCustomPage && (
+                              <div className="text-secondary small">副表与主表同口径：由开发团队定义，报表与选择器按它取字段。</div>
+                            )}
                           </div>
-                          <div className="col-6">
-                            <Input label="新增明细时必需字段" readOnly value={draft.DETAIL_NO_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_NO_FIELDS: value || null }))} />
-                            <div className="d-flex gap-2">
-                              <Button size="sm" title="选择新增明细必需字段" onClick={() => setFieldPicker({ target: 'detailNoFields' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
-                              <Button size="sm" variant="ghost" title="清除新增明细必需字段" onClick={() => patch((d) => ({ ...d, DETAIL_NO_FIELDS: null }))}>清除</Button>
+                          {isWorkbenchShape && (
+                            <div className="col-6">
+                              <Input label="新增明细时必需字段" readOnly value={draft.DETAIL_NO_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_NO_FIELDS: value || null }))} />
+                              <div className="d-flex gap-2">
+                                <Button size="sm" title="选择新增明细必需字段" onClick={() => setFieldPicker({ target: 'detailNoFields' })} disabled={!editing || !draft.DETAIL_TABLE}>选择…</Button>
+                                <Button size="sm" variant="ghost" title="清除新增明细必需字段" disabled={!editing} onClick={() => patch((d) => ({ ...d, DETAIL_NO_FIELDS: null }))}>清除</Button>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
-                        <div className="row g-2">
-                          <div className="col-6">
-                            <Input label="字段有值时不可解批（副表）" readOnly value={draft.NOT_BACK_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS: value || null }))} />
-                            <div className="d-flex gap-2">
-                              <Button size="sm" title="选择不可解批副表字段" onClick={() => setFieldPicker({ target: 'notBack' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
-                              <Button size="sm" variant="ghost" title="清除不可解批副表字段" onClick={() => patch((d) => ({ ...d, NOT_BACK_FIELDS: null }))}>清除</Button>
+                        {isWorkbenchShape && (
+                          <div className="row g-2">
+                            <div className="col-6">
+                              <Input label="字段有值时不可解批（副表）" readOnly value={draft.NOT_BACK_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS: value || null }))} />
+                              <div className="d-flex gap-2">
+                                <Button size="sm" title="选择不可解批副表字段" onClick={() => setFieldPicker({ target: 'notBack' })} disabled={!editing || !draft.DETAIL_TABLE}>选择…</Button>
+                                <Button size="sm" variant="ghost" title="清除不可解批副表字段" disabled={!editing} onClick={() => patch((d) => ({ ...d, NOT_BACK_FIELDS: null }))}>清除</Button>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
                         <div className="d-flex flex-wrap gap-3 my-2">
-                          <Checkbox label="通用查询（副表）" checked={draft.SEARCH_2} onChange={(checked) => patch((d) => ({ ...d, SEARCH_2: checked }))} />
-                          <Checkbox label="无明细资料不可保存" checked={draft.DETAIL_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, DETAIL_NO_SAVE: checked }))} />
+                          <Checkbox label="通用查询（副表）" disabled={!editing} checked={draft.SEARCH_2} onChange={(checked) => patch((d) => ({ ...d, SEARCH_2: checked }))} />
+                          {isWorkbenchShape && (
+                            <Checkbox label="无明细资料不可保存" disabled={!editing} checked={draft.DETAIL_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, DETAIL_NO_SAVE: checked }))} />
+                          )}
                         </div>
                       </>
                     )}
-                    {formTab === 'group' && (
+                    {activeFormTab === 'group' && (
                       <>
                         {[1, 2, 3, 4, 5].map((index) => (
                           <div className="card mb-2 erp-menu-group-card" key={index}>
@@ -1249,17 +1396,20 @@ export function MenuAdminPage() {
                               <div className="d-flex align-items-center gap-3">
                                 <Checkbox
                                   label={`分组表达式${index}`}
+                                  disabled={!editing}
                                   checked={draft[`GROUP${index}` as keyof MenuAdminModule] as boolean}
                                   onChange={(checked) => setGroup(index, 'enabled', checked)}
                                 />
                                 <Input
                                   label={`表达式描述${index}`}
+                                  readOnly={!editing}
                                   value={(draft[`GROUP_DESC${index}` as keyof MenuAdminModule] as string | null) ?? ''}
                                   onChange={(value) => setGroup(index, 'description', value || null)}
                                 />
                               </div>
                               <Input
                                 label={`表达式${index}（如 TABLE.COL、CASE 或日期函数）`}
+                                readOnly={!editing}
                                 value={(draft[`GROUP_EXP${index}` as keyof MenuAdminModule] as string | null) ?? ''}
                                 onChange={(value) => setGroup(index, 'expression', value || null)}
                               />
@@ -1268,12 +1418,14 @@ export function MenuAdminPage() {
                         ))}
                       </>
                     )}
-                    {canModuleConfig && (
+                    {isWorkbenchShape && canModuleConfig && editing && (
                       // 与上面的页签条件同层级、不被 formTab 包裹：切页签只换视图，
                       // 组件不卸载，否则未保存的行为配置会被装载副作用重置掉。
+                      // 只有统一工作台会执行行为动作与校验规则，其余形态连页签都不渲染；
+                      // 浏览态也不渲染（面板自身就是编辑面，进出编辑态时按需重装草稿）。
                       <BusinessActionsPanel
                         module={draft}
-                        view={BEHAVIOR_TAB_KEYS.includes(formTab) ? formTab as BusinessActionsView : null}
+                        view={BEHAVIOR_TAB_KEYS.includes(activeFormTab) ? activeFormTab as BusinessActionsView : null}
                         reloadSignal={configReloadSignal}
                         onDraftChange={handleActionsDraftChange}
                       />
@@ -1306,21 +1458,36 @@ export function MenuAdminPage() {
                     )
                   )}
                   <div className="d-flex align-items-center gap-2 mt-3 flex-wrap">
+                    {/* 浏览态只给进入编辑的入口（发布是"对已保存配置"的动作，浏览态就能做）；
+                        编辑态才是保存/取消。改名、启停、排序、移动、删除都在左侧菜单上，不在这里。 */}
                     <ErpCommandBar
-                      items={[
-                        { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => void save.mutate(draft) },
-                        ...(canModuleConfig
-                          ? [{
-                              action: 'publish',
-                              label: '发布',
-                              icon: <IconRocket size={16} />,
-                              loading: publish.isPending,
-                              disabled: save.isPending,
-                              onClick: () => publish.mutate(),
-                            }]
-                          : []),
-                        { action: 'cancel', label: '取消', onClick: discardDraft },
-                      ]}
+                      items={editing
+                        ? [
+                            { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => void save.mutate(draft) },
+                            ...(canModuleConfig && isWorkbenchShape
+                              ? [{
+                                  action: 'publish',
+                                  label: '发布',
+                                  icon: <IconRocket size={16} />,
+                                  loading: publish.isPending,
+                                  disabled: save.isPending,
+                                  onClick: () => publish.mutate(),
+                                }]
+                              : []),
+                            { action: 'cancel', label: '取消', onClick: discardDraft },
+                          ]
+                        : [
+                            { action: 'edit' as const, label: '编辑', icon: <IconEdit size={16} />, onClick: () => setEditing(true) },
+                            ...(canModuleConfig && isWorkbenchShape && selectedId != null
+                              ? [{
+                                  action: 'publish' as const,
+                                  label: '发布',
+                                  icon: <IconRocket size={16} />,
+                                  loading: publish.isPending,
+                                  onClick: () => publish.mutate(),
+                                }]
+                              : []),
+                          ]}
                     />
                     {stateBadge && (
                       <span className={`badge ${stateBadge.className}`} title={stateBadge.title}>{stateBadge.label}</span>
@@ -1333,7 +1500,7 @@ export function MenuAdminPage() {
                   )}
                 </div>
               ) : (
-                <div className="p-4 text-secondary text-center">请在左侧选择菜单节点进行编辑，或点击「新增根节点 / 新增子节点」。</div>
+                <div className="p-4 text-secondary text-center">请在左侧选择菜单节点查看或配置，或点击「新增根节点 / 新增子节点」。</div>
               )}
             </div>
           </div>

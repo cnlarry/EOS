@@ -73,7 +73,13 @@ public sealed record MenuAdminModule(
     /// 模块备注：写"这个模块是干什么的"、口径约定等附加信息，给后来接手的人看。
     /// 2301「基础」页签可编辑（2026-10-06 用户要求把它放出来）；空串按 NULL 落库。
     /// </summary>
-    [property: JsonPropertyName("REMARK")] string? REMARK = null);
+    [property: JsonPropertyName("REMARK")] string? REMARK = null,
+    /// <summary>
+    /// **只读**形态判定（服务端算，保存时忽略）：`WORKBENCH` 统一工作台模块 / `CUSTOMPAGE` 自定义承载页 /
+    /// `DIRECTORY` 目录节点。与 SQL 视图 `dbo.V_MODULE_NODE` 同源，2301 据此决定哪些配置项该出现
+    /// （目录没有可配项；自定义承载页只留基础与数据源锚点；工作台模块全配）。
+    /// </summary>
+    [property: JsonPropertyName("NODE_KIND")] string? NODE_KIND = null);
     // 表单呈现配置（打开方式 / 弹窗宽高）不在这张只读投影里：模块管理只管模块自身的字段，
     // 呈现配置与页签级一行几列都在——且只在——表单设计器里配（`FormLayoutRepository` 读写
     // `MODULES.FORM_OPEN_MODE` 等三列与 `MODULE_FORM_TAB.LAYOUT_COLUMNS`）。

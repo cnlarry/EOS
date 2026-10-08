@@ -467,10 +467,11 @@ public sealed class MenuAdminRepository(
     {
         // 呈现配置（打开方式 / 弹窗宽高 / 栅格列数）不在本端点的写面上：它归表单设计器，
         // 随版式保存 + 同请求重发布（保存即生效）。此处只读回显示，写路径见 FormLayoutRepository。
-        var input = request.Module;
+        var input = NormalizeForKind(request.Module);
         if (oldId is { } updateId && input.M_IDX <= 0)
             throw new ArgumentException("菜单编号必须为正整数。");
         Validate(input);
+        var kind = ModuleRouteValidator.ResolveKind(input.M_URL, input.MASTER_TABLE);
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
@@ -485,6 +486,7 @@ public sealed class MenuAdminRepository(
                     input = input with { SORT_IDX = await NextSiblingSortAsync(connection, transaction, input.M_P_IDX, token) };
             }
             await EnsureTablesExistAsync(connection, transaction, input, token);
+            await EnsureShapeInvariantsAsync(connection, transaction, oldId, input, kind, token);
             var rootIdx = await ResolveRootAsync(connection, transaction, input.M_P_IDX, input.M_IDX, token);
             if (oldId is { } currentId)
             {
@@ -530,10 +532,22 @@ public sealed class MenuAdminRepository(
                 foreach (var columns in defaultColumns)
                     await SaveDefaultColumnsScopedAsync(connection, transaction, masterTable, detailTable, columns, token);
             }
-            await dirtyMarker.MarkDirtyAsync(connection, transaction, input.M_IDX, updatedBy, token);
+            // 只有统一工作台模块需要重发布：目录节点与自定义承载页不装配工作台定义，
+            // 给它们标脏只会在"待发布"清单里挂上永远发布不出来的条目（发布门会直接拒绝它们）。
+            // 形态从工作台切走的节点要把旧脏标记撤掉，否则它会一直留在清单里。
+            if (kind == ModuleNodeKind.Workbench)
+            {
+                await dirtyMarker.MarkDirtyAsync(connection, transaction, input.M_IDX, updatedBy, token);
+            }
+            else
+            {
+                await dirtyMarker.ClearDirtyAsync(connection, transaction, input.M_IDX, token);
+            }
             if (oldId is { } oldModuleId && oldModuleId != input.M_IDX)
             {
-                await dirtyMarker.MarkDirtyAsync(connection, transaction, oldModuleId, updatedBy, token);
+                // 编号变更后旧编号已不存在：脏标记表没有外键、编号级联语句也不管它，
+                // 在这里再标一笔只会留下一个指向空编号的孤儿行。
+                await dirtyMarker.ClearDirtyAsync(connection, transaction, oldModuleId, token);
             }
             await transaction.CommitAsync(token);
             await auditWriter.WriteBestEffortAsync(input.M_IDX, $"{oldId}->{input.M_IDX}", "SAVE", "保存菜单节点", updatedBy, "MENU", result: 1, null, token);
@@ -683,6 +697,113 @@ public sealed class MenuAdminRepository(
             throw new ArgumentException("页面链接不符合路由契约：应为承载页（如 /workbench，不带编号）、精确路径，或留空（目录节点/未声明承载页）。");
     }
 
+    /// <summary>
+    /// 形态外的配置项一律落回默认值。理由不是"省事"，而是这些列在那些形态下**没有消费方**：
+    /// 排序字段 / 不可解批 / 自动批核 / 可复制 / 异常不可保存 / 明细必需字段 / 无明细不可保存
+    /// 全部经工作台定义或效果引擎生效；分组表达式只在工作台列表上取分组值。
+    ///
+    /// 两处**不**清空：
+    /// - <c>FILTER</c>：它同时是报表的数据范围与选择器的数据范围，任何形态都会被**实时**读
+    ///   （不经快照），只在"没有主表、无从过滤"时才清掉；
+    /// - <c>SEARCH_1/2</c>：搜索中心是独立于承载页的可达面（`/search-center`），只要有主表就能用；
+    ///   没有主表则必须清掉——搜索中心的模块清单直接读 `MASTER_TABLE`，为 NULL 会整页 500。
+    /// </summary>
+    private static MenuAdminModule NormalizeForKind(MenuAdminModule input)
+    {
+        if (ModuleRouteValidator.ResolveKind(input.M_URL, input.MASTER_TABLE) == ModuleNodeKind.Workbench)
+            return input;
+        var hasMaster = !string.IsNullOrWhiteSpace(input.MASTER_TABLE);
+        return input with
+        {
+            SORT_FIELDS = null,
+            NOT_BACK_FIELDS = null,
+            NOT_BACK_FIELDS_M = null,
+            AUTO_APPROVE = false,
+            IF_COPY = false,
+            ERROR_NO_SAVE = false,
+            DETAIL_NO_FIELDS = null,
+            DETAIL_NO_SAVE = false,
+            EffectEngineTag = false,
+            FILTER = hasMaster ? input.FILTER : null,
+            SEARCH_1 = hasMaster ? input.SEARCH_1 : false,
+            SEARCH_2 = hasMaster ? input.SEARCH_2 : false,
+            GROUP1 = false, GROUP_EXP1 = null, GROUP_DESC1 = null,
+            GROUP2 = false, GROUP_EXP2 = null, GROUP_DESC2 = null,
+            GROUP3 = false, GROUP_EXP3 = null, GROUP_DESC3 = null,
+            GROUP4 = false, GROUP_EXP4 = null, GROUP_DESC4 = null,
+            GROUP5 = false, GROUP_EXP5 = null, GROUP_DESC5 = null,
+        };
+    }
+
+    /// <summary>库内已落地的形态事实（主表 / 副表 / 数据范围），用于比对"这次改了没有"。</summary>
+    private sealed record StoredShape(string? Master, string? Detail, string? Filter);
+
+    /// <summary>
+    /// 形态不变量的服务端兜底（前端隐藏只改善体验，真源在服务端）：
+    /// ① 非统一工作台模块的主表/副表由开发团队定义——它们是报表数据集、搜索中心与选择器的锚点，
+    ///    菜单管理只展示不允许改；
+    /// ② <c>FILTER</c> 被报表与选择器实时消费，文本一变就必须过受控解析器；文本没变则放行，
+    ///    免得历史遗留的坏值把同一行上其它字段的保存一并卡死。
+    /// </summary>
+    private async Task EnsureShapeInvariantsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int? oldId,
+        MenuAdminModule input,
+        ModuleNodeKind kind,
+        CancellationToken token)
+    {
+        if (oldId is { } currentId)
+        {
+            var stored = await ReadStoredShapeAsync(connection, transaction, currentId, token);
+            if (kind != ModuleNodeKind.Workbench
+                && (!SameTable(stored.Master, input.MASTER_TABLE) || !SameTable(stored.Detail, input.DETAIL_TABLE)))
+            {
+                throw new ArgumentException(
+                    "该节点不是统一工作台模块，它的主表/副表由开发团队定义（报表数据集、搜索中心与选择器的锚点），不能在菜单管理里修改。");
+            }
+            if (SameFilter(stored.Filter, input.FILTER)) return;
+        }
+        await EnsureFilterSupportedAsync(connection, input, token);
+    }
+
+    private static async Task<StoredShape> ReadStoredShapeAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),LTRIM(RTRIM(ISNULL(FILTER,'')))
+            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@Id;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+            throw new KeyNotFoundException($"菜单节点 {moduleId} 不存在。");
+        return new StoredShape(
+            NullIfBlank(reader.GetString(0)),
+            NullIfBlank(reader.GetString(1)),
+            NullIfBlank(reader.GetString(2)));
+    }
+
+    private static async Task EnsureFilterSupportedAsync(SqlConnection connection, MenuAdminModule input, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(input.FILTER)) return;
+        var masterTable = input.MASTER_TABLE?.Trim() ?? string.Empty;
+        if (masterTable.Length == 0)
+            throw new ArgumentException("未配置操作主表时不允许设置模块过滤条件（没有可过滤的对象）。");
+        if (!await WorkbenchDefinitionValidator.TryValidateModuleFilterAsync(connection, masterTable, input.FILTER, token))
+            throw new ArgumentException(
+                "模块过滤条件超出受控子集，已拒绝保存（与报表数据范围、选择器数据范围共用同一解析器）。");
+    }
+
+    private static string? NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static bool SameTable(string? left, string? right) =>
+        string.Equals(left ?? string.Empty, right?.Trim() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameFilter(string? left, string? right) =>
+        string.Equals(left ?? string.Empty, right?.Trim() ?? string.Empty, StringComparison.Ordinal);
+
     private static MenuAdminModule ReadModule(SqlDataReader reader) => new(
         reader.GetInt32(0),
         GetString(reader, 1), GetString(reader, 2) ?? string.Empty, GetString(reader, 3), GetString(reader, 4),
@@ -712,7 +833,11 @@ public sealed class MenuAdminRepository(
         PublishVersion: reader.IsDBNull(44) ? null : reader.GetInt32(44),
         PublishedAt: reader.IsDBNull(45) ? null : reader.GetDateTime(45),
         // REMARK 追加在两个 SELECT 的**最末尾**（下标 46）：既有 0..45 的下标一个都不用挪
-        REMARK: GetString(reader, 46));
+        REMARK: GetString(reader, 46),
+        // 形态由承载页（下标 3）与主表（下标 15）算出，不落库：库里只有一个事实来源，
+        // 投影只是它的读法（见 ModuleNodeKind）。
+        NODE_KIND: ModuleRouteValidator.WireName(
+            ModuleRouteValidator.ResolveKind(GetString(reader, 3), GetString(reader, 15))));
 
     private async Task<(string? Master, string? Detail)> ResolveModuleTablesAsync(int moduleId, CancellationToken token)
     {

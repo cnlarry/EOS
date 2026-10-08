@@ -100,13 +100,14 @@ function mockPageWithBusinessConfig(
   }, capabilities)
 }
 
-/** 渲染页面并进入含表模块（默认打开「行为动作」页签）。 */
+/** 渲染页面并进入含表模块（默认打开「行为动作」页签；行为页签只在编辑态可开）。 */
 async function openModuleTab(tab = '行为动作') {
   renderPage()
   await waitForMenuTree()
   fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
   fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
   fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+  enterEdit()
   fireEvent.click(screen.getByRole('tab', { name: tab }))
 }
 
@@ -161,6 +162,14 @@ async function waitForMenuTree() {
   await waitFor(() => expect(screen.getByRole('button', { name: /基本参数/ })).toBeInTheDocument(), { timeout: 5000 })
 }
 
+/**
+ * 进入编辑态：选中节点后右侧默认是**浏览态**（改名/启停/排序/移动都在左侧菜单上做，
+ * 一选中就摆出可输入的表单容易被误改），改任何东西之前先点「编辑」。
+ */
+function enterEdit() {
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+}
+
 describe('MenuAdminPage', () => {
   beforeEach(() => {
     mockPageGetValue({ total: modules.length, modules })
@@ -187,6 +196,7 @@ describe('MenuAdminPage', () => {
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    enterEdit()
     fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '基本参数-改' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/menus/11',
@@ -200,6 +210,7 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
 
     // 备注是基础页签里的多行文本域（库列 MODULES.REMARK）：写"这个模块是干什么的"
+    enterEdit()
     const remark = screen.getByLabelText('备注')
     expect(remark.tagName).toBe('TEXTAREA')
     fireEvent.change(remark, { target: { value: '系统级参数维护：单位/币种/编码规则等' } })
@@ -216,6 +227,7 @@ describe('MenuAdminPage', () => {
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    enterEdit()
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     // onSuccess 以「保存成功」提示收尾，此时草稿回填已完成
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('菜单保存成功。'))
@@ -367,6 +379,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '默认列' }))
@@ -713,6 +726,7 @@ describe('MenuAdminPage', () => {
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getAllByRole('button', { name: '选择…' }).length).toBeGreaterThan(0))
     fireEvent.click(screen.getAllByRole('button', { name: '选择…' })[0])
@@ -740,6 +754,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
@@ -769,6 +784,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '子表' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
@@ -793,6 +809,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
@@ -844,6 +861,82 @@ describe('MenuAdminPage', () => {
     expect(screen.queryByRole('button', { name: '打开表单设计器' })).toBeNull()
   })
 
+  it('选中节点默认为浏览态：表单只读且没有保存钮，点「编辑」后才可输入', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+
+    expect(screen.getByLabelText('菜单名称')).toHaveAttribute('readonly')
+    expect(screen.getByText(/当前为浏览态/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
+
+    enterEdit()
+    expect(screen.getByLabelText('菜单名称')).not.toHaveAttribute('readonly')
+    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '基本参数-改' } })
+    expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数-改')
+  })
+
+  it('目录节点：不出现分组与行为页签，也没有版本历史（发布快照不存在）', async () => {
+    mockPageGetValue({
+      total: 1,
+      modules: [{ ...moduleNode(11, '基本参数', null), NODE_KIND: 'DIRECTORY' }],
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+
+    // 形态说明条讲清这个节点是什么，右侧只剩它真正用得上的页签
+    expect(screen.getByText('目录节点')).toBeInTheDocument()
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['基础', '主表', '子表'])
+    expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: '行为动作' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /版本历史/ })).toBeNull()
+  })
+
+  it('自定义承载页：主表只读、无分组与行为页签，发布与默认列入口不出现', async () => {
+    mockPageGetValue({
+      total: 2,
+      modules: [
+        moduleNode(11, '基本参数', null),
+        {
+          ...moduleNode(2306, '用户权限设定', null),
+          NODE_KIND: 'CUSTOMPAGE',
+          M_URL: '/admin/users',
+          MASTER_TABLE: 'SYSDL',
+        },
+      ],
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /用户权限设定/ }))
+    await waitFor(() => expect(screen.getByText('自定义承载页')).toBeInTheDocument())
+
+    expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: '行为动作' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '发布' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /版本历史/ })).toBeNull()
+
+    enterEdit()
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    // 数据源锚点由开发团队定义：只读，且没有选择/清除/默认列入口
+    expect(screen.getByLabelText('数据源主表名')).toHaveValue('SYSDL')
+    expect(screen.getByLabelText('数据源主表名')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: '选择…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '默认列' })).toBeNull()
+    // 数据范围仍可改（受控：只能经构建器写、不能手输）——报表与选择器实时读它，不经快照
+    expect(screen.getByLabelText('数据源过滤条件')).toHaveAttribute('readonly')
+    expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled()
+    expect(screen.getByTitle('清除主表过滤条件')).toBeEnabled()
+    // 单据行为只属于统一工作台：这些开关在自定义承载页上不出现
+    expect(screen.queryByRole('checkbox', { name: '自动批核' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: '效果引擎（灰度开关）' })).toBeNull()
+    // 但通用查询留着：搜索中心是独立于承载页的可达面
+    expect(screen.getByRole('checkbox', { name: '通用查询（主表）' })).toBeEnabled()
+  })
+
   it('过滤条件构建器：未选择字段时给出错误并禁止保存', async () => {
     const fieldRows = [
       { F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
@@ -857,6 +950,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled())
 
@@ -882,6 +976,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled())
 
@@ -908,6 +1003,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled())
 
@@ -989,6 +1085,7 @@ describe('MenuAdminPage', () => {
 
     // 纯菜单节点（无主表也无副表）：三个行为页签都在，但点不动，且说明原因。
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    enterEdit()
     // 7 个：基础/主表/子表/分组 + 三个行为页签（「统一表单」页签已删，2026-10-06）
     expect(screen.getAllByRole('tab')).toHaveLength(7)
     for (const label of ['行为动作', '校验规则', '自定义按钮']) {
@@ -999,9 +1096,10 @@ describe('MenuAdminPage', () => {
       expect.stringContaining('未配置操作主表/副表'),
     )
 
-    // 含表模块：三个页签可用。
+    // 含表模块：三个页签可用（选中节点回到浏览态，故重新进入编辑态）。
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    enterEdit()
     for (const label of ['行为动作', '校验规则', '自定义按钮']) {
       expect(screen.getByRole('tab', { name: label })).toBeEnabled()
     }
@@ -1043,6 +1141,9 @@ describe('MenuAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
+    // 取消 = 丢弃改动并退出编辑态；再进来时面板按服务端配置重新装载。
+    enterEdit()
+    fireEvent.click(screen.getByRole('tab', { name: '行为动作' }))
     // 名称列与影响面自检文案都会出现动作名，故只断言"回到服务端配置"。
     await waitFor(() => expect(screen.getAllByText('收料量回写采购单').length).toBeGreaterThan(0))
     expect(screen.queryByText('改过的名称')).not.toBeInTheDocument()

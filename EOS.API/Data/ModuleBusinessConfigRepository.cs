@@ -249,10 +249,14 @@ public sealed class ModuleBusinessConfigRepository(
         if (!validation.Ok)
             throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", validation.Messages));
 
-        var (masterTable, detailTable) = await ReadModuleShapeAsync(connection, transaction, moduleId, token)
+        var (masterTable, detailTable, nodeKind) = await ReadModuleShapeAsync(connection, transaction, moduleId, token)
             ?? throw new KeyNotFoundException($"模块 {moduleId} 不存在。");
-        if (masterTable is null && detailTable is null
-            && (request.Actions.Count > 0 || request.ValidationRules.Count > 0))
+        // 行为动作与校验规则由统一工作台的效果引擎执行，自定义承载页与目录节点没有这条链路：
+        // 配置了也不会跑。服务端兜底拒收（前端隐藏这三个配置页签只改善体验）。
+        var hasConfig = request.Actions.Count > 0 || request.ValidationRules.Count > 0;
+        if (hasConfig && nodeKind != ModuleRouteValidator.WireName(ModuleNodeKind.Workbench))
+            throw new ArgumentException("该节点不是统一工作台模块：行为动作与校验规则只有统一工作台会执行，没有可挂载的消费方。");
+        if (masterTable is null && detailTable is null && hasConfig)
             throw new ArgumentException("两表皆空模块禁止配置业务动作/校验规则。");
 
         var physicalIssues = await ValidatePhysicalAsync(
@@ -747,22 +751,34 @@ public sealed class ModuleBusinessConfigRepository(
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
     }
 
-    private static async Task<(string? Master, string? Detail)?> ReadModuleShapeAsync(
+    /// <summary>
+    /// 读模块的表形态与节点形态。节点形态取自唯一判据 `dbo.V_MODULE_NODE`
+    /// （与 <see cref="ModuleRouteValidator.ResolveKind"/> 同源），调用方据此判定
+    /// "这个节点有没有可挂载的配置面"。
+    /// </summary>
+    private static async Task<(string? Master, string? Detail, string NodeKind)?> ReadModuleShapeAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int moduleId,
         CancellationToken token)
     {
-        await using var command = new SqlCommand(
-            "SELECT MASTER_TABLE,DETAIL_TABLE FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;",
-            connection, transaction);
+        const string sql = """
+            SELECT m.MASTER_TABLE, m.DETAIL_TABLE, n.NODE_KIND
+            FROM dbo.MODULES m WITH (NOLOCK)
+            INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX=m.M_IDX
+            WHERE m.M_IDX=@ModuleId;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
             return null;
         var master = reader.IsDBNull(0) ? null : reader.GetString(0).Trim();
         var detail = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
-        return (string.IsNullOrWhiteSpace(master) ? null : master, string.IsNullOrWhiteSpace(detail) ? null : detail);
+        return (
+            string.IsNullOrWhiteSpace(master) ? null : master,
+            string.IsNullOrWhiteSpace(detail) ? null : detail,
+            reader.GetString(2).Trim());
     }
 
     private static async Task<HashSet<string>> LoadPhysicalColumnsAsync(

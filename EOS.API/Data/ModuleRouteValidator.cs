@@ -18,8 +18,47 @@ namespace EOS.API.Data;
 /// 由统一表单名单（<see cref="EOS.API.Models.UnifiedFormEditorSettings"/>）与权限裁决，
 /// **不再由路由字段表达**——这正是本次收敛要消掉的那层"同一件事两个真源"。
 /// </summary>
+/// <summary>
+/// 菜单节点形态：承载页与主表的组合决定一个 `MODULES` 行**是什么**。
+/// 它是 2301 配置面的形状依据（哪些配置项对它有消费方），也是运行期承载面的判据。
+///
+/// 这个判定**只有两处实现，且必须逐字一致**：
+/// 本枚举与 <see cref="ModuleRouteValidator.ResolveKind"/>（代码侧，值为已在内存里的行），
+/// 以及 SQL 视图 `dbo.V_MODULE_NODE`（查询侧，供 SQL 直接过滤）。
+/// 两侧的名字也共用一套（见 <see cref="ModuleRouteValidator.WireName"/>）。
+/// </summary>
+public enum ModuleNodeKind
+{
+    /// <summary>目录节点：无主表、无承载页，只承担层级、排序、图标与权限锚点。</summary>
+    Directory,
+
+    /// <summary>自定义承载页：M_URL 是精确路径，业务由页面自己解释，不装配工作台定义。</summary>
+    CustomPage,
+
+    /// <summary>统一工作台模块：承载页 /workbench，或留空但有主表（默认落统一工作台）。</summary>
+    Workbench,
+}
+
 internal static class ModuleRouteValidator
 {
+    /// <summary>
+    /// 解析节点形态。规则与 SQL 视图 `dbo.V_MODULE_NODE` 同源：
+    /// 先判工作台（<see cref="IsWorkbenchModule"/>），不是工作台且承载页留空即目录，其余是自定义承载页。
+    /// </summary>
+    public static ModuleNodeKind ResolveKind(string? rawUrl, string? masterTable)
+    {
+        if (IsWorkbenchModule(rawUrl, masterTable)) return ModuleNodeKind.Workbench;
+        return string.IsNullOrWhiteSpace(rawUrl) ? ModuleNodeKind.Directory : ModuleNodeKind.CustomPage;
+    }
+
+    /// <summary>形态的线上名（与 `dbo.V_MODULE_NODE.NODE_KIND` 的取值逐字一致）。</summary>
+    public static string WireName(ModuleNodeKind kind) => kind switch
+    {
+        ModuleNodeKind.Workbench => "WORKBENCH",
+        ModuleNodeKind.CustomPage => "CUSTOMPAGE",
+        _ => "DIRECTORY",
+    };
+
     /// <summary>参数化承载页：M_URL 为该路径时追加 /{moduleId}。</summary>
     private static readonly string[] ParameterizedBases =
     [

@@ -18,8 +18,11 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
     {
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
+        // MASTER_TABLE 在库内可空：直接 GetString 读 NULL 列会抛 SqlNullValueException，
+        // 把"启用了通用查询但没配主表"的一个模块放大成整个模块清单 500——必须兜住 NULL。
+        // （菜单保存已保证"无主表则 SEARCH_1/2 落 0"，这里兜的是直写库/历史数据。）
         const string sql="""
-            SELECT M_IDX,LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
+            SELECT M_IDX,LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
                    COALESCE(SEARCH_1,0),COALESCE(SEARCH_2,0)
             FROM dbo.MODULES WITH (NOLOCK)
             WHERE COALESCE(SEARCH_1,0)=1 OR COALESCE(SEARCH_2,0)=1

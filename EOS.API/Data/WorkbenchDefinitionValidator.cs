@@ -525,8 +525,22 @@ public sealed class WorkbenchDefinitionValidator(
         return result;
     }
 
+    /// <summary>
+    /// 模块 <c>FILTER</c> 的受控校验，**发布与菜单保存共用同一口径**（白名单 + 解析器同源）。
+    /// 发布一路不必等到发布才发现坏值：<c>FILTER</c> 同时被报表与选择器**实时**读取（不经快照），
+    /// 所以保存时就要拦住；空值表示"无行级限制"，恒通过。
+    /// </summary>
+    internal static async Task<bool> TryValidateModuleFilterAsync(
+        SqlConnection connection, string masterTable, string? filter, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return true;
+        if (string.IsNullOrWhiteSpace(masterTable)) return false;
+        var allowedFields = await ReadFilterFieldKeysAsync(connection, masterTable, token);
+        return DataFilterParser.TryParse(filter, masterTable, allowedFields, out _, out _);
+    }
+
     /// <summary>FILTER/分组白名单：主表物理存在、非虚拟字段（含隐藏字段，不受用户列选择影响）。</summary>
-    private static async Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(SqlConnection connection, string table, CancellationToken token)
+    internal static async Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(SqlConnection connection, string table, CancellationToken token)
     {
         const string sql = """
             SELECT LTRIM(RTRIM(f.F_ID))

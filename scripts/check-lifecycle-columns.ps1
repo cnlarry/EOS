@@ -16,6 +16,9 @@
     效果引擎接管 / 启用中的批核·解批效果链）而主表没有该列，即 FAIL。发布门
     lifecycle_columns 已按同一口径把关，但只在有人尝试发布该模块时才跑；从未发布、
     也没人打算发布的模块会一直躲过检查，直到有人真去打它的批核端点才炸（已发生一次）。
+    本巡检只覆盖**统一工作台模块**（判据 `dbo.V_MODULE_NODE.NODE_KIND = 'WORKBENCH'`）：
+    这三个标志位只在工作台上有消费方，目录节点与自定义承载页既不装配工作台定义、
+    也不跑效果引擎，按它们判定会报出并不存在的问题。
 
     再加一条"列 → 字段元数据"巡检：表上已有批核列（CONFIRM_TAG/PERSON/DATE）且该表
     已进入字段元数据体系（FIELDS 里有行），却漏登记批核列的 FIELDS 行，即 FAIL。
@@ -73,10 +76,16 @@ WHERE s.name = N'dbo' AND c.is_computed = 0 AND c.is_nullable = 0
     # 从未发布、也没人打算发布的模块（配置表被批量复制标志位带上 AUTO_APPROVE 就是这种）
     # 会一直躲过检查，直到有人真去打它的批核端点才炸。这里按库内事实常态巡检。
     # 只覆盖能在 SQL 里精确判定的三个来源；工作流来源（已配置流程）由发布门负责。
+    #
+    # 形态门：这三个标志位只在统一工作台模块上有消费方（工作台定义装配 + 效果引擎），
+    # 目录节点与自定义承载页既不装配定义、也不跑效果引擎，菜单保存会把它们归一成默认值。
+    # 不加这道门，历史残留就会让门禁报出并不存在的问题（实测 5 个自定义承载页模块
+    # 带着 AUTO_APPROVE=1，而它们的批核端点根本不存在）。判据只有 dbo.V_MODULE_NODE 一处。
     $capability = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
 SELECT N'AUTO_APPROVE | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
        + N' -> dbo.' + LTRIM(RTRIM(m.MASTER_TABLE)) + N' 缺 CONFIRM_TAG'
 FROM dbo.MODULES m
+INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX AND n.NODE_KIND = N'WORKBENCH'
 WHERE ISNULL(m.AUTO_APPROVE, 0) = 1
   AND LTRIM(RTRIM(ISNULL(m.MASTER_TABLE, N''))) <> N''
   AND OBJECT_ID(N'dbo.' + LTRIM(RTRIM(m.MASTER_TABLE)), N'U') IS NOT NULL
@@ -85,6 +94,7 @@ UNION ALL
 SELECT N'EFFECT_ENGINE | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
        + N' -> dbo.' + LTRIM(RTRIM(m.MASTER_TABLE)) + N' 缺 CONFIRM_TAG'
 FROM dbo.MODULES m
+INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX AND n.NODE_KIND = N'WORKBENCH'
 WHERE ISNULL(m.EFFECT_ENGINE_TAG, 0) = 1
   AND LTRIM(RTRIM(ISNULL(m.MASTER_TABLE, N''))) <> N''
   AND OBJECT_ID(N'dbo.' + LTRIM(RTRIM(m.MASTER_TABLE)), N'U') IS NOT NULL
@@ -93,6 +103,7 @@ UNION ALL
 SELECT N'APPROVE_EFFECT | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
        + N' -> dbo.' + LTRIM(RTRIM(m.MASTER_TABLE)) + N' 缺 CONFIRM_TAG'
 FROM dbo.MODULES m
+INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX AND n.NODE_KIND = N'WORKBENCH'
 WHERE EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a
               WHERE a.M_IDX = m.M_IDX AND a.ENABLED = 1
                 AND a.EVENT_CODE IN (N'APPROVE_EFFECT', N'DEAPPROVE'))

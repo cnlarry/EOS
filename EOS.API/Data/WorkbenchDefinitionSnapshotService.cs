@@ -33,12 +33,12 @@ public sealed class WorkbenchDefinitionSnapshotService(
                    ISNULL(d.DIRTY_TAG,0), d.LAST_MODIFIED_BY, d.LAST_MODIFIED_AT,
                    s.VERSION, s.PUBLISHED_AT, s.PUBLISHED_BY, s.VALIDATION_STATUS
             FROM dbo.MODULES m WITH (NOLOCK)
+            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=m.M_IDX
             LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=m.M_IDX AND s.IS_CURRENT=1
-            -- 工作台模块：承载页 /workbench，或没声明承载页但有主表（默认走统一工作台，见迁移 321）；
-            -- 另有脏标记的一律列出（改了就得重发布）
-            WHERE LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '/workbench%'
-               OR (LTRIM(RTRIM(ISNULL(m.M_URL,''))) = '' AND NULLIF(LTRIM(RTRIM(m.MASTER_TABLE)),'') IS NOT NULL)
+            -- 工作台模块（形态判据只有 dbo.V_MODULE_NODE 一处）；
+            -- 另有脏标记的也列出，但脏标记本身已按形态过滤，只可能出现在工作台模块上
+            WHERE n.NODE_KIND=N'WORKBENCH'
                OR d.M_IDX IS NOT NULL
             ORDER BY m.M_IDX;
             """;

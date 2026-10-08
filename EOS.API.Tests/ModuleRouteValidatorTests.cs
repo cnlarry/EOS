@@ -168,4 +168,47 @@ public class ModuleRouteValidatorTests
     {
         Assert.Equal(expected, ModuleRouteValidator.IsWorkbenchModule(url, masterTable));
     }
+
+    /// <summary>
+    /// 节点形态三分（SQL 视图 `dbo.V_MODULE_NODE` 的代码侧同源实现）：先判工作台，
+    /// 不是工作台且承载页留空即目录节点，其余是自定义承载页。2301 按它决定露出哪些配置项与页签，
+    /// SQL 侧按同一规则过滤——两侧不一致会出现"界面藏了、后端还在按它办事"。
+    /// </summary>
+    [Theory]
+    [InlineData("/workbench", "PRODUCT", ModuleNodeKind.Workbench)]
+    [InlineData("/workbench/1201", null, ModuleNodeKind.Workbench)]
+    [InlineData(null, "PRODUCT", ModuleNodeKind.Workbench)]
+    [InlineData("  ", "COMPANY", ModuleNodeKind.Workbench)]
+    [InlineData(null, null, ModuleNodeKind.Directory)]
+    [InlineData("", "", ModuleNodeKind.Directory)]
+    [InlineData("  ", null, ModuleNodeKind.Directory)]
+    [InlineData("/admin/menus", "MODULES", ModuleNodeKind.CustomPage)]
+    [InlineData("/settings/system", null, ModuleNodeKind.CustomPage)]
+    [InlineData("/reports", null, ModuleNodeKind.CustomPage)]
+    public void ResolveKind_Classification(string? url, string? masterTable, ModuleNodeKind expected)
+    {
+        Assert.Equal(expected, ModuleRouteValidator.ResolveKind(url, masterTable));
+    }
+
+    /// <summary>
+    /// 形态的线上名必须与视图定义里的取值逐字一致：两侧共用一套名字（`NODE_KIND`），
+    /// 改一边而不改另一边会让 2301 的页签显隐整体错位，而编译、单测都不会报。
+    /// </summary>
+    [Fact]
+    public void WireName_MatchesViewDefinition()
+    {
+        Assert.Equal("WORKBENCH", ModuleRouteValidator.WireName(ModuleNodeKind.Workbench));
+        Assert.Equal("CUSTOMPAGE", ModuleRouteValidator.WireName(ModuleNodeKind.CustomPage));
+        Assert.Equal("DIRECTORY", ModuleRouteValidator.WireName(ModuleNodeKind.Directory));
+
+        var migrations = Path.Combine(FindRepoRoot(), "EOS.API", "Data", "Migrations");
+        var viewSql = Directory.EnumerateFiles(migrations, "*.sql")
+            .Select(File.ReadAllText)
+            .FirstOrDefault(text => text.Contains("CREATE VIEW dbo.V_MODULE_NODE", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(viewSql);
+        foreach (var name in new[] { "WORKBENCH", "CUSTOMPAGE", "DIRECTORY" })
+        {
+            Assert.Contains($"N'{name}'", viewSql, StringComparison.Ordinal);
+        }
+    }
 }
