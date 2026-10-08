@@ -1223,7 +1223,6 @@ export function MenuAdminPage() {
                           </div>
                         </div>
                         <Input label="页面链接（承载页）" readOnly={!editing} value={draft.M_URL ?? ''} placeholder="留空=目录节点；单据模块填 /workbench；自定义页填真实路径" onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
-                        <div className="text-secondary small mb-2">承载页决定这个节点怎么开：留空 = 目录节点（只展开不跳转）；单据模块填 /workbench 走统一工作台；自定义页填真实路径（需同时登记服务端精确路径白名单与前端路由表）。保存后服务端据此定形态，右侧随之只留下该形态真正用得上的配置项。新增/编辑能不能用由统一表单名单与权限决定——不再有单独的新增/修改路由配置。</div>
                         {/* 备注：库列 MODULES.REMARK。写"这个模块是干什么的"，方便后来接手的人一眼看懂；
                             它不参与任何运行期契约（不装配工作台定义、不进快照），纯粹是给人看的说明 */}
                         <TextArea
