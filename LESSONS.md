@@ -410,6 +410,17 @@
 - **防线**：`check-snapshot-staleness.ps1` 的 `Stale && !Dirty` 判定（重发布后须 `fresh = checked`）；
   重发布前先跑 `scripts/adr012-acceptance-ledger.ps1` 取基线，确认没有 A 类等价证据会被顶起的版本降级。
 
+### L82 自动批核模块"保存即批核"：改完再删，删除前必须再解批一次
+- **触发／症状**：对 `AUTO_APPROVE=1` 的模块解批后改一行、接着删，`DELETE` 仍报
+  400 `APPROVED_RECORD_NOT_DELETABLE`（"单据已批核…请先解批"），而解批那一刻库里明明是 `CONFIRM_TAG=0`。
+- **根因**：这类模块**保存即批核**——PUT 成功后 `CONFIRM_TAG` 又被置 1，删除守卫读的是保存后的状态。
+  "改"与"删"是两次保存，各自都要有前置解批；只解一次会以为"解批没生效"。
+- **处置**：删除前**再解批一次**。顺带两条接口口径：提交体 `values` 是**字符串字典**（传浮点/布尔字面量
+  被 400 `INVALID_MODEL` 拒，`fieldErrors` 会点名具体字段）；批核/解批的 `key` 必须是**主键值数组的 JSON
+  编码字符串**，对象键传数组会被反序列化直接拒（400 `INVALID_MODEL`），对不存在的记录返回 404 `RECORD_NOT_FOUND`。
+- **防线**：无门禁，靠脚本在"改"与"删"前各解批一次（`EOS.API.Tests/AcceptanceCrud.ps1:284`/`:299`、
+  `E2eBaseDataCrud.ps1`）；手工复核按同一顺序。
+
 ## 五、测试写法
 
 ### L40 断言要能失败，假断言比没有断言更糟
