@@ -70,21 +70,6 @@ const BEHAVIOR_TAB_KEYS: MenuFormTab[] = ['actions', 'rules', 'manual']
  */
 type NodeKind = 'WORKBENCH' | 'CUSTOMPAGE' | 'DIRECTORY'
 
-const NODE_KIND_LABELS: Record<NodeKind, { title: string; hint: string }> = {
-  WORKBENCH: {
-    title: '统一工作台模块',
-    hint: '由统一工作台承载：主表/子表、分组、行为动作、校验规则、自定义按钮都在这里配置，保存后需发布才生效。',
-  },
-  CUSTOMPAGE: {
-    title: '自定义承载页',
-    hint: '业务由该页面自己解释，不装配工作台定义：这里只维护基础信息与"数据源"（报表数据集、搜索中心、统一选择器按它取数）。主表/副表由开发团队定义，只读。',
-  },
-  DIRECTORY: {
-    title: '目录节点',
-    hint: '只承担菜单层级、排序、图标与权限锚点。改名、启停、排序、移动、删除都在左侧菜单上直接操作。',
-  },
-}
-
 export interface MenuAdminModule {
   M_IDX: number
   M_ALIAS: string | null
@@ -1226,21 +1211,6 @@ export function MenuAdminPage() {
             <div className="col-lg-7">
               {draft ? (
                 <div className="p-3 erp-menu-form">
-                  {/*
-                    形态说明条：三形态能配的东西完全不同，先讲清这个节点是什么、右侧为什么只给这些。
-                    新增节点还没有形态（服务端保存时才算），此时按"全都能配"展示，让用户先把它定义出来。
-                  */}
-                  <div className="alert alert-secondary py-2 px-3 small mb-2" role="note">
-                    <span className="fw-semibold">
-                      {nodeKind ? NODE_KIND_LABELS[nodeKind].title : '新增节点（形态在保存时确定）'}
-                    </span>
-                    <span className="ms-2">
-                      {nodeKind
-                        ? NODE_KIND_LABELS[nodeKind].hint
-                        : '填好承载页（与主表）后保存，服务端据此判定它是统一工作台模块、自定义承载页还是目录节点。'}
-                    </span>
-                    {!editing && <span className="ms-2 text-secondary">当前为浏览态，点「编辑」才能修改。</span>}
-                  </div>
                   <TabbedPanel tabs={formTabs} activeKey={activeFormTab} onActiveKeyChange={setFormTab}>
                     {activeFormTab === 'basic' && (
                       <>

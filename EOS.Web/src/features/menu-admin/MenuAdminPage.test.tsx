@@ -868,8 +868,9 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
 
     expect(screen.getByLabelText('菜单名称')).toHaveAttribute('readonly')
-    expect(screen.getByText(/当前为浏览态/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '取消' })).not.toBeInTheDocument()
 
     enterEdit()
     expect(screen.getByLabelText('菜单名称')).not.toHaveAttribute('readonly')
@@ -888,8 +889,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
 
-    // 形态说明条讲清这个节点是什么，右侧只剩它真正用得上的页签
-    expect(screen.getByText('目录节点')).toBeInTheDocument()
+    // 形态只在页签面上体现：目录节点右侧只剩它真正用得上的三个
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['基础', '主表', '子表'])
     expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
     expect(screen.queryByRole('tab', { name: '行为动作' })).toBeNull()
@@ -912,7 +912,7 @@ describe('MenuAdminPage', () => {
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /用户权限设定/ }))
-    await waitFor(() => expect(screen.getByText('自定义承载页')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('页面链接（承载页）')).toHaveValue('/admin/users'))
 
     expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
     expect(screen.queryByRole('tab', { name: '行为动作' })).toBeNull()
