@@ -4,8 +4,13 @@
 
 .DESCRIPTION
     发布链路改为「一律从当前代码+元数据重建模块级字段」后，已发布快照可能与本应重建的
-    内容存在漂移（例如删掉一条 C# 领域规则后，旧快照仍指向已删族名）。本脚本对统一表单
-    白名单全部模块执行一次发布，并对比发布前后 DEFINITION_JSON，产出「漂移模块差异清单」。
+    内容存在漂移（例如删掉一条 C# 领域规则后，旧快照仍指向已删族名）。本脚本对**统一表单
+    写名单与库内所有带当前快照的模块**各发布一次，并对比发布前后 DEFINITION_JSON，产出
+    「漂移模块差异清单」。
+
+    覆盖面说明：只读名单模块同样有当前快照、同样要与配置同步，而它们不在写名单里；只按
+    写名单枚举会让这些模块的快照永远重发布不到，而 check-snapshot-staleness.ps1 是按
+    「有当前快照的模块」检查的，于是落后检测会一直为它们报失败。故默认枚举取两者并集。
 
     差异只比较模块级字段（发布会重派生的部分）；运行时按用户实时计算的字段
     （MasterFields/DetailFields/FilterFieldKeys/UserId/ExecTag/CanDelete/GroupExpressions/
@@ -14,7 +19,7 @@
     需要 API 以本次改动构建重启后运行；使用开发账号 admin/admin。
 
     用法（仓库根执行）：
-      pwsh scripts/republish-all-whitelist.ps1                  # 发布全部白名单模块
+      pwsh scripts/republish-all-whitelist.ps1                  # 发布写名单 + 所有带当前快照的模块
       pwsh scripts/republish-all-whitelist.ps1 -ModuleIds '110103,180102'
       pwsh scripts/republish-all-whitelist.ps1 -SkipPublish     # 只对比当前快照与元数据重建（不写库）
 
@@ -63,16 +68,20 @@ function Read-CurrentSnapshotJson([int]$moduleId) {
     return ($lines -join '')
 }
 
-# 白名单：显式 -ModuleIds 优先，否则读 appsettings.json 的 UnifiedFormEditor:EnabledModuleIds
+# 待发布模块：显式 -ModuleIds 优先；否则取「统一表单写名单」∪「库内所有带当前快照的模块」。
+# 两个覆盖面并不相等——只读名单模块有快照却不在写名单里，只按写名单枚举会漏掉它们。
 $ids = @()
 if ($ModuleIds) {
     $ids = $ModuleIds.Split(',', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { [int]$_.Trim() }
 } else {
     $appSettings = Get-Content (Join-Path $root 'EOS.API\appsettings.json') -Raw | ConvertFrom-Json
     $ids = @($appSettings.UnifiedFormEditor.EnabledModuleIds | ForEach-Object { [int]$_ })
+    $snapshotIds = @(Invoke-EosSqlQuery 'SET NOCOUNT ON; SELECT M_IDX FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE IS_CURRENT=1' |
+        ForEach-Object { [int]($_ -replace '\D', '') })
+    $ids = @($ids + $snapshotIds | Sort-Object -Unique)
 }
-if ($ids.Count -eq 0) { throw '未取得白名单模块。' }
-Write-Output "白名单模块数：$($ids.Count)"
+if ($ids.Count -eq 0) { throw '未取得待发布模块。' }
+Write-Output "待发布模块数：$($ids.Count)"
 
 # 读取某模块当前快照的模块级字段（JSON 提取，剔除运行时按用户计算的字段与版本）
 function Get-ModuleLevelFieldsJson([string]$json) {
