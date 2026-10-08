@@ -110,7 +110,13 @@ public sealed class WorkbenchFieldMetaMapper(
                 await command.ExecuteNonQueryAsync(token);
             }
         }
-        await dirtyMarker.MarkDirtyAsync(connection, transaction, definition.ModuleId, updatedBy, token);
+        // 列宽写回的是按 T_ID 的 FIELDS.DISPLAY_LENGTH（表级）：主表或明细表等于这张表的**其它模块**，
+        // 其定义也会跟着变。所以按表标脏，而不是只标当前模块——只标本模块会把它们留成静默落后。
+        // 只在真的写过该表的宽度时才标它，避免平白给无关模块挂上待发布项。
+        if (masterWidths.Count > 0 && definition.MasterTable is { } masterTable)
+            await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, masterTable, updatedBy, token);
+        if (detailWidths.Count > 0 && definition.DetailTable is { } detailTable)
+            await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, detailTable, updatedBy, token);
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId,
             $"column-widths:{definition.MasterTable}", "UPDATE", "更新列宽", updatedBy, "WORKBENCH_METADATA", result: 1, null, token);
         await transaction.CommitAsync(token);

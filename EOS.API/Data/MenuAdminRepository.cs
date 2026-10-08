@@ -179,6 +179,10 @@ public sealed class MenuAdminRepository(
         {
             await SaveDefaultColumnsScopedAsync(connection, transaction, masterTable, detailTable, request, token);
             await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, "SYSTEM", token);
+            // 默认列存在 SYSQL_DEFAULT、读的时候按 (T_ID=主表, T_ID_R=目标表) 取：主表相同的**其它模块**
+            // 读的是同一组默认列，定义也会跟着变，因此按表再标一次（只标本模块会漏掉它们）。
+            if (!string.IsNullOrWhiteSpace(masterTable))
+                await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, masterTable, "SYSTEM", token);
             await transaction.CommitAsync(token);
         }
         catch
@@ -531,6 +535,9 @@ public sealed class MenuAdminRepository(
                 var detailTable = string.IsNullOrWhiteSpace(input.DETAIL_TABLE) ? null : input.DETAIL_TABLE.Trim();
                 foreach (var columns in defaultColumns)
                     await SaveDefaultColumnsScopedAsync(connection, transaction, masterTable, detailTable, columns, token);
+                // 同 SaveDefaultColumnsAsync：默认列按表存，主表相同的其它模块也会跟着变，按表补标。
+                if (!string.IsNullOrWhiteSpace(masterTable))
+                    await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, masterTable, updatedBy, token);
             }
             // 只有统一工作台模块需要重发布：目录节点与自定义承载页不装配工作台定义，
             // 给它们标脏只会在"待发布"清单里挂上永远发布不出来的条目（发布门会直接拒绝它们）。
