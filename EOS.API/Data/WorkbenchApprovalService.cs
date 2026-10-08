@@ -14,7 +14,8 @@ namespace EOS.API.Data;
 /// 补偿语义（落定）：
 /// - 结案单据（FINISHED_TAG=1）禁止删除，需先取消结案；
 /// - 任何已批核单据（CONFIRM_TAG=1，含自动批核模块）禁止删除，需先解批；
-/// - 已产生库存流水的单据禁止删除（解批回退库存后再删）。
+/// - 已产生库存流水的单据禁止删除。**解批是冲销留痕**：它另写一条反向流水、原流水按审计保留，
+///   所以解批之后再删仍会被拒——这是设计的必然结果，不是可以绕过的中间态。
 /// 批核副作用 SP 自带事务（自动提交），状态守卫（CONFIRM_TAG/FINISHED_TAG）防重复副作用，
 /// 幂等键提供顺序重放保护；解批前置 NOBACK 校验原样保留。
 /// </summary>
@@ -462,7 +463,8 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "APPROVED_RECORD_NOT_DELETABLE",
                 "单据已批核并产生业务副作用，不能删除，请先解批。");
         }
-        // 兜底：CONFIRM=0 但库存日志仍引用本单（异常/部分回退态）→ 禁删
+        // 库存流水按审计保留：解批写一条反向流水、不删除原流水，所以"有过流水"的单据此后不能再删。
+        // 解批过的单据正好落在这一支，不再把它读成"异常/部分回退态"。
         if (definition.MasterPkOrder.Count >= 2 && keyValues.Count >= 2)
         {
             // 库存流水的存在性判断经 InventoryQueryService：单别 / 单号的去空格比较口径在那里。
@@ -470,7 +472,7 @@ public sealed class WorkbenchApprovalService(
                     connection, transaction, keyValues[0], keyValues[1], token))
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVENTORY_LOG_EXISTS",
-                    "单据已产生库存流水，禁止删除；请先解批回退库存。");
+                    "单据已产生库存流水，流水按审计保留（解批只冲销、不删除），不能再删除。");
             }
         }
         return null;
