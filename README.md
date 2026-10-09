@@ -1,6 +1,12 @@
 # EOS
 
 [![CI](https://github.com/cnlarry/EOS/actions/workflows/ci.yml/badge.svg)](https://github.com/cnlarry/EOS/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/cnlarry/EOS?label=release)](https://github.com/cnlarry/EOS/releases)
+[![License](https://img.shields.io/github/license/cnlarry/EOS?label=license)](LICENSE)
+
+![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![SQL Server](https://img.shields.io/badge/SQL%20Server-2025-CC2927?logo=microsoftsqlserver&logoColor=white)
 
 一个**元数据驱动**的企业资源计划（ERP）系统：模块菜单、业务字段、列表列、查询条件、报表版式与表单布局
 全部由数据库元数据驱动，界面由一套通用工作台按元数据即时生成；业务规则在应用层以确定性的领域服务实现。
