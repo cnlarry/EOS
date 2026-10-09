@@ -762,7 +762,7 @@ public sealed class MenuAdminRepository(
             }
             if (SameFilter(stored.Filter, input.FILTER)) return;
         }
-        await EnsureFilterSupportedAsync(connection, input, token);
+        await EnsureFilterSupportedAsync(connection, transaction, input, token);
     }
 
     private static async Task<StoredShape> ReadStoredShapeAsync(
@@ -783,13 +783,16 @@ public sealed class MenuAdminRepository(
             NullIfBlank(reader.GetString(2)));
     }
 
-    private static async Task EnsureFilterSupportedAsync(SqlConnection connection, MenuAdminModule input, CancellationToken token)
+    private static async Task EnsureFilterSupportedAsync(
+        SqlConnection connection, SqlTransaction transaction, MenuAdminModule input, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(input.FILTER)) return;
         var masterTable = input.MASTER_TABLE?.Trim() ?? string.Empty;
         if (masterTable.Length == 0)
             throw new ArgumentException("未配置操作主表时不允许设置模块过滤条件（没有可过滤的对象）。");
-        if (!await WorkbenchDefinitionValidator.TryValidateModuleFilterAsync(connection, null, masterTable, input.FILTER, token))
+        // 本调用发生在**已开事务**的连接上：命令必须显式带上事务，否则驱动直接拒绝执行
+        // （同一口径见 WorkbenchApprovalService.CheckApprovalPreconditionsAsync 的 transaction 参数）。
+        if (!await WorkbenchDefinitionValidator.TryValidateModuleFilterAsync(connection, transaction, masterTable, input.FILTER, token))
             throw new ArgumentException(
                 "模块过滤条件超出受控子集，已拒绝保存（与报表数据范围、选择器数据范围共用同一解析器）。");
     }

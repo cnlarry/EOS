@@ -268,6 +268,23 @@
 - **防线**：`scripts/test-migration-dryrun.ps1` 用 sqlcmd 跑，正是能在落库前抓到这一类的地方——
   干跑报 1934 时先怀疑 SET 选项，别去改 SQL 语义。既有先例：迁移 087、340。
 
+### L87 连接上已开本地事务时，命令必须显式带上事务——漏一处就是 500
+
+- **触发／症状**：模块分组的写入端点报 **500** `INTERNAL_ERROR`，日志里是
+  `System.InvalidOperationException: 如果分配给命令的连接位于本地挂起事务中，BeginExecuteReader 要求命令拥有事务。
+   命令的 Transaction 属性尚未初始化。` 读路径（同样一段白名单 SQL）却一切正常。
+- **根因**：`SqlCommand` 不带 `Transaction` 时，只要连接上有本地挂起事务，驱动当场拒绝执行。
+  同一段"读白名单"的 SQL 因此有**两种命运**：读路径在事务外调用（正常），
+  写路径在 `BeginTransaction` 之后调用（直接抛）。这是**共享代码跨事务边界**的必然产物——
+  把 SQL 抽成公共方法时，谁都看不见调用方有没有开事务。
+- **处置**：公共方法吃一个 `SqlTransaction?`（没有就传 `null`），命令一律 `new SqlCommand(sql, connection, transaction)`；
+  调用方在事务里就传事务。既有同款先例：`WorkbenchApprovalService.CheckApprovalPreconditionsAsync`
+  的 `transaction` 参数（注释里写明"预演在已开事务的连接上调用，真实路径在开事务之前调用，传 null"）。
+- **同批揪出的存量同类**：2301 菜单保存改 `FILTER` 文本时，校验走 `ReadFilterFieldKeysAsync` 也是无事务命令——
+  只要那个模块有非空 `FILTER` 且文本变了就 500（`FILTER` 为空的模块会提前 return，所以一直没被发现）。同批修掉。
+- **防线**：**读路径全绿不等于写路径可用**——写入端点必须真打一次（冒烟/集成用例），
+  这类缺陷编译、单测、静态门禁一个都拦不住。
+
 ## 三、配置面与元数据
 
 ### L27 新建模块行留空的 bit 列会让菜单整页 500
@@ -276,6 +293,10 @@
   新行留 NULL，`GetBoolean` 读取即抛 `SqlNullValueException`。
 - **处置**：新行显式给出这些标志位，或从同域模块逐列复制全部 14 个 bit 标志位。
 - **防线**：端点冒烟（按 OpenAPI 逐个打只读端点，任一 5xx 即失败）是唯一能拦住它的门禁。
+  迁移 341 起多一层：`GROUP1..5` 那批已下线（改存 `MODULE_GROUPS`），剩下的
+  `M_TAG` / `DETAIL_NO_SAVE` / `SEARCH_1` / `SEARCH_2` / `IF_COPY` 补上了 `DEFAULT`——
+  **漏填**不再长出 NULL（显式写 NULL 仍会，读取侧"NULL 当 0"的口径不变，
+  `MenuAdminRepositoryIntegrationTests.可空标志位为NULL时列表照常返回` 守的就是后者）。
 
 ### L28 阶段闭集散落在多处，漏改一处就在运行期炸模块
 - **触发／症状**：加 `DELETE` 阶段时改了 5 处、漏掉 `EffectPlanLoader.ParseValidationRule` 里的内联字面量；
