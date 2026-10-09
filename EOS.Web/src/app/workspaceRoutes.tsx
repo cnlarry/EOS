@@ -29,6 +29,7 @@ import {
   GroupButtonRightsPage,
   GroupMembersPage,
   MenuAdminPage,
+  ModuleGroupsPage,
   AdminSessionsPage,
   MechanismOverviewPage,
   KbAdminPage,
@@ -58,6 +59,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
     { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
   ] },
   { element: <RequirePermission permission={moduleReadPermission(2301)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
+  // 模块分组（模块 2315，根 23 系统管理）：为其它模块维护列表分组；定制页，不走统一表单与发布
+  { element: <RequirePermission permission={moduleReadPermission(2315)} />, children: [
+    { path: 'admin/module-groups', element: withSuspense(<ModuleGroupsPage />) },
+  ] },
   { element: <RequirePermission permission={moduleReadPermission(2305)} />, children: [
     { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },
     { path: 'admin/groups/:groupId/rights', element: withSuspense(<GroupRightsPage />) },

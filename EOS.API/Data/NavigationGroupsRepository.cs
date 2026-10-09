@@ -5,11 +5,16 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed record NavigationGroupDefinition(int Index, string? Description, bool Enabled, bool Available);
+public sealed record NavigationGroupDefinition(int GroupId, string Description, bool Available);
 
 /// <summary>
-/// 菜单分组（第 4 级）数据：读取 MODULES.GROUP1..5 / GROUP_EXP1..5 / GROUP_DESC1..5，
+/// 菜单分组（第 4 级）数据：读取 MODULE_GROUPS 里该模块的分组（GROUP_ID / GROUP_DESC / GROUP_EXP），
 /// 用 GroupExpressionParser 受控编译后查询主表分组值。
+///
+/// 分组身份是 GROUP_ID，不是"第几组"：SORT_IDX 只决定下拉里的先后，删除或调整顺序
+/// 不该让既有的分组筛选链接指到另一个表达式上去。
+/// 有行即生效——行存在、表达式与名称都非空即对外提供该分组，没有单独的启用位。
+///
 /// 安全边界：表达式字段白名单 = 主表物理存在、非虚拟的 FIELDS 列（含隐藏字段）
 /// （受禁止字段/成本/保密权限约束）；不可解析一律抛 GroupExpressionUnsupportedException。
 /// </summary>
@@ -17,46 +22,43 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
 {
     private const int MaxGroupValues = 500;
 
+    /// <summary>模块的分组行（已过滤空名称/空表达式的行，按 SORT_IDX、GROUP_ID 排序）。</summary>
+    private sealed record ModuleGroup(int GroupId, int SortIdx, string Description, string Expression);
+
     public async Task<IReadOnlyList<NavigationGroupDefinition>> GetGroupsAsync(
         int moduleId,
         ModuleRights rights,
         CancellationToken token)
     {
-        var (masterTable, expressions, descriptions, enabledFlags) = await ReadGroupMetadataAsync(moduleId, token);
+        var (masterTable, groups) = await ReadGroupsAsync(moduleId, token);
         if (string.IsNullOrWhiteSpace(masterTable)) return [];
-        var allowed = await ReadFilterFieldKeysAsync(masterTable, rights, token);
-        var groups = new List<NavigationGroupDefinition>();
-        for (var i = 0; i < 5; i++)
+        var allowed = await ReadAllowedFieldsAsync(masterTable, rights, token);
+        var result = new List<NavigationGroupDefinition>(groups.Count);
+        foreach (var group in groups)
         {
-            if (!enabledFlags[i]) continue;
-            var expression = expressions[i];
-            var description = descriptions[i];
-            if (string.IsNullOrWhiteSpace(expression) || string.IsNullOrWhiteSpace(description)) continue;
-            var available = GroupExpressionParser.TryCompile(expression, masterTable, allowed, out _);
-            groups.Add(new NavigationGroupDefinition(i + 1, description, true, available));
+            var available = GroupExpressionParser.TryCompile(group.Expression, masterTable, allowed, out _);
+            result.Add(new NavigationGroupDefinition(group.GroupId, group.Description, available));
         }
-        return groups;
+        return result;
     }
 
     public async Task<IReadOnlyList<string>> GetGroupValuesAsync(
         int moduleId,
-        int index,
+        int groupId,
         ModuleRights rights,
         CancellationToken token)
     {
-        if (index is < 1 or > 5)
-            throw new ArgumentException("group index 必须在 1~5 之间。");
-        var (masterTable, expressions, descriptions, enabledFlags) = await ReadGroupMetadataAsync(moduleId, token);
+        var (masterTable, groups) = await ReadGroupsAsync(moduleId, token);
         if (string.IsNullOrWhiteSpace(masterTable))
             throw new GroupExpressionUnsupportedException("该模块没有分组定义，已拒绝查询。");
-        if (!enabledFlags[index - 1] || string.IsNullOrWhiteSpace(expressions[index - 1]))
-            throw new GroupExpressionUnsupportedException("该模块未启用此分组表达式，已拒绝查询。");
-        var allowed = await ReadFilterFieldKeysAsync(masterTable, rights, token);
-        var expression = expressions[index - 1];
-        if (!GroupExpressionParser.TryCompile(expression, masterTable, allowed, out var compiled))
+        var group = groups.FirstOrDefault(item => item.GroupId == groupId);
+        if (group is null)
+            throw new GroupExpressionUnsupportedException("该模块没有这个分组，已拒绝查询。");
+        var allowed = await ReadAllowedFieldsAsync(masterTable, rights, token);
+        if (!GroupExpressionParser.TryCompile(group.Expression, masterTable, allowed, out var compiled))
             throw new GroupExpressionUnsupportedException("分组表达式超出受控子集，已拒绝查询。");
 
-        logger.LogDebug("分组值查询 module={ModuleId} group={GroupIndex} master={Master}", moduleId, index, masterTable);
+        logger.LogDebug("分组值查询 module={ModuleId} group={GroupId} master={Master}", moduleId, groupId, masterTable);
         await using var connection = connections.Create();
         await using var command = new SqlCommand(
             $"SELECT DISTINCT TOP ({MaxGroupValues}) {compiled} AS GroupValue FROM dbo.[{masterTable}] WITH (NOLOCK) " +
@@ -70,67 +72,56 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
         return values;
     }
 
-    private async Task<(string MasterTable, string[] Expressions, string[] Descriptions, bool[] Enabled)> ReadGroupMetadataAsync(int moduleId, CancellationToken token)
+    /// <summary>读模块主表与其分组行；模块不存在时主表为空串。</summary>
+    private async Task<(string MasterTable, IReadOnlyList<ModuleGroup> Groups)> ReadGroupsAsync(
+        int moduleId,
+        CancellationToken token)
     {
         const string sql = """
-            SELECT MASTER_TABLE,GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,
-                   GROUP3,GROUP_EXP3,GROUP_DESC3,GROUP4,GROUP_EXP4,GROUP_DESC4,
-                   GROUP5,GROUP_EXP5,GROUP_DESC5
-            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            SELECT ISNULL(LTRIM(RTRIM(m.MASTER_TABLE)),''),
+                   g.GROUP_ID,g.SORT_IDX,g.GROUP_DESC,g.GROUP_EXP
+            FROM dbo.MODULES m WITH (NOLOCK)
+            LEFT JOIN dbo.MODULE_GROUPS g WITH (NOLOCK) ON g.M_IDX=m.M_IDX
+            WHERE m.M_IDX=@ModuleId
+            ORDER BY g.SORT_IDX,g.GROUP_ID;
             """;
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         await connection.OpenAsync(token);
         await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) return (string.Empty, new string[5], new string[5], new bool[5]);
-        var master = reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim();
-        var expressions = new string[5];
-        var descriptions = new string[5];
-        var enabled = new bool[5];
-        for (var i = 0; i < 5; i++)
+        var master = string.Empty;
+        var groups = new List<ModuleGroup>();
+        var first = true;
+        while (await reader.ReadAsync(token))
         {
-            var offset = 1 + i * 3;
-            enabled[i] = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
-            expressions[i] = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
-            descriptions[i] = reader.IsDBNull(offset + 2) ? string.Empty : reader.GetString(offset + 2).Trim();
+            if (first)
+            {
+                master = reader.GetString(0).Trim();
+                first = false;
+            }
+            if (await reader.IsDBNullAsync(1, token)) continue;
+            var description = reader.IsDBNull(3) ? string.Empty : reader.GetString(3).Trim();
+            var expression = reader.IsDBNull(4) ? string.Empty : reader.GetString(4).Trim();
+            if (description.Length == 0 || expression.Length == 0) continue;
+            groups.Add(new ModuleGroup(reader.GetInt32(1), reader.IsDBNull(2) ? 0 : reader.GetInt32(2), description, expression));
         }
-        return (master, expressions, descriptions, enabled);
+        return (master, groups);
     }
 
     /// <summary>
-    /// 分组表达式字段白名单：主表全部物理存在、非虚拟字段（含隐藏字段，与工作台
-    /// MODULES.FILTER 白名单同口径，仍受成本/保密/禁止字段约束）。
+    /// 分组表达式字段白名单（读侧口径）：物理存在、非虚拟字段再按调用者权限收敛
+    /// （禁止字段 / 成本 / 保密）。实现与配置写侧、发布校验共用
+    /// <see cref="ModuleFieldWhitelist"/>——两侧各写一遍时，写侧放行的表达式可能在这里被拒，
+    /// 那种分组"存得下、点不开"。
     /// </summary>
-    private async Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(
+    private async Task<IReadOnlySet<string>> ReadAllowedFieldsAsync(
         string masterTable,
         ModuleRights rights,
         CancellationToken token)
     {
-        const string sql = """
-            SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
-            FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@MasterTable AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM sys.columns c
-                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
-                          JOIN sys.schemas s ON o.schema_id=s.schema_id
-                          WHERE s.name=N'dbo' AND o.name=@MasterTable AND c.name=f.F_ID)
-            ORDER BY f.F_ID;
-            """;
         await using var connection = connections.Create();
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
         await connection.OpenAsync(token);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        while (await reader.ReadAsync(token))
-        {
-            var key = reader.GetString(0).Trim();
-            if (rights.DeniedMasterFields.Contains(key)) continue;
-            if (!rights.CanViewCost && reader.GetBoolean(1)) continue;
-            if (!rights.CanViewSecrecy && reader.GetBoolean(2)) continue;
-            result.Add(key);
-        }
-        return result;
+        return await ModuleFieldWhitelist.ReadAsync(connection, null, masterTable, rights, token);
     }
 }

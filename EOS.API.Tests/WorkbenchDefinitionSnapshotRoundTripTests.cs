@@ -35,7 +35,6 @@ public sealed class WorkbenchDefinitionSnapshotRoundTripTests
             ExecTag: "Z",
             BusinessRule: new ModuleBusinessRule(1401, true, "CLIENT_ID", "X"),
             AutoApprove: false,
-            GroupExpressions: ["", "", "", "", ""],
             FormTabs: null,
             FormColumns: null,
             IfCopy: false,
@@ -114,7 +113,6 @@ public sealed class WorkbenchDefinitionSnapshotRoundTripTests
             HasWorkflow: true,
             UserId: "",
             ExecTag: "Z",
-            GroupExpressions: ["", "", "", "", ""],
             DefinitionVersion: "module-1607-v1",
             BusinessActions: actions,
             ValidationRules: rules);

@@ -8,10 +8,11 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 模块编号变更的引用级联（原 `P_Change_M_IDX`）已移植为受控 SQL 常量的真库验证：
-/// ① 结构对照——移植语句与原过程本体逐条一致，**只允许一处已证实的差异**：原过程写的
+/// ① 结构对照——移植语句与原过程本体逐条一致，**只允许两类已证实的差异**：原过程写的
 ///    `FIELDS_CHOOSER` 已被 取代（库内不存在），移植改用现表 `FIELD_DATASOURCE.SOURCE_M_IDX`；
-///    用例直接断言"旧表不存在 / 新表存在"，把这条差异钉在证据上；
-/// ② 行为验证——同一批数据走移植实现后，13 个（表.列）目标全部落到新编号、旧编号一处不留。
+///    用例直接断言"旧表不存在 / 新表存在"，把这条差异钉在证据上；另一类是**原过程之后才出生的表**
+///    （`MODULE_GROUPS`，迁移 341），它们必须在移植实现里有语句，但不该出现在历史基线里；
+/// ② 行为验证——同一批数据走移植实现后，14 个（表.列）目标全部落到新编号、旧编号一处不留。
 /// 整段在事务内进行，结束回滚，不留残留。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -35,11 +36,12 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     private const string RetiredGroupTable = "SYSDH" + "_REPORT";
 
     /// <summary>
-    /// 级联覆盖的 13 个（表.列）目标。
+    /// 级联覆盖的 14 个（表.列）目标。
     /// 原过程里的 `REPORT.R_M_IDX` / `REPORT.Q_M_IDX` 已随承载页列退役（见迁移 274），
     /// 归属列 `REPORT.M_IDX` 由外键 `FK_REPORT_MODULE` 的 ON UPDATE CASCADE 自动跟随，不需要显式语句；
     /// 例外层组表整表已随报表权限收敛退役（见迁移 277）；
-    /// `TASK` 表已随零引用死表退役（见迁移 322），级联里不再有它。
+    /// `TASK` 表已随零引用死表退役（见迁移 322），级联里不再有它；
+    /// `MODULE_GROUPS`（迁移 341）是原过程之后才出生的表，级联里必须补上。
     /// </summary>
     private static readonly string[] Targets =
     [
@@ -48,7 +50,17 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         "SYSQR.R_M_IDX",
         "FIELDS.BROWSE_M_IDX", "FIELD_DATASOURCE.SOURCE_M_IDX",
         "WFFORM.WF_M_IDX", "WFFORM_FLOW.WF_M_IDX", "WF_MONITOR.WF_M_IDX",
-        "BILLKIND.B_M_IDX",
+        "BILLKIND.B_M_IDX", "MODULE_GROUPS.M_IDX",
+    ];
+
+    /// <summary>
+    /// 原过程之后才出生的表：它们的级联语句是新加的，不在历史基线里。
+    /// 与 <see cref="RetiredStatements"/> 相反——那边是"基线里有、今天不该有"，
+    /// 这边是"基线里没有、今天必须有"；两边都逐条具名，不许默默增删。
+    /// </summary>
+    private static readonly string[] AddedStatements =
+    [
+        "UPDATE MODULE_GROUPS SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
     ];
 
     /// <summary>
@@ -98,10 +110,11 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             .Where(statement => statement.Length > 0)
             .ToArray();
         var retired = RetiredStatements.Select(Normalize).ToArray();
+        var added = AddedStatements.Select(Normalize).ToArray();
         var baseline = BaselineStatements.Select(Normalize)
             .Where(statement => !retired.Contains(statement))
             .ToArray();
-        Assert.Equal(baseline.Length, ported.Length);
+        Assert.Equal(baseline.Length + added.Length, ported.Length);
         for (var index = 0; index < baseline.Length; index++)
         {
             if (baseline[index].Contains("FIELDS_CHOOSER", StringComparison.Ordinal))
@@ -117,8 +130,15 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         foreach (var statement in retired)
             Assert.DoesNotContain(statement, ported);
 
-        // 13 个（表.列）目标都被覆盖
-        Assert.Equal(13, Targets.Length);
+        // 新增表的语句必须**恰好在**移植实现里，且不在历史基线里
+        foreach (var statement in added)
+        {
+            Assert.Contains(statement, ported);
+            Assert.DoesNotContain(statement, baseline);
+        }
+
+        // 14 个（表.列）目标都被覆盖
+        Assert.Equal(14, Targets.Length);
         foreach (var target in Targets)
         {
             var parts = target.Split('.');
@@ -155,7 +175,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     }
 
     [Fact]
-    public async Task 模块编号级联_移植实现把十三个引用列全部改指新编号()
+    public async Task 模块编号级联_移植实现把十四个引用列全部改指新编号()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);
@@ -164,13 +184,13 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         try
         {
             await SeedAsync(connection, transaction, token);
-            // 旧编号被引用的行：MODULES 三列 4 行次（M_IDX/M_ROOT_IDX 同一行 + 子节点 + 根引用各一）＋其余 10 列各一行
-            Assert.Equal(14, await OldReferenceCountAsync(connection, transaction, token));
+            // 旧编号被引用的行：MODULES 三列 4 行次（M_IDX/M_ROOT_IDX 同一行 + 子节点 + 根引用各一）＋其余 11 列各一行
+            Assert.Equal(15, await OldReferenceCountAsync(connection, transaction, token));
 
             await MenuAdminRepository.ChangeModuleIdAsync(connection, transaction, OldId, NewId, token);
 
-            // MODULES 三列归并为首位（本节点 / 子节点 / 根引用各一行），其余 10 张表各一行
-            Assert.Equal("3|" + string.Join('|', Enumerable.Repeat(1, 10)),
+            // MODULES 三列归并为首位（本节点 / 子节点 / 根引用各一行），其余 11 张表各一行
+            Assert.Equal("3|" + string.Join('|', Enumerable.Repeat(1, 11)),
                 await SnapshotAsync(connection, transaction, token));
             Assert.Equal(0, await OldReferenceCountAsync(connection, transaction, token));
         }
@@ -197,7 +217,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         return total;
     }
 
-    /// <summary>按 13 个引用列统计落到新编号的行数（MODULES 三列归并为一个数）。</summary>
+    /// <summary>按 14 个引用列统计落到新编号的行数（MODULES 三列归并为一个数）。</summary>
     private static async Task<string> SnapshotAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         await using (var modules = new SqlCommand(
@@ -237,6 +257,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             INSERT INTO dbo.WFFORM_FLOW (WF_M_IDX, SORT_NO) VALUES (@Old, 1);
             INSERT INTO dbo.WF_MONITOR (KEY_VALUE, WF_M_IDX) VALUES (N'ADR12CAST', @Old);
             INSERT INTO dbo.BILLKIND (BILL_CODE, BILL_NAME, B_M_IDX) VALUES (N'ADR12CAST', N'级联测试单据性质', @Old);
+            INSERT INTO dbo.MODULE_GROUPS (M_IDX, SORT_IDX, GROUP_DESC, GROUP_EXP) VALUES (@Old, 1, N'级联测试分组', N'CAST.SORT_ID');
             """, connection, transaction);
         seed.Parameters.Add("@Old", SqlDbType.Int).Value = OldId;
         await seed.ExecuteNonQueryAsync(token);

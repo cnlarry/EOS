@@ -75,29 +75,26 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         predicates.Add(renamed);
     }
 
-    /// <summary>应用菜单分组筛选（GROUP_EXP&lt;groupIndex&gt; = groupValue）。</summary>
+    /// <summary>应用菜单分组筛选（分组表达式 = groupValue；分组由 MODULE_GROUPS.GROUP_ID 定位）。</summary>
     public void ApplyGroupFilter(
         WorkbenchDefinition definition,
-        int? groupIndex,
+        int? groupId,
         string? groupValue,
         ICollection<string> predicates,
         SqlCommand command)
     {
-        if (groupIndex is null || string.IsNullOrWhiteSpace(groupValue))
+        if (groupId is null || string.IsNullOrWhiteSpace(groupValue))
         {
             return;
         }
-        if (groupIndex is < 1 or > 5)
+        if (definition.GroupExpressions is null
+            || !definition.GroupExpressions.TryGetValue(groupId.Value, out var expression)
+            || string.IsNullOrWhiteSpace(expression))
         {
-            metrics.IncrementScopeRejected("group_index");
-            throw new GroupExpressionUnsupportedException("分组序号无效，已拒绝查询。");
-        }
-
-        var expression = definition.GroupExpressions[groupIndex.Value - 1];
-        if (string.IsNullOrWhiteSpace(expression))
-        {
+            // 分组不存在与分组表达式为空是同一件事的两面：都以"该模块没有这个分组"拒绝，
+            // 不区分是编号不存在还是表达式没配——区分等于告诉调用方别处配置的存在性。
             metrics.IncrementScopeRejected("group_expression");
-            throw new GroupExpressionUnsupportedException("该模块未启用此分组表达式，已拒绝查询。");
+            throw new GroupExpressionUnsupportedException("该模块没有这个分组表达式，已拒绝查询。");
         }
 
         var allowedFields = ResolveFilterFieldKeys(definition);
@@ -129,14 +126,14 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
     public void ApplyScope(
         WorkbenchDefinition definition,
         string? dataFilter,
-        int? groupIndex,
+        int? groupId,
         string? groupValue,
         ICollection<string> predicates,
         SqlCommand command)
     {
         ApplyModuleFilter(definition, predicates, command);
         ApplyUserDataFilter(definition, dataFilter, predicates, command);
-        ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
+        ApplyGroupFilter(definition, groupId, groupValue, predicates, command);
         ApplyExecTagScope(definition);
     }
 

@@ -390,7 +390,6 @@ button, input, select { font: inherit; }
 .erp-filter-op { flex: 0 0 80px !important; }
 .erp-filter-row-issues { display: flex; flex-direction: column; gap: 2px; padding-left: 2px; font-size: 12px; }
 .erp-menu-form { overflow-y: auto; }
-.erp-menu-group-card { border-color: var(--tblr-border-color); }
 /* 菜单管理：页面随内容区高度自适应（工作台同款思路：根节点/卡片填满、树与表单内部滚动），
    消除内容不满视口时底部留白大于其它边的问题 */
 .erp-menu-admin { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }

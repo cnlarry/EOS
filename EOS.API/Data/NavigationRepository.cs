@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
-public sealed record NavigationGroup(int Index, string? Description, string? Expression, bool Enabled);
+public sealed record NavigationGroup(int GroupId, string? Description, string? Expression);
 
 public sealed record NavigationModule(
     int Id,
@@ -45,12 +45,7 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
             )
             SELECT DISTINCT m.M_IDX,m.M_DESC,m.M_ALIAS,ISNULL(m.M_P_IDX,0) M_P_IDX,ISNULL(m.M_ROOT_IDX,m.M_IDX) M_ROOT_IDX,
                    ISNULL(m.SORT_IDX,0) SORT_IDX,ISNULL(m.M_TAG,1) M_TAG,m.M_URL,m.MASTER_TABLE,m.FILTER,
-                   LTRIM(RTRIM(ISNULL(m.M_ICON,''))),
-                   ISNULL(m.GROUP1,0),m.GROUP_EXP1,m.GROUP_DESC1,
-                   ISNULL(m.GROUP2,0),m.GROUP_EXP2,m.GROUP_DESC2,
-                   ISNULL(m.GROUP3,0),m.GROUP_EXP3,m.GROUP_DESC3,
-                   ISNULL(m.GROUP4,0),m.GROUP_EXP4,m.GROUP_DESC4,
-                   ISNULL(m.GROUP5,0),m.GROUP_EXP5,m.GROUP_DESC5
+                   LTRIM(RTRIM(ISNULL(m.M_ICON,'')))
             FROM dbo.MODULES m WITH (NOLOCK) INNER JOIN Included i ON i.M_IDX=m.M_IDX
             WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL AND ISNULL(m.M_TAG,1)=1
             ORDER BY M_ROOT_IDX,M_P_IDX,SORT_IDX,m.M_IDX;
@@ -59,37 +54,65 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
         await connection.OpenAsync(token);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new List<NavigationModule>();
-        while (await reader.ReadAsync(token))
+        var rows = new List<(int Id, string Label, string? Alias, int ParentId, int RootId, int SortIndex, bool Enabled, string? Url, string? Master, string? Filter, string? Icon)>();
+        await using (var reader = await command.ExecuteReaderAsync(token))
         {
-            var groups = new List<NavigationGroup>();
-            for (var i = 0; i < 5; i++)
+            while (await reader.ReadAsync(token))
             {
-                // 列布局：0=M_IDX 1=M_DESC 2=M_ALIAS 3=M_P_IDX 4=M_ROOT_IDX 5=SORT_IDX
-                // 6=M_TAG 7=M_URL 8=MASTER_TABLE 9=FILTER 10=M_ICON 11..25=GROUP1..5(EXPor/DESC)
-                var offset = 11 + i * 3;
-                var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
-                var expression = reader.IsDBNull(offset + 1) ? null : reader.GetString(offset + 1).Trim();
-                var description = reader.IsDBNull(offset + 2) ? null : reader.GetString(offset + 2).Trim();
-                if (enabled || !string.IsNullOrWhiteSpace(expression))
-                    groups.Add(new NavigationGroup(i + 1, string.IsNullOrWhiteSpace(description) ? null : description, expression, enabled));
+                rows.Add((
+                    reader.GetInt32(0),
+                    reader.GetString(1).Trim(),
+                    reader.IsDBNull(2) ? null : reader.GetString(2).Trim(),
+                    reader.GetInt32(3),
+                    reader.GetInt32(4),
+                    reader.GetInt32(5),
+                    reader.GetBoolean(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                    reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
+                    reader.IsDBNull(9) ? null : reader.GetString(9).Trim(),
+                    reader.IsDBNull(10) ? null : reader.GetString(10).Trim()));
             }
+        }
+        // 分组在 MODULE_GROUPS（一个模块任意多组），与模块行分两次读：一行的列数不再随分组数量增长
+        var groups = await ReadGroupsAsync(connection, token);
+        var result = new List<NavigationModule>(rows.Count);
+        foreach (var row in rows)
+        {
             result.Add(new(
-                reader.GetInt32(0),
-                reader.GetString(1).Trim(),
-                reader.IsDBNull(2) ? null : reader.GetString(2).Trim(),
-                reader.GetInt32(3),
-                reader.GetInt32(4),
-                reader.GetInt32(5),
-                reader.GetBoolean(6),
-                reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
-                reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
-                reader.IsDBNull(9) ? null : reader.GetString(9).Trim(),
-                reader.IsDBNull(10) ? null : reader.GetString(10).Trim(),
-                groups));
+                row.Id, row.Label, row.Alias, row.ParentId, row.RootId, row.SortIndex, row.Enabled,
+                row.Url, row.Master, row.Filter, row.Icon,
+                groups.TryGetValue(row.Id, out var moduleGroups) ? moduleGroups : []));
         }
         logger.LogDebug("用户导航 userId={UserId} modules={ModuleCount}", userId.Trim(), result.Count);
         return result;
+    }
+
+    /// <summary>模块号 → 分组清单（按 SORT_IDX、GROUP_ID 排序；只收名称非空的行）。</summary>
+    private static async Task<Dictionary<int, IReadOnlyList<NavigationGroup>>> ReadGroupsAsync(
+        SqlConnection connection,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT M_IDX,GROUP_ID,GROUP_DESC,GROUP_EXP FROM dbo.MODULE_GROUPS WITH (NOLOCK)
+            ORDER BY M_IDX,SORT_IDX,GROUP_ID;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new Dictionary<int, List<NavigationGroup>>();
+        while (await reader.ReadAsync(token))
+        {
+            var description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim();
+            if (description.Length == 0) continue;
+            if (!result.TryGetValue(reader.GetInt32(0), out var list))
+            {
+                list = [];
+                result[reader.GetInt32(0)] = list;
+            }
+            list.Add(new NavigationGroup(
+                reader.GetInt32(1),
+                description,
+                reader.IsDBNull(3) ? null : reader.GetString(3).Trim()));
+        }
+        return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<NavigationGroup>)pair.Value);
     }
 }

@@ -42,14 +42,14 @@ import {
   type ModuleBusinessConfigDraft,
 } from './BusinessActionsPanel'
 
-/** 菜单编辑表单页签：前四个是模块定义，后三个按"谁触发"划分的行为配置。 */
-type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'actions' | 'rules' | 'manual'
+/** 菜单编辑表单页签：前三个是模块定义，后三个按"谁触发"划分的行为配置。
+ *  列表分组不在这里——它是 MODULE_GROUPS 的配置面（2315 模块分组），保存即生效、不走发布流程。 */
+type MenuFormTab = 'basic' | 'master' | 'detail' | 'actions' | 'rules' | 'manual'
 
 const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
   { key: 'basic', label: '基础' },
   { key: 'master', label: '主表' },
   { key: 'detail', label: '子表' },
-  { key: 'group', label: '分组' },
   // 顺序按"常一起改的相邻"排：配了库存扣减通常紧接着配数量校验。
   { key: 'actions', label: '行为动作' },
   { key: 'rules', label: '校验规则' },
@@ -91,11 +91,6 @@ export interface MenuAdminModule {
   DETAIL_TABLE: string | null
   NOT_BACK_FIELDS_M: string | null
   NOT_BACK_FIELDS: string | null
-  GROUP1: boolean; GROUP_EXP1: string | null; GROUP_DESC1: string | null
-  GROUP2: boolean; GROUP_EXP2: string | null; GROUP_DESC2: string | null
-  GROUP3: boolean; GROUP_EXP3: string | null; GROUP_DESC3: string | null
-  GROUP4: boolean; GROUP_EXP4: string | null; GROUP_DESC4: string | null
-  GROUP5: boolean; GROUP_EXP5: string | null; GROUP_DESC5: string | null
   FORM_TABS: string | null
   FORM_COLUMNS: number | null
   LAST_UPDATE_BY: string | null
@@ -185,11 +180,6 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   DETAIL_TABLE: null,
   NOT_BACK_FIELDS_M: null,
   NOT_BACK_FIELDS: null,
-  GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
-  GROUP2: false, GROUP_EXP2: null, GROUP_DESC2: null,
-  GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
-  GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
-  GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
   FORM_TABS: null,
   FORM_COLUMNS: null,
   LAST_UPDATE_BY: null,
@@ -439,7 +429,8 @@ export function MenuAdminPage() {
       ? selected.NODE_KIND
       : 'WORKBENCH')
   const isCustomPage = nodeKind === 'CUSTOMPAGE'
-  // 统一工作台（含新增）：分组与行为三类配置才有消费方；工作台定义不装配的节点配了也是空转。
+  // 统一工作台（含新增）：行为三类配置才有消费方；工作台定义不装配的节点配了也是空转。
+  // 列表分组不在此处：见 2315 模块分组（MODULE_GROUPS）。
   const isWorkbenchShape = nodeKind === null || nodeKind === 'WORKBENCH'
   // 自定义承载页的数据源锚点：主表/副表由开发团队定义（报表数据集、搜索中心与选择器按它取数），
   // 只读；没有数据源表的那一栏不出现（12 个自定义承载页只有页面、没有数据源）。
@@ -450,7 +441,6 @@ export function MenuAdminPage() {
       .filter((tab) => {
         if (tab.key === 'master') return showMasterTab
         if (tab.key === 'detail') return showDetailTab
-        if (tab.key === 'group') return isWorkbenchShape
         if (BEHAVIOR_TAB_KEYS.includes(tab.key)) return isWorkbenchShape && canModuleConfig
         return true
       })
@@ -1118,13 +1108,6 @@ export function MenuAdminPage() {
     if (draft) setDraft(updater(draft))
   }
 
-  const setGroup = (index: number, field: 'enabled' | 'expression' | 'description', value: boolean | string | null) => {
-    patch((d) => {
-      const key = field === 'enabled' ? `GROUP${index}` : field === 'expression' ? `GROUP_EXP${index}` : `GROUP_DESC${index}`
-      return { ...d, [key]: value } as MenuAdminModule
-    })
-  }
-
   const errorMessage = describeApiError(modules.error, '发生未知错误，请稍后重试。')
 
   return (
@@ -1355,36 +1338,6 @@ export function MenuAdminPage() {
                             <Checkbox label="无明细资料不可保存" disabled={!editing} checked={draft.DETAIL_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, DETAIL_NO_SAVE: checked }))} />
                           )}
                         </div>
-                      </>
-                    )}
-                    {activeFormTab === 'group' && (
-                      <>
-                        {[1, 2, 3, 4, 5].map((index) => (
-                          <div className="card mb-2 erp-menu-group-card" key={index}>
-                            <div className="card-body py-2 px-3">
-                              <div className="d-flex align-items-center gap-3">
-                                <Checkbox
-                                  label={`分组表达式${index}`}
-                                  disabled={!editing}
-                                  checked={draft[`GROUP${index}` as keyof MenuAdminModule] as boolean}
-                                  onChange={(checked) => setGroup(index, 'enabled', checked)}
-                                />
-                                <Input
-                                  label={`表达式描述${index}`}
-                                  readOnly={!editing}
-                                  value={(draft[`GROUP_DESC${index}` as keyof MenuAdminModule] as string | null) ?? ''}
-                                  onChange={(value) => setGroup(index, 'description', value || null)}
-                                />
-                              </div>
-                              <Input
-                                label={`表达式${index}（如 TABLE.COL、CASE 或日期函数）`}
-                                readOnly={!editing}
-                                value={(draft[`GROUP_EXP${index}` as keyof MenuAdminModule] as string | null) ?? ''}
-                                onChange={(value) => setGroup(index, 'expression', value || null)}
-                              />
-                            </div>
-                          </div>
-                        ))}
                       </>
                     )}
                     {isWorkbenchShape && canModuleConfig && editing && (

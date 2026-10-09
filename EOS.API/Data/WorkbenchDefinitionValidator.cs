@@ -120,7 +120,7 @@ public sealed class WorkbenchDefinitionValidator(
         }
 
         var allowedFields = masterOk
-            ? await ReadFilterFieldKeysAsync(connection, module.MasterTable, token)
+            ? await ReadFilterFieldKeysAsync(connection, null, module.MasterTable, token)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (!string.IsNullOrWhiteSpace(module.Filter))
@@ -136,15 +136,15 @@ public sealed class WorkbenchDefinitionValidator(
         }
 
         var groupErrors = new List<string>();
-        for (var i = 0; i < 5; i++)
+        foreach (var (groupId, expression) in module.GroupExpressions)
         {
-            if (!module.GroupEnabled[i] || string.IsNullOrWhiteSpace(module.GroupExpressions[i]))
+            if (string.IsNullOrWhiteSpace(expression))
             {
                 continue;
             }
-            if (!GroupExpressionParser.TryCompile(module.GroupExpressions[i], module.MasterTable, allowedFields, out _))
+            if (!GroupExpressionParser.TryCompile(expression, module.MasterTable, allowedFields, out _))
             {
-                groupErrors.Add($"GROUP{i + 1}");
+                groupErrors.Add($"GROUP{groupId}");
             }
         }
         checks.Add(groupErrors.Count == 0
@@ -473,10 +473,7 @@ public sealed class WorkbenchDefinitionValidator(
         const string sql = """
             SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(M_URL,''))),
-                   LTRIM(RTRIM(ISNULL(FILTER,''))),
-                   ISNULL(GROUP1,0),ISNULL(GROUP_EXP1,''),ISNULL(GROUP2,0),ISNULL(GROUP_EXP2,''),
-                   ISNULL(GROUP3,0),ISNULL(GROUP_EXP3,''),ISNULL(GROUP4,0),ISNULL(GROUP_EXP4,''),
-                   ISNULL(GROUP5,0),ISNULL(GROUP_EXP5,'')
+                   LTRIM(RTRIM(ISNULL(FILTER,'')))
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -487,22 +484,43 @@ public sealed class WorkbenchDefinitionValidator(
             return null;
         }
 
-        var groups = new bool[5];
-        var expressions = new string[5];
-        for (var i = 0; i < 5; i++)
-        {
-            groups[i] = reader.GetBoolean(5 + i * 2);
-            expressions[i] = reader.IsDBNull(6 + i * 2) ? string.Empty : reader.GetString(6 + i * 2).Trim();
-        }
+        var title = reader.GetString(0);
+        var master = reader.GetString(1);
+        var detail = reader.GetString(2);
+        var url = reader.GetString(3);
+        var filter = reader.GetString(4);
+        await reader.CloseAsync();
+        // 分组表达式在 MODULE_GROUPS（保存即生效、不进快照），发布校验时按当前配置读一遍
+        var expressions = await ReadGroupExpressionsAsync(connection, moduleId, token);
         return new ModuleRow(
             moduleId,
-            reader.GetString(0),
-            reader.GetString(1),
-            string.IsNullOrWhiteSpace(reader.GetString(2)) ? null : reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            groups,
+            title,
+            master,
+            string.IsNullOrWhiteSpace(detail) ? null : detail,
+            url,
+            filter,
             expressions);
+    }
+
+    /// <summary>模块的分组表达式（GROUP_ID → GROUP_EXP），空表达式跳过。</summary>
+    private static async Task<IReadOnlyList<(int GroupId, string Expression)>> ReadGroupExpressionsAsync(
+        SqlConnection connection, int moduleId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT GROUP_ID,GROUP_EXP FROM dbo.MODULE_GROUPS WITH (NOLOCK)
+            WHERE M_IDX=@ModuleId ORDER BY SORT_IDX,GROUP_ID;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<(int GroupId, string Expression)>();
+        while (await reader.ReadAsync(token))
+        {
+            var expression = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim();
+            if (expression.Length == 0) continue;
+            result.Add((reader.GetInt32(0), expression));
+        }
+        return result;
     }
 
 
@@ -531,40 +549,23 @@ public sealed class WorkbenchDefinitionValidator(
     /// 所以保存时就要拦住；空值表示"无行级限制"，恒通过。
     /// </summary>
     internal static async Task<bool> TryValidateModuleFilterAsync(
-        SqlConnection connection, string masterTable, string? filter, CancellationToken token)
+        SqlConnection connection, SqlTransaction? transaction, string masterTable, string? filter, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(filter)) return true;
         if (string.IsNullOrWhiteSpace(masterTable)) return false;
-        var allowedFields = await ReadFilterFieldKeysAsync(connection, masterTable, token);
+        var allowedFields = await ReadFilterFieldKeysAsync(connection, transaction, masterTable, token);
         return DataFilterParser.TryParse(filter, masterTable, allowedFields, out _, out _);
     }
 
-    /// <summary>FILTER/分组白名单：主表物理存在、非虚拟字段（含隐藏字段，不受用户列选择影响）。</summary>
-    internal static async Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(SqlConnection connection, string table, CancellationToken token)
-    {
-        const string sql = """
-            SELECT LTRIM(RTRIM(f.F_ID))
-            FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM sys.columns c
-                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
-                          JOIN sys.schemas s ON o.schema_id=s.schema_id
-                          WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID);
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        while (await reader.ReadAsync(token))
-        {
-            var key = reader.GetString(0).Trim();
-            if (WorkbenchSql.Identifier.IsMatch(key))
-            {
-                result.Add(key);
-            }
-        }
-        return result;
-    }
+    /// <summary>
+    /// FILTER/分组白名单（系统口径）：主表物理存在、非虚拟字段（含隐藏字段，不受用户列选择影响）。
+    /// 实现在 <see cref="ModuleFieldWhitelist"/>，与分组配置写侧、分组读侧同源。
+    /// <paramref name="transaction"/> 为调用方连接上已开的本地事务（没有就传 null）：
+    /// 菜单保存走事务内校验，命令必须带上事务，否则驱动直接拒绝执行。
+    /// </summary>
+    internal static Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(
+        SqlConnection connection, SqlTransaction? transaction, string table, CancellationToken token)
+        => ModuleFieldWhitelist.ReadAsync(connection, transaction, table, null, token);
 
     private static async Task<IReadOnlyList<WorkbenchField>> ReadVirtualFieldsAsync(SqlConnection connection, string table, CancellationToken token)
     {
@@ -896,6 +897,5 @@ public sealed class WorkbenchDefinitionValidator(
         string? DetailTable,
         string MUrl,
         string Filter,
-        bool[] GroupEnabled,
-        string[] GroupExpressions);
+        IReadOnlyList<(int GroupId, string Expression)> GroupExpressions);
 }

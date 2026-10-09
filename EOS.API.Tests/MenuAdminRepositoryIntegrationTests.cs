@@ -332,11 +332,6 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
             MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
             NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
-            GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
-            GROUP2: false, GROUP_EXP2: null, GROUP_DESC2: null,
-            GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
-            GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
-            GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
             LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null, FORM_TABS: null, FORM_COLUMNS: null,
             M_ICON: "product");
 
@@ -372,11 +367,6 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
             MASTER_TABLE: "NOT_A_TABLE", FILTER: null, DETAIL_TABLE: null,
             NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
-            GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
-            GROUP2: false, GROUP_EXP2: null, GROUP_DESC2: null,
-            GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
-            GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
-            GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
             LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null);
 
         await Assert.ThrowsAsync<ArgumentException>(
@@ -503,10 +493,10 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             await using var insert = new SqlCommand(
                 """
                 INSERT INTO dbo.MODULES
-                    (M_IDX,M_DESC,M_P_IDX,SORT_IDX,M_TAG,SEARCH_1,SEARCH_2,IF_COPY,ERROR_NO_SAVE,GROUP1,GROUP5,DETAIL_NO_SAVE)
+                    (M_IDX,M_DESC,M_P_IDX,SORT_IDX,M_TAG,SEARCH_1,SEARCH_2,IF_COPY,ERROR_NO_SAVE,DETAIL_NO_SAVE)
                 VALUES
-                    (@Committed,N'空标志位（已提交 NULL）',NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),
-                    (@Dirty,N'空标志位（未提交 NULL）',NULL,0,1,1,1,1,1,1,1,1);
+                    (@Committed,N'空标志位（已提交 NULL）',NULL,0,NULL,NULL,NULL,NULL,NULL,NULL),
+                    (@Dirty,N'空标志位（未提交 NULL）',NULL,0,1,1,1,1,1,1);
                 """, seed);
             insert.Parameters.Add("@Committed", SqlDbType.Int).Value = committedNullId;
             insert.Parameters.Add("@Dirty", SqlDbType.Int).Value = dirtyReadId;
@@ -520,7 +510,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         await holder.OpenAsync();
         await using var transaction = (SqlTransaction)await holder.BeginTransactionAsync();
         await using (var update = new SqlCommand(
-            "UPDATE dbo.MODULES SET M_TAG=NULL,SEARCH_1=NULL,IF_COPY=NULL,GROUP1=NULL WHERE M_IDX=@Id;",
+            "UPDATE dbo.MODULES SET M_TAG=NULL,SEARCH_1=NULL,IF_COPY=NULL WHERE M_IDX=@Id;",
             holder, transaction))
         {
             update.Parameters.Add("@Id", SqlDbType.Int).Value = dirtyReadId;
@@ -541,7 +531,6 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         Assert.False(committed.M_TAG);
         Assert.False(committed.SEARCH_1);
         Assert.False(committed.IF_COPY);
-        Assert.False(committed.GROUP1);
         Assert.False(committed.DETAIL_NO_SAVE);
         // ② 那行只要"读得到、不抛异常"即可：它的值取决于 NOLOCK 是否读到未提交数据，
         // 断言具体取值会把测试绑死在隔离级别的实现细节上。

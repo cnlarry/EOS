@@ -19,6 +19,7 @@ describe('WORKSPACE_ROUTES', () => {
       '/admin/tables/PRODUCT/fields',
       '/admin/users',
       '/admin/menus',
+      '/admin/module-groups',
       '/my-tasks',
       '/jobs',
       '/import',

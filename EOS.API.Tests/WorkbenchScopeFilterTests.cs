@@ -30,8 +30,7 @@ public sealed class WorkbenchScopeFilterTests
             ModuleFilter: null,
             FilterFieldKeys: FilterKeys,
             UserId: "u1",
-            ExecTag: execTag,
-            GroupExpressions: ["", "", "", "", ""]);
+            ExecTag: execTag);
 
     [Theory]
     [InlineData("Z")]
@@ -204,5 +203,51 @@ public sealed class WorkbenchScopeFilterTests
         Assert.True(ok);
         Assert.Equal(string.Empty, predicate);
         Assert.Empty(parameters);
+    }
+
+    /// <summary>分组按 GROUP_ID 定位：命中即编译成「表达式 = 值」的参数化谓词。</summary>
+    [Fact]
+    public void GroupFilter_KnownGroupId_CompilesToParameterizedPredicate()
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+        var definition = Definition() with { GroupExpressions = new Dictionary<int, string> { [7] = "CLIENT.SALES_ID" } };
+        var predicates = new List<string>();
+        using var command = new SqlCommand();
+
+        filter.ApplyGroupFilter(definition, 7, "YW2-08", predicates, command);
+
+        var predicate = Assert.Single(predicates);
+        Assert.Contains("[SALES_ID]", predicate);
+        Assert.Equal("YW2-08", command.Parameters["@gf0"].Value);
+    }
+
+    /// <summary>库内没有这个分组编号：fail-closed 抛 403，不降级成全量查询。</summary>
+    [Fact]
+    public void GroupFilter_UnknownGroupId_ThrowsFailClosed()
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+        var definition = Definition() with { GroupExpressions = new Dictionary<int, string> { [7] = "CLIENT.SALES_ID" } };
+        var predicates = new List<string>();
+        using var command = new SqlCommand();
+
+        Assert.Throws<GroupExpressionUnsupportedException>(
+            () => filter.ApplyGroupFilter(definition, 8, "YW2-08", predicates, command));
+        Assert.Empty(predicates);
+    }
+
+    /// <summary>没选分组（编号或值缺失）时不解谓词，不抛异常。</summary>
+    [Fact]
+    public void GroupFilter_NoSelection_AddsNothing()
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+        var definition = Definition() with { GroupExpressions = new Dictionary<int, string> { [7] = "CLIENT.SALES_ID" } };
+        var predicates = new List<string>();
+        using var command = new SqlCommand();
+
+        filter.ApplyGroupFilter(definition, null, "YW2-08", predicates, command);
+        filter.ApplyGroupFilter(definition, 7, "  ", predicates, command);
+
+        Assert.Empty(predicates);
+        Assert.Empty(command.Parameters);
     }
 }

@@ -103,7 +103,7 @@ function installApiMocks(overrides: {
     if (p.includes('/lookups/')) return []
     if (p.includes('/field-settings/')) return fieldMeta
     if (p.includes('/groups/') && p.includes('/values')) return { values: ['NO', 'YES'] }
-    if (p.includes('/groups')) return { groups: [{ index: 1, description: '结案', available: true }] }
+    if (p.includes('/groups')) return { groups: [{ groupId: 1, description: '结案', available: true }] }
     throw new Error(`unexpected GET ${p}`)
   })
   apiClientMock.post.mockImplementation(async (path: string) =>
@@ -229,12 +229,12 @@ describe('DocumentWorkbenchPage', () => {
     ))
   })
 
-  it('URL 携带分组参数时列表请求带 groupIndex/groupValue 并显示分组筛选', async () => {
-    renderPage('/workbench/1209?groupIndex=1&groupValue=YES')
+  it('URL 携带分组参数时列表请求带 groupId/groupValue 并显示分组筛选', async () => {
+    renderPage('/workbench/1209?groupId=1&groupValue=YES')
     await loaded()
     await waitFor(() => {
       const recordCall = apiClientMock.get.mock.calls.find(([path]) => String(path).includes('/records'))
-      expect(recordCall?.[1]).toMatchObject({ query: { groupIndex: 1, groupValue: 'YES' } })
+      expect(recordCall?.[1]).toMatchObject({ query: { groupId: 1, groupValue: 'YES' } })
     })
     expect(screen.getByText('分组筛选：YES')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '清除分组' }))
@@ -250,7 +250,7 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(screen.getByText('分组筛选：NO')).toBeInTheDocument())
     await waitFor(() => {
       const recordCalls = apiClientMock.get.mock.calls.filter(([path]) => String(path).includes('/records'))
-      expect(recordCalls[recordCalls.length - 1]?.[1]).toMatchObject({ query: expect.objectContaining({ groupIndex: 1, groupValue: 'NO' }) })
+      expect(recordCalls[recordCalls.length - 1]?.[1]).toMatchObject({ query: expect.objectContaining({ groupId: 1, groupValue: 'NO' }) })
     })
   })
 

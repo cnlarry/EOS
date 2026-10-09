@@ -121,8 +121,8 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         moduleId = module.Id,
         masterTable = module.MasterTable,
         groups = module.Groups
-            .Where(group => group.Enabled && !string.IsNullOrWhiteSpace(group.Description))
-            .Select(group => new { index = group.Index, description = group.Description })
+            .Where(group => !string.IsNullOrWhiteSpace(group.Description))
+            .Select(group => new { groupId = group.GroupId, description = group.Description })
             .ToList()
     };
 

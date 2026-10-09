@@ -85,11 +85,11 @@ try {
   await groupValue.waitFor({ state: 'visible', timeout: 8000 })
   await page.screenshot({ path: join(shotDir, '05-group-values.png'), fullPage: false })
   await groupValue.click()
-  await page.waitForURL(/groupIndex=2&groupValue=NO/, { timeout: 10000 })
+  await page.waitForURL(/groupId=2&groupValue=NO/, { timeout: 10000 })
   await page.waitForLoadState('networkidle')
   const chip = page.getByText('分组筛选：NO')
   await chip.waitFor({ state: 'visible', timeout: 8000 })
-  record('工具条分组下拉进入组值筛选（170204/结案/NO）', page.url().includes('groupIndex=2&groupValue=NO'))
+  record('工具条分组下拉进入组值筛选（170204/结案/NO）', page.url().includes('groupId=2&groupValue=NO'))
   await page.screenshot({ path: join(shotDir, '06-group-filter-chip.png'), fullPage: false })
 
   // 6. 菜单管理页（2301）：树渲染 + 选中节点加载表单

@@ -22,7 +22,8 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  index: number
+  /** MODULE_GROUPS.GROUP_ID：分组的身份（不是"第几组"，序号只决定下拉顺序）。 */
+  groupId: number
   description: string
 }
 

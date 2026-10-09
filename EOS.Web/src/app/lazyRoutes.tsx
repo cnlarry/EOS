@@ -19,6 +19,7 @@ export const GroupRightsPage = lazy(() => import('../features/rights-admin/Group
 export const GroupButtonRightsPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupButtonRightsPage })))
 export const GroupMembersPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupMembersPage })))
 export const MenuAdminPage = lazy(() => import('../features/menu-admin/MenuAdminPage').then((module) => ({ default: module.MenuAdminPage })))
+export const ModuleGroupsPage = lazy(() => import('../features/admin/ModuleGroupsPage').then((module) => ({ default: module.ModuleGroupsPage })))
 export const ProfilePage = lazy(() => import('../features/settings/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 export const SystemSettingsPage = lazy(() => import('../features/settings/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })))
 export const BomExpandPage = lazy(() => import('../features/bom/BomExpandPage').then((module) => ({ default: module.BomExpandPage })))

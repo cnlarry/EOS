@@ -18,7 +18,7 @@
          菜单管理按形态隐藏主表 / 默认列 / 版式入口就会误伤一个真能开统一表单的模块；
          名单里出现库里不存在的编号也会让"名单"与库漂移。
       ③ 形态外无残留：非工作台节点上不得有排序字段 / 不可解批 / 自动批核 / 可复制 /
-         异常不可保存 / 明细必需字段 / 无明细不可保存 / 效果引擎开关 / 分组表达式 /
+         异常不可保存 / 明细必需字段 / 无明细不可保存 / 效果引擎开关 /
          表单打开方式。它们只有工作台定义与效果引擎会消费。
       ④ 脏标记合法：`WORKBENCH_MODULE_DIRTY` 只允许出现在 WORKBENCH 模块上，且不得指向
          已不存在的编号——编号级联语句不覆盖这张表，保存路径已改为"撤销旧编号的行"。
@@ -98,14 +98,7 @@ WHERE n.NODE_KIND <> N'WORKBENCH'
     OR ISNULL(m.IF_COPY, 0) = 1
     OR ISNULL(m.ERROR_NO_SAVE, 0) = 1
     OR ISNULL(m.DETAIL_NO_SAVE, 0) = 1
-    OR ISNULL(m.EFFECT_ENGINE_TAG, 0) = 1
-    OR ISNULL(m.GROUP1, 0) = 1 OR ISNULL(m.GROUP2, 0) = 1 OR ISNULL(m.GROUP3, 0) = 1
-    OR ISNULL(m.GROUP4, 0) = 1 OR ISNULL(m.GROUP5, 0) = 1
-    OR NULLIF(LTRIM(RTRIM(ISNULL(m.GROUP_EXP1, N''))), N'') IS NOT NULL
-    OR NULLIF(LTRIM(RTRIM(ISNULL(m.GROUP_EXP2, N''))), N'') IS NOT NULL
-    OR NULLIF(LTRIM(RTRIM(ISNULL(m.GROUP_EXP3, N''))), N'') IS NOT NULL
-    OR NULLIF(LTRIM(RTRIM(ISNULL(m.GROUP_EXP4, N''))), N'') IS NOT NULL
-    OR NULLIF(LTRIM(RTRIM(ISNULL(m.GROUP_EXP5, N''))), N'') IS NOT NULL);
+    OR ISNULL(m.EFFECT_ENGINE_TAG, 0) = 1);
 '@
 
     # ④ 脏标记只属于 WORKBENCH，且不得指向已不存在的编号

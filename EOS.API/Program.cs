@@ -167,6 +167,7 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddSingleton<PermissionCache>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<NavigationGroupsRepository>();
+builder.Services.AddScoped<ModuleGroupAdminRepository>();
 builder.Services.AddScoped<MenuAdminRepository>();
 builder.Services.AddScoped<ModuleBusinessConfigRepository>();
 builder.Services.AddScoped<EffectPlanLoader>();

@@ -114,19 +114,19 @@ public sealed class DocumentWorkbenchRepository(
     public async Task ResetColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
         => await fieldMetaMapper.ResetColumnSettingsAsync(definition, userId, token);
 
-    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null, int? groupIndex=null, string? groupValue=null, string? dataFilter=null)
-        => await queryComposer.GetRowsAsync(definition,detail,keys,page,pageSize,token,query,keyword,sortField,sortDirection,groupIndex,groupValue,dataFilter);
+    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null, int? groupId=null, string? groupValue=null, string? dataFilter=null)
+        => await queryComposer.GetRowsAsync(definition,detail,keys,page,pageSize,token,query,keyword,sortField,sortDirection,groupId,groupValue,dataFilter);
 
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(
         WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,
-        string? sortField=null,string? sortDirection=null,int? groupIndex=null,string? groupValue=null,
+        string? sortField=null,string? sortDirection=null,int? groupId=null,string? groupValue=null,
         IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
-        => await queryComposer.GetExportRowsAsync(definition,query,keyword,token,sortField,sortDirection,groupIndex,groupValue,exportFields,dataFilter);
+        => await queryComposer.GetExportRowsAsync(definition,query,keyword,token,sortField,sortDirection,groupId,groupValue,exportFields,dataFilter);
 
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(
         WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token,
-        int? groupIndex=null,string? groupValue=null,IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
-        => await queryComposer.GetExportRowsByKeysAsync(definition,keys,token,groupIndex,groupValue,exportFields,dataFilter);
+        int? groupId=null,string? groupValue=null,IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
+        => await queryComposer.GetExportRowsByKeysAsync(definition,keys,token,groupId,groupValue,exportFields,dataFilter);
 
     /// <summary>Picks export columns from the definition fields by a whitelisted key list.</summary>
     public static IReadOnlyList<WorkbenchField> ResolveExportFields(

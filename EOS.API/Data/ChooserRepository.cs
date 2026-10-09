@@ -16,6 +16,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private const int MenuAdminModuleId = 2301;
     private const int ReportAdminModuleId = 2201;
     private const int FieldAdminModuleId = 2302;
+    private const int ModuleGroupsModuleId = 2315;
     /// <summary>form-designer.fields 的排除列表条数上限（防止超长参数；超出部分只是多给候选，不影响正确性）。</summary>
     private const int MaxExcludeKeys = 500;
 
@@ -30,6 +31,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
             ["menu-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
             ["menu-admin.modules"] = ["M_IDX", "M_DESC"],
+            // 模块分组的配置对象（权限门 2315 模块分组）：候选 = 统一工作台模块（只有它们有分组消费方），
+            // 与服务端拒存规则同源；非工作台节点在保存时会被拒，故不列进候选。
+            ["module-groups.targets"] = ["M_IDX", "M_DESC", "MASTER_TABLE"],
             // 助手参数作用域（ADR-030 §6.2）：候选集 = MODULES 全表，与服务端的键校验同源
             ["assistant-admin.modules"] = ["M_IDX", "M_DESC"],
             ["field-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
@@ -61,6 +65,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.columns"] = ["COLUMN_NAME"],
             ["menu-admin.columns"] = ["COLUMN_NAME"],
             ["menu-admin.modules"] = ["M_IDX"],
+            ["module-groups.targets"] = ["M_IDX"],
             ["assistant-admin.modules"] = ["M_IDX"],
             ["field-admin.fields"] = ["F_ID"],
             ["menu-admin.fields"] = ["F_ID"],
@@ -115,6 +120,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             {
                 ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
+            },
+            ["module-groups.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
+                ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) LIKE @Keyword",
             },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -213,6 +224,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["M_IDX"] = "m.M_IDX",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
             },
+            ["module-groups.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "m.M_IDX",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
+                ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))",
+            },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
@@ -306,6 +323,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         // 助手作用域要按模块配置：门挂在 3105（助手设置），与写覆盖的端点同一道门——
         // 能看候选集的正是能改它的人，不必另开一个"只读模块表"的口子
         "assistant-admin.modules" => PermissionModules.AssistantAdmin.Settings,
+        // 模块分组的配置对象：门挂在 2315（模块分组），与写分组的端点同一道门——
+        // 能看候选集的正是能改它的人，不必另开一个"只读模块表"的口子
+        "module-groups.targets" => ModuleGroupsModuleId,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
         "user-admin.employees" => PermissionModules.SystemManagement,
         // 库位主档：权限门挂 110309（库位主档模块）
@@ -419,6 +439,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "report-admin.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
             "report-admin.modules" => await QueryModulesAsync(request, token),
             "assistant-admin.modules" => await QueryAssistantAdminModulesAsync(request, token),
+            "module-groups.targets" => await QueryModuleGroupTargetsAsync(request, token),
             "rights-admin.users" => await QueryUsersAsync(request, token),
             "rights-admin.groups" => await QueryGroupsAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
@@ -867,6 +888,66 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             [
                 new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
                 new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// `module-groups.targets`：模块分组（2315）的配置对象——只列**统一工作台模块**（权限门 2315）。
+    ///
+    /// <para>
+    /// 候选集与 <see cref="ModuleGroupAdminRepository"/> 的拒存规则同源：形态取视图 `dbo.V_MODULE_NODE`
+    /// 的 `WORKBENCH`（与 `ModuleRouteValidator.ResolveKind` 同源，见迁移 340），且必须有主表——
+    /// 只有工作台模块装配工作台定义，才有分组消费方。选择器比校验松会出现"挑得动、保存被拒"，
+    /// 比校验严则会出现"明明有分组却选不到"，所以两处必须一回事。
+    /// </para>
+    /// </summary>
+    private async Task<UnifiedChooserResult> QueryModuleGroupTargetsAsync(
+        UnifiedChooserQueryRequest request,
+        CancellationToken token)
+    {
+        const string sourceKey = "module-groups.targets";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var sql = $"""
+            SELECT COUNT_BIG(1)
+            FROM dbo.MODULES m WITH (NOLOCK)
+            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX AND n.NODE_KIND=N'WORKBENCH'
+            WHERE NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NOT NULL
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))) AS M_DESC,
+                   LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) AS MASTER_TABLE
+            FROM dbo.MODULES m WITH (NOLOCK)
+            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX AND n.NODE_KIND=N'WORKBENCH'
+            WHERE NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NOT NULL
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["M_IDX", "M_DESC", "MASTER_TABLE"]);
+        logger.LogInformation("统一选择器模块分组对象源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
+            page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
+                new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
+                new UnifiedChooserColumn("MASTER_TABLE", "主表", "nvarchar", null),
             ],
             rows,
             total);

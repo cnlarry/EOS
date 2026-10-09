@@ -33,7 +33,7 @@ public sealed class WorkbenchQueryComposer(
         string? keyword = null,
         string? sortField = null,
         string? sortDirection = null,
-        int? groupIndex = null,
+        int? groupId = null,
         string? groupValue = null,
         string? dataFilter = null)
     {
@@ -122,7 +122,7 @@ public sealed class WorkbenchQueryComposer(
         }
         if (!detail)
         {
-            scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, predicates, command);
+            scopeFilter.ApplyScope(definition, dataFilter, groupId, groupValue, predicates, command);
         }
         var where = predicates.Count > 0 ? " WHERE " + string.Join(" AND ", predicates) : "";
         var order = ResolveOrder(definition, fields, selected, detail, sortField, sortDirection);
@@ -154,7 +154,7 @@ public sealed class WorkbenchQueryComposer(
         CancellationToken token,
         string? sortField = null,
         string? sortDirection = null,
-        int? groupIndex = null,
+        int? groupId = null,
         string? groupValue = null,
         IReadOnlyList<WorkbenchField>? exportFields = null,
         string? dataFilter = null)
@@ -182,7 +182,7 @@ public sealed class WorkbenchQueryComposer(
         {
             AddKeywordPredicates(keyword, fields, predicates, command);
         }
-        scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, predicates, command);
+        scopeFilter.ApplyScope(definition, dataFilter, groupId, groupValue, predicates, command);
         var where = predicates.Count > 0 ? " WHERE " + string.Join(" AND ", predicates) : "";
         var order = ResolveOrder(definition, fields, selected, false, sortField, sortDirection);
         EnsureOrderColumnsInProjection(fields, selected, order);
@@ -201,7 +201,7 @@ public sealed class WorkbenchQueryComposer(
         WorkbenchDefinition definition,
         IReadOnlyList<IReadOnlyList<string>> keys,
         CancellationToken token,
-        int? groupIndex = null,
+        int? groupId = null,
         string? groupValue = null,
         IReadOnlyList<WorkbenchField>? exportFields = null,
         string? dataFilter = null)
@@ -231,7 +231,7 @@ public sealed class WorkbenchQueryComposer(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand();
         command.Connection = connection;
-        scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, filterPredicates, command);
+        scopeFilter.ApplyScope(definition, dataFilter, groupId, groupValue, filterPredicates, command);
         var orParts = new List<string>();
         for (var rowIndex = 0; rowIndex < keys.Count; rowIndex++)
         {

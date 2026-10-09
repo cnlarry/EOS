@@ -118,7 +118,7 @@ public sealed class WorkbenchDefinitionBuilder(
             : await WorkbenchBrowseResolver.ResolveAsync(connection,
                 await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token),
                 detail, formOpenableModules, token);
-        var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
+        var groupExpressions = await ReadGroupExpressionsAsync(connection, moduleId, token);
         // 版式段是模块级事实，随快照冻结；历史快照没有该段时按当前配置补读（含默认推导）
         var formLayout = baseline.FormLayout ?? await FormLayoutReader.ReadAsync(
             connection, moduleId, master, detail, token);
@@ -149,7 +149,6 @@ public sealed class WorkbenchDefinitionBuilder(
         CancellationToken token)
     {
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,AUTO_APPROVE," +
-                           "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
                            // FORM_TABS / FORM_COLUMNS 已退役：**在原位返回 NULL 占位**，下游按位置取值不改，
                            // 等字段级配置彻底清理时再一并删掉这两段
                            "NULL AS FORM_TABS,NULL AS FORM_COLUMNS,IF_COPY,SEARCH_1,SEARCH_2," +
@@ -171,24 +170,18 @@ public sealed class WorkbenchDefinitionBuilder(
         var detailNoFields=reader.IsDBNull(6)?"":reader.GetString(6).Trim();
         var moduleFilter=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
         var autoApprove=!reader.IsDBNull(8)&&reader.GetBoolean(8);
-        var groupExpressions = new string[5];
-        for (var i = 0; i < 5; i++)
-        {
-            var offset = 9 + i * 2;
-            var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
-            var expression = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
-            groupExpressions[i] = enabled ? expression : string.Empty;
-        }
-        var formTabs = reader.IsDBNull(19) ? null : reader.GetString(19).Trim();
-        var formColumns = reader.IsDBNull(20) ? (int?)null : (int)reader.GetByte(20);
-        var ifCopy = !reader.IsDBNull(21) && reader.GetBoolean(21);
-        var searchMaster = !reader.IsDBNull(22) && reader.GetBoolean(22);
-        var searchDetail = !reader.IsDBNull(23) && reader.GetBoolean(23);
+        var formTabs = reader.IsDBNull(9) ? null : reader.GetString(9).Trim();
+        var formColumns = reader.IsDBNull(10) ? (int?)null : (int)reader.GetByte(10);
+        var ifCopy = !reader.IsDBNull(11) && reader.GetBoolean(11);
+        var searchMaster = !reader.IsDBNull(12) && reader.GetBoolean(12);
+        var searchDetail = !reader.IsDBNull(13) && reader.GetBoolean(13);
         // 表单呈现配置：打开方式非法/未配置一律回落本页签；宽高只在弹窗方式下带给前端
-        var formOpenMode = FormOpenModes.Normalize(reader.IsDBNull(24) ? null : reader.GetString(24));
-        var formDialogWidth = reader.IsDBNull(25) ? (int?)null : reader.GetInt32(25);
-        var formDialogHeight = reader.IsDBNull(26) ? (int?)null : reader.GetInt32(26);
+        var formOpenMode = FormOpenModes.Normalize(reader.IsDBNull(14) ? null : reader.GetString(14));
+        var formDialogWidth = reader.IsDBNull(15) ? (int?)null : reader.GetInt32(15);
+        var formDialogHeight = reader.IsDBNull(16) ? (int?)null : reader.GetInt32(16);
         await reader.CloseAsync();
+        // 分组表达式在 MODULES 之外（MODULE_GROUPS），与主表元数据同一次装配实时读取
+        var groupExpressions = await ReadGroupExpressionsAsync(connection, moduleId, token);
         // 工作台模块判定：承载页是 /workbench，或没声明承载页但有主表（默认落统一工作台，见迁移 321）。
         if (!ModuleRouteValidator.IsWorkbenchModule(url, master) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
         {
@@ -790,30 +783,29 @@ public sealed class WorkbenchDefinitionBuilder(
         return result;
     }
 
-    /// <summary>Reads module group expressions (GROUP1..5/GROUP_EXP1..5); snapshots omit high-risk expressions so these are read live.</summary>
-    private static async Task<(bool[] Enabled, string[] Expressions)> ReadGroupExpressionsAsync(
+    /// <summary>
+    /// 读模块的分组表达式（MODULE_GROUPS，按 GROUP_ID 索引）。
+    /// 分组是"保存即生效"的配置，**不进快照**（WorkbenchDefinition.GroupExpressions 带 [JsonIgnore]），
+    /// 故每次装配定义都实时读一次，管理员在 2315 改完立刻生效、不需要重新发布。
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<int, string>> ReadGroupExpressionsAsync(
         SqlConnection connection, int moduleId, CancellationToken token)
     {
         const string sql = """
-            SELECT ISNULL(GROUP1,0),ISNULL(GROUP_EXP1,''),ISNULL(GROUP2,0),ISNULL(GROUP_EXP2,''),
-                   ISNULL(GROUP3,0),ISNULL(GROUP_EXP3,''),ISNULL(GROUP4,0),ISNULL(GROUP_EXP4,''),
-                   ISNULL(GROUP5,0),ISNULL(GROUP_EXP5,'')
-            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            SELECT GROUP_ID,GROUP_EXP FROM dbo.MODULE_GROUPS WITH (NOLOCK)
+            WHERE M_IDX=@ModuleId ORDER BY SORT_IDX,GROUP_ID;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
-        var enabled = new bool[5];
-        var expressions = new string[5];
-        if (await reader.ReadAsync(token))
+        var expressions = new Dictionary<int, string>();
+        while (await reader.ReadAsync(token))
         {
-            for (var i = 0; i < 5; i++)
-            {
-                enabled[i] = reader.GetBoolean(i * 2);
-                expressions[i] = reader.IsDBNull(i * 2 + 1) ? string.Empty : reader.GetString(i * 2 + 1).Trim();
-            }
+            var expression = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim();
+            if (expression.Length == 0) continue;
+            expressions[reader.GetInt32(0)] = expression;
         }
-        return (enabled, expressions);
+        return expressions;
     }
 
     /// <summary>

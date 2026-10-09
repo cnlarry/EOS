@@ -64,7 +64,7 @@ const bootstrap: AppBootstrap = {
               route: '/workbench/1209',
               icon: 'sales',
               moduleId: 1209,
-              groups: [{ index: 1, description: '结案' }],
+              groups: [{ groupId: 1, description: '结案' }],
             },
           ],
         },

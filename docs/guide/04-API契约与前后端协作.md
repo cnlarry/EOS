@@ -169,3 +169,20 @@
 露出哪些配置项，见 [70-后台配置面总览](./70-后台配置面总览.md) 第二节。外部若要判"这个模块是不是工作台模块"，
 用后端 `ModuleRouteValidator.ResolveKind` 或那个视图，不要自己拼 `M_URL` + `MASTER_TABLE` 的组合谓词
 （口径见 [10-元数据模型](./10-元数据模型.md) 第一节）。
+
+## 收口（迁移 341）：模块投影卸下分组列，分组筛选参数改名
+
+- `MenuAdminModule` **不再返回**那 15 个分组字段（`GROUP1..5` / `GROUP_EXP1..5` / `GROUP_DESC1..5`）：
+  列表分组已独立成 `MODULE_GROUPS` 表，配置面是 2315「模块分组」，模块记录上不再有这些列；
+- 工作台的四个查询端点（`/records`、`/query`、`/export`、`/export-selected`）与
+  `GET /navigation/{moduleId}/groups/{groupId}/values` 的分组参数由 **`groupIndex`（1~5 序号）改为
+  `groupId`**（`MODULE_GROUPS.GROUP_ID`）。序号只决定下拉顺序，拿它当身份会让调序/删除后的旧链接
+  指到另一个表达式上；`NavigationItem.groups[]` 的元素同步由 `{ index, description }` 改为
+  `{ groupId, description }`（见 [20-认证与会话](./20-认证与会话.md)）。外部若按 `groupIndex` 拼过列表链接，需跟着改；
+- 读不到该编号仍是 403 `GROUP_EXP_UNSUPPORTED`（与"表达式超出受控子集"共用同一响应，不区分两者——
+  区分等于泄露别处配置的存在性）；细节见 [40-统一工作台](./40-统一工作台.md) 末节；
+- 分组的**配置面**是 2315「模块分组」的定制页 `/admin/module-groups`（`ModuleGroupAdminController`，
+  `api/v1/admin/module-groups`，读 `CanBrowse` / 写 `CanSetup`）：`POST/PUT/DELETE` 的校验失败一律
+  400 `INVALID_ARGUMENT`，消息指名到列（如"列 X 不在主表 Y 的分组可用字段里"），便于界面直接显示。
+  2315 是**自定义承载页**，不在统一表单写名单里——那份名单是写路径的门，只收工作台模块
+  （见 [70-后台配置面总览](./70-后台配置面总览.md) 第二节）。

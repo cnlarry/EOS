@@ -40,9 +40,7 @@ public sealed class MenuAdminRepository(
         var sql = """
             SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
-                   GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
-                   GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
                    NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,EFFECT_ENGINE_TAG,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
@@ -243,9 +241,7 @@ public sealed class MenuAdminRepository(
         var sql = """
             SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
-                   GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
-                   GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
                    NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,EFFECT_ENGINE_TAG,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
@@ -734,11 +730,6 @@ public sealed class MenuAdminRepository(
             FILTER = hasMaster ? input.FILTER : null,
             SEARCH_1 = hasMaster ? input.SEARCH_1 : false,
             SEARCH_2 = hasMaster ? input.SEARCH_2 : false,
-            GROUP1 = false, GROUP_EXP1 = null, GROUP_DESC1 = null,
-            GROUP2 = false, GROUP_EXP2 = null, GROUP_DESC2 = null,
-            GROUP3 = false, GROUP_EXP3 = null, GROUP_DESC3 = null,
-            GROUP4 = false, GROUP_EXP4 = null, GROUP_DESC4 = null,
-            GROUP5 = false, GROUP_EXP5 = null, GROUP_DESC5 = null,
         };
     }
 
@@ -798,7 +789,7 @@ public sealed class MenuAdminRepository(
         var masterTable = input.MASTER_TABLE?.Trim() ?? string.Empty;
         if (masterTable.Length == 0)
             throw new ArgumentException("未配置操作主表时不允许设置模块过滤条件（没有可过滤的对象）。");
-        if (!await WorkbenchDefinitionValidator.TryValidateModuleFilterAsync(connection, masterTable, input.FILTER, token))
+        if (!await WorkbenchDefinitionValidator.TryValidateModuleFilterAsync(connection, null, masterTable, input.FILTER, token))
             throw new ArgumentException(
                 "模块过滤条件超出受控子集，已拒绝保存（与报表数据范围、选择器数据范围共用同一解析器）。");
     }
@@ -823,24 +814,19 @@ public sealed class MenuAdminRepository(
         GetBool(reader, 13), GetString(reader, 14),
         GetString(reader, 15), GetString(reader, 16), GetString(reader, 17),
         GetString(reader, 18), GetString(reader, 19),
-        GetBool(reader, 20), GetString(reader, 21), GetString(reader, 22),
-        GetBool(reader, 23), GetString(reader, 24), GetString(reader, 25),
-        GetBool(reader, 26), GetString(reader, 27), GetString(reader, 28),
-        GetBool(reader, 29), GetString(reader, 30), GetString(reader, 31),
-        GetBool(reader, 32), GetString(reader, 33), GetString(reader, 34),
-        GetString(reader, 35),
-        reader.IsDBNull(36) ? null : reader.GetDateTime(36),
-        GetString(reader, 37),
-        reader.IsDBNull(38) ? (int?)null : (int)reader.GetByte(38),
-        GetString(reader, 39),
-        EffectEngineTag: GetBool(reader, 40),
-        MasterTableDesc: GetString(reader, 41),
-        DetailTableDesc: GetString(reader, 42),
-        DirtyTag: GetBool(reader, 43),
-        PublishVersion: reader.IsDBNull(44) ? null : reader.GetInt32(44),
-        PublishedAt: reader.IsDBNull(45) ? null : reader.GetDateTime(45),
-        // REMARK 追加在两个 SELECT 的**最末尾**（下标 46）：既有 0..45 的下标一个都不用挪
-        REMARK: GetString(reader, 46),
+        GetString(reader, 20),
+        reader.IsDBNull(21) ? null : reader.GetDateTime(21),
+        GetString(reader, 22),
+        reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23),
+        GetString(reader, 24),
+        EffectEngineTag: GetBool(reader, 25),
+        MasterTableDesc: GetString(reader, 26),
+        DetailTableDesc: GetString(reader, 27),
+        DirtyTag: GetBool(reader, 28),
+        PublishVersion: reader.IsDBNull(29) ? null : reader.GetInt32(29),
+        PublishedAt: reader.IsDBNull(30) ? null : reader.GetDateTime(30),
+        // REMARK 追加在两个 SELECT 的**最末尾**（下标 31）：既有 0..30 的下标一个都不用挪
+        REMARK: GetString(reader, 31),
         // 形态由承载页（下标 3）与主表（下标 15）算出，不落库：库里只有一个事实来源，
         // 投影只是它的读法（见 ModuleNodeKind）。
         NODE_KIND: ModuleRouteValidator.WireName(
@@ -893,9 +879,10 @@ public sealed class MenuAdminRepository(
     /// <summary>
     /// 读可空 bit 列：NULL 一律当 0。
     ///
-    /// MODULES 里这批标志位（M_TAG / AUTO_APPROVE / IF_COPY / ERROR_NO_SAVE / GROUP1..5 /
-    /// EFFECT_ENGINE_TAG 等）**是可空的**——历史上就出现过整批 NULL。直接 GetBoolean 会在
-    /// 遇到 NULL 时抛 SqlNullValueException，把整个菜单管理列表打成 500；而本查询用的是
+    /// MODULES 里这批标志位（M_TAG / AUTO_APPROVE / IF_COPY / ERROR_NO_SAVE /
+    /// EFFECT_ENGINE_TAG 等）**是可空的**——历史上就出现过整批 NULL（分组标志列 GROUP1..5
+    /// 就是那一批，已由迁移 341 下线，同迁移给剩余标志列补了 DEFAULT）。直接 GetBoolean
+    /// 会在遇到 NULL 时抛 SqlNullValueException，把整个菜单管理列表打成 500；而本查询用的是
     /// NOLOCK，还会读到别的事务里尚未提交、这些列为 NULL 的半成品行，进一步放大触发面。
     /// "NULL 当 0"与库内其它读取口径（`ISNULL(列,0)`）一致。
     /// </summary>
@@ -1040,16 +1027,12 @@ public sealed class MenuAdminRepository(
             INSERT INTO dbo.MODULES
              (M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-              MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
-              GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
-              GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+              MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
               M_ICON,EFFECT_ENGINE_TAG,REMARK)
               VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
-              @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
-              @GROUP1,@GROUP_EXP1,@GROUP_DESC1,@GROUP2,@GROUP_EXP2,@GROUP_DESC2,@GROUP3,@GROUP_EXP3,@GROUP_DESC3,
-              @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE(),
+              @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,@LAST_UPDATE_BY,GETDATE(),
               @M_ICON,@EFFECT_ENGINE_TAG,@REMARK);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
@@ -1066,11 +1049,6 @@ public sealed class MenuAdminRepository(
               IF_COPY=@IF_COPY,ERROR_NO_SAVE=@ERROR_NO_SAVE,SORT_FIELDS=@SORT_FIELDS,
               MASTER_TABLE=@MASTER_TABLE,FILTER=@FILTER,DETAIL_TABLE=@DETAIL_TABLE,
               NOT_BACK_FIELDS_M=@NOT_BACK_FIELDS_M,NOT_BACK_FIELDS=@NOT_BACK_FIELDS,
-              GROUP1=@GROUP1,GROUP_EXP1=@GROUP_EXP1,GROUP_DESC1=@GROUP_DESC1,
-              GROUP2=@GROUP2,GROUP_EXP2=@GROUP_EXP2,GROUP_DESC2=@GROUP_DESC2,
-              GROUP3=@GROUP3,GROUP_EXP3=@GROUP_EXP3,GROUP_DESC3=@GROUP_DESC3,
-              GROUP4=@GROUP4,GROUP_EXP4=@GROUP_EXP4,GROUP_DESC4=@GROUP_DESC4,
-              GROUP5=@GROUP5,GROUP_EXP5=@GROUP_EXP5,GROUP_DESC5=@GROUP_DESC5,
               LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
               M_ICON=@M_ICON,
               EFFECT_ENGINE_TAG=@EFFECT_ENGINE_TAG,
@@ -1106,15 +1084,6 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@DETAIL_TABLE", (object?)m.DETAIL_TABLE ?? DBNull.Value);
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS_M", (object?)m.NOT_BACK_FIELDS_M ?? DBNull.Value);
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS", (object?)m.NOT_BACK_FIELDS ?? DBNull.Value);
-        for (var i = 0; i < 5; i++)
-        {
-            var enabled = i switch { 0 => m.GROUP1, 1 => m.GROUP2, 2 => m.GROUP3, 3 => m.GROUP4, _ => m.GROUP5 };
-            var expression = i switch { 0 => m.GROUP_EXP1, 1 => m.GROUP_EXP2, 2 => m.GROUP_EXP3, 3 => m.GROUP_EXP4, _ => m.GROUP_EXP5 };
-            var description = i switch { 0 => m.GROUP_DESC1, 1 => m.GROUP_DESC2, 2 => m.GROUP_DESC3, 3 => m.GROUP_DESC4, _ => m.GROUP_DESC5 };
-            command.Parameters.Add($"@GROUP{i + 1}", SqlDbType.Bit).Value = enabled;
-            command.Parameters.AddWithValue($"@GROUP_EXP{i + 1}", (object?)expression ?? DBNull.Value);
-            command.Parameters.AddWithValue($"@GROUP_DESC{i + 1}", (object?)description ?? DBNull.Value);
-        }
         command.Parameters.AddWithValue("@LAST_UPDATE_BY", updatedBy);
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
         command.Parameters.Add("@EFFECT_ENGINE_TAG", SqlDbType.Bit).Value = m.EffectEngineTag;
@@ -1125,8 +1094,8 @@ public sealed class MenuAdminRepository(
     }
 
     /// <summary>
-    /// 模块编号变更的引用级联：把 17 张表里指向旧编号的列改指新编号（本节点 / 子节点 / 根节点、
-    /// 个人与组权限、报表与查询、字段与选择器、流程定义与流转、单据性质、待办）。
+    /// 模块编号变更的引用级联：把指向旧编号的列改指新编号（本节点 / 子节点 / 根节点、
+    /// 个人与组权限、模块分组、报表与查询、字段与选择器、流程定义与流转、单据性质、待办）。
     /// 语句与顺序对照原 `P_Change_M_IDX` 过程本体；**唯一差异**是选择器数据源那张表：
     /// 原过程写的是已被 取代的 `FIELDS_CHOOSER`（该表在库内已不存在，原过程本体因此
     /// 整条跑不通），这里改用现表 `FIELD_DATASOURCE` 的同名列 `SOURCE_M_IDX`。
@@ -1152,6 +1121,7 @@ public sealed class MenuAdminRepository(
         UPDATE dbo.WFFORM_FLOW SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
         UPDATE dbo.WF_MONITOR SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
         UPDATE dbo.BILLKIND SET B_M_IDX=@NEW_IDX WHERE B_M_IDX=@OLD_IDX;
+        UPDATE dbo.MODULE_GROUPS SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         """;
 
     internal static async Task ChangeModuleIdAsync(SqlConnection connection, SqlTransaction transaction, int oldId, int newId, CancellationToken token)

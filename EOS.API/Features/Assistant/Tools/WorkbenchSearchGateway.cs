@@ -23,12 +23,12 @@ public interface IWorkbenchSearchGateway
         WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string, string> keys,
         int page, int pageSize, CancellationToken token, WorkbenchQuery? query = null,
         string? keyword = null, string? sortField = null, string? sortDirection = null,
-        int? groupIndex = null, string? groupValue = null, string? dataFilter = null);
+        int? groupId = null, string? groupValue = null, string? dataFilter = null);
 
     /// <summary>按主键值数组集合精确取行（「导出所选」同一路径，列遵循用户选择列与字段过滤）。</summary>
     Task<IReadOnlyList<Dictionary<string, object?>>> GetExportRowsByKeysAsync(
         WorkbenchDefinition definition, IReadOnlyList<IReadOnlyList<string>> keys, CancellationToken token,
-        int? groupIndex = null, string? groupValue = null,
+        int? groupId = null, string? groupValue = null,
         IReadOnlyList<WorkbenchField>? exportFields = null, string? dataFilter = null);
 
     /// <summary>统一表单定义（mode=new/edit/view；字段集合经权限过滤）。</summary>

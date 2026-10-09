@@ -27,7 +27,7 @@ import { reportListFilters, reportSelection } from '../assistant/situationSource
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; browseKeyFields:string[]|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; canDelete?:boolean; /** 统一表单打开方式（本页签/新页签/弹窗）+ 弹窗尺寸，见 formOpenMode.ts */ formOpenMode?:string|null; formDialogWidth?:number|null; formDialogHeight?:number|null }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
-interface NavigationGroupDef { index:number; description:string; available:boolean }
+interface NavigationGroupDef { groupId:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null; serialNo:number|null }
@@ -69,10 +69,12 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const [groupValues,setGroupValues]=useState<string[]|null>(null)
   const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
   const [groupMenuOpen,setGroupMenuOpen]=useState(false)
-  const rawGroupIndex=searchParams.get('groupIndex')
+  // 分组筛选的深链参数是分组编号（MODULE_GROUPS.GROUP_ID，见 2315 模块分组），不是"第几组"：
+  // 序号只决定下拉顺序，拿它当身份会让调序/删除后的旧链接指向另一个表达式。
+  const rawGroupId=searchParams.get('groupId')
   const rawGroupValue=searchParams.get('groupValue')
-  const groupIndex=rawGroupIndex!=null&&/^[1-5]$/.test(rawGroupIndex)?Number(rawGroupIndex):null
-  const groupValue=groupIndex!=null&&rawGroupValue!=null?rawGroupValue:null
+  const groupId=rawGroupId!=null&&/^\d+$/.test(rawGroupId)?Number(rawGroupId):null
+  const groupValue=groupId!=null&&rawGroupValue!=null?rawGroupValue:null
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
   // 滚动加载模式下 pageSize 即每次抓取的块大小：50 ≈ 两屏缓冲，减少请求与“加载更多”闪烁
   const pageSize=50
@@ -84,8 +86,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const safeConditions=useMemo(()=>appliedConditions.filter(item=>allowedMasterKeys.has(item.field.toLowerCase())),[appliedConditions,allowedMasterKeys])
   const safeColumnFilters=useMemo(()=>Object.fromEntries(Object.entries(columnFilters).filter(([key])=>allowedMasterKeys.has(key.toLowerCase()))),[columnFilters,allowedMasterKeys])
   const records=useInfiniteQuery({
-    queryKey:['workbench',moduleId,'records',pageSize,safeConditions,keyword,safeSort,groupIndex,groupValue],
-    queryFn:({pageParam})=>{const sq=sortQuery(safeSort);const group=groupIndex!=null&&groupValue!=null?`&groupIndex=${groupIndex}&groupValue=${encodeURIComponent(groupValue)}`:'';return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${pageParam}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}${group}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page:pageParam,pageSize,keyword:keyword||undefined,...sq,...(groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{})}})},
+    queryKey:['workbench',moduleId,'records',pageSize,safeConditions,keyword,safeSort,groupId,groupValue],
+    queryFn:({pageParam})=>{const sq=sortQuery(safeSort);const group=groupId!=null&&groupValue!=null?`&groupId=${groupId}&groupValue=${encodeURIComponent(groupValue)}`:'';return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${pageParam}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}${group}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page:pageParam,pageSize,keyword:keyword||undefined,...sq,...(groupId!=null&&groupValue!=null?{groupId,groupValue}:{})}})},
     initialPageParam:1,
     getNextPageParam:(last)=>last.page<Math.ceil(last.total/pageSize)?last.page+1:undefined,
     enabled:definition.isSuccess,
@@ -114,9 +116,9 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     if(!hydrated.current){hydrated.current=true;return}
     setSearchParams((current)=>{
       const state=writeListState({keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
-      const groupIndexParam=current.get('groupIndex')
+      const groupIdParam=current.get('groupId')
       const groupValueParam=current.get('groupValue')
-      if(groupIndexParam)state.set('groupIndex',groupIndexParam)
+      if(groupIdParam)state.set('groupId',groupIdParam)
       if(groupValueParam)state.set('groupValue',groupValueParam)
       return state
     },{replace:true})
@@ -356,9 +358,9 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     render:button.action==='export'?()=>exportButton:undefined,
     variant:button.action==='new'?'primary':undefined,
   }))
-  const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
-  const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupIndex',String(activeGroup.index));current.set('groupValue',value);return current},{replace:true})}
-  const groupQuery=groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{}
+  const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.groupId}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
+  const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupId',String(activeGroup.groupId));current.set('groupValue',value);return current},{replace:true})}
+  const groupQuery=groupId!=null&&groupValue!=null?{groupId,groupValue}:{}
   const fitAllColumns=async()=>{
     if(fitting)return
     const masterWidths=masterFitRef.current?.()??{}
@@ -396,7 +398,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
               {groupMenuOpen&&(
                 <div className="dropdown-menu dropdown-menu-end show" role="menu">
                   {activeGroup===null?groupDefs.map(group=>(
-                    <button key={group.index} type="button" role="menuitem" className={`dropdown-item ${group.available?'':'disabled'}`} disabled={!group.available} onClick={()=>void openGroupValues(group)}>{group.description}</button>
+                    <button key={group.groupId} type="button" role="menuitem" className={`dropdown-item ${group.available?'':'disabled'}`} disabled={!group.available} onClick={()=>void openGroupValues(group)}>{group.description}</button>
                   )):(
                     <>
                       <button type="button" role="menuitem" className="dropdown-item" onClick={()=>setActiveGroup(null)}>← {activeGroup.description}</button>
@@ -406,7 +408,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
                         :groupValues.length===0
                           ?<div className="dropdown-item-text text-secondary">无分组数据</div>
                           :groupValues.map(value=>(
-                            <button key={value} type="button" role="menuitem" className={`dropdown-item ${groupIndex===activeGroup.index&&groupValue===value?'active':''}`} onClick={()=>applyGroupValue(value)}>{value}</button>
+                            <button key={value} type="button" role="menuitem" className={`dropdown-item ${groupId===activeGroup.groupId&&groupValue===value?'active':''}`} onClick={()=>applyGroupValue(value)}>{value}</button>
                           ))}
                     </>
                   )}
@@ -444,7 +446,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         <div className="erp-active-group-filter">
           <IconZoomScan size={14} aria-hidden="true" />
           <span>分组筛选：{groupValue}</span>
-          <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupIndex');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
+          <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupId');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
         </div>
       )}
       <div className={`erp-master-table-region ${records.isFetching && !records.isFetchingNextPage ? 'is-loading' : ''}`}>

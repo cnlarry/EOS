@@ -4,8 +4,10 @@ namespace EOS.API.Models;
 
 /// <summary>
 /// MODULES 菜单节点（对应旧 可编辑字段全集）。
-/// JSON 字段名与数据库/完全一致（M_IDX / MASTER_TABLE / GROUP1..5 等）。
+/// JSON 字段名与数据库/完全一致（M_IDX / MASTER_TABLE 等）。
 /// M_P_IDX 为 0 或 null 表示根节点。
+/// 列表分组（原 GROUP1..5 / GROUP_EXP1..5 / GROUP_DESC1..5）已独立为 MODULE_GROUPS 表，
+/// 在 2315 模块分组里维护，不在本记录上。
 /// </summary>
 public sealed record MenuAdminModule(
     [property: JsonPropertyName("M_IDX")] int M_IDX,
@@ -32,21 +34,6 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("DETAIL_TABLE")] string? DETAIL_TABLE,
     [property: JsonPropertyName("NOT_BACK_FIELDS_M")] string? NOT_BACK_FIELDS_M,
     [property: JsonPropertyName("NOT_BACK_FIELDS")] string? NOT_BACK_FIELDS,
-    [property: JsonPropertyName("GROUP1")] bool GROUP1,
-    [property: JsonPropertyName("GROUP_EXP1")] string? GROUP_EXP1,
-    [property: JsonPropertyName("GROUP_DESC1")] string? GROUP_DESC1,
-    [property: JsonPropertyName("GROUP2")] bool GROUP2,
-    [property: JsonPropertyName("GROUP_EXP2")] string? GROUP_EXP2,
-    [property: JsonPropertyName("GROUP_DESC2")] string? GROUP_DESC2,
-    [property: JsonPropertyName("GROUP3")] bool GROUP3,
-    [property: JsonPropertyName("GROUP_EXP3")] string? GROUP_EXP3,
-    [property: JsonPropertyName("GROUP_DESC3")] string? GROUP_DESC3,
-    [property: JsonPropertyName("GROUP4")] bool GROUP4,
-    [property: JsonPropertyName("GROUP_EXP4")] string? GROUP_EXP4,
-    [property: JsonPropertyName("GROUP_DESC4")] string? GROUP_DESC4,
-    [property: JsonPropertyName("GROUP5")] bool GROUP5,
-    [property: JsonPropertyName("GROUP_EXP5")] string? GROUP_EXP5,
-    [property: JsonPropertyName("GROUP_DESC5")] string? GROUP_DESC5,
     [property: JsonPropertyName("LAST_UPDATE_BY")] string? LAST_UPDATE_BY,
     [property: JsonPropertyName("LAST_UPDATE_DATE")] DateTime? LAST_UPDATE_DATE,
     [property: JsonPropertyName("FORM_TABS")] string? FORM_TABS = null,

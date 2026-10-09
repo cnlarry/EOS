@@ -21,6 +21,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/admin/tables': { section: '系统管理', title: '数据表、字段维护' },
   '/admin/business-flow': { section: '系统管理', title: '业务流程图' },
   '/admin/menus': { section: '系统管理', title: '模块管理' },
+  '/admin/module-groups': { section: '系统管理', title: '模块分组' },
   '/admin/groups': { section: '系统管理', title: '用户组管理' },
   '/admin/users': { section: '系统管理', title: '用户权限设定' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },

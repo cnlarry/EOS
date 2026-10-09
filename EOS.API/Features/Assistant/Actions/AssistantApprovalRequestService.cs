@@ -185,7 +185,7 @@ public sealed class AssistantApprovalRequestService(
         try
         {
             var rows = await gateway.GetExportRowsByKeysAsync(
-                definition, keys, token, groupIndex: null, groupValue: null,
+                definition, keys, token, groupId: null, groupValue: null,
                 exportFields: null, dataFilter: dataFilter);
             return [.. rows.Select(row => (IReadOnlyDictionary<string, object?>)row)];
         }

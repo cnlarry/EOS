@@ -12,11 +12,6 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
   MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
   NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
-  GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
-  GROUP2: false, GROUP_EXP2: null, GROUP_DESC2: null,
-  GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
-  GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
-  GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
   FORM_TABS: null, FORM_COLUMNS: null,
   LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
   M_ICON: null,
@@ -824,7 +819,7 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('主表过滤条件')).toHaveValue('(C_ID = 1)'))
   })
 
-  it('编辑表单按页签分组：基础/主表/子表/分组（表单呈现不在这里）', async () => {
+  it('编辑表单按页签分组：基础/主表/子表（分组与表单呈现都不在这里）', async () => {
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -845,8 +840,10 @@ describe('MenuAdminPage', () => {
     expect(screen.getByLabelText('操作副表名')).toBeInTheDocument()
     expect(screen.getByLabelText('新增明细时必需字段')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('tab', { name: '分组' }))
-    expect(screen.getByLabelText('表达式1（如 TABLE.COL、CASE 或日期函数）')).toBeInTheDocument()
+    // 「分组」页签已迁走：列表分组是 MODULE_GROUPS 的配置面（2315 模块分组），随模块保存即发布，
+    // 不再占模块管理的一个页签，模块记录上也没有那 15 个字段。
+    expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
+    expect(screen.queryByLabelText('表达式1（如 TABLE.COL、CASE 或日期函数）')).toBeNull()
 
     // 「统一表单」页签已删（2026-10-06）：表单呈现（打开方式 / 弹窗宽高 / 一行几列）只在表单设计器里配，
     // 模块管理既不显示也不写它——连只读摘要与设计器入口按钮都不再占一个页签。
@@ -879,7 +876,7 @@ describe('MenuAdminPage', () => {
     expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数-改')
   })
 
-  it('目录节点：不出现分组与行为页签，也没有版本历史（发布快照不存在）', async () => {
+  it('目录节点：只出现基础/主表/子表页签，没有行为页签与版本历史（发布快照不存在）', async () => {
     mockPageGetValue({
       total: 1,
       modules: [{ ...moduleNode(11, '基本参数', null), NODE_KIND: 'DIRECTORY' }],
@@ -891,12 +888,11 @@ describe('MenuAdminPage', () => {
 
     // 形态只在页签面上体现：目录节点右侧只剩它真正用得上的三个
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['基础', '主表', '子表'])
-    expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
     expect(screen.queryByRole('tab', { name: '行为动作' })).toBeNull()
     expect(screen.queryByRole('button', { name: /版本历史/ })).toBeNull()
   })
 
-  it('自定义承载页：主表只读、无分组与行为页签，发布与默认列入口不出现', async () => {
+  it('自定义承载页：主表只读、无行为页签，发布与默认列入口不出现', async () => {
     mockPageGetValue({
       total: 2,
       modules: [
@@ -914,7 +910,6 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /用户权限设定/ }))
     await waitFor(() => expect(screen.getByLabelText('页面链接（承载页）')).toHaveValue('/admin/users'))
 
-    expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
     expect(screen.queryByRole('tab', { name: '行为动作' })).toBeNull()
     expect(screen.queryByRole('button', { name: '发布' })).toBeNull()
     expect(screen.queryByRole('button', { name: /版本历史/ })).toBeNull()
@@ -1086,8 +1081,8 @@ describe('MenuAdminPage', () => {
     // 纯菜单节点（无主表也无副表）：三个行为页签都在，但点不动，且说明原因。
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     enterEdit()
-    // 7 个：基础/主表/子表/分组 + 三个行为页签（「统一表单」页签已删，2026-10-06）
-    expect(screen.getAllByRole('tab')).toHaveLength(7)
+    // 6 个：基础/主表/子表 + 三个行为页签（「统一表单」页签已删，2026-10-06；「分组」页签迁到 2315）
+    expect(screen.getAllByRole('tab')).toHaveLength(6)
     for (const label of ['行为动作', '校验规则', '自定义按钮']) {
       expect(screen.getByRole('tab', { name: label })).toBeDisabled()
     }
