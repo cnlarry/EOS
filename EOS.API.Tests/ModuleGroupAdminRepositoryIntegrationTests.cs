@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Data.ModuleGroups;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;

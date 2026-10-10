@@ -35,7 +35,7 @@ EOS.API/Data/MenuAdminRepository.cs
 EOS.API/Data/ModuleBusinessConfigRepository.cs
 # 字段白名单（分组表达式与模块 FILTER 共用）：只读 `FIELDS` + `sys.columns` 的登记表，
 # 由 WorkbenchDefinitionValidator 的同一段 SQL 抽出（原文件已在名单内）
-EOS.API/Data/ModuleFieldWhitelist.cs
+EOS.API/Data/Workbench/ModuleFieldWhitelist.cs
 EOS.API/Data/ModuleRightsRepository.cs
 EOS.API/Data/NavigationGroupsRepository.cs
 EOS.API/Data/NavigationRepository.cs

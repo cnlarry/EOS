@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Workbench;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;

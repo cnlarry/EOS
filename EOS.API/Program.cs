@@ -1,5 +1,6 @@
 using EOS.API.Data;
 using EOS.API.Data.Effects;
+using EOS.API.Data.ModuleGroups;
 using EOS.API.Services;
 using EOS.API.Errors;
 using EOS.API.Health;

@@ -1,5 +1,6 @@
 using System.Data;
 using EOS.API.Data.Inventory;
+using EOS.API.Data.ModuleGroups;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;

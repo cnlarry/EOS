@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Workbench;
 using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;

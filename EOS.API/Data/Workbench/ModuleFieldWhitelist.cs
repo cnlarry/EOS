@@ -2,7 +2,7 @@ using System.Data;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Workbench;
 
 /// <summary>
 /// 模块主表的字段白名单：**分组表达式**与**模块 FILTER** 共用的一处判据。

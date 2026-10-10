@@ -1,8 +1,9 @@
 using System.Data;
 using System.Text.RegularExpressions;
+using EOS.API.Data.Workbench;
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.ModuleGroups;
 
 /// <summary>配置面读模型的一行（一个分组）。</summary>
 /// <param name="Available">受控编译器能否执行该表达式。**不按调用者权限收敛**：配置面回答的是
