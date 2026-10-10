@@ -130,12 +130,12 @@ try {
   record('打印视图加载', printText.includes('客户订单'))
   await page.screenshot({ path: join(shotDir, 'print-1405.png'), fullPage: false })
 
-  // 10. 数据导入页（仅加载，不执行导入）
+  // 10. 基本资料导入页（仅加载，不执行导入）
   await page.goto(`${baseUrl}/import`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.erp-import-page', { timeout: 15000 }).catch(() => {})
   await page.waitForTimeout(1200)
   const importText = await page.locator('body').innerText()
-  record('导入页加载', importText.includes('导入表') || importText.includes('CSV'))
+  record('导入页加载', importText.includes('选择模块') || importText.includes('基本资料导入'))
   await page.screenshot({ path: join(shotDir, 'import.png'), fullPage: false })
 
   // 11. 系统参数页

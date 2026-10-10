@@ -423,6 +423,74 @@ button, input, select { font: inherit; }
 .erp-import-page,
 .erp-search-center-page,
 .erp-field-editor-page { gap: var(--erp-block-gap); }
+/* 基本资料导入（230902）：**安装向导**形态——一次只显示一步，右上角只有「上一步 / 下一步」，
+   辅助动作一律走文字链接，进度条上的节点是全页唯一允许出现按钮的地方（可点回看已过的步骤）。
+   进度条占满整宽且节点等距：每个 li 等分宽度，段内用 1fr auto 1fr 让左右连线各占一半；
+   首尾两段连线隐藏但**保留占位**，否则首末节点会被推到边上。
+   高度是**固定窗口**：整页铺满可用高度、只有步骤内容区内部滚动。这一页不能是"内容自适应"——
+   卡片高度随内容（选模块后多出来的一行摘要、一次定义请求的加载态）涨落，会连带把页面撑开再缩回，
+   看上去就是"选中时抖一下"；更糟的是页面级滚动条随之出现/消失，它会吃掉约 15px 宽度，
+   整页跟着横向重排。d-grid 的 display 带 !important，故这里不动 display，只给行高让卡片撑满。 */
+.erp-import-page { flex: 1 1 auto; min-height: 320px; overflow: hidden; grid-template-rows: minmax(0, 1fr); }
+.erp-import-page > .erp-list-card { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-import-body { display: flex; flex-direction: column; gap: var(--erp-block-gap); padding: var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }
+.erp-import-track { display: flex; width: 100%; margin: 0; padding: 0; list-style: none; flex: 0 0 auto; }
+.erp-import-item { display: grid; flex: 1 1 0; min-width: 0; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.erp-import-item::before,
+.erp-import-item::after { content: ''; height: 2px; background: var(--tblr-border-color); }
+.erp-import-item::before { grid-column: 1; grid-row: 1; }
+.erp-import-item::after { grid-column: 3; grid-row: 1; }
+.erp-import-item:first-child::before,
+.erp-import-item:last-child::after { visibility: hidden; }
+.erp-import-item.is-done::before,
+.erp-import-item.is-done::after { background: var(--tblr-success); }
+.erp-import-node { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 0; border-radius: 999px; background: transparent; color: var(--tblr-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.erp-import-node:hover { background: var(--tblr-bg-surface-secondary); }
+.erp-import-node-mark { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--tblr-border-color); border-radius: 50%; background: var(--tblr-bg-surface); }
+.erp-import-node-label { min-width: 0; line-height: 1; }
+.erp-import-item.is-active .erp-import-node { color: var(--tblr-primary); font-weight: 600; }
+.erp-import-item.is-active .erp-import-node-mark { border-color: var(--tblr-primary); background: var(--tblr-primary); color: #fff; }
+.erp-import-item.is-done .erp-import-node { color: var(--tblr-success); }
+.erp-import-item.is-done .erp-import-node-mark { border-color: var(--tblr-success); background: var(--tblr-success); color: #fff; }
+.erp-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.erp-import-hint { min-width: 0; color: var(--tblr-secondary); font-size: 12px; }
+/* 步骤区：一次只显示一步，自成一块，并吃掉卡片剩下的高度（进度条与步骤头固定不动） */
+.erp-import-step { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); flex: 1 1 auto; min-height: 0; }
+/* 步骤头一行：左侧「第 N 步」标题，右侧「上一步 / 下一步」，两者中线对齐 */
+.erp-import-step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 8px; border-bottom: 1px solid var(--tblr-border-color); flex: 0 0 auto; }
+.erp-import-step-title { min-width: 0; font-size: 13px; font-weight: 600; }
+.erp-import-step-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+.erp-import-step-body { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* 第 1 步的搜索行：搜索框紧贴它要过滤的清单上方（宽度由 .erp-list-global-search 的
+   max-width:360px 封顶、靠左），右侧留筛出计数。只在这一步出现，故不给通用名 */
+.erp-import-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 0 0 auto; }
+/* 表格区：**收缩到可用高度**再内部滚动（表头吸顶），而不是 max-height:44vh——
+   vh 按视口算，在"固定窗口"布局里与真正可用的高度无关，行少时还会把表格拉出一大片空白。
+   flex 基准 auto + 可收缩：内容矮就保持自然高度，内容高才收缩出滚动条。 */
+.erp-import-scroll { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+.erp-import-scroll .erp-table-shell { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.erp-import-scroll .table-responsive { overflow: visible; }
+.erp-import-scroll .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+.erp-import-drop { display: grid; place-items: center; width: 100%; min-height: 120px; padding: 16px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); font-size: 12px; text-align: center; cursor: pointer; }
+.erp-import-drop.is-over { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.erp-import-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 6px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); font-size: 12px; flex: 0 0 auto; }
+.erp-import-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.erp-import-panel-title { color: var(--tblr-secondary); font-size: 12px; font-weight: 600; }
+.erp-import-filter-select { width: auto; min-width: 140px; }
+/* 页内文字链接：向导页不允许出现「上一步/下一步」之外的按钮，辅助动作一律走链接 */
+.erp-import-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; font-size: 12px; flex: 0 0 auto; }
+.erp-import-links a { color: var(--tblr-primary); text-decoration: none; }
+.erp-import-links a:hover { text-decoration: underline; }
+/* 导入日志：等宽、收缩到可用高度后内部滚动，新行由脚本贴底 */
+.erp-import-log { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface-secondary); font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 12px; line-height: 1.7; }
+.erp-import-log-line { display: flex; gap: 8px; }
+.erp-import-log-at { flex: 0 0 auto; color: var(--tblr-secondary); }
+.erp-import-log-line.is-ok { color: var(--tblr-success); }
+.erp-import-log-line.is-bad { color: var(--tblr-danger); }
+.erp-import-badge-ok { display: inline-block; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--tblr-success) 14%, transparent); color: var(--tblr-success); font-size: 11px; font-weight: 600; }
+.erp-import-badge-bad { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--tblr-danger-lt); color: var(--tblr-danger); font-size: 11px; font-weight: 600; }
+.erp-import-cell-bad { color: var(--tblr-danger); font-weight: 600; text-decoration: underline dotted; text-underline-offset: 2px; }
+.erp-import-row-bad > td { background: color-mix(in srgb, var(--tblr-danger) 7%, transparent); }
 .erp-full-list-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .erp-full-list-page .erp-list-card .table-responsive { overflow: visible; }

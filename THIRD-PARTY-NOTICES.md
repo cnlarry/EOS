@@ -20,6 +20,7 @@
 | DbUp（dbup-sqlserver / dbup-core） | 7.2.0 / 6.1.1 | MIT |
 | System.Drawing.Common | 10.0.12 | MIT |
 | ZXing.Net | 0.16.11 | **Apache-2.0** |
+| MiniExcel | 1.46.0 | **Apache-2.0** |
 | QuestPDF | 2026.9.1 | **QuestPDF Community License**（见第四节） |
 
 测试工程（`EOS.API.Tests`，不随产物分发）：

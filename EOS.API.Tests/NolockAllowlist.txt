@@ -29,7 +29,6 @@ EOS.API/Data/Forms/FormDesignPermissionResolver.cs
 EOS.API/Data/Forms/FormLayoutReader.cs
 EOS.API/Data/Forms/FormLayoutRepository.cs
 EOS.API/Data/HumanResourceJobsService.cs
-EOS.API/Data/ImportService.cs
 EOS.API/Data/KnowledgeRepository.cs
 EOS.API/Data/MenuAdminRepository.cs
 EOS.API/Data/ModuleBusinessConfigRepository.cs
@@ -64,6 +63,7 @@ EOS.API/Data/WorkbenchQueryComposer.cs
 EOS.API/Data/WorkbenchScopeFilter.cs
 EOS.API/Data/WorkbenchSql.cs
 EOS.API/Data/WorkflowEngine.cs
+EOS.API/Features/Import/ImportService.cs
 EOS.API/Features/Assistant/Admin/ChangeSetService.cs
 EOS.API/Features/BusinessFlow/BusinessFlowRepository.cs
 EOS.API/Features/Assistant/Diagnosis/RecordDiagnosisReader.cs

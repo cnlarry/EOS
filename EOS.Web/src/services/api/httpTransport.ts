@@ -17,12 +17,14 @@ export class HttpTransport implements ApiTransport {
       'X-Correlation-Id': newCorrelationId(),
       ...request.headers,
     }
-    if (request.body !== undefined) headers['Content-Type'] = 'application/json'
+    // multipart 由浏览器自己定 Content-Type（它要在里面塞 boundary），这里不能覆盖
+    const isFormData = typeof FormData !== 'undefined' && request.body instanceof FormData
+    if (request.body !== undefined && !isFormData) headers['Content-Type'] = 'application/json'
     const response = await fetch(url, {
       method: request.method,
       credentials: 'include',
       headers,
-      body: request.body === undefined ? undefined : JSON.stringify(request.body),
+      body: request.body === undefined ? undefined : isFormData ? (request.body as FormData) : JSON.stringify(request.body),
       signal: request.signal,
     })
     if (!response.ok) {

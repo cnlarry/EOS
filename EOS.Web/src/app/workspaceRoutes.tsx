@@ -98,7 +98,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'report-center/inbox', element: withSuspense(<ReportInboxPage />) },
   { path: 'layout-designer/:moduleId', element: withSuspense(<LayoutDesignerPage />) },
   { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
-  { path: 'import', element: withSuspense(<ImportPage />) },
+  // 基本资料导入（模块 230902，系统管理）：入口按模块读权限显示，写入按目标模块的新增权限逐次鉴权
+  { element: <RequirePermission permission={moduleReadPermission(230902)} />, children: [
+    { path: 'import', element: withSuspense(<ImportPage />) },
+  ] },
   { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
   { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
   { element: <RequirePermission permission={moduleReadPermission(199901)} />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },

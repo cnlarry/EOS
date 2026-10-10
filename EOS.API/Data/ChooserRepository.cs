@@ -12,12 +12,15 @@ namespace EOS.API.Data;
 /// sourceKey → 服务端注册定义：可排序列白名单、关键字表达式、权限模块。
 /// 表名/列名只来自本文件注册表（编译期常量），args 逐项白名单校验，查询全部参数化。
 /// </summary>
-public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<ChooserRepository> logger)
+public sealed class ChooserRepository(
+    DbConnectionFactory connections,
+    ILogger<ChooserRepository> logger)
 {
     private const int MenuAdminModuleId = 2301;
     private const int ReportAdminModuleId = 2201;
     private const int FieldAdminModuleId = 2302;
     private const int ModuleGroupsModuleId = 2315;
+
     /// <summary>form-designer.fields 的排除列表条数上限（防止超长参数；超出部分只是多给候选，不影响正确性）。</summary>
     private const int MaxExcludeKeys = 500;
 

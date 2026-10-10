@@ -42,6 +42,6 @@
 | 62-嵌入模型与知识库接线.md | 已完成 | EOS.API/Features/Assistant/ModelAccess, EOS.API/Data/KnowledgeRepository.cs, EOS.API/Controllers/KbController.cs, scripts/sync-guide-to-kb.ps1 |
 | 70-后台配置面总览.md | 已完成 | EOS.API/Controllers/MenuAdminController.cs, EOS.API/Controllers/NavigationGroupsController.cs, EOS.API/Controllers/SettingsController.cs, EOS.API/Data/SystemParameterService.cs, EOS.Web/src/features/menu-admin, EOS.Web/src/features/admin, EOS.Web/src/features/settings |
 | 71-附件.md | 已完成 | EOS.API/Controllers/AttachmentController.cs, EOS.API/Data/AttachmentRepository.cs |
-| 72-导入与导出.md | 已完成 | EOS.API/Controllers/ImportController.cs, EOS.API/Data/ImportService.cs, EOS.API/Data/RecordPayloadValidator.cs, EOS.Web/src/features/import |
+| 72-导入与导出.md | 已完成 | EOS.API/Controllers/ImportController.cs, EOS.API/Features/Import, EOS.API/Data/RecordPayloadValidator.cs, EOS.Web/src/features/import |
 | 73-作业与调度.md | 已完成 | EOS.API/Controllers/JobsController.cs, EOS.API/Services/ReportInboxScheduler.cs, EOS.API/Data/ReportInboxRepository.cs, EOS.API/Controllers/ReportInboxController.cs, EOS.Web/src/features/jobs |
 | 74-搜索中心.md | 已完成 | EOS.API/Controllers/SearchCenterController.cs, EOS.API/Data/SearchCenterRepository.cs, EOS.Web/src/features/search-center |

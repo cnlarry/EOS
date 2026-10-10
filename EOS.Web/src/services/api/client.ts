@@ -18,6 +18,14 @@ export class ApiClient {
     return this.transport.request<TResponse>({ method: 'POST', path, body, query: options?.query, headers: options?.headers, signal: options?.signal })
   }
 
+  /**
+   * multipart/form-data 上传：走统一传输层，因而与其余请求共用鉴权、X-Correlation-Id
+   * 与错误体解码（`fetch` + `FormData` 手写一遍就会漏掉这三样）。
+   */
+  postForm<TResponse>(path: string, body: FormData, options?: { signal?: AbortSignal }) {
+    return this.transport.request<TResponse>({ method: 'POST', path, body, signal: options?.signal })
+  }
+
   postFile<TBody = unknown>(path: string, body?: TBody, options?: { query?: Record<string, string | number | undefined>; signal?: AbortSignal }) {
     return this.transport.request<Blob>({ method: 'POST', path, body, query: options?.query, signal: options?.signal, responseType: 'blob' })
   }
