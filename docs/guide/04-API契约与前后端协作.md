@@ -105,6 +105,10 @@
 - **组件不直接 `fetch`**；请求、缓存与失效交给 TanStack Query。
 - `src/services/api/` 下按 transport 分层：`httpTransport` 负责真实 HTTP，
   `mockTransport` 用于无后端时的开发，`client` 是二者之上的类型化门面。
+- **文件上传走 `client.postForm`（请求体是 `FormData`），不要自己 `fetch`**：`httpTransport` 对
+  `FormData` **不设 `Content-Type`**（boundary 得由浏览器生成，手写会把 boundary 一起写错），
+  这样上传与其余请求共用鉴权、`X-Correlation-Id` 与错误体解码——绕开传输层手写一遍 `fetch`，
+  漏掉的正是这三样（基本资料导入的 `.csv` / `.xlsx` 上传即此路径）。
 - 错误统一走 `client` 的解析，拿到 `code` 后再决定提示或字段级错误回填。
 - **跨边界的枚举 / 编码字符串只允许一份定义，输出也必须走它**：模型用途在库里是
   `'CHAT'` / `'EMBEDDING'`（目录层的 `KindCode`），前端也按这两个字面量比对；接口曾用枚举默认的
