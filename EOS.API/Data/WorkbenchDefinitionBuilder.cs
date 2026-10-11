@@ -387,16 +387,17 @@ public sealed class WorkbenchDefinitionBuilder(
         // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
         // 工具栏据此显隐批核/解批：有能力即显示，无能力即隐藏，不出现点后必败的死按钮。
         var hasStatelessApprove = WorkflowStates.IsStatelessApproveCapable(
-            definition.EffectEngineEnabled,
+            WorkflowStates.HasApproveEffects(definition),
             await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token));
-        // 批核/解批入口能力（工具栏显隐）：流程 / 效果引擎接管 / 效果链 / 无副作用自动批核
+        // 批核/解批入口能力（工具栏显隐）：模块声明启用批核 / 自动批核 / 流程 / 批核效果链
         // 四者取并集，与发布门的 lifecycle_columns 检查共用同一判定——效果链接管批核的模块（无过程、无流程）
         // 同样要有入口，否则退役遗留过程后按钮会凭空消失。
-        var hasApproveCapability = WorkflowStates.NeedsApproveColumn(
+        // ADR-035：第一维由"效果引擎接管"换成模块声明 `APPROVE_ENABLED`（现读，不进快照）。
+        var hasApproveCapability = WorkflowStates.HasApproveCapability(
+            await ReadApproveEnabledAsync(connection, definition.ModuleId, token),
             definition.AutoApprove,
-            definition.EffectEngineEnabled,
-            definition.HasWorkflow,
-            EnabledActionEventCodes(definition).ToList());
+            definition.HasWorkflow)
+            || WorkflowStates.HasApproveEffects(definition);
         // 版式设计权：只影响前端是否渲染设计入口，服务端写端点仍独立鉴权
         var canFormDesign = (await FormDesignPermissionResolver.ResolveAsync(
             connection, userId, definition.ModuleId, token)).CanDesign;
@@ -412,29 +413,21 @@ public sealed class WorkbenchDefinitionBuilder(
             DialogHeight: FormOpenModes.IsDialog(definition.FormOpenMode) ? definition.FormDialogHeight : null);
     }
 
-    /// <summary>已发布定义里启用的效果动作事件码（供批核能力判定；未启用/占位行不计）。</summary>
-    private static IEnumerable<string> EnabledActionEventCodes(WorkbenchDefinition definition)
+    /// <summary>
+    /// 读模块的批核入口声明（`MODULES.APPROVE_ENABLED`，ADR-035）。
+    /// **不进快照**：它随模块行现读——与 `GroupExpressions` 同类（那条是保存即生效的配置，
+    /// 这条是"要不要批核入口"的声明），故不会因为新增它而让已发布快照"内容变了"。
+    /// </summary>
+    private static async Task<bool> ReadApproveEnabledAsync(
+        SqlConnection connection,
+        int moduleId,
+        CancellationToken token)
     {
-        if (definition.BusinessActions is not { ValueKind: JsonValueKind.Array } actions)
-        {
-            yield break;
-        }
-        foreach (var action in actions.EnumerateArray())
-        {
-            if (action.ValueKind != JsonValueKind.Object
-                || !action.TryGetProperty("enabled", out var enabled)
-                || enabled.ValueKind != JsonValueKind.True
-                || !action.TryGetProperty("eventCode", out var code)
-                || code.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-            var text = code.GetString();
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                yield return text;
-            }
-        }
+        const string sql = "SELECT ISNULL(APPROVE_ENABLED,0) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        var value = await command.ExecuteScalarAsync(token);
+        return value is not null && Convert.ToInt32(value) == 1;
     }
 
     /// <summary>

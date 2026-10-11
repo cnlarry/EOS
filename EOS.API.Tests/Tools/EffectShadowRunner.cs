@@ -541,12 +541,10 @@ public sealed class EffectShadowRunner
         var (version, definitionJson) = await LoadCurrentSnapshotAsync(connection, options.ModuleId);
         var definition = JsonSerializer.Deserialize<WorkbenchDefinition>(definitionJson, WorkbenchDefinitionProvider.JsonOptions)
             ?? throw new InvalidOperationException("已发布快照无法反序列化。");
-        if (definition.EffectEngine is not { ValueKind: JsonValueKind.Object } effectEngine
-            || !effectEngine.TryGetProperty("enabled", out var enabled)
-            || enabled.ValueKind != JsonValueKind.True)
+        if (!WorkflowStates.HasEnabledEngineActions(definition))
         {
             throw new InvalidOperationException(
-                $"模块 {options.ModuleId} 快照 v{version} 未开启效果引擎（effectEngine.enabled 缺失）。请先发布启用 EFFECT_ENGINE_TAG 的模块快照。");
+                $"模块 {options.ModuleId} 快照 v{version} 未开启效果引擎（定义里没有启用的效果动作）。请先发布带有启用效果动作的快照。");
         }
         if (definition.BusinessActions is not { ValueKind: JsonValueKind.Array } actions || actions.GetArrayLength() == 0)
         {

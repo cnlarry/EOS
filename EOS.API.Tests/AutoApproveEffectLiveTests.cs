@@ -61,13 +61,12 @@ public sealed class AutoApproveEffectLiveTests
             NullLogger<WorkbenchApprovalService>.Instance);
     }
 
-    /// <summary>手写定义：只覆盖自动批核生效链用到的字段（表/主键/自动批核开关/引擎开关）。</summary>
-    private static WorkbenchDefinition Definition(int moduleId, string masterTable, string[] pk, bool autoApprove, bool effectEngine) =>
+    /// <summary>手写定义：只覆盖自动批核生效链用到的字段（表/主键/自动批核开关）。
+    /// 不带业务动作 ⇒ 引擎不接管（ADR-035 的判据是"定义里有启用的效果动作"）。</summary>
+    private static WorkbenchDefinition Definition(int moduleId, string masterTable, string[] pk, bool autoApprove) =>
         new(moduleId, $"测试模块 {moduleId}", masterTable, null, [], [], null, true, true, false,
             pk, string.Empty, false,
-            AutoApprove: autoApprove,
-            // effectEngine.enabled 是快照里的 JSON 段，EffectEngineEnabled 由它推导。
-            EffectEngine: effectEngine ? JsonSerializer.SerializeToElement(new { enabled = true }) : null);
+            AutoApprove: autoApprove);
 
     /// <summary>取当前已发布快照的定义（含真实业务动作），引擎接管链需要它。</summary>
     private static async Task<WorkbenchDefinition> LoadPublishedDefinitionAsync(SqlConnection connection, int moduleId)
@@ -115,7 +114,7 @@ public sealed class AutoApproveEffectLiveTests
         {
             // 1302 料件批号资料：自动批核、无批核过程、未启用效果引擎 → 纯状态翻转
             var service = CreateService(Connections(), engineEnabled: false);
-            var definition = Definition(1302, "INV_BATCH_M", ["BATCH_NO", "PRO_NO"], autoApprove: true, effectEngine: false);
+            var definition = Definition(1302, "INV_BATCH_M", ["BATCH_NO", "PRO_NO"], autoApprove: true);
             // 审计表是追加式的：只统计本次用例新增的事件（历史 ADR12 行不动）
             var auditBaseline = await ScalarAsync(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
 
@@ -162,7 +161,8 @@ public sealed class AutoApproveEffectLiveTests
         try
         {
             var definition = await LoadPublishedDefinitionAsync(connection, 130108);
-            Assert.True(definition.EffectEngineEnabled, "130108 快照应已开启效果引擎（本用例前提）");
+            Assert.True(EOS.API.Data.WorkflowStates.HasEnabledEngineActions(definition),
+                "130108 快照在效果链上应有启用动作（本用例前提，ADR-035 的接管判据）");
             var service = CreateService(Connections(), engineEnabled: true);
 
             var result = await service.AutoApproveAsync(definition, ["ADR12", LoanNo], ConfirmPerson, "tester", CancellationToken.None);

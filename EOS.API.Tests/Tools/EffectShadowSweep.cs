@@ -112,7 +112,7 @@ public sealed class EffectShadowSweep
             $"SKIP={results.Count(r => r.Verdict == "SKIP")}");
         Console.WriteLine($"sweep summary={summaryPath}");
 
-        Assert.True(results.Count > 0, "扫描范围为空：模块白名单与 EFFECT_ENGINE_TAG 是否已就绪？");
+        Assert.True(results.Count > 0, "扫描范围为空：模块白名单与\"有启用的效果动作\"是否已就绪？");
     }
 
     /// <summary>
@@ -354,7 +354,7 @@ public sealed class EffectShadowSweep
             SELECT DISTINCT A.M_IDX
             FROM dbo.MODULE_BUSINESS_ACTION A
             JOIN dbo.MODULES M ON M.M_IDX = A.M_IDX
-            WHERE ISNULL(M.EFFECT_ENGINE_TAG,0) = 1
+            WHERE A.EVENT_CODE <> N'MANUAL'
             ORDER BY A.M_IDX;
             """;
         await using var command = new SqlCommand(sql, connection);

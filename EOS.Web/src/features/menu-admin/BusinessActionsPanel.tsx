@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { setConfigTarget } from '../assistant/situationSource'
 import {
+  IconBan,
   IconBook,
   IconDeviceFloppy,
   IconPlayerPlay,
@@ -342,6 +343,8 @@ export function BusinessActionsPanel({
    * null = 还没有显式选择，按下面的规则取默认。
    */
   const [viewChoice, setViewChoice] = useState<'recipes' | 'expert' | null>(null)
+  /** 「停用全部动作」进行中（防重复点击；成功与否都由服务端事务决定）。 */
+  const [disablingAll, setDisablingAll] = useState(false)
   // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
   // 用空配置覆盖主页面持有的草稿。
   const [loadedModuleId, setLoadedModuleId] = useState<number | null>(null)
@@ -706,6 +709,40 @@ export function BusinessActionsPanel({
 
   const moveSelectedAction = (delta: number) => moveActionAt(selectedIndex, delta)
 
+  // ADR-035 §2.4：模块级「效果引擎」开关退役后，"这个模块暂时不再自动做事"就靠**批量停用动作**表达
+  // （行级 ENABLED=0）。只停不启——恢复要逐行启用；不动自定义按钮，那是"人点才跑"的独立通道。
+  const enabledEffectActions = actions.filter(
+    (item) => item.enabled && item.eventCode !== MANUAL_EVENT,
+  )
+
+  const disableAllActions = async () => {
+    if (enabledEffectActions.length === 0) {
+      window.alert('本模块没有已启用的效果动作——没有可停用的东西。')
+      return
+    }
+    if (
+      !window.confirm(
+        `把本模块效果链上的 ${enabledEffectActions.length} 条动作全部停用？\n\n`
+          + '· 只停动作，不动自定义按钮；要恢复需逐行启用；\n'
+          + '· 与其他配置一样，发布后才生效；\n'
+          + '· 确定后会重新加载配置，未保存的编辑会丢失。',
+      )
+    ) {
+      return
+    }
+    setDisablingAll(true)
+    try {
+      await apiClient.post(`/admin/module-business-config/${moduleId}/actions/disable-all`, {})
+      window.alert('已停用本模块全部效果动作（发布后生效）。')
+      setReloadToken((token) => token + 1)
+      void configQuery.refetch()
+    } catch (error) {
+      window.alert(`停用失败：${describeApiError(error, '请稍后重试。')}`)
+    } finally {
+      setDisablingAll(false)
+    }
+  }
+
   // 不在行为页签上时不渲染内容，但上面的状态与查询继续保留（容器常驻）。
   if (!active) return null
 
@@ -745,6 +782,21 @@ export function BusinessActionsPanel({
                 专家（键级）
               </Button>
             </div>
+          ) : null}
+          {view === 'actions' ? (
+            <Button
+              size="sm"
+              icon={<IconBan size={16} />}
+              disabled={disablingAll || enabledEffectActions.length === 0}
+              onClick={() => void disableAllActions()}
+              title={
+                enabledEffectActions.length === 0
+                  ? '本模块没有已启用的效果动作'
+                  : `把本模块效果链上的 ${enabledEffectActions.length} 条动作置为停用（行级 ENABLED=0，不动自定义按钮；发布后生效）`
+              }
+            >
+              停用全部动作
+            </Button>
           ) : null}
           {view === 'actions' ? (
             <Button

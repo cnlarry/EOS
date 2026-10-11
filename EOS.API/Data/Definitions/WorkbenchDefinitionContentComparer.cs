@@ -11,13 +11,18 @@ namespace EOS.API.Data.Definitions;
 ///
 /// The comparison is semantic, not byte-for-byte: differences the runtime provably ignores are
 /// normalized away first, so tidying a configuration no longer costs the evidence recorded
-/// against the previous version. Two kinds of difference are ignored today:
+/// against the previous version. Three kinds of difference are ignored today:
 ///
 /// · placeholder formula rows (empty op code, target table and target field) — the loader drops
 ///   them before anything else looks at them, so a row that exists only to carry a service
 ///   effect's parameters never takes part in execution;
 /// · an empty or whitespace-only string where the field is absent — the readers fold both into
-///   "not set" for every field the runtime reads that way.
+///   "not set" for every field the runtime reads that way;
+/// · the `effectEngine` section — ADR-035 retired the per-module engine switch, and nothing in the
+///   runtime reads that section any more (takeover is derived from the actions themselves).
+///   Leaving it in the comparison would make deleting a dead section look like a configuration
+///   change: republishing would bump the version and invalidate the evidence recorded against it,
+///   for no gain.
 ///
 /// Everything else is a real difference. Normalizing more than the runtime ignores would let a
 /// changed configuration reuse the old version: the evidence would still look fresh while it no
@@ -80,6 +85,14 @@ public static class WorkbenchDefinitionContentComparer
 
         NormalizeActions(definition);
         NormalizeValidationRules(definition);
+        // `effectEngine` 段不再参与执行（ADR-035）：新发布的定义不再写出它，历史快照里可能还留着，
+        // 两者的"内容"对运行期而言相同——故比较前直接摘掉，避免删段被当成配置变更而升版本。
+        definition.Remove("effectEngine");
+        // 同一个退役动作还带走了一个**漏进快照的计算属性** `EffectEngineEnabled`（只读 getter，没有
+        // [JsonIgnore]，默认选项会把它序列化出来）。判据改推导后该属性被删除，历史快照里却仍有它——
+        // 不摘掉的话，"全库快照集体落后"这个假警报会盖住真正的静默落后（实测 261/262 条）。
+        definition.Remove("EffectEngineEnabled");
+        definition.Remove("effectEngineEnabled");
         normalized = definition.ToJsonString();
         return true;
     }

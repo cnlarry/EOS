@@ -20,7 +20,7 @@
     Repository root. Defaults to the parent of this script.
 
 .PARAMETER Denominator
-    'actions' (default): modules that carry business actions with EFFECT_ENGINE_TAG=1.
+    'actions' (default): modules that carry enabled effect-chain actions (the engine-takeover predicate since ADR-035).
     'all': every module that has a current published snapshot.
 
 .PARAMETER Detail
@@ -77,7 +77,7 @@ try {
     }
 
     if ($Denominator -eq 'actions') {
-        $scopeRows = Invoke-RowQuery 'SELECT DISTINCT A.M_IDX FROM dbo.MODULE_BUSINESS_ACTION A JOIN dbo.MODULES M ON M.M_IDX = A.M_IDX WHERE ISNULL(M.EFFECT_ENGINE_TAG,0) = 1 ORDER BY A.M_IDX;'
+        $scopeRows = Invoke-RowQuery 'SELECT DISTINCT A.M_IDX FROM dbo.MODULE_BUSINESS_ACTION A JOIN dbo.MODULES M ON M.M_IDX = A.M_IDX WHERE A.EVENT_CODE <> N''MANUAL'' ORDER BY A.M_IDX;'
     } else {
         $scopeRows = Invoke-RowQuery 'SELECT M_IDX FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE IS_CURRENT = 1 ORDER BY M_IDX;'
     }

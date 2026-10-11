@@ -72,7 +72,8 @@ public sealed record WorkbenchDefinition(
     string? DefinitionVersion = null,
     [property: JsonPropertyName("businessActions")] JsonElement? BusinessActions = null,
     [property: JsonPropertyName("validationRules")] JsonElement? ValidationRules = null,
-    [property: JsonPropertyName("effectEngine")] JsonElement? EffectEngine = null,
+    // 模块级效果引擎开关段已随 ADR-035 退役（引擎接管改由"定义里有没有启用的效果动作"推导），
+    // 新发布的快照不再写出该段；历史快照里可能仍留着它，比较器把它当"运行期不读的差异"归一掉。
     // 模块级表单版式段（随快照下发）。放在参数表末尾，让快照 JSON 的新增段落在尾部：
     // 逐字比对时"首个差异位置"出现在末尾，历史快照一眼能看出只多了这一段。
     FormLayoutDefinition? FormLayout = null,
@@ -83,11 +84,6 @@ public sealed record WorkbenchDefinition(
     int? FormDialogWidth = null,
     int? FormDialogHeight = null)
 {
-    /// <summary>Effect-engine gate read from the published snapshot (effectEngine.enabled).</summary>
-    public bool EffectEngineEnabled =>
-        EffectEngine is { ValueKind: JsonValueKind.Object } section
-        && section.TryGetProperty("enabled", out var enabled)
-        && enabled.ValueKind == JsonValueKind.True;
 }
 
 /// <summary>

@@ -22,13 +22,16 @@ public sealed class FlowDefinitionService(
     ILogger<FlowDefinitionService> logger)
 {
     /// <summary>
-    /// 模块批核能力三开关（自动批核 / 效果引擎接管 / 已配置流程）。三列一律显式 CAST 成 bit：
+    /// 模块批核能力三开关（**启用批核声明** / 自动批核 / 已配置流程）。三列一律显式 CAST 成 bit：
     /// `CASE … THEN 1 ELSE 0 END` 的结果类型是 int，读端按 `GetBoolean` 取会抛
     /// `InvalidCastException`（流程设计器保存曾因此整链接 500）。两处查询共用本常量，
-    /// 读端固定按 0..2 序取这三列，禁止在调用点各写一份。
+    /// 读端固定按 0..2 序取这三列（**与 `WorkflowStates.HasApproveCapability` 的参数序一致**），
+    /// 禁止在调用点各写一份。
+    /// ADR-035：第一维由"效果引擎接管"换成模块声明 `APPROVE_ENABLED`——引擎接管是实现方式，
+    /// 不是"能不能配流程 / 有没有批核入口"的前提；列序随之调整（调用点按序取值，无需改动）。
     /// </summary>
     internal const string ApproveCapabilityColumns =
-        "CONVERT(bit, ISNULL(m.AUTO_APPROVE,0)), CONVERT(bit, ISNULL(m.EFFECT_ENGINE_TAG,0)), "
+        "CONVERT(bit, ISNULL(m.APPROVE_ENABLED,0)), CONVERT(bit, ISNULL(m.AUTO_APPROVE,0)), "
         + "CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX) THEN 1 ELSE 0 END)";
 
     public sealed record FlowStepDefinition(

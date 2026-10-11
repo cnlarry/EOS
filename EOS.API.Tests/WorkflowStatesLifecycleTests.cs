@@ -64,33 +64,34 @@ public class WorkflowStatesLifecycleTests
     [InlineData(false, false, false, null, false)]
     [InlineData(false, false, false, new string[] { }, false)]
     public void NeedsApproveColumn_FollowsBackendCapability(
-        bool autoApprove, bool effectEnabled, bool hasWorkflow, string[]? events, bool expected)
+        bool approveEnabled, bool autoApprove, bool hasWorkflow, string[]? events, bool expected)
     {
-        Assert.Equal(expected, WorkflowStates.NeedsApproveColumn(autoApprove, effectEnabled, hasWorkflow, events));
+        Assert.Equal(expected, WorkflowStates.NeedsApproveColumn(approveEnabled, autoApprove, hasWorkflow, events));
     }
 
     [Theory]
-    [InlineData(true, false, false, true)]   // 自动批核
-    [InlineData(false, true, false, true)]   // 效果引擎接管
+    [InlineData(true, false, false, true)]   // 模块声明「启用批核」（ADR-035：替代"效果引擎接管"那一维）
+    [InlineData(false, true, false, true)]   // 自动批核
     [InlineData(false, false, true, true)]   // 已配置流程
     [InlineData(false, false, false, false)] // 三者皆无
     public void HasApproveCapability_KeepsFlowConfigurationEntry(
-        bool autoApprove, bool effectEnabled, bool hasFlow, bool expected)
+        bool approveEnabled, bool autoApprove, bool hasFlow, bool expected)
     {
-        Assert.Equal(expected, WorkflowStates.HasApproveCapability(autoApprove, effectEnabled, hasFlow));
+        Assert.Equal(expected, WorkflowStates.HasApproveCapability(approveEnabled, autoApprove, hasFlow));
     }
 
-    // 判据只认"无流程、无效果链"：**与 AUTO_APPROVE 无关**。曾经把它绑在自动批核上，后果是
-    // 关掉某个模块的自动批核（月结单要改成"建单 / 审核"两个权限位）时，它的手工批核入口
-    // 会一起消失（服务端 404 WORKFLOW_NOT_SUPPORTED）。
+    // 判据只认"无流程、无批核效果链"：**与 AUTO_APPROVE 无关，也与引擎开关无关**。
+    // 曾经把它绑在自动批核上（关掉自动批核会让手工批核入口一起消失，服务端 404
+    // WORKFLOW_NOT_SUPPORTED）；ADR-035 再把"引擎开关"那一维换成"有没有批核效果链"——
+    // 批核本事就是翻状态位，有副作用才是特例。
     [Theory]
-    [InlineData(false, false, true)]   // 无流程、无效果链 ⇒ 纯状态翻转可批核
+    [InlineData(false, false, true)]   // 无流程、无批核效果链 ⇒ 纯状态翻转可批核
     [InlineData(false, true, false)]   // 有流程 ⇒ 走送审
-    [InlineData(true, false, false)]   // 有效果链 ⇒ 走效果链，不属"无副作用"
+    [InlineData(true, false, false)]   // 有批核效果链 ⇒ 走效果链，不属"无副作用"
     [InlineData(true, true, false)]
     public void IsStatelessApproveCapable_OnlyRequiresNoFlowNoEffects(
-        bool effectEnabled, bool hasFlow, bool expected)
+        bool hasApproveEffects, bool hasFlow, bool expected)
     {
-        Assert.Equal(expected, WorkflowStates.IsStatelessApproveCapable(effectEnabled, hasFlow));
+        Assert.Equal(expected, WorkflowStates.IsStatelessApproveCapable(hasApproveEffects, hasFlow));
     }
 }

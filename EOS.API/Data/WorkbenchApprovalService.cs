@@ -278,7 +278,9 @@ public sealed class WorkbenchApprovalService(
     {
         var effectsEnabled = effectEngine.IsEnabledFor(definition);
         var hasFlow = await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token);
-        if (WorkflowStates.IsStatelessApproveCapable(effectsEnabled, hasFlow))
+        // ADR-035：无副作用批核的判据是"没有批核效果链、没有流程"，与引擎开关无关——
+        // 批核本事就是翻状态位（三段注释同源，见 WorkflowStates.IsStatelessApproveCapable）。
+        if (WorkflowStates.IsStatelessApproveCapable(WorkflowStates.HasApproveEffects(definition), hasFlow))
         {
             return NotSimulatable(
                 "该模块是无副作用批核（无流程、无效果链）：真实批核只翻转状态位，没有效果链可预演。");
@@ -515,7 +517,7 @@ public sealed class WorkbenchApprovalService(
         var hasFlow = await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token);
         // 无副作用批核必须在能力守卫之前判定：它与按钮显隐共用同一条件，
         // 否则按钮显示可点、请求却在守卫处被判不支持（无副作用模块反而批核不了）。
-        var stateless = WorkflowStates.IsStatelessApproveCapable(effectsEnabled, hasFlow);
+        var stateless = WorkflowStates.IsStatelessApproveCapable(WorkflowStates.HasApproveEffects(definition), hasFlow);
         if (!stateless && !effectsEnabled)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");

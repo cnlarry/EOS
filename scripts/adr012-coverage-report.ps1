@@ -119,7 +119,7 @@ $validationDisabled = [int](Get-Scalar "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo
 
 $workbenchModules = [int](Get-Scalar "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.MODULES WHERE LTRIM(RTRIM(ISNULL(MASTER_TABLE,'')))<>'' AND M_URL LIKE '%/workbench%';")
 $snapshotModules = [int](Get-Scalar "SET NOCOUNT ON; SELECT COUNT(DISTINCT M_IDX) FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE IS_CURRENT=1;")
-$engineTagModules = [int](Get-Scalar "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.MODULES WHERE ISNULL(EFFECT_ENGINE_TAG,0)=1 AND M_URL LIKE '%/workbench%';")
+$engineActionModules = [int](Get-Scalar "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.MODULES WHERE M_URL LIKE '%/workbench%' AND EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.M_IDX=MODULES.M_IDX AND a.EVENT_CODE<>'MANUAL');")
 $autoApproveModules = [int](Get-Scalar "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.MODULES WHERE ISNULL(AUTO_APPROVE,0)=1 AND M_URL LIKE '%/workbench%';")
 # 遗留钩子列（UPDATE_SP/AFTERSAVE_SP）已由迁移 173 物理删除，故这三项恒为 0；
 # 保留读数是为了让报告继续显示"配置面已清零"这一事实。
@@ -231,7 +231,7 @@ Add-Line '| 指标 | 数值 |'
 Add-Line '| --- | --- |'
 Add-Line ("| 工作台单据模块（有主表 + 工作台路由） | {0} |" -f $workbenchModules)
 Add-Line ("| 已发布当前快照 | {0} |" -f $snapshotModules)
-Add-Line ("| 效果引擎接管（`EFFECT_ENGINE_TAG=1`） | {0} |" -f $engineTagModules)
+Add-Line ("| 效果引擎接管（定义里有启用的效果动作） | {0} |" -f $engineActionModules)
 Add-Line ("| 启用效果链的模块 | {0} |" -f $effectModules)
 Add-Line ("| 自动批核模块（`AUTO_APPROVE=1`） | {0} |" -f $autoApproveModules)
 Add-Line ("| 配置审批流程的模块（`WFFORM`） | {0} |" -f $flowModules)
@@ -241,7 +241,7 @@ Add-Line ("| 遗留批核过程个数（被引用且存在） | {0} |" -f $legac
 Add-Line ("| 仍挂保存侧钩子的模块（钩子列已物理删除） | {0} |" -f $afterSaveRefModules)
 Add-Line ("| `dbo` 过程总数（全库存量） | {0} |" -f $dboProcedures)
 Add-Line ''
-Add-Line '> 运行期口径：上述模块均为 `EFFECT_ENGINE_TAG=1`，手工/自动批核都先走效果引擎，遗留过程桥不可达。'
+Add-Line '> 运行期口径：上述模块在效果链上都有启用的动作（ADR-035 起"引擎接管"的判据就是它），手工/自动批核都先走效果引擎，遗留过程桥不可达。'
 if (($legacyRefModules - $danglingSprocRefs) -eq 0 -and $afterSaveRefModules -eq 0) {
     Add-Line '> 配置面口径：批核侧与保存侧的遗留钩子列（`UPDATE_SP`/`AFTERSAVE_SP`）已**物理删除**，相应过程本体均已 DROP。'
 } else {

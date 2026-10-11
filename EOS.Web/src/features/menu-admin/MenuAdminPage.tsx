@@ -97,7 +97,8 @@ export interface MenuAdminModule {
   LAST_UPDATE_DATE: string | null
   M_ICON: string | null
   Icon: string | null
-  EFFECT_ENGINE_TAG: boolean
+  /** 模块声明「启用批核」（库列 `MODULES.APPROVE_ENABLED`，ADR-035）：这个模块要有批核入口。 */
+  APPROVE_ENABLED: boolean
   /**
    * 模块备注：写"这个模块是干什么的"等附加信息，给后来接手的人看。
    * 「基础」页签可编辑（2026-10-06 起）；库列 `MODULES.REMARK`（nvarchar(1000)，迁移 324
@@ -186,7 +187,7 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
-  EFFECT_ENGINE_TAG: false,
+  APPROVE_ENABLED: false,
   REMARK: null,
 })
 
@@ -1277,11 +1278,16 @@ export function MenuAdminPage() {
                             </div>
                             <div className="text-secondary small fw-semibold mt-2 mb-1">单据行为</div>
                             <div className="d-flex flex-wrap gap-3">
-                              <Checkbox label="自动批核" disabled={!editing} checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked }))} />
+                              {/* 批核两开关（ADR-035 §6）：标题与字段同名同义，「启用批核」紧接「自动批核」。
+                                  联动：勾「自动批核」⇒「启用批核」自动选中；取消「启用批核」⇒「自动批核」一并取消。
+                                  服务端另有不变量兜底（未启用批核 ⇒ 自动批核为假），前端这一层只改善体验。 */}
+                              <Checkbox label="启用批核" disabled={!editing} checked={draft.APPROVE_ENABLED} onChange={(checked) => patch((d) => ({ ...d, APPROVE_ENABLED: checked, AUTO_APPROVE: checked ? d.AUTO_APPROVE : false }))} />
+                              <Checkbox label="自动批核" disabled={!editing} checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked, APPROVE_ENABLED: checked ? true : d.APPROVE_ENABLED }))} />
                               <Checkbox label="可以复制" disabled={!editing} checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
                               <Checkbox label="异常记录不可保存" disabled={!editing} checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
-                              <Checkbox label="效果引擎（灰度开关）" disabled={!editing} checked={draft.EFFECT_ENGINE_TAG} onChange={(checked) => patch((d) => ({ ...d, EFFECT_ENGINE_TAG: checked }))} />
                             </div>
+                            <div className="text-secondary small mt-1">
+                                           </div>
                           </>
                         )}
                         {/* 通用查询两面都留着：搜索中心（/search-center）是独立于承载页的可达面，

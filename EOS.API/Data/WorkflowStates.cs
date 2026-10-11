@@ -1,6 +1,9 @@
 namespace EOS.API.Data;
 
+using System.Text.Json;
+
 using EOS.API.Data.Effects;
+using EOS.API.Models;
 
 /// <summary>
 /// 工作流状态常量：消灭 WorkflowEngine 全文魔法串。
@@ -86,25 +89,73 @@ public static class WorkflowStates
     /// （遗留批核过程字段已物理删除，故不再有"批核 SP"这一维度。）
     /// </summary>
     internal static bool IsStatelessApproveCapable(
-        bool effectEnabled,
+        bool hasApproveEffects,
         bool hasFlow) =>
-        !effectEnabled && !hasFlow;
+        !hasApproveEffects && !hasFlow;
 
     /// <summary>
-    /// 模块是否具备批核能力（"能力 → 列"单向强制的输入侧）。
-    /// 只认会触达 CONFIRM_TAG 写/读路径的后端事实（自动批核、效果引擎接管、工作流、
-    /// 批核/解批效果链；解批镜像批核链，同样需要状态位），不认仅控制显示的 FORM_BUTTONS。
+    /// 批核三列（状态位 + 经办人 + 日期）：模块声明「启用批核」时的勾选校验按它判定
+    /// （ADR-035 §6），与发布门 `lifecycle_columns` 的"能力 → 列"单向强制同源。
     /// </summary>
-    internal static bool NeedsApproveColumn(
-        bool autoApprove,
-        bool effectEnabled,
-        bool hasWorkflow,
-        IEnumerable<string>? enabledActionEventCodes)
+    public static readonly string[] ApproveColumns = ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE"];
+
+    /// <summary>
+    /// 已发布定义里**启用**的效果动作事件码（未启用、占位行不计）。
+    /// 从 WorkbenchDefinitionBuilder 移到此处：批核能力判定与效果链判定共用同一处解析。
+    /// </summary>
+    internal static IEnumerable<string> EnabledActionEventCodes(WorkbenchDefinition definition)
     {
-        if (autoApprove || effectEnabled || hasWorkflow)
+        if (definition.BusinessActions is not { ValueKind: JsonValueKind.Array } actions)
         {
-            return true;
+            yield break;
         }
+        foreach (var action in actions.EnumerateArray())
+        {
+            if (action.ValueKind != JsonValueKind.Object
+                || !action.TryGetProperty("enabled", out var enabled)
+                || enabled.ValueKind != JsonValueKind.True
+                || !action.TryGetProperty("eventCode", out var code)
+                || code.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+            var text = code.GetString();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                yield return text;
+            }
+        }
+    }
+
+    /// <summary>定义是否带"批核时会执行的效果链"（APPROVE_EFFECT / DEAPPROVE 且已启用）。</summary>
+    internal static bool HasApproveEffects(WorkbenchDefinition definition) =>
+        HasApproveEffects(EnabledActionEventCodes(definition));
+
+    /// <summary>
+    /// 定义里是否有**接在效果链上且已启用**的动作（ADR-035 §2 第 4 条）：引擎接管的判据由
+    /// "模块开关"改成它——"这个模块配了动作"是唯一的事实。
+    ///
+    /// `MANUAL`（自定义按钮）不算：它只在用户点击时运行，不参与任何单据事件链，按钮通道
+    /// 也不经过 <c>EffectEngineInvoker.IsEnabledFor</c>（实测 6 个调用点全在事件链上）。
+    /// </summary>
+    internal static bool HasEnabledEngineActions(WorkbenchDefinition definition)
+    {
+        foreach (var code in EnabledActionEventCodes(definition))
+        {
+            if (!BusinessActionCatalog.IsManualEvent(code))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 事件码里是否含批核/解批效果。判据单点：无副作用批核的判定（ADR-035）与
+    /// 发布门的列强制都从它取，避免"两边各写一遍"。
+    /// </summary>
+    internal static bool HasApproveEffects(IEnumerable<string>? enabledActionEventCodes)
+    {
         if (enabledActionEventCodes is null)
         {
             return false;
@@ -116,7 +167,7 @@ public static class WorkflowStates
                 continue;
             }
             if (EffectEventMapper.TryParse(code, out var parsed)
-                && (parsed is EffectEvent.ApproveEffect or EffectEvent.Deapprove))
+                && parsed is EffectEvent.ApproveEffect or EffectEvent.Deapprove)
             {
                 return true;
             }
@@ -125,14 +176,44 @@ public static class WorkflowStates
     }
 
     /// <summary>
-    /// 模块是否具备批核能力中的"可配置审批流程"口径：效果引擎接管、自动批核、已配置流程任一声明即可。
-    /// 与 <see cref="NeedsApproveColumn"/> 同源，避免退役遗留批核过程时连带关闭流程配置入口。
+    /// 模块是否具备批核能力（"能力 → 列"单向强制的输入侧）。
+    /// 只认会触达 CONFIRM_TAG 写/读路径的后端事实（**模块声明启用批核**、自动批核、工作流、
+    /// 批核/解批效果链；解批镜像批核链，同样需要状态位），不认仅控制显示的 FORM_BUTTONS。
+    /// ADR-035：第一维由"效果引擎接管"换成模块声明 `APPROVE_ENABLED`——引擎接管是**实现方式**
+    /// （该事件有没有启用的动作行），不是"要不要状态位"的前提。
+    /// </summary>
+    internal static bool NeedsApproveColumn(
+        bool approveEnabled,
+        bool autoApprove,
+        bool hasWorkflow,
+        IEnumerable<string>? enabledActionEventCodes)
+    {
+        if (approveEnabled || autoApprove || hasWorkflow)
+        {
+            return true;
+        }
+        return HasApproveEffects(enabledActionEventCodes);
+    }
+
+    /// <summary>
+    /// 模块是否有批核入口（工具栏批核/解批按钮显隐的判据）：
+    /// **模块声明「启用批核」∨ 自动批核 ∨ 有审批流程**。
+    ///
+    /// ADR-035：原第一维是"效果引擎接管"，而那是**实现方式**——拿它当入口的前提，就会出现
+    /// "关掉某个实现方式 → 业务入口静默消失"（`AUTO_APPROVE` 那次已发生过一次，见
+    /// <see cref="NeedsApproveColumn"/> 的注释；"效果引擎开关"这次是同一坑的另一面：
+    /// 实测有 12 个模块的入口只靠它撑着）。声明这一维保证"只想简单批核"（没有流程、
+    /// 没有效果链）的模块也有入口。
+    ///
+    /// "有批核效果链"那一维不在这里：调用方若需要，用
+    /// <see cref="HasApproveEffects(WorkbenchDefinition)"/> 并集进来——保持本方法能被
+    /// 只拿到三个布尔值的调用方（如 FlowDefinitionService 读列）复用。
     /// </summary>
     internal static bool HasApproveCapability(
+        bool approveEnabled,
         bool autoApprove,
-        bool effectEnabled,
         bool hasFlow) =>
-        autoApprove
-        || effectEnabled
+        approveEnabled
+        || autoApprove
         || hasFlow;
 }

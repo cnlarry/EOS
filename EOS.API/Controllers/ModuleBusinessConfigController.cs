@@ -93,6 +93,18 @@ public sealed class ModuleBusinessConfigController(
                 .ToList()));
     }
 
+    /// <summary>
+    /// 停用本模块效果链上的全部动作（ADR-035 §2.4 承诺的批量手段）：行级 `ENABLED=0`，不动自定义按钮。
+    /// 只停不启（恢复请逐行启用）；与其他配置同一语义——**发布后生效**。
+    /// </summary>
+    [HttpPost("{moduleId:int}/actions/disable-all")]
+    public async Task<IActionResult> DisableAllActions(int moduleId, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        var disabled = await repository.DisableAllActionsAsync(moduleId, userContext.EmployeeName, token);
+        return Ok(new DisableAllActionsResultDto(moduleId, disabled));
+    }
+
     /// <summary>效果参数根键与反向 kind 枚举（2301 Schema 化参数编辑器数据源）。</summary>
     [HttpGet("schemas")]
     public async Task<IActionResult> Schemas(CancellationToken token)

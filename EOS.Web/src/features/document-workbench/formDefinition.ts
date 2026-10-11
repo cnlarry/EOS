@@ -111,9 +111,9 @@ export interface FormDefinition {
   dialogWidth?: number | null
   /** 弹窗方式的窗体高度（px）；只有弹窗方式下发 */
   dialogHeight?: number | null
-  /** 模块是否具备批核工作流（效果引擎接管 / 已配置流程 / 自动批核） */
+  /** 模块是否有批核入口（模块声明「启用批核」/ 已配置流程 / 自动批核 / 有批核效果链）——ADR-035 起不再含"效果引擎接管"那一维 */
   hasWorkflow: boolean
-  /** 无副作用批核能力（自动批核且无过程/效果链/流程定义）：批核/解批按钮据此与 hasWorkflow 取并集显隐 */
+  /** 无副作用批核能力（无批核效果链、无流程定义）：批核/解批按钮据此与 hasWorkflow 取并集显隐 */
   hasStatelessApprove: boolean
   /**
    * 批核/解批入口能力：流程 / 遗留批核过程 / 效果链 / 无副作用自动批核四者取并集（服务端判定）。

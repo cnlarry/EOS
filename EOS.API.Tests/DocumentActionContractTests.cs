@@ -181,7 +181,7 @@ public sealed class DocumentActionContractTests
         new(ModuleId: 130101, Title: "库存盘点单", MasterTable: "INV_CHECK_STOCK_M", DetailTable: "INV_CHECK_STOCK_D",
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
             MasterPkOrder: ["CHECK_NO"], DetailNoFields: "", HasWorkflow: false,
-            BusinessActions: actions, EffectEngine: JsonSerializer.SerializeToElement(new { enabled = true }));
+            BusinessActions: actions);
 
     [Fact]
     public void EffectPlanLoader_SkipsManualRows_ButKeepsEffectRows()

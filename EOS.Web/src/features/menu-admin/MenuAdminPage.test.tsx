@@ -16,7 +16,7 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
-  EFFECT_ENGINE_TAG: false,
+  APPROVE_ENABLED: false,
   REMARK: null,
 })
 

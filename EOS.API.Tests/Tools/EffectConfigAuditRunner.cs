@@ -25,7 +25,7 @@ public sealed class EffectConfigAuditRunner
     private static readonly Lazy<string?> ConnectionString = new(ResolveConnectionString);
     private static readonly Lazy<string> RepoRoot = new(FindRepoRoot);
 
-    private sealed record ModuleRow(int ModuleId, string Description, string? MasterTable, string? DetailTable, bool EffectEngineTag);
+    private sealed record ModuleRow(int ModuleId, string Description, string? MasterTable, string? DetailTable, bool EngineActions);
 
     private sealed record ActionRow(long ActionId, int ModuleId, int Seq, string EventCode, string EffectKey, string? Params, string? Condition);
 
@@ -153,7 +153,7 @@ public sealed class EffectConfigAuditRunner
         foreach (var module in modules)
         {
             report.AppendLine($"| {module.ModuleId} | {module.Description.Replace("|", "/")} | {module.MasterTable} | {module.DetailTable ?? "-"} " +
-                              $"| {(module.EffectEngineTag ? "ON" : "OFF")} | {(dirty.Contains(module.ModuleId) ? "是" : "")} |");
+                              $"| {(module.EngineActions ? "ON" : "OFF")} | {(dirty.Contains(module.ModuleId) ? "是" : "")} |");
         }
 
         var directory = Path.Combine(RepoRoot.Value, "logs", "adr012-acceptance");
@@ -192,7 +192,7 @@ public sealed class EffectConfigAuditRunner
     {
         const string sql = """
             SELECT M_IDX, ISNULL(M_DESC, N''), NULLIF(LTRIM(RTRIM(ISNULL(MASTER_TABLE, N''))), N''),
-                   NULLIF(LTRIM(RTRIM(ISNULL(DETAIL_TABLE, N''))), N''), ISNULL(EFFECT_ENGINE_TAG, 0)
+                   NULLIF(LTRIM(RTRIM(ISNULL(DETAIL_TABLE, N''))), N''), CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION x WITH (NOLOCK) WHERE x.M_IDX = MODULES.M_IDX AND x.EVENT_CODE <> N'MANUAL') THEN 1 ELSE 0 END)
             FROM dbo.MODULES WITH (NOLOCK)
             WHERE M_IDX IN (SELECT DISTINCT M_IDX FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK))
             ORDER BY M_IDX;

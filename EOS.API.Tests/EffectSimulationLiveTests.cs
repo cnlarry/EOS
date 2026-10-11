@@ -302,7 +302,7 @@ public sealed class EffectSimulationLiveTests
         // 无副作用批核：无引擎 + 无流程 —— 真实路径只翻转状态位（判据与 AUTO_APPROVE 无关）。
         var stateless = await approvals.CheckSimulationSupportedAsync(
             connection, Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
-                autoApprove: true, effectEngine: false), approve: true, token);
+                autoApprove: true, withAction: false), approve: true, token);
         Assert.NotNull(stateless);
         Assert.Equal("SIMULATION_NOT_SUPPORTED", stateless!.ErrorCode);
         Assert.Contains("无副作用批核", stateless.ErrorMessage);
@@ -312,7 +312,7 @@ public sealed class EffectSimulationLiveTests
         // （无副作用批核），只有"无引擎但有流程"才会落到这一条。
         var noEngine = await approvals.CheckSimulationSupportedAsync(
             connection, Definition(flowModuleId, candidate.MasterTable, candidate.PkColumns,
-                autoApprove: false, effectEngine: false), approve: true, token);
+                autoApprove: false, withAction: false), approve: true, token);
         Assert.NotNull(noEngine);
         Assert.Equal("SIMULATION_NOT_SUPPORTED", noEngine!.ErrorCode);
         Assert.Contains("未启用效果引擎", noEngine.ErrorMessage);
@@ -320,7 +320,7 @@ public sealed class EffectSimulationLiveTests
         // 有流程且非自动批核：真实批核这一步是送审，效果链要等流程通过后才跑。
         var flow = await approvals.CheckSimulationSupportedAsync(
             connection, Definition(flowModuleId, candidate.MasterTable, candidate.PkColumns,
-                autoApprove: false, effectEngine: true), approve: true, token);
+                autoApprove: false, withAction: true), approve: true, token);
         Assert.NotNull(flow);
         Assert.Equal("SIMULATION_NOT_SUPPORTED", flow!.ErrorCode);
         Assert.Contains("审批流程", flow.ErrorMessage);
@@ -328,14 +328,14 @@ public sealed class EffectSimulationLiveTests
         // 引擎接管且无流程：这条才是预演能如实报告的那条。
         var supported = await approvals.CheckSimulationSupportedAsync(
             connection, Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
-                autoApprove: false, effectEngine: true), approve: true, token);
+                autoApprove: false, withAction: true), approve: true, token);
         Assert.Null(supported);
 
         // 判据之外还要有执法者：预演服务必须真的就此打住，而不是"算出来了但没人在意"。
         var rejected = await Assert.ThrowsAsync<EffectSimulationService.UnsupportedModuleException>(() =>
             CreateSimulation(Connections()).SimulateAsync(
                 Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
-                    autoApprove: false, effectEngine: false),
+                    autoApprove: false, withAction: false),
                 "APPROVE_EFFECT", candidate.KeyValues, approve: true, executor: "simulation-test", token));
         Assert.Equal("SIMULATION_NOT_SUPPORTED", rejected.Code);
     }
@@ -446,7 +446,6 @@ public sealed class EffectSimulationLiveTests
         var definition = new WorkbenchDefinition(
             candidate.ModuleId, $"测试模块 {candidate.ModuleId}", candidate.MasterTable, null, [], [], null,
             true, true, false, candidate.PkColumns, string.Empty, false,
-            EffectEngine: JsonSerializer.SerializeToElement(new { enabled = true }),
             BusinessActions: JsonSerializer.SerializeToElement(new object[]
             {
                 new { seq = 1, eventCode = "APPROVE_EFFECT", effectKey = "job-enqueue", enabled = true, failMode = "BLOCK" },
@@ -635,11 +634,18 @@ public sealed class EffectSimulationLiveTests
     }
 
     private static WorkbenchDefinition Definition(
-        int moduleId, string masterTable, IReadOnlyList<string> pk, bool autoApprove, bool effectEngine) =>
+        int moduleId, string masterTable, IReadOnlyList<string> pk, bool autoApprove, bool withAction = false) =>
         new(moduleId, $"测试模块 {moduleId}", masterTable, null, [], [], null, true, true, false,
             pk, string.Empty, false,
             AutoApprove: autoApprove,
-            EffectEngine: effectEngine ? JsonSerializer.SerializeToElement(new { enabled = true }) : null);
+            // ADR-035：引擎接管的判据是"定义里有启用且接在效果链上的动作"，不再有 effectEngine 段；
+            // 因此"引擎接管"由**带一个启用的 APPROVE_EFFECT 动作**表达。
+            BusinessActions: withAction
+                ? JsonSerializer.SerializeToElement(new object[]
+                {
+                    new { seq = 1, eventCode = "APPROVE_EFFECT", effectKey = "job-enqueue", enabled = true, failMode = "BLOCK" },
+                })
+                : null);
 
     private static async Task<int> FindFlowModuleAsync(SqlConnection connection, CancellationToken token) =>
         Convert.ToInt32(await new SqlCommand(

@@ -411,8 +411,7 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
             UserId: TestUser,
             ExecTag: "Z",
             FilterFieldKeys: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            BusinessActions: JsonSerializer.SerializeToElement(actions),
-            EffectEngine: JsonSerializer.SerializeToElement(new { enabled = true }));
+            BusinessActions: JsonSerializer.SerializeToElement(actions));
 
     // ===== 夹具与直查 =====
 

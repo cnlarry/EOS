@@ -271,3 +271,11 @@ public sealed record EffectSimulationReportDto(
     // 这次预演跑的配置来自哪一处：published（已发布快照）/ draft（本次未保存草稿）。
     // 报告必须自证来源——同一份单据在两种配置下结果可能不同。
     [property: JsonPropertyName("configSource")] string ConfigSource = "published");
+
+/// <summary>
+/// 「停用本模块全部动作」的结果（ADR-035 §2.4）：只停不启，故回传实际被置为停用的行数，
+/// 让界面能如实说"停了 0 条（本来就没有启用的动作）"而不是假装成功。
+/// </summary>
+public sealed record DisableAllActionsResultDto(
+    [property: JsonPropertyName("moduleId")] int ModuleId,
+    [property: JsonPropertyName("disabled")] int Disabled);

@@ -234,6 +234,54 @@ public sealed class ModuleBusinessConfigRepository(
     }
 
     /// <summary>
+    /// 停用本模块**效果链上的全部动作**（行级 `ENABLED=0`）：只动非 `MANUAL` 行——
+    /// `MANUAL` 是自定义按钮，走"人点才跑"的独立通道，停它等于把按钮从界面上撤掉，那是另一件事。
+    ///
+    /// ADR-035 §2.4：模块级"效果引擎"开关退役后，"这个模块暂时不再自动做事"的应急手段就是这一下
+    /// ——比逐行点快，又比原来的模块开关细（只停动作，不动模块声明与权限）。语义与其他配置一致：
+    /// **改了要发布才生效**，故同事务标脏并留审计；只停不启（要恢复逐行启用）。
+    /// </summary>
+    public async Task<int> DisableAllActionsAsync(int moduleId, string updatedBy, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        int affected;
+        try
+        {
+            const string sql = """
+                UPDATE dbo.MODULE_BUSINESS_ACTION
+                   SET ENABLED=0, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
+                 WHERE M_IDX=@ModuleId AND EVENT_CODE<>N'MANUAL' AND ISNULL(ENABLED,1)=1;
+                """;
+            await using (var command = new SqlCommand(sql, connection, transaction))
+            {
+                command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                command.Parameters.AddWithValue("@UpdatedBy", updatedBy);
+                affected = await command.ExecuteNonQueryAsync(token);
+            }
+            // 一行都没停到就不标脏、不留审计：那是一次"无事发生"，不该在积压里留下噪声。
+            if (affected > 0)
+            {
+                await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, updatedBy, token);
+                await auditWriter.WriteEventAsync(connection, transaction, moduleId, "MODULE_BUSINESS_ACTION",
+                    "DISABLE_ALL", $"停用本模块全部效果动作（{affected} 行）", updatedBy, "MENU",
+                    // 审计的 result 是 byte：行数可能超过 255，取上限而不是溢出。
+                    result: (byte)Math.Min(affected, byte.MaxValue), fieldChanges: null, token);
+            }
+            await transaction.CommitAsync(token);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+        logger.LogInformation("停用模块全部效果动作 module={ModuleId} disabled={Disabled} by={User}",
+            moduleId, affected, updatedBy);
+        return affected;
+    }
+
+    /// <summary>
     /// 在调用方事务内替换模块的业务动作/校验规则：不提交、不标脏（脏标记与审计由调用方统一处理），
     /// 供「模块 + 动作配置」同事务保存使用。
     /// </summary>

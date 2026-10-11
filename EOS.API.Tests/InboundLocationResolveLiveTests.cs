@@ -101,7 +101,8 @@ public sealed class InboundLocationResolveLiveTests
             await SeedAsync(connection, transaction, locationMode, storageMode, occurNo, documentLocation, withPrimary);
 
             var definition = await LoadPublishedDefinitionAsync(connection, transaction, InboundModule);
-            Assert.True(definition.EffectEngineEnabled, $"模块 {InboundModule} 的快照应已开启效果引擎（本用例前提）。");
+            Assert.True(EOS.API.Data.WorkflowStates.HasEnabledEngineActions(definition),
+                $"模块 {InboundModule} 的快照在效果链上应有启用动作（本用例前提）。");
 
             var result = await service.RunApprovalCoreAsync(
                 connection, transaction, definition, [OccurType, occurNo],

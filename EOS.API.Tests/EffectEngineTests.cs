@@ -1008,16 +1008,20 @@ public class ServiceEffectHandlerTests
 
 public class EffectEngineGateTests
 {
+    // ADR-035：接管判据由"模块开关（effectEngine.enabled 段）"改为**推导**——
+    // 定义里有启用且接在效果链上的动作即接管；MANUAL（自定义按钮）不算。
     [Fact]
-    public void Definition_engine_flag_requires_effectEngine_enabled_true()
+    public void Definition_takeover_requires_enabled_effect_actions()
     {
         EOS.API.Data.Effects.EffectEngineSettings settings = new() { Enabled = true };
         var invoker = new EOS.API.Data.Effects.EffectEngineInvoker(
             settings, null!, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
-        var off = DefinitionWith(JsonDocument.Parse("{}").RootElement.Clone());
-        var on = DefinitionWith(JsonDocument.Parse("{\"enabled\":true}").RootElement.Clone());
-        Assert.False(invoker.IsEnabledFor(off));
+        var none = DefinitionWith(Actions("[{\"seq\":1,\"eventCode\":\"SAVE\",\"effectKey\":\"detail-field-sync\",\"enabled\":false}]"));
+        var on = DefinitionWith(Actions("[{\"seq\":1,\"eventCode\":\"SAVE\",\"effectKey\":\"detail-field-sync\",\"enabled\":true}]"));
+        var manualOnly = DefinitionWith(Actions("[{\"seq\":1,\"eventCode\":\"MANUAL\",\"effectKey\":\"recalc-account\",\"enabled\":true}]"));
+        Assert.False(invoker.IsEnabledFor(none));
         Assert.True(invoker.IsEnabledFor(on));
+        Assert.False(invoker.IsEnabledFor(manualOnly));
     }
 
     [Fact]
@@ -1026,14 +1030,17 @@ public class EffectEngineGateTests
         var invoker = new EOS.API.Data.Effects.EffectEngineInvoker(
             new EOS.API.Data.Effects.EffectEngineSettings { Enabled = false }, null!, null!,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
-        Assert.False(invoker.IsEnabledFor(DefinitionWith(JsonDocument.Parse("{\"enabled\":true}").RootElement.Clone())));
+        Assert.False(invoker.IsEnabledFor(DefinitionWith(
+            Actions("[{\"seq\":1,\"eventCode\":\"SAVE\",\"effectKey\":\"detail-field-sync\",\"enabled\":true}]"))));
     }
 
-    private static WorkbenchDefinition DefinitionWith(JsonElement effectEngine) => new(
+    private static JsonElement Actions(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    private static WorkbenchDefinition DefinitionWith(JsonElement? actions) => new(
         1607, "收料单", "PUR_RECEIVE_M", null,
         Array.Empty<WorkbenchField>(), Array.Empty<WorkbenchField>(),
         null, true, true, false, Array.Empty<string>(), string.Empty,
-        HasWorkflow: false, EffectEngine: effectEngine);
+        HasWorkflow: false, BusinessActions: actions);
 
 }
 

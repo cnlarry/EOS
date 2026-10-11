@@ -48,8 +48,11 @@ public sealed record WorkbenchDefinitionPublishRequest(IReadOnlyList<int> Module
 /// <summary>
 /// 单个模块的「快照 vs 重建定义」比对结果。
 ///
-/// 判据与发布时的版本复用**同一口径**：把定义按当前代码 + 当前元数据重建，与已发布快照的
-/// <c>DEFINITION_JSON</c> 逐字比较，不同即 <see cref="Stale"/>。
+/// 判据与发布时的版本复用**同一口径**：把定义按当前代码 + 当前元数据重建，再走
+/// <c>WorkbenchDefinitionContentComparer</c> 做**语义**比对（不是逐字），不同即 <see cref="Stale"/>。
+/// 逐字比对会把"运行期证明看不见的差异"报成落后（例如已退役的 `effectEngine` 段）。
+/// <see cref="FirstDifference"/> 只是给定位置用的**原始文本**上下文，它会指出归一之前的第一处不同，
+/// 因此可能正好落在被忽略的差异上——判"是否落后"以 <see cref="Stale"/> 为唯一依据。
 ///
 /// <see cref="Dirty"/> 是库内人工/迁移维护的"已编辑待发布"标记。两者组合决定信号强度：
 /// <c>Stale &amp;&amp; !Dirty</c> 才是**静默落后**——配置已经变了，但没有任何标记提示需要重发布，

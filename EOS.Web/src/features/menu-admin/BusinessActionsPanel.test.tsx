@@ -41,7 +41,7 @@ const moduleWithTables = (id: number, desc: string): MenuAdminModule => ({
   LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
-  EFFECT_ENGINE_TAG: false,
+  APPROVE_ENABLED: false,
   REMARK: null,
 })
 
@@ -153,6 +153,63 @@ describe('BusinessActionsPanel', () => {
     )
 
     expect(await screen.findByText('收料主表(PUR_RECEIVE_M) / 收料明细(PUR_RECEIVE_D)')).toBeInTheDocument()
+  })
+
+  // ADR-035 §2.4：模块级开关退役后，"这个模块暂时不再自动做事"靠批量停用动作表达。
+  it('「停用全部动作」经确认后调用批量停用端点', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    apiClientMock.post.mockResolvedValue({ moduleId: 1607, disabled: 1 })
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+
+    // 头部按钮在配置加载完之前就渲染，必须先等动作到位再点，否则会走"没有可停用动作"的早退
+    expect(await screen.findByText('业务动作（1）')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '停用全部动作' }))
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/module-business-config/1607/actions/disable-all',
+      {},
+    ))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(alertSpy).toHaveBeenCalled()
+    confirmSpy.mockRestore()
+    alertSpy.mockRestore()
+  })
+
+  it('「停用全部动作」在确认框里点取消则不发请求', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+
+    expect(await screen.findByText('业务动作（1）')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '停用全部动作' }))
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    expect(apiClientMock.post).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('没有已启用的效果动作时「停用全部动作」禁用且不发请求', async () => {
+    apiClientMock.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/module-business-config/meta')) return catalog
+      if (url.endsWith('/module-business-config/1607')) return { ...config, actions: [] }
+      if (url.endsWith('/module-business-config/1607/field-labels')) return fieldLabels
+      if (url.endsWith('/relations')) return []
+      if (url.endsWith('/settings/system')) return { groups: [] }
+      if (url.endsWith('/module-business-config/schemas')) {
+        return { effects: [], reverseKinds: [], reverseKindLabels: {}, validationParams: [] }
+      }
+      return {}
+    })
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+
+    // 等三个查询都落地再断言"禁用"：按钮在加载完成前也是禁用的（actions 尚空），不等就测不出判据
+    await waitFor(() => expect(screen.queryAllByRole('status')).toHaveLength(0))
+    const button = screen.getByRole('button', { name: '停用全部动作' })
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(apiClientMock.post).not.toHaveBeenCalled()
+    alertSpy.mockRestore()
   })
 
   it('加载并展示业务动作与加工单', async () => {

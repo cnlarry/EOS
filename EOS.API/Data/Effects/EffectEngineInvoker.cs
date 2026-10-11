@@ -12,9 +12,11 @@ public sealed class EffectEngineSettings
 /// <summary>
 /// Entry point the baseline-bridge call sites consult before invoking a workflow
 /// stored procedure. Gated by the global switch (appsettings EffectEngine:Enabled)
-/// AND the module flag inside the published definition (effectEngine.enabled). When
-/// either is off the caller falls back to the stored procedure unchanged; when on,
-/// the effect pipeline runs instead and errors surface as user-facing messages.
+/// AND the question "does this definition actually carry an enabled effect action"
+/// (ADR-035: the per-module switch <c>MODULES.EFFECT_ENGINE_TAG</c> is retired —
+/// "配了动作" is the only fact that decides takeover). When either is off the caller
+/// falls back to the stored procedure unchanged; when on, the effect pipeline runs
+/// instead and errors surface as user-facing messages.
 /// </summary>
 public sealed class EffectEngineInvoker(
     EffectEngineSettings settings,
@@ -22,8 +24,16 @@ public sealed class EffectEngineInvoker(
     EffectPipeline pipeline,
     ILogger<EffectEngineInvoker> logger)
 {
-    public bool IsEnabledFor(WorkbenchDefinition definition) =>
-        settings.Enabled && definition.EffectEngineEnabled;
+    public bool IsEnabledFor(WorkbenchDefinition definition)
+    {
+        if (!settings.Enabled)
+        {
+            return false;
+        }
+        // 接管判据是**推导**（ADR-035 §2 第 4 条）：该定义里有启用且接在效果链上的动作。
+        // 批 3 的"开关值 vs 推导值"双算对拍探针已随旧列退役一并撤除（旧列删除后无可对拍之物）。
+        return WorkflowStates.HasEnabledEngineActions(definition);
+    }
 
     /// <summary>
     /// True when the module's SAVE chain derives detail rows itself (e.g. a stocktake expanding

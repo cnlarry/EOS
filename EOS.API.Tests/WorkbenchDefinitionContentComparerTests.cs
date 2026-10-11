@@ -42,6 +42,47 @@ public class WorkbenchDefinitionContentComparerTests
         Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(withRealRow, ServiceActionWithPlaceholderOp()));
     }
 
+    /// <summary>历史快照里还留着已退役的 `effectEngine` 段（ADR-035：新发布不再写出它，运行期也不再读它）。</summary>
+    private static string WithEffectEngineSection() =>
+        """{"moduleId":1406,"businessActions":[],"validationRules":[],"effectEngine":{"enabled":true}}""";
+
+    private static string WithoutEffectEngineSection() =>
+        """{"moduleId":1406,"businessActions":[],"validationRules":[]}""";
+
+    [Fact]
+    public void 只差已退役的effectEngine段判等价_但两者字节不同()
+    {
+        var withSection = WithEffectEngineSection();
+        var withoutSection = WithoutEffectEngineSection();
+
+        Assert.NotEqual(withSection, withoutSection);
+        Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent(withSection, withoutSection));
+    }
+
+    [Fact]
+    public void 只差退役时一并删掉的计算属性判等价()
+    {
+        // 历史快照里有 `EffectEngineEnabled`（漏进 JSON 的计算属性）与 `effectEngine` 段，
+        // 新定义两者都不写；两者都属"运行期不再读的差异"，合起来 48 字符也要判等价。
+        var stored = """
+            {"moduleId":1406,"businessActions":[],"validationRules":[],"EffectEngineEnabled":false,"effectEngine":null}
+            """;
+        var rebuilt = WithoutEffectEngineSection();
+
+        Assert.NotEqual(stored, rebuilt);
+        Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent(stored, rebuilt));
+    }
+
+    [Fact]
+    public void 同段之外还有真差异时仍判不等价()
+    {
+        // 归一再宽也只吃掉 effectEngine 段本身：另有一处真差异（多一个段）必须仍判不等价。
+        var withRealDifference =
+            """{"moduleId":1406,"businessActions":[],"effectEngine":null,"formOpenMode":"DIALOG"}""";
+
+        Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(withRealDifference, WithoutEffectEngineSection()));
+    }
+
     [Fact]
     public void 白名单字段的空串与缺省判等价()
     {

@@ -98,7 +98,7 @@ WHERE n.NODE_KIND <> N'WORKBENCH'
     OR ISNULL(m.IF_COPY, 0) = 1
     OR ISNULL(m.ERROR_NO_SAVE, 0) = 1
     OR ISNULL(m.DETAIL_NO_SAVE, 0) = 1
-    OR ISNULL(m.EFFECT_ENGINE_TAG, 0) = 1);
+    OR ISNULL(m.APPROVE_ENABLED, 0) = 1);
 '@
 
     # ④ 脏标记只属于 WORKBENCH，且不得指向已不存在的编号

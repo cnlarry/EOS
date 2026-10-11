@@ -44,8 +44,13 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("M_ICON")] string? M_ICON = null,
     /// <summary>只读展示字段：所在根菜单的侧栏图标名（服务端解析，前端保存时忽略）。</summary>
     [property: JsonPropertyName("Icon")] string? Icon = null,
-    /// <summary>模块级效果引擎开关（发布后写入 Definition effectEngine.enabled）。</summary>
-    [property: JsonPropertyName("EFFECT_ENGINE_TAG")] bool EffectEngineTag = false,
+    /// <summary>
+    /// 模块声明「启用批核」（库列 `MODULES.APPROVE_ENABLED`，ADR-035）：这个模块要有批核入口。
+    /// 勾选时校验主表批核三列（`WorkflowStates.ApproveColumns`：批核状态 / 批核人 / 批核日期），
+    /// 缺任一列则拒绝保存；勾「自动批核」时前端自动勾上本开关，取消本开关时「自动批核」一并取消
+    /// （服务端钉不变量：未启用批核 ⇒ 自动批核必须为假）。
+    /// </summary>
+    [property: JsonPropertyName("APPROVE_ENABLED")] bool ApproveEnabled = false,
     /// <summary>只读展示字段：操作主表描述（TABLES.T_DESC，服务端解析，保存时忽略）。</summary>
     [property: JsonPropertyName("MASTER_TABLE_DESC")] string? MasterTableDesc = null,
     /// <summary>只读展示字段：操作副表描述（TABLES.T_DESC，服务端解析，保存时忽略）。</summary>

@@ -41,13 +41,13 @@ public sealed class MenuAdminRepository(
             SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,EFFECT_ENGINE_TAG,
+                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
                    ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT,
-                   REMARK
+                   REMARK,APPROVE_ENABLED
                    FROM dbo.MODULES WITH (NOLOCK)
                    LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
                    LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
@@ -242,13 +242,13 @@ public sealed class MenuAdminRepository(
             SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,EFFECT_ENGINE_TAG,
+                   NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
                    ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT,
-                   REMARK
+                   REMARK,APPROVE_ENABLED
                    FROM dbo.MODULES WITH (NOLOCK)
                    LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
                    LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
@@ -487,6 +487,7 @@ public sealed class MenuAdminRepository(
             }
             await EnsureTablesExistAsync(connection, transaction, input, token);
             await EnsureShapeInvariantsAsync(connection, transaction, oldId, input, kind, token);
+            await EnsureApproveColumnsAsync(connection, transaction, input, token);
             var rootIdx = await ResolveRootAsync(connection, transaction, input.M_P_IDX, input.M_IDX, token);
             if (oldId is { } currentId)
             {
@@ -713,6 +714,12 @@ public sealed class MenuAdminRepository(
     /// </summary>
     private static MenuAdminModule NormalizeForKind(MenuAdminModule input)
     {
+        // 批核两开关的不变量（ADR-035 §6）：**未启用批核 ⇒ 自动批核必须为假**。
+        // 上行联动（勾「自动批核」时自动勾上「启用批核」）由前端负责——它知道用户刚点了哪个
+        // 复选框；服务端从负载里看不出"用户想取消启用批核"还是"想勾自动批核"，故只钉不变量：
+        // 「启用批核」是主声明，没有它就没有批核入口，自动翻转状态位也就无从谈起。
+        if (!input.ApproveEnabled && input.AUTO_APPROVE)
+            input = input with { AUTO_APPROVE = false };
         if (ModuleRouteValidator.ResolveKind(input.M_URL, input.MASTER_TABLE) == ModuleNodeKind.Workbench)
             return input;
         var hasMaster = !string.IsNullOrWhiteSpace(input.MASTER_TABLE);
@@ -726,11 +733,49 @@ public sealed class MenuAdminRepository(
             ERROR_NO_SAVE = false,
             DETAIL_NO_FIELDS = null,
             DETAIL_NO_SAVE = false,
-            EffectEngineTag = false,
+            // 非统一工作台模块（报表 / 搜索中心 / 自定义页 / 目录）没有单据面，也就没有批核入口
+            ApproveEnabled = false,
             FILTER = hasMaster ? input.FILTER : null,
             SEARCH_1 = hasMaster ? input.SEARCH_1 : false,
             SEARCH_2 = hasMaster ? input.SEARCH_2 : false,
         };
+    }
+
+    /// <summary>
+    /// 「启用批核」的前置校验（ADR-035 §6）：主表必须有批核三列（状态位 / 经办人 / 日期），
+    /// 缺任一列即拒绝保存并**指名缺哪列**。理由：批核时这三列都要写，缺列会在真单据上炸；
+    /// 校验落在模块管理内（本方法），发布门的 `lifecycle_columns` 是第二道闸。
+    /// 缺列要走迁移补列（不设一键补列）。查 `sys.columns` 不带 NOLOCK——目录视图是元数据读，
+    /// 没有脏读窗口，也不进 NOLOCK 白名单的豁免清单。
+    /// </summary>
+    private static async Task EnsureApproveColumnsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        MenuAdminModule m,
+        CancellationToken token)
+    {
+        if (!m.ApproveEnabled)
+            return;
+        var table = m.MASTER_TABLE?.Trim();
+        if (string.IsNullOrWhiteSpace(table))
+            return;   // 无主表＝没有批核面；形态不变量另行管
+
+        var missing = new List<string>();
+        foreach (var column in WorkflowStates.ApproveColumns)
+        {
+            const string sql = "SELECT COUNT(*) FROM sys.columns c " +
+                               "WHERE c.object_id=OBJECT_ID('dbo.'+@Table) AND c.name=@Column;";
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
+            command.Parameters.Add("@Column", SqlDbType.NVarChar, 128).Value = column;
+            var count = Convert.ToInt32(await command.ExecuteScalarAsync(token) ?? 0);
+            if (count == 0)
+                missing.Add(column);
+        }
+        if (missing.Count > 0)
+            throw new ArgumentException(
+                $"「启用批核」要求主表 {table} 具备批核三列（{string.Join('、', WorkflowStates.ApproveColumns)}），"
+                + $"当前缺少：{string.Join('、', missing)}。缺列请走迁移补列后重试。");
     }
 
     /// <summary>库内已落地的形态事实（主表 / 副表 / 数据范围），用于比对"这次改了没有"。</summary>
@@ -822,14 +867,15 @@ public sealed class MenuAdminRepository(
         GetString(reader, 22),
         reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23),
         GetString(reader, 24),
-        EffectEngineTag: GetBool(reader, 25),
-        MasterTableDesc: GetString(reader, 26),
-        DetailTableDesc: GetString(reader, 27),
-        DirtyTag: GetBool(reader, 28),
-        PublishVersion: reader.IsDBNull(29) ? null : reader.GetInt32(29),
-        PublishedAt: reader.IsDBNull(30) ? null : reader.GetDateTime(30),
-        // REMARK 追加在两个 SELECT 的**最末尾**（下标 31）：既有 0..30 的下标一个都不用挪
-        REMARK: GetString(reader, 31),
+        MasterTableDesc: GetString(reader, 25),
+        DetailTableDesc: GetString(reader, 26),
+        DirtyTag: GetBool(reader, 27),
+        PublishVersion: reader.IsDBNull(28) ? null : reader.GetInt32(28),
+        PublishedAt: reader.IsDBNull(29) ? null : reader.GetDateTime(29),
+        // REMARK 追在两个 SELECT 的**最末尾**（下标 30）：既有 0..29 的下标一个都不用挪
+        REMARK: GetString(reader, 30),
+        // APPROVE_ENABLED 继续往后追加（下标 31，ADR-035）：同样不动既有下标
+        ApproveEnabled: GetBool(reader, 31),
         // 形态由承载页（下标 3）与主表（下标 15）算出，不落库：库里只有一个事实来源，
         // 投影只是它的读法（见 ModuleNodeKind）。
         NODE_KIND: ModuleRouteValidator.WireName(
@@ -883,7 +929,7 @@ public sealed class MenuAdminRepository(
     /// 读可空 bit 列：NULL 一律当 0。
     ///
     /// MODULES 里这批标志位（M_TAG / AUTO_APPROVE / IF_COPY / ERROR_NO_SAVE /
-    /// EFFECT_ENGINE_TAG 等）**是可空的**——历史上就出现过整批 NULL（分组标志列 GROUP1..5
+    /// APPROVE_ENABLED 等）**是可空的**——历史上就出现过整批 NULL（分组标志列 GROUP1..5
     /// 就是那一批，已由迁移 341 下线，同迁移给剩余标志列补了 DEFAULT）。直接 GetBoolean
     /// 会在遇到 NULL 时抛 SqlNullValueException，把整个菜单管理列表打成 500；而本查询用的是
     /// NOLOCK，还会读到别的事务里尚未提交、这些列为 NULL 的半成品行，进一步放大触发面。
@@ -1031,12 +1077,12 @@ public sealed class MenuAdminRepository(
              (M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
               MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-              M_ICON,EFFECT_ENGINE_TAG,REMARK)
+              M_ICON,REMARK,APPROVE_ENABLED)
               VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,@LAST_UPDATE_BY,GETDATE(),
-              @M_ICON,@EFFECT_ENGINE_TAG,@REMARK);
+              @M_ICON,@REMARK,@APPROVE_ENABLED);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         await command.ExecuteNonQueryAsync(token);
@@ -1054,8 +1100,8 @@ public sealed class MenuAdminRepository(
               NOT_BACK_FIELDS_M=@NOT_BACK_FIELDS_M,NOT_BACK_FIELDS=@NOT_BACK_FIELDS,
               LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
               M_ICON=@M_ICON,
-              EFFECT_ENGINE_TAG=@EFFECT_ENGINE_TAG,
-              REMARK=@REMARK
+              REMARK=@REMARK,
+              APPROVE_ENABLED=@APPROVE_ENABLED
               WHERE M_IDX=@OLD_IDX;
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
@@ -1089,7 +1135,8 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS", (object?)m.NOT_BACK_FIELDS ?? DBNull.Value);
         command.Parameters.AddWithValue("@LAST_UPDATE_BY", updatedBy);
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
-        command.Parameters.Add("@EFFECT_ENGINE_TAG", SqlDbType.Bit).Value = m.EffectEngineTag;
+        // 批核入口声明（ADR-035）：勾选时校验主表批核三列，见 EnsureApproveColumnsAsync
+        command.Parameters.Add("@APPROVE_ENABLED", SqlDbType.Bit).Value = m.ApproveEnabled;
         // 模块备注：写"这个模块是干什么的"（2301「基础」页签可编辑）。空串归一成 NULL，
         // 免得列表/详情在两处显示口径上出现"空串 vs NULL"的假差异。
         command.Parameters.AddWithValue("@REMARK", string.IsNullOrWhiteSpace(m.REMARK) ? DBNull.Value : m.REMARK.Trim());

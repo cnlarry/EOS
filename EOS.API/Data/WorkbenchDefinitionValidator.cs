@@ -282,17 +282,22 @@ public sealed class WorkbenchDefinitionValidator(
                 .Where(action => action.Enabled)
                 .Select(action => action.EventCode);
             var needsApprove = WorkflowStates.NeedsApproveColumn(
+                await ReadApproveEnabledAsync(connection, moduleId, token),
                 definition.AutoApprove,
-                definition.EffectEngineEnabled,
                 definition.HasWorkflow,
                 enabledEvents);
             if (needsApprove)
             {
                 var masterColumns = await GetTableColumnsAsync(connection, module.MasterTable, token);
-                checks.Add(masterColumns.Contains("CONFIRM_TAG", StringComparer.OrdinalIgnoreCase)
-                    ? new("lifecycle_columns", true, "模块具备批核能力且主表有 CONFIRM_TAG。")
+                // 批核三列（状态位 + 经办人 + 日期）：批核时三条都要写，缺任一列都会在真单据上炸，
+                // 故发布门按三列判（ADR-035 §6）。勾选「启用批核」时的校验是第一道闸，这是第二道。
+                var missing = WorkflowStates.ApproveColumns
+                    .Where(column => !masterColumns.Contains(column, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+                checks.Add(missing.Count == 0
+                    ? new("lifecycle_columns", true, "模块具备批核能力且主表有批核三列（状态位 / 经办人 / 日期）。")
                     : new("lifecycle_columns", false,
-                        $"模块具备批核能力（自动批核/批核过程/效果引擎接管/工作流/批核效果链）但主表 {module.MasterTable} 缺少 CONFIRM_TAG：请补列后重发布，或关闭对应批核能力。"));
+                        $"模块具备批核能力（启用批核/自动批核/工作流/批核效果链）但主表 {module.MasterTable} 缺少批核列：{string.Join('、', missing)}：请补列后重发布，或关闭对应批核能力。"));
             }
             else
             {
@@ -344,8 +349,11 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("document_action_keys_registered", true, "模块无业务动作配置。"));
         }
 
-        var engineEnabled = await ReadEffectEngineTagAsync(connection, moduleId, token);
-        if (engineEnabled && businessConfig is not null)
+        // ADR-035：引擎接管的判据不再读模块开关，而是"这个模块有没有接在效果链上的动作"
+        // （用户点击行不算——它的键由上一项校验把关）。发布时按配置事实判，不依赖定义里的段。
+        var hasEngineActions =
+            businessConfig?.Actions.Any(action => !BusinessActionCatalog.IsManualEvent(action.EventCode)) == true;
+        if (businessConfig is not null && hasEngineActions)
         {
             var pendingKeys = businessConfig.Actions
                 // 用户点击行不是效果链步骤，其键由操作注册表把关，见上一项校验。
@@ -355,14 +363,14 @@ public sealed class WorkbenchDefinitionValidator(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
             checks.Add(pendingKeys.Count == 0
-                ? new("effect_engine_keys_implemented", true, "效果引擎开启且动作键全部可执行。")
+                ? new("effect_engine_keys_implemented", true, "效果链上的动作键全部可执行。")
                 : new("effect_engine_keys_implemented", false,
-                    $"效果引擎开启但存在未实现效果键：{string.Join(",", pendingKeys.Take(8))}{(pendingKeys.Count > 8 ? " 等" : "")}。"));
+                    $"效果链上存在未实现效果键：{string.Join(",", pendingKeys.Take(8))}{(pendingKeys.Count > 8 ? " 等" : "")}。"));
         }
         else
         {
             checks.Add(new("effect_engine_keys_implemented", true,
-                engineEnabled ? "效果引擎开启但模块暂无动作配置。" : "模块未开启效果引擎。"));
+                "模块在效果链上没有启用动作，无需校验效果键。"));
         }
 
         // 反向 kind 兼容矩阵：名义闭集（16 个取值）不等于每个效果键的**执行**闭集——
@@ -410,9 +418,6 @@ public sealed class WorkbenchDefinitionValidator(
             // 快照基线：全权限定义；用户相关字段（UserId/ExecTag/CanDelete）归一为占位
             JsonElement? businessActions = null;
             JsonElement? validationRules = null;
-            JsonElement? effectEngine = engineEnabled
-                ? JsonSerializer.SerializeToElement(new { enabled = true })
-                : null;
             if (businessConfig is not null)
             {
                 businessActions = JsonSerializer.SerializeToElement(businessConfig.Actions);
@@ -424,7 +429,6 @@ public sealed class WorkbenchDefinitionValidator(
                 ExecTag = "Z",
                 BusinessActions = businessActions,
                 ValidationRules = validationRules,
-                EffectEngine = effectEngine,
             });
         }
 
@@ -433,12 +437,13 @@ public sealed class WorkbenchDefinitionValidator(
         return new(moduleId, module.Title, passed, $"module-{moduleId}-draft", checks, definitionJson);
     }
 
-    private static async Task<bool> ReadEffectEngineTagAsync(
+    /// <summary>读模块的批核入口声明（`MODULES.APPROVE_ENABLED`，ADR-035）——发布门的批核列强制按它判。</summary>
+    private static async Task<bool> ReadApproveEnabledAsync(
         SqlConnection connection,
         int moduleId,
         CancellationToken token)
     {
-        const string sql = "SELECT ISNULL(EFFECT_ENGINE_TAG,0) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
+        const string sql = "SELECT ISNULL(APPROVE_ENABLED,0) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         var value = await command.ExecuteScalarAsync(token);
