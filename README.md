@@ -37,7 +37,7 @@
 
 ## 界面预览
 
-| 单据列表（通用工作台） | 统一表单编辑 |
+| 统一工作台 | 统一表单编辑 |
 | --- | --- |
 | ![单据列表](screenshots/workbench-sales-order-list.png) | ![统一表单](screenshots/unified-form-editor.png) |
 
