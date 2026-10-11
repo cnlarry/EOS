@@ -25,6 +25,7 @@ namespace EOS.API.Tests;
 ///
 /// 用例自建临时模块（编号 98xxxxxx 段），Dispose 清理；拿不到连接串时跳过。
 /// </summary>
+[Collection("live-database")]
 [Trait("Category", "Integration")]
 public sealed class ModuleApproveEntryLiveTests : IDisposable
 {

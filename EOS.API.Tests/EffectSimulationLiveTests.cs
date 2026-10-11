@@ -73,7 +73,9 @@ public sealed class EffectSimulationLiveTests
             """
             SELECT TOP 20 m.M_IDX, LTRIM(RTRIM(m.MASTER_TABLE))
             FROM dbo.MODULES m WITH (NOLOCK)
-            WHERE ISNULL(m.EFFECT_ENGINE_TAG,0)=1 AND LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
+            -- "引擎是否接管"自 ADR-035（迁移 346）起不再有模块级开关：配了启用的动作就是接管，
+            -- 故这里的判据由下面那条 EXISTS 独立给出，不再读已退役的开关列。
+            WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
               AND EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
                           WHERE a.M_IDX=m.M_IDX AND LTRIM(RTRIM(a.EVENT_CODE))='APPROVE_EFFECT' AND ISNULL(a.ENABLED,1)=1)
               AND EXISTS (SELECT 1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
@@ -94,6 +96,17 @@ public sealed class EffectSimulationLiveTests
 
         foreach (var (moduleId, table) in modules)
         {
+            // 预演只放行"引擎接管"那条路径（判据见 WorkbenchApprovalService.CheckSimulationSupportedAsync）。
+            // 关键：判据取**已发布定义**——预演拿它当基线；而库内那张动作表与已发布配置会漂移，
+            // 按表选样本就会选到"表里有动作、已发布配置里没有效果链"的模块，被预演按设计拒掉。
+            // 这里直接复用生产判据（EOS.API 已对测试开 InternalsVisibleTo），不另写一份、不再各自漂移。
+            var definition = await LoadPublishedDefinitionAsync(connection, moduleId, token);
+            if (!WorkflowStates.HasApproveEffects(definition)
+                || !WorkflowStates.HasEnabledEngineActions(definition))
+            {
+                continue;
+            }
+
             if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "CONFIRM_TAG", token))
             {
                 continue;
@@ -470,8 +483,10 @@ public sealed class EffectSimulationLiveTests
     ///
     /// 三条判据缺一不可，少一条这个功能就是装饰：
     /// ① 报告自证来源（`configSource=draft`）——同一张单据两份报告必须能分辨；
-    /// ② 跑的确实是草稿：草稿把**已发布配置里的批核生效行全部停用**（只改 enabled 一个字段），
-    ///    于是同一条单据在已发布配置下"至少跑一步"、在草稿下"一步都不跑"——对照即证据；
+    /// ② 跑的确实是草稿：草稿只改批核生效行的**失败策略**（`failMode`），报告必须按草稿逐步骤回显
+    ///    （与已发布那份同序号逐步对不上即证据）。**注意不能再用"把批核生效行全停用"来造对照**：
+    ///    ADR-035 之后"没有任何启用的批核效果"就等于"无副作用批核"，预演会按设计拒绝——
+    ///    那条语义由本文件另一条用例单独钉住（`草稿停用全部批核效果_预演按设计拒绝`）。
     /// ③ 仍然无条件回滚（库内逐表指纹零变化、单据批核状态未翻转）。
     /// </summary>
     [Fact]
@@ -489,7 +504,63 @@ public sealed class EffectSimulationLiveTests
         var publishedReport = await SimulateThroughControllerAsync(controller, candidate, draft: null, token);
         Assert.Equal("published", publishedReport.ConfigSource);
 
-        // 草稿：沿用已发布配置，只把批核生效行停用（用户点击行照旧——它本就不在效果链里）。
+        // 草稿：沿用已发布配置，只把批核生效行的失败策略换一个（用户点击行照旧——它本就不在效果链里）。
+        var publishedActions = (published.BusinessActions?.Deserialize<List<BusinessActionDto>>(
+            WorkbenchDefinitionProvider.JsonOptions)) ?? [];
+        Assert.NotEmpty(publishedActions);
+        var publishedRules = (published.ValidationRules?.Deserialize<List<ModuleValidationRuleDto>>(
+            WorkbenchDefinitionProvider.JsonOptions)) ?? [];
+        var draft = new SaveModuleBusinessConfigRequest(
+            publishedActions
+                .Select(action =>
+                {
+                    if (!action.EventCode.Equals("APPROVE_EFFECT", StringComparison.OrdinalIgnoreCase))
+                        return action;
+                    // 换成同集合里另一个合法策略：既保住"仍有启用的批核效果"（否则预演按设计拒绝），
+                    // 又让报告有可对照的差异——报告会逐步回显草稿的 failMode。
+                    var other = BusinessActionCatalog.FailModes
+                        .FirstOrDefault(mode => !mode.Equals(action.FailMode, StringComparison.OrdinalIgnoreCase));
+                    return other is null ? action : action with { FailMode = other };
+                })
+                .ToList(),
+            publishedRules);
+
+        var draftReport = await SimulateThroughControllerAsync(controller, candidate, draft, token);
+
+        Assert.Equal("draft", draftReport.ConfigSource);
+        Assert.True(draftReport.RolledBack);
+        Assert.True(publishedReport.Counts.Ran >= 1,
+            "样本模块的已发布配置本身一步都不跑，这条用例就没有对照意义。");
+        // 报告按草稿重算的硬证据：同序号（seq）逐步对，至少一步的失败策略与已发布那份不同。
+        // 若预演把已发布那份原样端回来，这里就一步都对不上。
+        Assert.NotEmpty(draftReport.Effects);
+        var publishedBySeq = publishedReport.Effects.ToDictionary(step => step.Seq);
+        var changedSteps = draftReport.Effects
+            .Where(step => publishedBySeq.TryGetValue(step.Seq, out var baseline) && baseline.FailMode != step.FailMode)
+            .ToList();
+        Assert.NotEmpty(changedSteps);
+
+        // 回滚仍然兜住一切：草稿那条链没有留下任何痕迹。
+        Assert.Equal(before, await SnapshotAsync(connection, token));
+        Assert.False(await ReadConfirmTagAsync(connection, candidate, token));
+    }
+
+    /// <summary>
+    /// 草稿把批核效果**全部停用**时，预演按设计**拒绝**：ADR-035 之后"没有启用的批核效果"就等于
+    /// "无副作用批核"（真实路径只翻转状态位），此时预演没有与真实路径一致的报告可给。
+    /// 放行的话给出的是一份"跑的是另一条分支"的假报告——比不给报告更糟，与"草稿结构非法时拒绝"同一口径。
+    /// </summary>
+    [Fact]
+    public async Task 草稿停用全部批核效果_预演按设计拒绝()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        var userContext = UserContext(await FindConfigAccountAsync(connection, token));
+        var controller = await CreateConfigControllerAsync(connection, candidate, userContext, token);
+        var published = await LoadPublishedDefinitionAsync(connection, candidate.ModuleId, token);
+
         var publishedActions = (published.BusinessActions?.Deserialize<List<BusinessActionDto>>(
             WorkbenchDefinitionProvider.JsonOptions)) ?? [];
         Assert.NotEmpty(publishedActions);
@@ -503,20 +574,16 @@ public sealed class EffectSimulationLiveTests
                 .ToList(),
             publishedRules);
 
-        var draftReport = await SimulateThroughControllerAsync(controller, candidate, draft, token);
+        var result = await controller.Simulate(
+            candidate.ModuleId,
+            new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList(), draft),
+            token);
 
-        Assert.Equal("draft", draftReport.ConfigSource);
-        Assert.True(draftReport.RolledBack);
-        Assert.True(publishedReport.Counts.Ran >= 1,
-            "样本模块的已发布配置本身一步都不跑，这条用例就没有对照意义。");
-        // 草稿把批核生效行全停用 ⇒ 一步都不该真跑，且报告里每一步都自证"这条是停用的"。
-        Assert.Equal(0, draftReport.Counts.Ran);
-        Assert.NotEmpty(draftReport.Effects);
-        Assert.All(draftReport.Effects, step => Assert.False(step.Enabled));
-
-        // 回滚仍然兜住一切：草稿那条链没有留下任何痕迹。
-        Assert.Equal(before, await SnapshotAsync(connection, token));
-        Assert.False(await ReadConfirmTagAsync(connection, candidate, token));
+        var bad = Assert.IsType<BadRequestObjectResult>(result);
+        // 断言带条款：换一个拒绝理由（主键、草稿结构…）时能一眼看出来，不必再排查一遍。
+        // 注意读属性而不是序列化后比字符串——序列化会把中文转义成 \uXXXX，子串断言必然落空。
+        var problem = Assert.IsAssignableFrom<Microsoft.AspNetCore.Mvc.ProblemDetails>(bad.Value);
+        Assert.Contains("无副作用批核", problem.Title ?? problem.Detail ?? string.Empty);
     }
 
     /// <summary>
@@ -603,7 +670,11 @@ public sealed class EffectSimulationLiveTests
             candidate.ModuleId,
             new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList(), draft),
             token);
-        var ok = Assert.IsType<OkObjectResult>(result);
+        // 断言里带上拒绝原因：只说"不是 OkObjectResult"会把 400 的具体条款（作用域 / 主键 / 草稿结构）
+        // 藏起来，排查时得再来一遍。读 Title 而不是序列化——序列化会把中文转义成 \uXXXX，读不了。
+        Assert.True(result is OkObjectResult,
+            $"预演未通过：{((result as ObjectResult)?.Value as Microsoft.AspNetCore.Mvc.ProblemDetails)?.Title ?? (result as ObjectResult)?.Value?.ToString()}");
+        var ok = (OkObjectResult)result;
         return Assert.IsType<EffectSimulationReportDto>(ok.Value);
     }
 

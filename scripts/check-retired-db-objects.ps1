@@ -13,7 +13,9 @@
     本门禁把"退役清单"固化在脚本里，扫描生产代码与运维脚本，命中即 exit 1。
     新增退役对象时：在迁移落地前把条目加进 $retiredObjects，并写明迁移文件与原因。
 
-    扫描范围：EOS.API/**/*.cs（排除 bin/obj）、EOS.API.Tests/**/*.ps1、scripts/**/*.ps1。
+    扫描范围：EOS.API/ 与 EOS.API.Tests/ 下的 **/*.cs 与 **/*.ps1、scripts/**/*.ps1（均排除 bin/obj）。
+    注意"退役动作"与"清单登记"必须同一批做：2026-10-11 的实况是列已随迁移 346 删掉、清单里却没有它，
+    门禁全绿而真库集红了 16 条（三个用例还在 SELECT/INSERT 那个已删的列）。
     刻意排除：
     - EOS.API/Data/Migrations/**：迁移脚本本身就是在做退役动作，必然出现旧名；
     - docs/、publish/：冻结文档与开源种子，不是运行时路径；
@@ -79,6 +81,19 @@ $retiredObjects = @(
         Name          = 'MODULES.NEW_URL / MODI_URL / HELP_URL'
         Reason        = '三条动作/帮助路由列已退役并物理删列（只留 M_URL），见 Migrations/321_url_consolidation.sql'
         Pattern       = '\.\s*(?:NEW_URL|MODI_URL|HELP_URL)\b'
+        CaseSensitive = $true
+    }
+    # 模块级效果引擎开关退役（ADR-035，迁移 346）：引擎接管改为**推导**——"已发布定义里有启用且
+    # 接在效果链上的动作"（WorkflowStates.HasEnabledEngineActions）。
+    # 判据同款（点号修饰 + 全大写）：注释里不带点号的点名不算引用，C# 侧同名属性是 PascalCase。
+    # **这条是补登的**（2026-10-11）：列删掉后三个真库用例还在 SELECT/INSERT 它，
+    # 因为清单里没有它，门禁全绿而真库集红了 16 条——退役动作与门禁登记要同一批做，否则门禁给假安全感。
+    # 除"点号取值"外还要拦 `INSERT INTO dbo.MODULES (...EFFECT_ENGINE_TAG...)` 这种列清单写法——
+    # 本次真实漏改的就是它（真库用例的种子语句）。裸列名（不带表名上下文）仍是已知缺口。
+    [pscustomobject]@{
+        Name          = 'MODULES.EFFECT_ENGINE_TAG'
+        Reason        = '模块级效果引擎开关已退役并物理删列（引擎接管改由已发布定义推导），见 Migrations/346_retire_effect_engine_tag.sql'
+        Pattern       = '\.\s*EFFECT_ENGINE_TAG\b|INSERT\s+INTO\s+(?:dbo\.)?MODULES\s*\([^)]*\bEFFECT_ENGINE_TAG\b'
         CaseSensitive = $true
     }
     # 零引用死表退役（迁移 322）。两张表用的是"带 dbo. 的 SQL 上下文"判据：
@@ -290,6 +305,9 @@ if ($SelfTest) {
         'SELECT a.MODULE_ID, a.EFFECT_KEY FROM dbo.MODULE_BUSINESS_ACTION a;',
         'SELECT m.M_IDX, m.FORM_BUTTONS FROM dbo.MODULES m;',
         'SELECT m.M_IDX, m.NEW_URL, m.MODI_URL, m.HELP_URL FROM dbo.MODULES m;',
+        # 退役的模块级效果引擎开关（ADR-035，迁移 346）：这里是当年真库用例里漏改的写法
+        'SELECT m.M_IDX FROM dbo.MODULES m WHERE ISNULL(m.EFFECT_ENGINE_TAG,0)=1;',
+        'INSERT INTO dbo.MODULES (M_IDX,M_DESC,EFFECT_ENGINE_TAG) VALUES (@Id,N''x'',1);',
         'SELECT g.G_IDX FROM dbo.SYSTEMP g;',
         'SELECT TASK_ID FROM dbo.TASK WHERE M_IDX=@Id;',
         # 退役的 MODULES 八列（迁移 324）与死表（迁移 325）
@@ -320,6 +338,8 @@ if ($SelfTest) {
         # C# 模型同名属性是 PascalCase：不区分大小写会把这两行误判
         'var columns = definition.FormColumns is int c and > 0 ? c : 2;',
         'CompareValue(mismatches, id, title, "formTabs", definition.FormTabs ?? "null");',
+        # 注释里点名退役列（不带点号）不算引用——代码里说明"这列退役了"是正当写法
+        '-- EFFECT_ENGINE_TAG 已退役（ADR-035），引擎接管改由已发布定义推导',
         # 退役列只在注释里被点名（没有点号修饰）不算引用
         '-- FORM_BUTTONS（内置动作受控注册码）已随迁移 320 退役，动作集由能力与权限决定',
         '-- NEW_URL / MODI_URL / HELP_URL 已随迁移 321 物理删除，路由只留 M_URL',

@@ -20,6 +20,9 @@ namespace EOS.API.Tests;
 /// 这里证明**作用域谓词真的护住了另一面**：存按钮域不碰非按钮动作与校验规则，存动作域不碰按钮。
 /// 走真库：判据全在 SQL 谓词与表上，纯单测与门禁都拦不住回归。
 /// </summary>
+// 真库用例一律进 `live-database` 集合串行跑：本文件会临时增删动作/规则行，
+// 与只读计数型用例（如 ConfigOverviewLiveTests）并行时会撞出"行数对不上"的假红。
+[Collection("live-database")]
 [Trait("Category", "Integration")]
 public sealed class ModuleBusinessConfigScopeLiveTests : IDisposable
 {

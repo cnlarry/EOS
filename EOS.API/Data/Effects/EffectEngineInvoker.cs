@@ -47,7 +47,7 @@ public sealed class EffectEngineSwitch(
 /// stored procedure. Gated by the global breaker (<see cref="EffectEngineSwitch"/>,
 /// appsettings EffectEngine:Enabled, read live — ADR-034) AND the question "does this
 /// definition actually carry an enabled effect action" (ADR-035: the per-module switch
-/// <c>MODULES.EFFECT_ENGINE_TAG</c> is retired — "配了动作" is the only fact that decides
+/// <c>EFFECT_ENGINE_TAG</c> on MODULES is retired — "配了动作" is the only fact that decides
 /// takeover). When either is off the caller falls back to the stored procedure unchanged;
 /// when on, the effect pipeline runs instead and errors surface as user-facing messages.
 /// </summary>

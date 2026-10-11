@@ -36,7 +36,7 @@ public sealed class FlowDefinitionCapabilityLiveTests
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync(token);
 
-        bool autoApprove, effectEngine, hasFlow;
+        bool approveEnabled, autoApprove, hasFlow;
         await using (var command = new SqlCommand(
             $"SELECT {FlowDefinitionService.ApproveCapabilityColumns} FROM dbo.MODULES m WITH (NOLOCK) WHERE m.M_IDX=@ModuleId;",
             connection))
@@ -45,22 +45,25 @@ public sealed class FlowDefinitionCapabilityLiveTests
             await using var reader = await command.ExecuteReaderAsync(token);
             Assert.True(await reader.ReadAsync(token), $"模块 {moduleId} 不存在");
             // 生产读端就是这三行：任一类开关不是 bit 即在这里抛 InvalidCastException
-            autoApprove = reader.GetBoolean(0);
-            effectEngine = reader.GetBoolean(1);
+            approveEnabled = reader.GetBoolean(0);
+            autoApprove = reader.GetBoolean(1);
             hasFlow = reader.GetBoolean(2);
         }
 
+        // 对照查询**手写**同一份列（有意不复用常量：同一份常量自比是恒真，测不出漂移）。
+        // 若生产改了列而这里没跟上，本用例就会红——但列名要与 `FlowDefinitionService.ApproveCapabilityColumns`
+        // 同步：`APPROVE_ENABLED` / `AUTO_APPROVE` / WFFORM 存在性三列（`EFFECT_ENGINE_TAG` 已随迁移 346 退役）。
         await using var raw = new SqlCommand("""
-            SELECT ISNULL(AUTO_APPROVE,0), ISNULL(EFFECT_ENGINE_TAG,0),
-                   CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
-                        THEN 1 ELSE 0 END
+            SELECT CONVERT(bit, ISNULL(m.APPROVE_ENABLED,0)), CONVERT(bit, ISNULL(m.AUTO_APPROVE,0)),
+                   CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
+                        THEN 1 ELSE 0 END)
             FROM dbo.MODULES m WITH (NOLOCK) WHERE m.M_IDX=@ModuleId;
             """, connection);
         raw.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         await using var rawReader = await raw.ExecuteReaderAsync(token);
         Assert.True(await rawReader.ReadAsync(token));
-        Assert.Equal(Convert.ToBoolean(rawReader.GetValue(0)), autoApprove);
-        Assert.Equal(Convert.ToBoolean(rawReader.GetValue(1)), effectEngine);
+        Assert.Equal(Convert.ToBoolean(rawReader.GetValue(0)), approveEnabled);
+        Assert.Equal(Convert.ToBoolean(rawReader.GetValue(1)), autoApprove);
         Assert.Equal(Convert.ToBoolean(rawReader.GetValue(2)), hasFlow);
     }
 }

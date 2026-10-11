@@ -20,6 +20,7 @@ namespace EOS.API.Tests;
 /// 用例自建一个**临时工作台模块**（主表取 PRODUCT，它有登记的字段元数据）并把分组挂在它上面，
 /// 不触碰任何真实模块的配置；Dispose 清理临时模块与它的分组。拿不到连接串时跳过。
 /// </summary>
+[Collection("live-database")]
 [Trait("Category", "Integration")]
 public sealed class ModuleGroupAdminRepositoryIntegrationTests : IDisposable
 {
