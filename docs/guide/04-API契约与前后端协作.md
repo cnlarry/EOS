@@ -158,6 +158,16 @@
   `FORM_DIALOG_HEIGHT`（那三个字段只服务已删除的「统一表单」页签），新增 `REMARK`（模块备注，空串落 `NULL`）。
   模块管理只读写模块自身的字段。
 
+## 收口（ADR-035）：定义载荷去掉引擎开关段，模块管理新增批核入口字段
+
+- `WorkbenchDefinition` **不再有 `effectEngine` 段**（连同漏进快照的只读计算属性 `EffectEngineEnabled`）：
+  引擎接管改由"定义里有启用且接在效果链上的动作"推导，前端判入口改用 `/form-definition` 的
+  `hasApproveCapability`（`hasWorkflow` / `hasStatelessApprove` 只作旧载荷兜底）。
+- 菜单管理的模块载荷新增 `APPROVE_ENABLED`（对应 `MODULES.APPROVE_ENABLED`）；勾选的**校验在服务端**，
+  主表缺批核三列即 400 并指名缺哪列。
+- 行为配置新增 `POST /api/v1/admin/module-business-config/{moduleId}/actions/disable-all`
+  （响应 `{moduleId, disabled}`），写门与其它配置端点同源（`CanSetup` + 该模块配置权）。
+
 ## 收口（迁移 334/335）：`WorkbenchDefinition` 去掉两个归属列探测位
 
 `hasOwnerColumn` / `hasOwnerGroupColumn` 两个布尔位（原先由 `sys.columns` 探测主表有没有 `OWNER` /
