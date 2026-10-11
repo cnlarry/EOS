@@ -1060,7 +1060,7 @@ describe('MenuAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     enterEdit()
-    // ADR-033：自定义按钮迁 230103、行为动作 + 校验规则迁 230104——本页不再有行为页签，
+    // ADR-033：自定义按钮迁 230103、行为动作、校验规则迁 230104——本页不再有行为页签，
     // 也不再按形态/权限裁剪它们（那套裁剪逻辑随拆分一起消失）。
     expect(screen.getAllByRole('tab')).toHaveLength(3)
     for (const label of ['基础', '主表', '子表']) {
@@ -1092,7 +1092,7 @@ describe('MenuAdminPage', () => {
     expect(screen.queryByLabelText('内置动作（受控注册码）')).toBeNull()
     expect(screen.queryByRole('tab', { name: '统一表单' })).toBeNull()
 
-    // ADR-033：三个行为页签全部迁出（自定义按钮 → 230103，行为动作 + 校验规则 → 230104）。
+    // ADR-033：三个行为页签全部迁出（自定义按钮 → 230103，行为动作、校验规则 → 230104）。
     // 本页不留只读视图——留一份只读等于把"改完要回哪一面"再讲一遍。
     for (const label of ['行为动作', '校验规则', '自定义按钮']) {
       expect(screen.queryByRole('tab', { name: label })).toBeNull()

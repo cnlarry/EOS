@@ -51,6 +51,18 @@ public sealed class ModuleButtonAdminController(
         return Ok(new { buttons });
     }
 
+    /// <summary>
+    /// 系统级总览：全库按钮行（`MANUAL`）+ 所属模块。配置面首屏用它——只支持"先选模块"会让打开页面
+    /// 变成一片空态。编辑仍按模块进行（选中某行即进那个模块）。
+    /// </summary>
+    [HttpGet("overview")]
+    public async Task<IActionResult> Overview(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var overview = await repository.ReadOverviewAsync(BusinessConfigScope.Manual, token);
+        return Ok(overview with { CanWrite = await CanSetup(token) });
+    }
+
     /// <summary>该模块的按钮行（只回 `MANUAL`；行为动作与校验规则归 230104 那一面）。</summary>
     [HttpGet("{moduleId:int}")]
     public async Task<IActionResult> Buttons(int moduleId, CancellationToken token)

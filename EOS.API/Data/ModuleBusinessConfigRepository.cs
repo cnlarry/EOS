@@ -72,6 +72,112 @@ public sealed class ModuleBusinessConfigRepository(
     }
 
     /// <summary>
+    /// 行为配置面的**系统级总览**：按作用域列出全库的行，并带上所属模块名。
+    ///
+    /// 为什么要有它：配置面拆开后若只支持"先选模块"，打开页面是一片空态——使用者无从知道
+    /// "系统里到底配了什么"。总览是回答这个问题的那一屏；**编辑仍按模块进行**（选中某行即进那个模块）。
+    ///
+    /// 谓词与 <see cref="SaveScopedAsync"/> 的删除谓词**同源**（`= N'MANUAL'` / `&lt;&gt; N'MANUAL'`），
+    /// 两处口径必须一致——否则总览会显示出一批"保存时不归它管"的行。
+    /// </summary>
+    public async Task<ModuleBusinessConfigOverviewDto> ReadOverviewAsync(
+        BusinessConfigScope scope,
+        CancellationToken token)
+    {
+        var actions = new List<ModuleBusinessActionOverviewDto>();
+        var rules = new List<ModuleValidationRuleOverviewDto>();
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+
+        // 谓词是编译期固定字面量（按作用域分支选取），不掺任何外部输入。
+        var actionPredicate = scope == BusinessConfigScope.Manual ? "=" : "<>";
+        await using (var actionCommand = new SqlCommand(
+            $"""
+            SELECT a.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))),a.EVENT_CODE,a.SEQ,a.EFFECT_KEY,a.EFFECT_NAME,
+                   a.ENABLED,a.FAIL_MODE,a.LABEL,a.REMARK
+            FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
+            LEFT JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=a.M_IDX
+            WHERE a.EVENT_CODE {actionPredicate} N'MANUAL'
+            ORDER BY a.M_IDX,a.EVENT_CODE,a.SEQ;
+            """, connection))
+        {
+            await using var reader = await actionCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                actions.Add(new ModuleBusinessActionOverviewDto(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    GetString(reader, 2) ?? string.Empty,
+                    reader.GetInt32(3),
+                    GetString(reader, 4) ?? string.Empty,
+                    GetString(reader, 5),
+                    reader.GetBoolean(6),
+                    GetString(reader, 7) ?? "BLOCK",
+                    GetString(reader, 8),
+                    GetString(reader, 9)));
+            }
+        }
+
+        // 校验规则只属于"非按钮动作"那一面（与保存路径的作用域划分一致）。
+        if (scope != BusinessConfigScope.Manual)
+        {
+            await using var ruleCommand = new SqlCommand(
+                """
+                SELECT r.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))),r.SEQ,r.STAGE,r.VALIDATION_KEY,r.ENABLED,r.MESSAGE
+                FROM dbo.MODULE_VALIDATION_RULE r WITH (NOLOCK)
+                LEFT JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=r.M_IDX
+                ORDER BY r.M_IDX,r.STAGE,r.SEQ;
+                """, connection);
+            await using var reader = await ruleCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                rules.Add(new ModuleValidationRuleOverviewDto(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.GetInt32(2),
+                    GetString(reader, 3) ?? string.Empty,
+                    GetString(reader, 4) ?? string.Empty,
+                    reader.GetBoolean(5),
+                    GetString(reader, 6)));
+            }
+        }
+
+        // 界面左栏的模块清单：候选集与保存时的拒存规则同源（统一工作台 + 有主表）。
+        // 它取代了原先的"选择模块"弹窗——配置面按自己的门取自己的候选集，不借 230101 的菜单端点。
+        var targets = new List<ModuleConfigTargetOptionDto>();
+        await using (var targetCommand = new SqlCommand(
+            """
+            SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
+                   LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))),
+                   LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t WITH (NOLOCK)
+                                        WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.MASTER_TABLE))),''))),
+                   LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t WITH (NOLOCK)
+                                        WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.DETAIL_TABLE))),'')))
+            FROM dbo.MODULES m WITH (NOLOCK)
+            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX AND n.NODE_KIND=N'WORKBENCH'
+            WHERE NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NOT NULL
+            ORDER BY m.M_IDX;
+            """, connection))
+        {
+            await using var reader = await targetCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                targets.Add(new ModuleConfigTargetOptionDto(
+                    reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(4),
+                    reader.GetString(3), reader.GetString(5), 0));
+            }
+        }
+
+        // 已配条数直接数上面那批行：不另发查询，也就不存在"清单与计数不同源"的机会。
+        var counts = actions.GroupBy(row => row.ModuleId).ToDictionary(group => group.Key, group => group.Count());
+        foreach (var group in rules.GroupBy(row => row.ModuleId))
+            counts[group.Key] = counts.GetValueOrDefault(group.Key) + group.Count();
+        targets = [.. targets.Select(target => target with { Configured = counts.GetValueOrDefault(target.ModuleId) })];
+
+        return new ModuleBusinessConfigOverviewDto(targets, actions, rules);
+    }
+
+    /// <summary>
     /// 配置面的目标模块形状（主表 / 副表 + 表描述）。表描述取法与菜单侧一致（`TABLES.T_DESC`
     /// 关联子查询）；这里只读、只回一个模块，供配置面在选中模块后展示与校验用。
     /// </summary>

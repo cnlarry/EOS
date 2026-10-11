@@ -44,4 +44,29 @@ describe('WORKSPACE_ROUTES', () => {
     expect(matched).not.toBeNull()
     expect(matched?.at(-1)?.route.path).toBe('*')
   })
+
+  // ADR-033 §11："只有 230103 权限的人进不去 230104，这是拆分的收益，要有用例钉住。"
+  // 这里钉客户端一侧：三个配置面各自挂**自己**的读权限门，且链上不出现别的配置面的门
+  // （串门 = 拆分的收益被抵消）。服务端一侧由 ConfigFacePermissionAnchorsTests 钉住——服务端才是权威。
+  it('三个配置面各自挂自己的读权限门，互不串门', () => {
+    const faces = [
+      { path: '/admin/module-groups', moduleId: 230102 },
+      { path: '/admin/module-buttons', moduleId: 230103 },
+      { path: '/admin/module-actions', moduleId: 230104 },
+    ]
+
+    for (const face of faces) {
+      const matched = matchRoutes(WORKSPACE_ROUTES, face.path)
+      expect(matched, `${face.path} 未匹配到路由`).not.toBeNull()
+
+      const permissions = (matched ?? [])
+        .map((entry) => (entry.route.element as { props?: { permission?: unknown } } | undefined)?.props?.permission)
+        .filter((value): value is string => typeof value === 'string')
+
+      expect(permissions, `${face.path} 没有挂自己的读权限门`).toContain(`fallback-module.${face.moduleId}.read`)
+      for (const other of faces.filter((item) => item.moduleId !== face.moduleId)) {
+        expect(permissions, `${face.path} 挂上了别的配置面的门`).not.toContain(`fallback-module.${other.moduleId}.read`)
+      }
+    }
+  })
 })

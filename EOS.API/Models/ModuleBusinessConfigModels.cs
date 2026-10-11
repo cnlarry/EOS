@@ -55,6 +55,62 @@ public sealed record ModuleValidationRuleDto(
     [property: JsonPropertyName("sourceRef")] string? SourceRef = null);
 
 /// <summary>
+/// 行为配置面**系统级总览**的一行：某个模块的某条动作行 + 它属于哪个模块。
+///
+/// 配置面拆开后若只支持"先选模块"，打开页面就是一片空态——使用者无从知道系统里到底配了什么。
+/// 总览回答的正是这个问题；它只列**事实**（哪一行、配在哪、开没开），不替调用者做可用性判定。
+/// </summary>
+public sealed record ModuleBusinessActionOverviewDto(
+    [property: JsonPropertyName("moduleId")] int ModuleId,
+    [property: JsonPropertyName("moduleDesc")] string ModuleDesc,
+    [property: JsonPropertyName("eventCode")] string EventCode,
+    [property: JsonPropertyName("seq")] int Seq,
+    [property: JsonPropertyName("effectKey")] string EffectKey,
+    [property: JsonPropertyName("effectName")] string? EffectName,
+    [property: JsonPropertyName("enabled")] bool Enabled,
+    [property: JsonPropertyName("failMode")] string FailMode,
+    [property: JsonPropertyName("label")] string? Label,
+    [property: JsonPropertyName("remark")] string? Remark);
+
+/// <summary>行为配置面系统级总览的一行校验规则（同为事实行，不带可用性判定）。</summary>
+public sealed record ModuleValidationRuleOverviewDto(
+    [property: JsonPropertyName("moduleId")] int ModuleId,
+    [property: JsonPropertyName("moduleDesc")] string ModuleDesc,
+    [property: JsonPropertyName("seq")] int Seq,
+    [property: JsonPropertyName("stage")] string Stage,
+    [property: JsonPropertyName("validationKey")] string ValidationKey,
+    [property: JsonPropertyName("enabled")] bool Enabled,
+    [property: JsonPropertyName("message")] string? Message);
+
+/// <summary>
+/// 配置面的**可选目标模块**：候选集与保存时的拒存规则同源——只有统一工作台模块（有主表）才有
+/// 动作 / 按钮 / 分组的消费方。`Configured` 是该模块当前的配置条数，用于把"已配过的"排在前面。
+///
+/// 为什么放进总览响应而不是让界面调 `/admin/menus`：那扇门属于模块定义面（230101），
+/// 配置面按自己的门取自己的候选集。两侧同源由「同一个视图 + 同一张主表条件」保证。
+/// </summary>
+public sealed record ModuleConfigTargetOptionDto(
+    [property: JsonPropertyName("moduleId")] int ModuleId,
+    [property: JsonPropertyName("moduleDesc")] string ModuleDesc,
+    [property: JsonPropertyName("masterTable")] string MasterTable,
+    [property: JsonPropertyName("masterTableDesc")] string MasterTableDesc,
+    [property: JsonPropertyName("detailTable")] string DetailTable,
+    [property: JsonPropertyName("detailTableDesc")] string DetailTableDesc,
+    [property: JsonPropertyName("configured")] int Configured);
+
+/// <summary>
+/// 行为配置面的系统级总览。230103（自定义按钮）用 <see cref="Actions"/> = 全库按钮行；
+/// 230104（行为动作、校验规则）用 <see cref="Actions"/> = 全库效果链动作 + <see cref="ValidationRules"/>。
+/// <see cref="Targets"/> 是界面左栏的模块清单（含每个模块已配条数）。
+/// </summary>
+public sealed record ModuleBusinessConfigOverviewDto(
+    [property: JsonPropertyName("targets")] IReadOnlyList<ModuleConfigTargetOptionDto> Targets,
+    [property: JsonPropertyName("actions")] IReadOnlyList<ModuleBusinessActionOverviewDto> Actions,
+    [property: JsonPropertyName("validationRules")] IReadOnlyList<ModuleValidationRuleOverviewDto> ValidationRules,
+    /// <summary>调用者在本配置面上是否有写权。界面据此决定"能编辑 / 只读"，而不是把控件灰掉让人猜。</summary>
+    [property: JsonPropertyName("canWrite")] bool CanWrite = false);
+
+/// <summary>
 /// 配置面的**目标模块形状**：配置面选中一个模块后要显示它的主表 / 副表（含表描述）。
 /// 与 `/admin/menus` 的模块列表是同一组事实，但那个端点的门在 230101（模块定义面），
 /// 配置面不该借用它——故由配置面自己按自己的门取这一份（字段名与菜单侧一致，前端可直接用）。

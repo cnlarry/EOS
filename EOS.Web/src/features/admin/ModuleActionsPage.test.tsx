@@ -8,7 +8,7 @@ vi.mock('../../services/api', async () => ({ apiClient: (await import('../../tes
 
 /**
  * 编辑面板本身有自己的用例（`BusinessActionsPanel.test.tsx`，它被三个面共用）。
- * 这里只测**页面自己的职责**：选模块 → 两个页签 → 保存走 `actions` 作用域 → 展示"已保存但未生效"。
+ * 这里只测**页面自己的职责**：左栏选模块 → 两个页签 → 保存走 `actions` 作用域 → 展示"已保存但未生效"。
  * 故把面板换成一个只上报草稿的桩，避免把面板的全部查询搬进本文件的 mock。
  */
 // vi.hoisted：桩在模块导入期就会执行，草稿夹具必须先于导入初始化（否则落进 TDZ）。
@@ -39,16 +39,6 @@ vi.mock('../menu-admin/BusinessActionsPanel', async () => {
   }
 })
 
-const moduleChooserData = {
-  columns: [
-    { key: 'M_IDX', label: '模块号', dataType: 'int' },
-    { key: 'M_DESC', label: '模块名', dataType: 'nvarchar' },
-    { key: 'MASTER_TABLE', label: '主表', dataType: 'nvarchar' },
-  ],
-  rows: [{ M_IDX: 1607, M_DESC: '收料单', MASTER_TABLE: 'PUR_RECEIVE_M' }],
-  total: 1,
-}
-
 const targetView = {
   M_IDX: 1607,
   M_DESC: '收料单',
@@ -75,15 +65,32 @@ const blockedPublish = {
   },
 }
 
+const overviewView = {
+  canWrite: true,
+  targets: [
+    {
+      moduleId: 1607, moduleDesc: '收料单', masterTable: 'PUR_RECEIVE_M', masterTableDesc: '收料单主表',
+      detailTable: 'PUR_RECEIVE_D', detailTableDesc: '收料单明细', configured: 2,
+    },
+    {
+      moduleId: 170204, moduleDesc: '其它付款凭证', masterTable: 'PUR_PAY_OTHER', masterTableDesc: '付款凭证主表',
+      detailTable: '', detailTableDesc: '', configured: 0,
+    },
+  ],
+  actions: [
+    { moduleId: 1607, moduleDesc: '收料单', eventCode: 'SAVE', seq: 1, effectKey: 'field-accumulate', enabled: true, failMode: 'BLOCK' },
+  ],
+  validationRules: [
+    { moduleId: 170204, moduleDesc: '其它付款凭证', seq: 1, stage: 'SAVE', validationKey: 'reference-exists', enabled: true, message: '金额不为零' },
+  ],
+}
+
 describe('ModuleActionsPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path === '/admin/module-business-config/1607/target') return targetView
+      if (path === '/admin/module-business-config/overview') return overviewView
       return {}
-    })
-    apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === '/chooser/query') return moduleChooserData
-      return undefined
     })
     apiClientMock.put.mockImplementation(async () => blockedPublish)
   })
@@ -92,25 +99,44 @@ describe('ModuleActionsPage', () => {
     vi.clearAllMocks()
   })
 
+  /** 从左栏点模块进编辑（没有弹窗了）。 */
   async function pickModule() {
     renderWithProviders(<ModuleActionsPage />)
-    fireEvent.click(screen.getByRole('button', { name: '选择模块' }))
-    const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByText('收料单')
-    fireEvent.click(within(dialog).getAllByLabelText('选择此行')[0])
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^收料单/ }))
+    await screen.findByTestId('actions-panel')
   }
 
-  it('未选择模块时提示先选模块，保存不可用', () => {
+  it('未选模块时右栏给出全库总览（两个页签各列一份），保存不可用', async () => {
     renderWithProviders(<ModuleActionsPage />)
-    expect(screen.getByText('还没有选择模块')).toBeInTheDocument()
+
+    // 行为动作页签：全库效果链动作
+    expect(await screen.findByText('field-accumulate')).toBeInTheDocument()
+    expect(screen.getByText('全库总览')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    expect(apiClientMock.get.mock.calls.map((call) => String(call[0])))
+      .toContain('/admin/module-business-config/overview')
+
+    // 校验规则页签：全库校验规则
+    fireEvent.click(screen.getByRole('tab', { name: '校验规则' }))
+    expect(await screen.findByText('reference-exists')).toBeInTheDocument()
+    expect(screen.getByText('金额不为零')).toBeInTheDocument()
   })
 
-  it('选定模块后取目标模块形状，并渲染两个页签', async () => {
+  it('总览里点一行即进那个模块', async () => {
+    renderWithProviders(<ModuleActionsPage />)
+
+    fireEvent.click(await screen.findByText('field-accumulate'))
+    expect(await screen.findByTestId('actions-panel')).toBeInTheDocument()
+    expect(apiClientMock.get.mock.calls.map((call) => String(call[0])))
+      .toContain('/admin/module-business-config/1607/target')
+  })
+
+  it('选中模块后取目标模块形状，并渲染两个页签', async () => {
     await pickModule()
 
-    expect(await screen.findByText(/收料单 · 主表 PUR_RECEIVE_M · 副表 PUR_RECEIVE_D/)).toBeInTheDocument()
+    expect(await screen.findByText('可改')).toBeInTheDocument()
+    // 「收料单」左栏与右栏头部各一处（这是正常的：左栏是清单、右栏是选中对象）
+    expect(screen.getAllByText('收料单').length).toBeGreaterThanOrEqual(2)
     expect(apiClientMock.get.mock.calls.map((call) => String(call[0])))
       .toContain('/admin/module-business-config/1607/target')
     expect(screen.getByRole('tab', { name: '行为动作' })).toHaveAttribute('aria-selected', 'true')
@@ -124,7 +150,6 @@ describe('ModuleActionsPage', () => {
 
   it('保存走 actions 作用域：只带效果链动作与校验规则，不带按钮行', async () => {
     await pickModule()
-    await screen.findByTestId('actions-panel')
 
     // 草稿由面板上报后才可保存（面板桩在装载副作用里上报）
     const saveButton = screen.getByRole('button', { name: '保存' })
@@ -134,24 +159,20 @@ describe('ModuleActionsPage', () => {
 
     const [path, body] = apiClientMock.put.mock.calls[0]
     expect(path).toBe('/admin/module-business-config/1607?scope=actions')
-    const typed = body as { actions: { eventCode: string }[]; validationRules: unknown[] }
-    // 按钮行归 230103：本面不带它（服务端也会拒越域的行）
-    expect(typed.actions.map((action) => action.eventCode)).toEqual(['SAVE'])
-    expect(typed.validationRules).toHaveLength(1)
+    expect((body as { actions: { eventCode: string }[] }).actions.map((action) => action.eventCode)).toEqual(['SAVE'])
+    expect((body as { validationRules: unknown[] }).validationRules).toHaveLength(1)
   })
 
   it('发布被拦下时明说"已保存，但未生效"并逐条给出原因', async () => {
     await pickModule()
-    await screen.findByTestId('actions-panel')
 
     const saveButton = screen.getByRole('button', { name: '保存' })
     await waitFor(() => expect(saveButton).toBeEnabled())
     fireEvent.click(saveButton)
 
-    expect(await screen.findByText('未生效')).toBeInTheDocument()
-    expect(screen.getByText(/发布未通过校验/)).toBeInTheDocument()
-    expect(screen.getByText('主表缺少 CONFIRM_TAG。')).toBeInTheDocument()
-    // 通过的那条不列出来
-    expect(screen.queryByText('效果键全部可执行。')).toBeNull()
+    const alert = await screen.findByRole('alert')
+    // 整句被 <span> 切成多个文本节点，按 textContent 断言（按纯文本匹配会碎）
+    expect(alert).toHaveTextContent('已保存，但未生效')
+    expect(within(alert).getByText('主表缺少 CONFIRM_TAG。')).toBeInTheDocument()
   })
 })

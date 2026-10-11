@@ -24,7 +24,7 @@ public sealed class ChooserRepository(
     private const int ModuleGroupsModuleId = 230102;
     // 自定义按钮（230103）：与 230101/230102 同一批配置维护者，门挂在它自己的编号上（ADR-033 §10）
     private const int ModuleButtonsModuleId = 230103;
-    // 行为动作 + 校验规则（230104，ADR-033 批 3）：同上
+    // 行为动作、校验规则（230104，ADR-033 批 3）：同上
     private const int ModuleActionsModuleId = 230104;
 
     /// <summary>form-designer.fields 的排除列表条数上限（防止超长参数；超出部分只是多给候选，不影响正确性）。</summary>
@@ -47,7 +47,7 @@ public sealed class ChooserRepository(
             // 自定义按钮的配置对象（权限门 230103 自定义按钮）：候选与模块分组**同源**——只有统一工作台
             // 模块有按钮消费方，非工作台节点在保存时会被拒，故不列进候选。
             ["module-buttons.targets"] = ["M_IDX", "M_DESC", "MASTER_TABLE"],
-            // 行为动作 + 校验规则的配置对象（权限门 230104）：候选同源（统一工作台模块）
+            // 行为动作、校验规则的配置对象（权限门 230104）：候选同源（统一工作台模块）
             ["module-actions.targets"] = ["M_IDX", "M_DESC", "MASTER_TABLE"],
             // 助手参数作用域（ADR-030 §6.2）：候选集 = MODULES 全表，与服务端的键校验同源
             ["assistant-admin.modules"] = ["M_IDX", "M_DESC"],
@@ -369,7 +369,7 @@ public sealed class ChooserRepository(
         "module-groups.targets" => ModuleGroupsModuleId,
         // 自定义按钮的配置对象：门挂在 230103（自定义按钮），与写按钮的端点同一道门
         "module-buttons.targets" => ModuleButtonsModuleId,
-        // 行为动作 + 校验规则的配置对象：门挂在 230104，与写该面的端点同一道门
+        // 行为动作、校验规则的配置对象：门挂在 230104，与写该面的端点同一道门
         "module-actions.targets" => ModuleActionsModuleId,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
         "user-admin.employees" => PermissionModules.SystemManagement,

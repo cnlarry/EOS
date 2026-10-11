@@ -6,24 +6,31 @@ import { ModuleButtonsPage } from './ModuleButtonsPage'
 
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
-const moduleChooserData = {
-  columns: [
-    { key: 'M_IDX', label: '模块号', dataType: 'int' },
-    { key: 'M_DESC', label: '模块名', dataType: 'nvarchar' },
-    { key: 'MASTER_TABLE', label: '主表', dataType: 'nvarchar' },
+const overview = {
+  canWrite: true,
+  targets: [
+    {
+      moduleId: 1607, moduleDesc: '收料单', masterTable: 'PUR_RECEIVE_M', masterTableDesc: '收料单主表',
+      detailTable: 'PUR_RECEIVE_D', detailTableDesc: '收料单明细', configured: 1,
+    },
+    {
+      moduleId: 170204, moduleDesc: '其它付款凭证', masterTable: 'PUR_PAY_OTHER', masterTableDesc: '付款凭证主表',
+      detailTable: '', detailTableDesc: '', configured: 0,
+    },
   ],
-  rows: [{ M_IDX: 1607, M_DESC: '收料单', MASTER_TABLE: 'PUR_RECEIVE_M' }],
-  total: 1,
+  actions: [
+    { moduleId: 1607, moduleDesc: '收料单', seq: 1, eventCode: 'MANUAL', effectKey: 'recalc-account', enabled: true, label: '重算科目', remark: null },
+  ],
 }
 
 const buttonsView = {
   moduleId: 1607,
   buttons: [
-    { seq: 1, eventCode: 'MANUAL', effectKey: 'recalc-account', enabled: true, label: '重算科目', remark: null },
+    { seq: 1, eventCode: 'MANUAL', effectKey: 'recalc-account', enabled: true, label: '重算科目', remark: '月结前用' },
   ],
 }
 
-/** 授权镜子：0/0 是 fail-closed 的正常态，但界面必须显眼提示——它是静默失效，不是错误。 */
+/** 授权镜子：0/0 是 fail-closed 的正常态，界面必须显式说出来并指路。 */
 const authorizationView = {
   buttons: [{ seq: 1, effectKey: 'recalc-account', label: '重算科目', users: 0, groups: 0 }],
 }
@@ -31,88 +38,92 @@ const authorizationView = {
 describe('ModuleButtonsPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === '/admin/module-buttons/overview') return overview
       if (path === '/admin/module-buttons/meta') {
         return { buttons: [{ key: 'recalc-account', label: '重算科目', placement: 'TOOLBAR' }] }
       }
       if (path.endsWith('/action-authorization')) return authorizationView
       return buttonsView
     })
-    apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === '/chooser/query') return moduleChooserData
-      return undefined
-    })
-    apiClientMock.put.mockImplementation(async () => undefined)
+    apiClientMock.put.mockImplementation(async () => ({ saved: true, publish: { moduleId: 1607, title: '收料单', published: true, version: 3, definitionVersion: 'module-1607-v3', passed: true, checks: [] } }))
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  async function pickModule() {
+  it('左栏默认只列已配过的模块，勾「显示全部模块」后列出全集', async () => {
     renderWithProviders(<ModuleButtonsPage />)
-    fireEvent.click(screen.getByRole('button', { name: '选择模块' }))
-    const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByText('收料单')
-    fireEvent.click(within(dialog).getAllByLabelText('选择此行')[0])
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认' }))
-  }
 
-  it('未选择模块时提示先选模块，列表工具不可用', () => {
-    renderWithProviders(<ModuleButtonsPage />)
-    expect(screen.getByText('还没有选择模块')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '新增按钮' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '刷新' })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /^收料单/ })).toBeInTheDocument()
+    // 未配过的模块默认折叠
+    expect(screen.queryByRole('button', { name: /^其它付款凭证/ })).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('显示全部模块'))
+    expect(await screen.findByRole('button', { name: /^其它付款凭证/ })).toBeInTheDocument()
   })
 
-  it('选定模块后按模块号取按钮行，并显示授权镜子（0/0 显式提示无人可用）', async () => {
-    await pickModule()
+  it('单击左栏模块即切换右栏，并在状态条给出主/副表与可改标记', async () => {
+    renderWithProviders(<ModuleButtonsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^收料单/ }))
 
-    expect(await screen.findByText('重算科目')).toBeInTheDocument()
-    // 授权镜子：配了没人能用是正常状态，但必须是显式的，不能静默
-    expect(screen.getByText('无人可用')).toBeInTheDocument()
-    const calls = apiClientMock.get.mock.calls.map((call) => String(call[0]))
-    expect(calls).toContain('/admin/module-buttons/1607')
-    expect(calls).toContain('/admin/module-buttons/1607/action-authorization')
-    expect(calls).toContain('/admin/module-buttons/meta')
+    expect(await screen.findByText('可改')).toBeInTheDocument()
+    expect(screen.getByText(/主表 收料单主表 · 副表 收料单明细/)).toBeInTheDocument()
+    // 行内编辑控件直接可用，不需要"编辑态"
+    expect(await screen.findByLabelText('按钮文案-saved-0')).toHaveValue('重算科目')
   })
 
-  it('保存走整面替换：PUT 只带按钮行、不带校验规则（manual 作用域的客户端一半）', async () => {
-    await pickModule()
-    await screen.findByText('重算科目')
+  it('行内编辑后「保存并生效」只发按钮行（不带校验规则、不带界面标识）', async () => {
+    renderWithProviders(<ModuleButtonsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^收料单/ }))
 
-    fireEvent.click(screen.getByRole('button', { name: '新增按钮' }))
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('按钮文案'), { target: { value: '重算成本' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '确定' }))
+    const label = await screen.findByLabelText('按钮文案-saved-0')
+    fireEvent.change(label, { target: { value: '重算成本' } })
+    // 输入要跟手：表格行对象是快照，受控 value 读快照会把用户输的字顶回去
+    expect(label).toHaveValue('重算成本')
+    fireEvent.change(screen.getByLabelText('处理器-saved-0'), { target: { value: 'recalc-account' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存并生效' }))
 
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
-
     const [path, body] = apiClientMock.put.mock.calls[0]
     expect(path).toBe('/admin/module-buttons/1607')
-    const typed = body as { actions: { eventCode: string; label?: string | null }[]; validationRules: unknown[] }
-    // 越域的行服务端会拒，客户端就不该带：只发按钮行、不发校验规则
+    const typed = body as { actions: Record<string, unknown>[]; validationRules: unknown[] }
     expect(typed.validationRules).toEqual([])
-    expect(typed.actions).toHaveLength(2)
-    expect(typed.actions.every((action) => action.eventCode === 'MANUAL')).toBe(true)
-    expect(typed.actions.some((action) => action.label === '重算成本')).toBe(true)
+    expect(typed.actions).toHaveLength(1)
+    expect(typed.actions[0].label).toBe('重算成本')
+    expect(typed.actions[0].eventCode).toBe('MANUAL')
+    expect(typed.actions[0]._key).toBeUndefined()
+
+    // 保存即发布：给出已生效的版本
+    expect(await screen.findByText(/已保存并发布/)).toBeInTheDocument()
   })
 
-  it('删除按钮后保存：请求体里不再有该行', async () => {
-    await pickModule()
-    await screen.findByText('重算科目')
+  it('「谁能用」打开授权抽屉：给出可用数、无人可用警示与去处', async () => {
+    renderWithProviders(<ModuleButtonsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^收料单/ }))
 
-    fireEvent.click(screen.getByText('重算科目'))
-    fireEvent.click(screen.getByRole('button', { name: '删除' }))
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: '删除' }))
+    fireEvent.click(await screen.findByLabelText('授权-saved-0'))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(/0 个用户 \/ 0 个组/)).toBeInTheDocument()
+    expect(dialog.getByText(/配了没人能用/)).toBeInTheDocument()
+    expect(dialog.getByRole('link', { name: '去用户权限设定' })).toHaveAttribute('href', '/admin/users')
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
+  it('只读账号：控件禁用并说明原因', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === '/admin/module-buttons/overview') return { ...overview, canWrite: false }
+      if (path === '/admin/module-buttons/meta') {
+        return { buttons: [{ key: 'recalc-account', label: '重算科目', placement: 'TOOLBAR' }] }
+      }
+      if (path.endsWith('/action-authorization')) return authorizationView
+      return buttonsView
+    })
+    renderWithProviders(<ModuleButtonsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^收料单/ }))
 
-    const [, body] = apiClientMock.put.mock.calls[0]
-    const typed = body as { actions: unknown[] }
-    expect(typed.actions).toHaveLength(0)
+    expect(await screen.findByText('只读')).toBeInTheDocument()
+    expect(screen.getByText(/只给了查看权/)).toBeInTheDocument()
+    expect(await screen.findByLabelText('按钮文案-saved-0')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '保存并生效' })).toBeDisabled()
   })
 })

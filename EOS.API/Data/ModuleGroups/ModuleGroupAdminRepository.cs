@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.RegularExpressions;
 using EOS.API.Data.Workbench;
+using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.ModuleGroups;
@@ -14,7 +15,17 @@ public sealed record ModuleGroupAdminRow(
     string Description,
     string Expression,
     bool Available,
-    string? Error);
+    string? Error,
+    /// <summary>
+    /// 样例值：把该表达式在**主表真实数据**上跑一次，取去重后的前 3 个。
+    /// 配置面回答"这个分组长什么样"——只给表达式是答不出来的；空列表 = 主表当前没有行。
+    /// </summary>
+    IReadOnlyList<string> Samples,
+    /// <summary>
+    /// 样例执行失败的原因（可空）。**它不影响 <see cref="Available"/>**：可用与否只由受控编译器决定，
+    /// 而样例是一次真实查询——不加区分会让"表正好被锁/正忙"读成"表达式不可用"，把判定变成看运气。
+    /// </summary>
+    string? SampleError);
 
 /// <summary>配置面读模型：目标模块 + 它的分组清单。</summary>
 public sealed record ModuleGroupAdminModule(
@@ -75,6 +86,74 @@ public sealed class ModuleGroupAdminRepository(
         return await ReadModuleAsync(connection, null, moduleId, token);
     }
 
+    /// <summary>
+    /// 模块分组的**系统级总览**：全库分组行 + 所属模块，并复用按模块视图的**可用性判定**
+    /// （表达式能否被受控编译器执行）。
+    ///
+    /// 判定按模块做（每个模块一次 <see cref="GetAsync"/>），因为白名单与形态判据都是**按模块主表**算的；
+    /// 配过分组的模块很少（实测 2 个），这次 N 次查询是划算的。挂在已删除模块上的行直接不显示——
+    /// 按模块视图同样取不到它们，总览不该给出一批点不开的行。
+    /// </summary>
+    public async Task<ModuleGroupOverviewViewDto> ReadOverviewAsync(CancellationToken token)
+    {
+        var moduleIds = new List<int>();
+        await using (var connection = connections.Create())
+        {
+            await connection.OpenAsync(token);
+            await using var command = new SqlCommand(
+                // 不加脏读提示：第九节规定新代码默认不加，本文件其余读取也没有加，保持一处口径。
+                "SELECT DISTINCT M_IDX FROM dbo.MODULE_GROUPS ORDER BY M_IDX;", connection);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+                moduleIds.Add(reader.GetInt32(0));
+        }
+
+        var overview = new List<ModuleGroupOverviewDto>();
+        foreach (var moduleId in moduleIds)
+        {
+            var module = await GetAsync(moduleId, token);
+            if (module is null)
+                continue;
+            foreach (var group in module.Groups)
+            {
+                overview.Add(new ModuleGroupOverviewDto(
+                    module.ModuleId, module.ModuleDesc, group.GroupId, group.SortIdx,
+                    group.Description, group.Expression, group.Available, group.Error));
+            }
+        }
+        // 界面左栏的模块清单：候选集与拒存规则同源（统一工作台 + 有主表），它取代了"选择模块"弹窗。
+        var targets = new List<ModuleConfigTargetOptionDto>();
+        await using (var connection = connections.Create())
+        {
+            await connection.OpenAsync(token);
+            await using var command = new SqlCommand(
+                """
+                SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
+                       LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))),
+                       LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t
+                                            WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.MASTER_TABLE))),''))),
+                       LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t
+                                            WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.DETAIL_TABLE))),'')))
+                FROM dbo.MODULES m
+                INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX=m.M_IDX AND n.NODE_KIND=N'WORKBENCH'
+                WHERE NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NOT NULL
+                ORDER BY m.M_IDX;
+                """, connection);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                targets.Add(new ModuleConfigTargetOptionDto(
+                    reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(4),
+                    reader.GetString(3), reader.GetString(5), 0));
+            }
+        }
+
+        var counts = overview.GroupBy(row => row.ModuleId).ToDictionary(group => group.Key, group => group.Count());
+        targets = [.. targets.Select(target => target with { Configured = counts.GetValueOrDefault(target.ModuleId) })];
+
+        return new ModuleGroupOverviewViewDto(targets, overview);
+    }
+
     public async Task<ModuleGroupAdminRow> CreateAsync(
         int moduleId, string? description, string? expression, string updatedBy, CancellationToken token)
     {
@@ -117,7 +196,8 @@ public sealed class ModuleGroupAdminRepository(
 
         await transaction.CommitAsync(token);
         logger.LogInformation("模块分组新增 module={ModuleId} group={GroupId} by={UpdatedBy}", moduleId, groupId, updatedBy);
-        return new ModuleGroupAdminRow(groupId, sortIdx, desc, exp, true, null);
+        // 样例值留空：调用方在保存后都会重新读列表（那时才带样例值），此处不必再跑一次主表。
+        return new ModuleGroupAdminRow(groupId, sortIdx, desc, exp, true, null, [], null);
     }
 
     public async Task<ModuleGroupAdminRow> UpdateAsync(
@@ -149,7 +229,8 @@ public sealed class ModuleGroupAdminRepository(
 
         await transaction.CommitAsync(token);
         logger.LogInformation("模块分组修改 module={ModuleId} group={GroupId} by={UpdatedBy}", moduleId, groupId, updatedBy);
-        return new ModuleGroupAdminRow(groupId, sortIdx, desc, exp, true, null);
+        // 样例值留空：调用方在保存后都会重新读列表（那时才带样例值），此处不必再跑一次主表。
+        return new ModuleGroupAdminRow(groupId, sortIdx, desc, exp, true, null, [], null);
     }
 
     /// <summary>删除一个分组。<paramref name="moduleId"/> 由调用方提供（审计与归属核对用），与行的归属不符即拒绝。</summary>
@@ -279,10 +360,37 @@ public sealed class ModuleGroupAdminRepository(
         var rows = new List<ModuleGroupAdminRow>(groups.Count);
         foreach (var group in groups)
         {
-            var valid = GroupExpressionParser.TryCompile(group.Expression, masterTable, allowed, out _);
+            var valid = GroupExpressionParser.TryCompile(group.Expression, masterTable, allowed, out var compiled);
+            if (!valid)
+            {
+                rows.Add(new ModuleGroupAdminRow(
+                    group.GroupId, group.SortIdx, group.Description, group.Expression,
+                    false, DescribeCompileFailure(group.Expression, masterTable, allowed), [], null));
+                continue;
+            }
+
+            // 样例是**尽力而为**：它让配置者看到"这个分组长什么样"，也能暴露类型不匹配这类
+            // 只在运行时才现形的问题；但它失败**不改判** `Available`（可用与否只由受控编译器决定），
+            // 否则"表正好被锁/正忙"会被读成"表达式不可用"。
+            // 表达式由受控编译器产出、表名来自模块元数据，均非调用方输入，故这里的拼接无注入面。
+            var samples = new List<string>();
+            string? sampleError = null;
+            try
+            {
+                await using var sampleCommand = new SqlCommand(
+                    $"SELECT DISTINCT TOP 3 CONVERT(nvarchar(200),({compiled})) FROM dbo.[{masterTable}];",
+                    connection, transaction);
+                await using var sampleReader = await sampleCommand.ExecuteReaderAsync(token);
+                while (await sampleReader.ReadAsync(token))
+                    samples.Add(sampleReader.IsDBNull(0) ? "(空)" : sampleReader.GetString(0));
+            }
+            catch (SqlException error)
+            {
+                sampleError = error.Message;
+            }
+
             rows.Add(new ModuleGroupAdminRow(
-                group.GroupId, group.SortIdx, group.Description, group.Expression,
-                valid, valid ? null : DescribeCompileFailure(group.Expression, masterTable, allowed)));
+                group.GroupId, group.SortIdx, group.Description, group.Expression, true, null, samples, sampleError));
         }
         return new ModuleGroupAdminModule(moduleId, moduleDesc, nodeKind, masterTable, rows);
     }

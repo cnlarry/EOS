@@ -28,6 +28,18 @@ public sealed class ModuleGroupAdminController(
     // 权限锚点随配置面走（ADR-033）：2315 已重编号为 230102「模块分组」。
     private const int ModuleGroupsModuleId = 230102;
 
+    /// <summary>
+    /// 系统级总览：全库分组行 + 所属模块。配置面首屏就用它——只支持"先选模块"会让打开页面
+    /// 变成一片空态，使用者无从知道"系统里到底配了哪些分组"。编辑仍按模块进行（选中某行即进那个模块）。
+    /// </summary>
+    [HttpGet("overview")]
+    public async Task<IActionResult> Overview(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var overview = await repository.ReadOverviewAsync(token);
+        return Ok(overview with { CanWrite = await CanSetup(token) });
+    }
+
     [HttpGet("{moduleId:int}")]
     public async Task<IActionResult> Groups(int moduleId, CancellationToken token)
     {

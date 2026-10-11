@@ -1,9 +1,9 @@
-import { IconDeviceFloppy, IconRefresh } from '@tabler/icons-react'
+import { IconDeviceFloppy } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import type { ColumnDef } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { UnifiedChooser } from '../../components/common/UnifiedChooser'
+import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
@@ -15,9 +15,44 @@ import {
 } from '../menu-admin/BusinessActionsPanel'
 import { MANUAL_EVENT } from '../menu-admin/documentActionConfig'
 import { ConfigPublishAlerts, type ConfigSaveOutcome } from './ConfigPublishAlerts'
+import { ConfigWorkbench, WorkbenchPanelHeader, type WorkbenchModule } from './ConfigWorkbench'
+
+/** 总览行：动作 / 校验规则 + 它配在哪个模块（未选中模块时，右栏按系统维度列全库事实）。 */
+type OverviewActionRow = {
+  moduleId: number
+  moduleDesc: string
+  eventCode: string
+  seq: number
+  effectKey: string
+  effectName?: string | null
+  enabled: boolean
+  failMode: string
+  label?: string | null
+  remark?: string | null
+}
+
+type OverviewRuleRow = {
+  moduleId: number
+  moduleDesc: string
+  seq: number
+  stage: string
+  validationKey: string
+  enabled: boolean
+  message?: string | null
+}
+
+type OverviewView = {
+  targets: WorkbenchModule[]
+  canWrite: boolean
+  actions: OverviewActionRow[]
+  validationRules: OverviewRuleRow[]
+}
 
 /**
- * 行为动作 + 校验规则（模块 230104，定制承载页 `/admin/module-actions`，ADR-033 批 3）。
+ * 行为动作、校验规则（模块 230104，定制承载页 `/admin/module-actions`，ADR-033 批 3）。
+ *
+ * 交互与另外两个配置面一致（ADR-033 拆页面后的重排）：**左栏常驻模块清单、右栏是选中模块的配置**；
+ * 未选中时右栏给出**全库总览**（哪些模块配了什么），点行即进——没有"选择模块"弹窗，也没有首屏空态。
  *
  * 页内两个页签与 230101 里的那两个一一对应，编辑面**复用** `BusinessActionsPanel`（不另造一套 UI）；
  * 两者的差别只在"保存往哪走"：这里走 `PUT /admin/module-business-config/{id}?scope=actions`——
@@ -37,11 +72,14 @@ const TABS: { key: 'actions' | 'rules'; label: string }[] = [
 
 export function ModuleActionsPage() {
   const queryClient = useQueryClient()
-  const [moduleId, setModuleId] = useState<number | null>(null)
+  const [moduleId, setModuleId] = useState<number | null>(() => {
+    const raw = new URLSearchParams(window.location.search).get('moduleId')
+    const parsed = raw == null || raw === '' ? Number.NaN : Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  })
   const [view, setView] = useState<'actions' | 'rules'>('actions')
   const [draft, setDraft] = useState<ModuleBusinessConfigDraft | null>(null)
   const [reloadSignal, setReloadSignal] = useState(0)
-  const [chooserOpen, setChooserOpen] = useState(false)
   const [outcome, setOutcome] = useState<ConfigSaveOutcome | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -50,6 +88,57 @@ export function ModuleActionsPage() {
     enabled: moduleId != null,
     queryFn: () => apiClient.get<ModuleConfigTarget>(`/admin/module-business-config/${moduleId}/target`),
   })
+
+  // 左栏模块清单 + 未选中时的全库总览：同一份事实（谁配了什么），与写路径同源。
+  const overview = useQuery({
+    queryKey: ['module-actions', 'overview'],
+    queryFn: () => apiClient.get<OverviewView>('/admin/module-business-config/overview'),
+  })
+
+  const targets = overview.data?.targets ?? []
+  const canWrite = overview.data?.canWrite ?? false
+  const selected = targets.find((item) => item.moduleId === moduleId) ?? null
+  const dirty = draft != null
+
+  const actionOverviewColumns = useMemo<ColumnDef<OverviewActionRow>[]>(() => [
+    { accessorKey: 'moduleId', header: '模块号', size: 90 },
+    { accessorKey: 'moduleDesc', header: '模块名' },
+    { accessorKey: 'eventCode', header: '事件', size: 130 },
+    {
+      accessorKey: 'effectKey',
+      header: '效果键',
+      cell: ({ row }) => <span className="font-monospace">{row.original.effectKey}</span>,
+    },
+    { accessorKey: 'seq', header: '顺序', size: 70 },
+    { accessorKey: 'enabled', header: '启用', size: 70, cell: ({ row }) => (row.original.enabled ? '是' : '否') },
+    { accessorKey: 'failMode', header: '失败策略', size: 90 },
+  ], [])
+
+  const ruleOverviewColumns = useMemo<ColumnDef<OverviewRuleRow>[]>(() => [
+    { accessorKey: 'moduleId', header: '模块号', size: 90 },
+    { accessorKey: 'moduleDesc', header: '模块名' },
+    { accessorKey: 'stage', header: '阶段', size: 130 },
+    {
+      accessorKey: 'validationKey',
+      header: '校验键',
+      cell: ({ row }) => <span className="font-monospace">{row.original.validationKey}</span>,
+    },
+    { accessorKey: 'seq', header: '顺序', size: 70 },
+    { accessorKey: 'enabled', header: '启用', size: 70, cell: ({ row }) => (row.original.enabled ? '是' : '否') },
+    { accessorKey: 'message', header: '提示文案', cell: ({ row }) => row.original.message ?? '' },
+  ], [])
+
+  const selectModule = useCallback((nextId: number) => {
+    if (nextId === moduleId) return
+    if (dirty && !window.confirm('当前模块有未保存的改动，切换会丢掉它们。仍要切换？')) return
+    setModuleId(nextId)
+    setDraft(null)
+    setOutcome(null)
+    setSaveError(null)
+    const url = new URL(window.location.href)
+    url.searchParams.set('moduleId', String(nextId))
+    window.history.replaceState({}, '', url)
+  }, [dirty, moduleId])
 
   const save = useMutation({
     mutationFn: async () => {
@@ -80,120 +169,124 @@ export function ModuleActionsPage() {
     },
   })
 
-  const refresh = async () => {
+  const reload = useCallback(() => {
+    setDraft(null)
     setOutcome(null)
     setSaveError(null)
-    await queryClient.invalidateQueries({ queryKey: ['module-business-config', moduleId] })
-    setReloadSignal((value) => value + 1)
-  }
+    void queryClient.invalidateQueries({ queryKey: ['module-actions'] })
+  }, [queryClient])
+
+  // 页签在"总览"与"编辑"两种模式下共用：它决定看哪一份清单（动作 / 规则），与在哪个模式下看无关。
+  const tabBar = (
+    <ul className="nav nav-tabs" role="tablist">
+      {TABS.map((tab) => (
+        <li className="nav-item" key={tab.key}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === tab.key}
+            className={`nav-link ${view === tab.key ? 'active' : ''}`}
+            onClick={() => setView(tab.key)}
+          >
+            {tab.label}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
 
   return (
-    <div className="d-flex flex-column gap-3">
-      <ErpListCard
-        header={(
-          <div className="px-3 pt-2 small">
-            <div className="fw-semibold">行为动作 + 校验规则</div>
+    <ConfigWorkbench
+      title="行为动作、校验规则"
+      configuredUnit="动作"
+      modules={targets}
+      loading={overview.isPending}
+      error={overview.isError ? overview.error : null}
+      onReload={reload}
+      selectedId={moduleId}
+      onSelect={selectModule}
+      dirtyId={dirty && moduleId != null ? moduleId : null}
+      toolbar={(
+        <Button
+          size="sm"
+          icon={<IconDeviceFloppy size={16} />}
+          disabled={moduleId == null || draft == null || save.isPending}
+          loading={save.isPending}
+          onClick={() => save.mutate()}
+        >
+          保存
+        </Button>
+      )}
+      right={selected == null ? (
+        <div className="d-flex flex-column gap-2">
+          <div className="px-1 small">
+            <div className="fw-semibold">全库总览</div>
             <div className="text-secondary">
-              两者在同一条执行链上（同一事务、同一个发布门），故同页两个页签一起提交。
-              配置只作用于**统一工作台模块**；保存后服务端自动发布一次，校验不通过则是"已保存，但未生效"。
+              两者在同一条执行链上（同一事务、同一个发布门），故同页两个页签一起提交。点一行进那个模块。
             </div>
           </div>
-        )}
-        actions={(
-          <>
-            <Button size="sm" variant="ghost" icon={<IconRefresh size={16} />} onClick={() => setChooserOpen(true)}>
-              选择模块
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<IconRefresh size={16} />}
-              disabled={moduleId == null}
-              onClick={() => void refresh()}
-            >
-              刷新
-            </Button>
-            <Button
-              size="sm"
-              icon={<IconDeviceFloppy size={16} />}
-              disabled={moduleId == null || draft == null || save.isPending}
-              loading={save.isPending}
-              onClick={() => save.mutate()}
-            >
-              保存
-            </Button>
-          </>
-        )}
-      >
-        {moduleId == null ? (
-          <EmptyState
-            title="还没有选择模块"
-            description="行为动作与校验规则挂在各模块上：先点右上角「选择模块」，再配置该模块的效果链。"
-          />
-        ) : target.isPending ? (
-          <LoadingState label="正在加载模块…" />
-        ) : target.isError ? (
-          <ErrorState
-            message={describeApiError(target.error, '加载模块失败。')}
-            onRetry={() => void target.refetch()}
-          />
-        ) : (
-          <div className="d-flex flex-column gap-2">
-            <div className="text-secondary small">
-              正在配置模块 <span className="font-monospace">{target.data?.M_IDX}</span>
-              {target.data?.M_DESC ? ` ${target.data.M_DESC}` : ''} · 主表 {target.data?.MASTER_TABLE || '—'}
-              {target.data?.DETAIL_TABLE ? ` · 副表 ${target.data.DETAIL_TABLE}` : ''}
-            </div>
-            {saveError ? <div className="alert alert-danger py-2 mb-0" role="alert">{saveError}</div> : null}
-            <ConfigPublishAlerts outcome={outcome} />
-            <ul className="nav nav-tabs" role="tablist">
-              {TABS.map((tab) => (
-                <li className="nav-item" key={tab.key}>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={view === tab.key}
-                    className={`nav-link ${view === tab.key ? 'active' : ''}`}
-                    onClick={() => setView(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <BusinessActionsPanel
-              module={target.data as ModuleConfigTarget}
-              view={view as BusinessActionsView}
-              reloadSignal={reloadSignal}
-              onDraftChange={setDraft}
+          {tabBar}
+          {view === 'actions' ? (
+            <ErpTable
+              columns={actionOverviewColumns}
+              data={overview.data?.actions ?? []}
+              getRowId={(row) => `${row.moduleId}#${row.eventCode}#${row.seq}`}
+              onRowClick={(row) => selectModule(row.moduleId)}
+              empty={(
+                <EmptyState
+                  title="系统里还没有行为动作"
+                  description="从左边挑一个统一工作台模块，为它配效果链动作。"
+                />
+              )}
+              resizable
+              storageKey="module-actions-overview"
             />
-          </div>
-        )}
-      </ErpListCard>
-
-      {chooserOpen ? (
-        <UnifiedChooser
-          open
-          title="选择要配置行为动作的模块"
-          source={{ kind: 'sourceKey', key: 'module-actions.targets' }}
-          mode="single"
-          getRowId={(row) => String(row.M_IDX)}
-          onPick={(pickedRows) => {
-            const picked = pickedRows[0] as { M_IDX?: unknown } | undefined
-            if (picked) {
-              setModuleId(Number(picked.M_IDX))
-              setDraft(null)
-              setOutcome(null)
-              setSaveError(null)
-            }
-            setChooserOpen(false)
-          }}
-          onClose={() => setChooserOpen(false)}
-          dialogSize="md"
-          searchPlaceholder="按模块号或模块名搜索"
-          emptyText="没有可配行为动作的模块（只有统一工作台模块才有效果链消费方）。"
-        />
-      ) : null}
-    </div>
+          ) : (
+            <ErpTable
+              columns={ruleOverviewColumns}
+              data={overview.data?.validationRules ?? []}
+              getRowId={(row) => `${row.moduleId}#${row.stage}#${row.seq}`}
+              onRowClick={(row) => selectModule(row.moduleId)}
+              empty={(
+                <EmptyState
+                  title="系统里还没有校验规则"
+                  description="从左边挑一个统一工作台模块，为它配校验规则。"
+                />
+              )}
+              resizable
+              storageKey="module-rules-overview"
+            />
+          )}
+        </div>
+      ) : (
+        <div className="d-flex flex-column gap-2">
+          <WorkbenchPanelHeader
+            module={selected}
+            canWrite={canWrite}
+            extra={<span className="text-secondary">保存后服务端自动发布一次；校验不通过则是「已保存，但未生效」。</span>}
+          />
+          {saveError ? <div className="alert alert-danger py-2 mb-0" role="alert">{saveError}</div> : null}
+          <ConfigPublishAlerts outcome={outcome} />
+          {target.isPending ? (
+            <LoadingState label="正在加载模块…" />
+          ) : target.isError ? (
+            <ErrorState
+              message={describeApiError(target.error, '加载模块失败。')}
+              onRetry={() => void target.refetch()}
+            />
+          ) : (
+            <>
+              {tabBar}
+              <BusinessActionsPanel
+                module={target.data as ModuleConfigTarget}
+                view={view as BusinessActionsView}
+                reloadSignal={reloadSignal}
+                onDraftChange={setDraft}
+              />
+            </>
+          )}
+        </div>
+      )}
+    />
   )
 }

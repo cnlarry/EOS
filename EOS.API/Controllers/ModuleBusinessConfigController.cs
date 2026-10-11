@@ -34,7 +34,7 @@ public sealed class ModuleBusinessConfigController(
     // 模块级事实（发布、版本历史）仍在 230101：ADR-033 §2 —— "230101 只定义模块是什么"，
     // 但发布结果与版本历史是**模块级**事实，故显式发布端点留在 230101 的门上。
     private const int MenuAdminModuleId = 230101;
-    // 行为动作 + 校验规则配置面的门（ADR-033 批 3，迁移 349 登记）：本控制器的读写面全归它。
+    // 行为动作、校验规则配置面的门（ADR-033 批 3，迁移 349 登记）：本控制器的读写面全归它。
     private const int BehaviorModuleId = 230104;
 
     [HttpGet("meta")]
@@ -189,6 +189,18 @@ public sealed class ModuleBusinessConfigController(
         if (!await CanBrowse(token)) return Forbid();
         var result = await repository.GetAsync(moduleId, token);
         return result is null ? NotFound() : Ok(result);
+    }
+
+    /// <summary>
+    /// 系统级总览：全库效果链动作（非 `MANUAL`）+ 全部校验规则，各带所属模块。配置面首屏用它——
+    /// 只支持"先选模块"会让打开页面变成一片空态。编辑仍按模块进行（选中某行即进那个模块）。
+    /// </summary>
+    [HttpGet("overview")]
+    public async Task<IActionResult> Overview(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var overview = await repository.ReadOverviewAsync(BusinessConfigScope.Actions, token);
+        return Ok(overview with { CanWrite = await CanSetup(token) });
     }
 
     /// <summary>
