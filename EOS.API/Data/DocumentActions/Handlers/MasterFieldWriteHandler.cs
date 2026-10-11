@@ -11,7 +11,7 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 /// </summary>
 /// <remarks>
 /// **为什么另开一扇门，而不是给 1302 / 1303 开统一表单白名单**：
-/// `check-inventory-read-hosts.ps1` 的写路径断言要求"主表是余额 / 流水 / 批次账的模块不得进白名单"——
+/// 原 `check-inventory-read-hosts.ps1`（已退役，见 `scripts/README.md`）的写路径断言要求"主表是余额 / 流水 / 批次账的模块不得进白名单"——
 /// 白名单一开，通用表单就能**绕过移动引擎直接改账**（改的是账的底层行，而不是单据）。
 /// 所以这里只开一条窄路：字段白名单 + 引擎维护列拒写 + 按钮级授权（fail-closed）+ 全程审计。
 ///

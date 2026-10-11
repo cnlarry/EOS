@@ -49,7 +49,8 @@ public static class InventoryQueryService
     /// 可用量列（= 数量 − 有效冻结 − 有效预留）。它是**行级**列，与 <see cref="QuantityColumn"/> 同级，
     /// 因此聚合时可以 `SUM`（见 <see cref="DepotLevelColumns"/> 的反例）。**本服务只下发这一列的值**，
     /// 口径的唯一出口是 `InventoryAvailabilityService`——读取侧自己聚合占用表就是第二个口径（D7-⑧）。
-    /// 列与数量的恒等由 `scripts/check-inventory-availability.ps1` 常态断言（WS-25）。
+    /// 列与数量的恒等由真库用例 `EOS.API.Tests/InventoryLedgerIdentityLiveTests.cs` 逐键断言
+    /// （原脚本门禁已退役，见 `scripts/README.md` 退役清单）。
     /// </summary>
     public const string UseableQuantityColumn = "USEABLE_QTY";
 
@@ -136,11 +137,13 @@ public static class InventoryQueryService
     ///
     /// <para>
     /// 三类都算的理由：余额行是当前状态，流水与批次明细是历史与效期凭据，三者都以库别为键。
-    /// 库别被删掉后它们会变成指向不存在库别的孤儿行，而 `check-inventory-balance-identity` /
-    /// `check-month-snapshot-recon` 是按 (料号, 库别) 逐键比对的——孤儿行会直接表现为不平。
+    /// 库别被删掉后它们会变成指向不存在库别的孤儿行，而按 (料号, 库别) 逐键比对的账实检查
+    /// （两处真库用例：`InventoryLedgerIdentityLiveTests` 比余额与流水累计、`MonthSnapshotReconLiveTests`
+    /// 比月结快照与之后流水；原两条脚本门禁已退役，见 `scripts/README.md` 退役清单）
+    /// 会让这种孤儿行直接表现为不平。
     /// 判据刻意保守：任一类有行即视为在用。
     /// </para>
-    /// <para>读法收口在本服务内（门禁 `scripts/check-inventory-read-hosts.ps1` 只放行本文件与两条写路径）。</para>
+    /// <para>读法收口在本服务内（原门禁 `scripts/check-inventory-read-hosts.ps1` 只放行本文件与两条写路径，该门禁已退役，见 `scripts/README.md`）。</para>
     /// </summary>
     public static async Task<DepotTraceCounts> GetDepotTraceCountsAsync(
         SqlConnection connection,

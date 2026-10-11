@@ -11,7 +11,7 @@ namespace EOS.API.Data.Inventory;
 /// </summary>
 /// <remarks>
 /// **为什么要有一个服务**（而不是各处自己 SUM）：口径分头实现必然分叉——本项目已经栽过
-/// 一次（`check-inventory-read-hosts` 那条门禁就是这么来的）。三个消费方（出库校验**拦**、
+/// 一次（`check-inventory-read-hosts` 那条门禁就是这么来的；该门禁已退役，见 `scripts/README.md`）。三个消费方（出库校验**拦**、
 /// 报表/查询下发、选择器显示）都必须经这里取数，**禁止自行聚合**。
 ///
 /// **哪些冻结/预留计入**（"有效性"判据，写在读取时——这就是 D7-⑤ 的**惰性判定**：
@@ -34,7 +34,7 @@ namespace EOS.API.Data.Inventory;
 /// 主档表）就按上面第 3 条**保守计入**并报出来。
 ///
 /// **本服务只读**：不写余额表、不写冻结/预留表（维护 `USEABLE_QTY` 列是写入路径的事，
-/// 逐键对账是 `check-inventory-availability.ps1` 的事）。
+/// 逐键对账由真库用例 `EOS.API.Tests/InventoryLedgerIdentityLiveTests.cs` 断言）。
 /// </remarks>
 public static class InventoryAvailabilityService
 {

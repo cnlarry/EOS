@@ -265,6 +265,23 @@ dotnet build
 它拦的是"编译 0 错、单测全绿，但端点全挂"那类问题。完整清单见
 [`docs/guide/06-测试与质量门禁.md`](docs/guide/06-测试与质量门禁.md)。
 
+动手前可先跑 `pwsh scripts/impact.ps1`：按本次改动路径列出要同步的手册篇目、必须同批跟改的
+登记面与该跑的验证（`-Staged` 只看暂存、`-Json` 给机器读）。反向查询（路径 → 接口 / 页面在哪）
+看生成的地图 [`docs/guide/_index/routes.md`](docs/guide/_index/routes.md)。两者都是查询工具，不阻断提交。
+
+**决策记录也一样要反查**：要判断某篇 ADR 现在还能不能照着做（草案 / 实施中 / 已收口）与它跟哪些
+ADR 相关，看生成索引 [`docs/guide/_index/adrs.md`](docs/guide/_index/adrs.md)——**不要只看文件名就照抄**，
+更不要把草案当既定设计；索引里的状态是 ADR 原文，篇幅过长只做截断。
+
+`scripts/` 下每个脚本**是什么、属于哪一类、还有没有人在用**见 [`docs/guide/_index/scripts.md`](docs/guide/_index/scripts.md)
+（由 `scripts/script-inventory.ps1` 生成，CI 用 `-Check` 校验它与脚本目录一致）。新增脚本必须写清
+它干什么、并被某处引用（或进该脚本的独立工具白名单并写明理由）。
+
+**一次性脚本用完即废**：为某次迁移 / 收口写的一次性脚本放 `scripts/oneshot/`（目录即状态，可整目录清空），
+头部写 `# 一次性｜锚点：<迁移 NNN / ADR-0xx / 模块号>`；脚本根目录的历史一次性脚本只减不增。
+判据是「这条断言未来还可能被违反吗」——会就是门禁（登记进 `docs/guide/06` 按需跑），不会才是一次性。
+口径与**已退役脚本清单**（"某个脚本哪儿去了"的唯一应答处）见 [`scripts/README.md`](scripts/README.md)。
+
 ### 迁移脚本约定
 
 数据库结构改动必须走 DbUp 迁移：在 `EOS.API/Data/Migrations/` 新增 `NNN_描述.sql`，
@@ -350,40 +367,7 @@ pwsh docs/guide/_tools/check-freshness.ps1 -Strict
 
 ### 浏览器工具（Playwright MCP）
 
-做 UI 冒烟与页面实测时会用到浏览器工具。它在**本机装好一次**即可长期可用；起不来时按下面的顺序定位——
-**先查"谁在跑"，再查"缺什么"**：多数故障不是"没装浏览器"，而是"版本对不上"。
-
-**症状**：调用浏览器工具报
-`Executable doesn't exist at …\ms-playwright\chromium-<N>\chrome-win64\chrome.exe`。
-
-**根因**：Playwright 的**包版本与浏览器 build 号是死绑的**，各版本互不共用。MCP 服务用哪一份
-`playwright-core`，就只认它自己声明的那一个 build 号；本机 `ms-playwright` 里装的往往是另一个号
-（装过多个工具时各自缓存不同版本，很常见）。
-
-**三步定位**（均为只读，先做第 1 步）：
-
-1. **谁在跑**：列出 node 进程的命令行，看**真实启动的包与参数**
-   （`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 后筛含 `mcp` 的行）。
-   这一步最容易被跳过——IDE 里显示的 MCP 名字未必等于实际进程。
-2. **它要哪个 build**：在 npx 缓存里找该包的 `playwright-core/browsers.json`，读 `chromium.revision`。
-3. **本机有什么**：列 `%LOCALAPPDATA%\ms-playwright` 的目录名（形如 `chromium-<N>`）。
-
-三者对不上，即根因。
-
-**两种修法**：
-
-- **首选：让它用系统浏览器**（零下载、且不受版本漂移影响）。系统装过 Chrome / Edge 即可：
-  官方 `@playwright/mcp` 加启动参数 `--browser chrome`；
-  `@executeautomation/playwright-mcp-server` 用环境变量 `CHROME_EXECUTABLE_PATH` 指向 `chrome.exe`。
-- **备选：补装缺的那个 build**：`npx -y playwright@<该 revision 对应的版本> install chromium`（数百 MB）。
-  注意 **MCP 升级后会再换 build 号**，这条路需要反复维护。
-
-**两个容易踩的坑**：
-
-- **配置可能在用户级而非项目级**：`~/.codebuddy/mcp.json` 与仓库内 `.codebuddy/mcp.json` 可能各定义一份，
-  **实际生效的未必是你改的那一份**。改之前先按第 1 步确认进程用的是哪份。
-- **改完要重启 IDE / 重连 MCP**：配置只在 server 启动时读取。
-
-**窗口尺寸**：`navigate` 的 `width` / `height` **只在浏览器首次启动时生效**，之后要改视口得用 `resize`。
-若把视口设成整块屏幕的尺寸，浏览器窗口（还要占标题栏）放不下，表现为**右侧与下边被裁、
-固定在右下角的浮球看不见**——这不是渲染缺陷，是窗口比视口小。给一个小于屏幕的尺寸即可。
+做 UI 冒烟与页面实测时用浏览器工具，它是本机装好的长期设施，**起不来时才需要排障**；
+症状、三步定位、两种修法与窗口尺寸的坑，见
+[`docs/guide/02` 第九节](docs/guide/02-本地环境与运行.md)（要点：先查"谁在跑"再查"缺什么"，
+多数故障是版本对不上而非没装浏览器）。

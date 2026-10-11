@@ -28,7 +28,8 @@
       logs/definition-republish/summary-<timestamp>.md    汇总（发布数/漂移数/无漂移数/失败数）
 
     验收口径：漂移模块即「快照与元数据漂移」清单（本次一次性暴露，属预期）；重发布后
-    必须重跑 scripts/check-domain-rule-registry.ps1（快照族名受支持）与账本
+    逐模块确认快照族名受支持（原 scripts/check-domain-rule-registry.ps1 已退役，
+    见 scripts/README.md 退役清单，该步此后靠人工核对）并刷新账本
     scripts/adr012-acceptance-ledger.ps1。发布服务对**内容未变**的模块复用当前版本
     （不递增版本，决策 #109），故重发布不会再让既有对拍报告降为 C 类；只有确有内容变更、
     产生新版本的模块才需要重取证据。
@@ -199,7 +200,8 @@ $((($drift | ForEach-Object { "- module=$($_.ModuleId)：$((($_.DiffFields | For
 
 ## 验收口径
 
-1. 重发布后运行 `scripts/check-domain-rule-registry.ps1`（快照族名必须受支持，PASS）。
+1. 重发布后逐模块确认快照族名受支持（原 `scripts/check-domain-rule-registry.ps1` 已退役，
+   见 `scripts/README.md` 退役清单——该步此后靠人工核对）。
 2. 内容未变的模块复用当前版本，**既有对拍报告不再因重发布而降为 C 类**（只有真正改过配置、
    产生新版本的模块才需要重取证据）；跑 `scripts/adr012-acceptance-ledger.ps1` 复核 C 类清单
    应当只包含"确有内容变更"的模块。

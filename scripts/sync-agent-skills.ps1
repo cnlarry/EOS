@@ -1,3 +1,8 @@
+<#
+.SYNOPSIS
+    Sync agent skills: create Cursor mirror junctions from the canonical .agents/skills/ (idempotent).
+#>
+
 # Sync agent skills: create Cursor mirror junctions from the canonical .agents/skills/.
 # Idempotent. Run from repo root:  pwsh scripts/sync-agent-skills.ps1
 $ErrorActionPreference = 'Stop'

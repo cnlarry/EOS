@@ -1,3 +1,8 @@
+<#
+.SYNOPSIS
+    为 MCP 的 SQL Server 服务器维护 User 级环境变量（连接串走 SQL 认证，密码不进仓库）。
+#>
+
 # EOS MCP SQL Server 环境变量维护脚本
 #
 # 作用：为 opencode/codex/ZCode 的 mssql MCP 服务器设置 SQL 认证连接串（User 级环境变量）。

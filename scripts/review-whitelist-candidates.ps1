@@ -8,13 +8,15 @@
 ReadOnlyModuleIds（只读名单）。路由三列（NEW_URL / MODI_URL / HELP_URL）已随迁移 321 物理删除，
 不再参与判定；候选资格（工作台模块）= M_URL 为 '/workbench'，或 M_URL 留空但有主表
 （默认落统一工作台，与 ModuleRouteValidator.IsWorkbenchModule 同口径）。
-默认值/单号登记、主子表评审等其它参考见 docs/plans/archive/统一表单编辑器待办.md §A（已归档）。
+默认值与单号登记、主子表评审等事项不在本脚本范围内，按 docs/guide/ 的对应篇目处理。
 本脚本只读，不改任何配置；结论供实施顾问逐条确认后写入
 UnifiedFormEditor:EnabledModuleIds。
 .EXAMPLE
 .\scripts\review-whitelist-candidates.ps1
 #>
 param(
+    # 两个输入 CSV 取自本机工作区（docs/plans/ 不随仓库分发，别人克隆里没有）：
+    # 缺失时用 -CandidatesCsv / -InventoryCsv 指到手上的那份。
     [string]$CandidatesCsv = 'docs/plans/统一表单白名单候选.csv',
     [string]$InventoryCsv = 'docs/plans/sp-porting-inventory.csv',
     [string]$OutDir = ''

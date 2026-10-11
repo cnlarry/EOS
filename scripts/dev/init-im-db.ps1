@@ -1,3 +1,10 @@
+<#
+.SYNOPSIS
+    EOS.IM local dev database initializer (dev-only helper): reads the ERP connection
+    string from the local Codex config, switches the initial catalog to EOS.IM and runs
+    the given migration script. The authoritative schema stays in the versioned SQL files.
+#>
+
 # EOS.IM local dev database initializer (dev-only helper)
 #
 # Reads the EOS.ERP connection string from the Codex config

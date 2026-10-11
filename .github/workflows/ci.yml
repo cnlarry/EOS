@@ -95,6 +95,18 @@ jobs:
         run: ./scripts/check-agent-skills.ps1
       - name: 敏感信息文本
         run: ./scripts/check-sensitive-terms.ps1
+      # scripts/ 下积了几十个脚本，其中不少是一次性批次工具。这条门禁守住"每个脚本都写得出
+      # 它干什么、且被某处引用过"（独立工具走白名单），并校验生成的台账与脚本目录一致——
+      # 否则新增脚本会一路堆到没人说得清哪条还在生效。口径见 docs/guide/06 第五节。
+      - name: 脚本台账
+        run: ./scripts/script-inventory.ps1 -Check
+      # 代码地图（后端路由 + 前端页面）同样"生成物 + 校验"：改了控制器或 workspaceRoutes.tsx
+      # 而没重新生成即红；同时断言"解析条数 == 源码里的路由条数"，防解析器悄悄漏行。
+      - name: 代码地图
+        run: ./scripts/gen-code-map.ps1 -Check
+      # 决策记录索引同样是"生成物 + 校验"：新增或改了 ADR 而没重新生成即红。
+      - name: 决策记录索引
+        run: ./scripts/gen-adr-index.ps1 -Check
       # 刻意不带 -Strict：它按 git 时间戳判定「源码动了、文档没动」，而改测试夹具、
       # 调 CI 参数这类不改变文档描述行为的改动也会命中。做成硬门禁只会逼出
       # 「为空过门禁而改文档」的动作；该不该补文档由维护者看日志里的落后清单判断。

@@ -1,3 +1,8 @@
+<#
+.SYNOPSIS
+    单据关系效果边登记器（FIELD_RELATION 方案 A，迁移 058 后运行）：从业务动作的定位键派生并幂等登记 EFFECT 边。
+#>
+
 param(
     [string]$Server = 'localhost',
     [string]$Database = 'EOS.ERP',

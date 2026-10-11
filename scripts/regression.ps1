@@ -3,7 +3,7 @@
 .SYNOPSIS
 EOS 一键回归护栏：单测 + 前端 lint/build/test + E2E 四链 + UI 冒烟。
 .DESCRIPTION
-作为 goal 模式阶段护栏（docs/plans/archive/Agent自动化目标.md §3）：任何阶段完成必须全绿。
+作为阶段护栏：任何阶段收尾必须全绿，不以"与本阶段无关"为由跳过某一子项。
 输出统一 JSON/Markdown 摘要到 logs/goal/regression/，任一子项失败即非零退出。
 依赖：EOS.API 运行于 ApiUrl、EOS.Web dev server 运行于 WebUrl（-StartServices 可自动拉起 API）。
 .EXAMPLE

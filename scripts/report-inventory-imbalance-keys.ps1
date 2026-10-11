@@ -3,7 +3,8 @@
     逐键定性库存不平键（余额对流水累计），并回答「是否仍在扩大」。
 
 .DESCRIPTION
-    `check-inventory-balance-identity.ps1` 只回答"平不平"，本脚本回答"为什么不平、还在不在变大"。
+    原 `check-inventory-balance-identity.ps1`（已退役，见 scripts/README.md 退役清单）只回答"平不平"；
+    本脚本回答"为什么不平、还在不在变大"，是它退役之后剩下的定性手段。
 
     判定规则（写死，可机器复核）：
 

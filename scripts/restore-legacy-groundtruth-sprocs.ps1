@@ -16,7 +16,8 @@
       - 幂等：已存在即跳过（-Force 才重建）；
       - 只还原基准名单，不碰 MODULES 钩子字段（字段退役状态不变，运行期不恢复遗留链）；
       - 列表内过程只服务于测试基准，属**开发期资产**；终局是把这些用例改成"冻结期望"，
-        之后本脚本与这些过程一并删除（见 docs/plans/ADR-012两级覆盖率报告.md §八 批 3/4）。
+        之后本脚本与这些过程一并删除——判定依据是库内不再有引用（用
+        `scripts/adr012-dead-sproc-report.ps1` 扫库内引用面）。
 
 .EXAMPLE
     pwsh scripts/restore-legacy-groundtruth-sprocs.ps1

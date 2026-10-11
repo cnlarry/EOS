@@ -1,3 +1,8 @@
+<#
+.SYNOPSIS
+    业务动作/校验配置一次性导入器（幂等，可重复执行）：按清单生成幂等 T-SQL 并单次执行，只写种子表。
+#>
+
 param(
     [string]$ManifestPath = (Join-Path $PSScriptRoot 'seed-data/business-action-seed.json'),
     [string]$Server = 'localhost',

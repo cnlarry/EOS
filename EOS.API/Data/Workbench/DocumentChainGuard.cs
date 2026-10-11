@@ -7,7 +7,7 @@ namespace EOS.API.Data.Workbench;
 /// 单据上下游的状态守卫：**批核前查上游、解批前查下游**。
 ///
 /// **依据只有一处**：`FIELD_RELATION` 里 `RELATION_KIND = 'EFFECT'` 的登记边 —— 它由业务动作的定位键
-/// 派生，并有 `scripts/verify-field-relation-edges.ps1` 全量核验。表里每行是一个**键列对**：
+/// 派生（原另有 `scripts/verify-field-relation-edges.ps1` 做全量核验，该脚本已退役，见 `scripts/README.md`）。表里每行是一个**键列对**：
 /// `FROM_TABLE.FROM_COLUMN`（下游）↔ `TO_TABLE.TO_COLUMN`（上游），`KEY_ORDINAL` 是复合键位序；
 /// 同一个 `(FROM_TABLE, TO_TABLE)` 下的若干行合起来才是一条边（如同类型 + 同单号两个键列）。
 /// 方向以"**被引用方是上游**"为准（`BusinessFlowRepository` 里用两个独立数据源互证过这个方向）。

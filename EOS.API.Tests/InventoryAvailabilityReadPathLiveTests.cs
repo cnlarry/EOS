@@ -16,9 +16,9 @@ namespace EOS.API.Tests;
 /// 那会长出第二个口径，而两个口径一旦分叉，没人能说清哪个是"能出多少"。
 ///
 /// 第②条用例故意造"忘了同步"的现场：列停在旧值、实时口径已经变了。
-/// 读取侧**仍下发列值**（它只是下发者，不是第二个口径），而**分叉本身由
-/// `scripts/check-inventory-availability.ps1` 抓**——所以那条门禁不是可选项，
-/// 它是"存列"这个设计能成立的前提（D7-②）。
+/// 读取侧**仍下发列值**（它只是下发者，不是第二个口径），而**分叉本身原本由
+/// `scripts/check-inventory-availability.ps1` 抓**——那条门禁已退役（见 `scripts/README.md` 退役清单），
+/// 它的"全库逐键"那一半现在由 `InventoryLedgerIdentityLiveTests` 承接；本文件守的是"三处同源"（D7-②）。
 ///
 /// 判别性：把读取侧的投影从 `USEABLE_QTY` 换成 `QTY` ⇒ 第①条变红。
 /// 夹具 `ZZAVRD` 前缀自造，结束即删。
@@ -131,7 +131,7 @@ public sealed class InventoryAvailabilityReadPathLiveTests : IAsyncLifetime
             InventoryQueryService.ReadLock.None, CancellationToken.None);
         Assert.Equal(Available, Assert.Single(rows).UseableQuantity);
 
-        // 分叉 = 列 − （数量 − Σ有效占用）。这就是 `check-inventory-availability.ps1` 的口径，
+        // 分叉 = 列 − （数量 − Σ有效占用）。这就是原 `check-inventory-availability.ps1`（已退役）的口径，
         // 也正是"存列"必须配一条门禁的原因（漏同步不是读侧能兜的，得有人常态断言）。
         Assert.Equal(15d, await ScalarAsync<double>(connection, """
             SET NOCOUNT ON;

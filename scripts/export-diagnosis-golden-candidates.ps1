@@ -33,6 +33,8 @@
 #>
 [CmdletBinding()]
 param(
+    # 默认草稿路径落在本机工作区（docs/plans/ 不随仓库分发，别人克隆里没有）；
+    # 随仓库走的只有 -JsonlPath 指向的评测集文件，要入库的草稿请用 -MarkdownPath 指到仓库内路径。
     [string] $MarkdownPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path 'docs/plans/ADR-016-S2黄金集候选.md'),
     [string] $JsonlPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path 'EOS.API.Tests/AssistantEval/diagnosis/golden.jsonl')
 )

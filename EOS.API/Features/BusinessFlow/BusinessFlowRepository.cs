@@ -49,7 +49,7 @@ public sealed record BusinessFlowNode(
 /// <item><c>Fields</c>/<c>FieldCount</c>：来自 FIELD_DATASOURCE 的字段取值来源（"这个字段的值取自那张表"）。</item>
 /// <item><c>Registered</c>/<c>RelationName</c>/<c>KeyPairs</c>：来自 FIELD_RELATION 的已登记单据关系
 /// （"本单用哪些键列定位到目标单"）。它由登记工具从业务动作的定位键派生，有
-/// <c>scripts/verify-field-relation-edges.ps1</c> 全量核验。</item>
+/// <c>scripts/verify-field-relation-edges.ps1</c> 做全量核验（该脚本已退役，见 <c>scripts/README.md</c> 退役清单）。</item>
 /// </list>
 ///
 /// <c>DownstreamInDomain</c> / <c>UpstreamInDomain</c> 标出这条边的哪一端落在当前域里。
@@ -129,8 +129,9 @@ public sealed class BusinessFlowRepository(DbConnectionFactory connections, ILog
     //
     // 方向必须**反转**才能与 FIELD_DATASOURCE 同向。表里存的是「本单 → 定位目标表」：
     // FROM_TABLE 是执行动作的本单（SOURCE_SCOPE=MASTER/DETAIL/TABLE 那一侧），TO_TABLE 是它要
-    // 定位/回写的目标单据——MODULE_BUSINESS_ACTION_OP 的保存 lint 与 scripts/verify-field-relation-edges.ps1
-    // 都按 toTable == 动作的 TARGET_TABLE 校验。而本图统一按「上游（被引用）→ 下游（引用方）」画，
+    // 定位/回写的目标单据——MODULE_BUSINESS_ACTION_OP 的保存 lint 按 toTable == 动作的 TARGET_TABLE 校验
+    // （原另有 scripts/verify-field-relation-edges.ps1 做同口径全量核验，该脚本已退役，见 scripts/README.md）。
+    // 而本图统一按「上游（被引用）→ 下游（引用方）」画，
     // 于是把 TO_TABLE 当上游、FROM_TABLE 当下游：目标单是既有单据，本单由它派生。
     //
     // 反转的依据是两个独立数据源互证：这些登记边与 FIELD_DATASOURCE 推出的方向大量一致、
