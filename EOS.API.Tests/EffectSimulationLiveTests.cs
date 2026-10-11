@@ -607,17 +607,17 @@ public sealed class EffectSimulationLiveTests
         return Assert.IsType<EffectSimulationReportDto>(ok.Value);
     }
 
-    /// <summary>预演门按写面收口：库内必须有同时具备 2301 设置权与模块配置权的账号，否则本用例无意义。</summary>
+    /// <summary>预演门按写面收口：库内必须有同时具备 230101 设置权与模块配置权的账号，否则本用例无意义。</summary>
     private static async Task<string> FindConfigAccountAsync(SqlConnection connection, CancellationToken token)
     {
         await using var command = new SqlCommand(
             """
             SELECT TOP 1 LTRIM(RTRIM(USER_ID)) FROM dbo.SYSDD WITH (NOLOCK)
-            WHERE M_IDX=2301 AND ISNULL(SETUP_TAG,0)=1 AND ISNULL(MODULE_CONFIG_TAG,0)=1
+            WHERE M_IDX=230101 AND ISNULL(SETUP_TAG,0)=1 AND ISNULL(MODULE_CONFIG_TAG,0)=1
             ORDER BY USER_ID;
             """, connection);
         return await command.ExecuteScalarAsync(token) as string
-            ?? throw new InvalidOperationException("库内没有同时具备 2301 设置权与模块配置权的账号，无法验证预演端点的门。");
+            ?? throw new InvalidOperationException("库内没有同时具备 230101 设置权与模块配置权的账号，无法验证预演端点的门。");
     }
 
     private static CurrentUserContext UserContext(string userId)

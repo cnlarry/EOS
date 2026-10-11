@@ -16,10 +16,16 @@ public sealed class ChooserRepository(
     DbConnectionFactory connections,
     ILogger<ChooserRepository> logger)
 {
-    private const int MenuAdminModuleId = 2301;
+    // 权限锚点随配置面走（ADR-033）：2301 已改判纯目录「系统功能」，模块管理是 230101。
+    private const int MenuAdminModuleId = 230101;
     private const int ReportAdminModuleId = 2201;
     private const int FieldAdminModuleId = 2302;
-    private const int ModuleGroupsModuleId = 2315;
+    // 权限锚点随配置面走（ADR-033）：2315 已重编号为 230102「模块分组」。
+    private const int ModuleGroupsModuleId = 230102;
+    // 自定义按钮（230103）：与 230101/230102 同一批配置维护者，门挂在它自己的编号上（ADR-033 §10）
+    private const int ModuleButtonsModuleId = 230103;
+    // 行为动作 + 校验规则（230104，ADR-033 批 3）：同上
+    private const int ModuleActionsModuleId = 230104;
 
     /// <summary>form-designer.fields 的排除列表条数上限（防止超长参数；超出部分只是多给候选，不影响正确性）。</summary>
     private const int MaxExcludeKeys = 500;
@@ -35,9 +41,14 @@ public sealed class ChooserRepository(
             ["field-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
             ["menu-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
             ["menu-admin.modules"] = ["M_IDX", "M_DESC"],
-            // 模块分组的配置对象（权限门 2315 模块分组）：候选 = 统一工作台模块（只有它们有分组消费方），
+            // 模块分组的配置对象（权限门 230102 模块分组）：候选 = 统一工作台模块（只有它们有分组消费方），
             // 与服务端拒存规则同源；非工作台节点在保存时会被拒，故不列进候选。
             ["module-groups.targets"] = ["M_IDX", "M_DESC", "MASTER_TABLE"],
+            // 自定义按钮的配置对象（权限门 230103 自定义按钮）：候选与模块分组**同源**——只有统一工作台
+            // 模块有按钮消费方，非工作台节点在保存时会被拒，故不列进候选。
+            ["module-buttons.targets"] = ["M_IDX", "M_DESC", "MASTER_TABLE"],
+            // 行为动作 + 校验规则的配置对象（权限门 230104）：候选同源（统一工作台模块）
+            ["module-actions.targets"] = ["M_IDX", "M_DESC", "MASTER_TABLE"],
             // 助手参数作用域（ADR-030 §6.2）：候选集 = MODULES 全表，与服务端的键校验同源
             ["assistant-admin.modules"] = ["M_IDX", "M_DESC"],
             ["field-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
@@ -70,6 +81,8 @@ public sealed class ChooserRepository(
             ["menu-admin.columns"] = ["COLUMN_NAME"],
             ["menu-admin.modules"] = ["M_IDX"],
             ["module-groups.targets"] = ["M_IDX"],
+            ["module-buttons.targets"] = ["M_IDX"],
+            ["module-actions.targets"] = ["M_IDX"],
             ["assistant-admin.modules"] = ["M_IDX"],
             ["field-admin.fields"] = ["F_ID"],
             ["menu-admin.fields"] = ["F_ID"],
@@ -126,6 +139,18 @@ public sealed class ChooserRepository(
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
             },
             ["module-groups.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
+                ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) LIKE @Keyword",
+            },
+            ["module-buttons.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
+                ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) LIKE @Keyword",
+            },
+            ["module-actions.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
@@ -234,6 +259,18 @@ public sealed class ChooserRepository(
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
                 ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))",
             },
+            ["module-buttons.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "m.M_IDX",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
+                ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))",
+            },
+            ["module-actions.targets"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "m.M_IDX",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
+                ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))",
+            },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
@@ -327,9 +364,13 @@ public sealed class ChooserRepository(
         // 助手作用域要按模块配置：门挂在 3105（助手设置），与写覆盖的端点同一道门——
         // 能看候选集的正是能改它的人，不必另开一个"只读模块表"的口子
         "assistant-admin.modules" => PermissionModules.AssistantAdmin.Settings,
-        // 模块分组的配置对象：门挂在 2315（模块分组），与写分组的端点同一道门——
+        // 模块分组的配置对象：门挂在 230102（模块分组），与写分组的端点同一道门——
         // 能看候选集的正是能改它的人，不必另开一个"只读模块表"的口子
         "module-groups.targets" => ModuleGroupsModuleId,
+        // 自定义按钮的配置对象：门挂在 230103（自定义按钮），与写按钮的端点同一道门
+        "module-buttons.targets" => ModuleButtonsModuleId,
+        // 行为动作 + 校验规则的配置对象：门挂在 230104，与写该面的端点同一道门
+        "module-actions.targets" => ModuleActionsModuleId,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
         "user-admin.employees" => PermissionModules.SystemManagement,
         // 库位主档：权限门挂 110309（库位主档模块）
@@ -443,7 +484,9 @@ public sealed class ChooserRepository(
             "report-admin.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
             "report-admin.modules" => await QueryModulesAsync(request, token),
             "assistant-admin.modules" => await QueryAssistantAdminModulesAsync(request, token),
-            "module-groups.targets" => await QueryModuleGroupTargetsAsync(request, token),
+            "module-groups.targets" => await QueryWorkbenchModuleTargetsAsync(request, token, sourceKey!),
+            "module-buttons.targets" => await QueryWorkbenchModuleTargetsAsync(request, token, sourceKey!),
+            "module-actions.targets" => await QueryWorkbenchModuleTargetsAsync(request, token, sourceKey!),
             "rights-admin.users" => await QueryUsersAsync(request, token),
             "rights-admin.groups" => await QueryGroupsAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
@@ -801,7 +844,7 @@ public sealed class ChooserRepository(
             total);
     }
 
-    /// <summary>field-admin.columns / menu-admin.columns：按表返回物理列（sys.columns，仅 dbo 表/视图；权限门 2302 / 2301）。</summary>
+    /// <summary>field-admin.columns / menu-admin.columns：按表返回物理列（sys.columns，仅 dbo 表/视图；权限门 2302 / 230101）。</summary>
     private async Task<UnifiedChooserResult?> QueryColumnsAsync(
         UnifiedChooserQueryRequest request,
         CancellationToken token,
@@ -898,20 +941,21 @@ public sealed class ChooserRepository(
     }
 
     /// <summary>
-    /// `module-groups.targets`：模块分组（2315）的配置对象——只列**统一工作台模块**（权限门 2315）。
+    /// `module-groups.targets`（模块分组 230102）与 `module-buttons.targets`（自定义按钮 230103）共用的
+    /// 配置对象查询——两者都只列**统一工作台模块**，候选集必须一模一样，故同一份实现按源键参数化。
     ///
     /// <para>
-    /// 候选集与 <see cref="ModuleGroupAdminRepository"/> 的拒存规则同源：形态取视图 `dbo.V_MODULE_NODE`
-    /// 的 `WORKBENCH`（与 `ModuleRouteValidator.ResolveKind` 同源，见迁移 340），且必须有主表——
-    /// 只有工作台模块装配工作台定义，才有分组消费方。选择器比校验松会出现"挑得动、保存被拒"，
-    /// 比校验严则会出现"明明有分组却选不到"，所以两处必须一回事。
+    /// 候选集与 <see cref="ModuleGroupAdminRepository"/> / 按钮写路径的拒存规则同源：形态取视图
+    /// `dbo.V_MODULE_NODE` 的 `WORKBENCH`（与 `ModuleRouteValidator.ResolveKind` 同源，见迁移 340），
+    /// 且必须有主表——只有工作台模块装配工作台定义，才有分组与按钮消费方。选择器比校验松会出现
+    /// "挑得动、保存被拒"，比校验严则会出现"明明有配置却选不到"，所以两处必须一回事。
     /// </para>
     /// </summary>
-    private async Task<UnifiedChooserResult> QueryModuleGroupTargetsAsync(
+    private async Task<UnifiedChooserResult> QueryWorkbenchModuleTargetsAsync(
         UnifiedChooserQueryRequest request,
-        CancellationToken token)
+        CancellationToken token,
+        string sourceKey)
     {
-        const string sourceKey = "module-groups.targets";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
         var page = NormalizePage(request.Page);
         var pageSize = NormalizePageSize(request.PageSize);
@@ -1014,7 +1058,7 @@ public sealed class ChooserRepository(
 
     /// <summary>
     /// menu-admin.modules：业务动作配置可克隆来源的模块——只列**已配过业务动作**的模块，
-    /// 附带主/副表与动作数，便于挑"相似的加工单"。权限门 2301。
+    /// 附带主/副表与动作数，便于挑"相似的加工单"。权限门 230101。
     /// </summary>
     private async Task<UnifiedChooserResult> QueryBusinessModulesAsync(
         UnifiedChooserQueryRequest request,

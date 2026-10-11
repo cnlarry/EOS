@@ -114,7 +114,7 @@ public sealed class ListMyCapabilitiesToolTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Modules.Add(new EOS.API.Models.SystemKnowledgeModule(1606, "客户订单"));
-        gateway.Modules.Add(new EOS.API.Models.SystemKnowledgeModule(2301, "系统设置"));
+        gateway.Modules.Add(new EOS.API.Models.SystemKnowledgeModule(230101, "系统设置"));
         var permissions = new AssistantSituationDoubles.FakePermissions();
         permissions.Browsable.Add(1606);
         var tool = new ListMyCapabilitiesTool(gateway, permissions);

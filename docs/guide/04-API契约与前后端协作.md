@@ -187,7 +187,7 @@
 ## 收口（迁移 341）：模块投影卸下分组列，分组筛选参数改名
 
 - `MenuAdminModule` **不再返回**那 15 个分组字段（`GROUP1..5` / `GROUP_EXP1..5` / `GROUP_DESC1..5`）：
-  列表分组已独立成 `MODULE_GROUPS` 表，配置面是 2315「模块分组」，模块记录上不再有这些列；
+  列表分组已独立成 `MODULE_GROUPS` 表，配置面是 230102「模块分组」（原 2315，迁移 347 重编号），模块记录上不再有这些列；
 - 工作台的四个查询端点（`/records`、`/query`、`/export`、`/export-selected`）与
   `GET /navigation/{moduleId}/groups/{groupId}/values` 的分组参数由 **`groupIndex`（1~5 序号）改为
   `groupId`**（`MODULE_GROUPS.GROUP_ID`）。序号只决定下拉顺序，拿它当身份会让调序/删除后的旧链接
@@ -195,8 +195,20 @@
   `{ groupId, description }`（见 [20-认证与会话](./20-认证与会话.md)）。外部若按 `groupIndex` 拼过列表链接，需跟着改；
 - 读不到该编号仍是 403 `GROUP_EXP_UNSUPPORTED`（与"表达式超出受控子集"共用同一响应，不区分两者——
   区分等于泄露别处配置的存在性）；细节见 [40-统一工作台](./40-统一工作台.md) 末节；
-- 分组的**配置面**是 2315「模块分组」的定制页 `/admin/module-groups`（`ModuleGroupAdminController`，
+- 分组的**配置面**是 230102「模块分组」的定制页 `/admin/module-groups`（`ModuleGroupAdminController`，
   `api/v1/admin/module-groups`，读 `CanBrowse` / 写 `CanSetup`）：`POST/PUT/DELETE` 的校验失败一律
   400 `INVALID_ARGUMENT`，消息指名到列（如"列 X 不在主表 Y 的分组可用字段里"），便于界面直接显示。
-  2315 是**自定义承载页**，不在统一表单写名单里——那份名单是写路径的门，只收工作台模块
+  230102 是**自定义承载页**，不在统一表单写名单里——那份名单是写路径的门，只收工作台模块
   （见 [70-后台配置面总览](./70-后台配置面总览.md) 第二节）。
+
+## 收口（ADR-033）：配置面拆开后的三条契约变化
+
+- **写路径带显式作用域**：`PUT /admin/module-business-config/{moduleId}?scope=all|actions|manual`
+  （默认 `all`）——按钮与效果链动作同表，两个配置面各自保存时必须声明自己那一域，否则会删掉另一面的行
+  （静默数据损失）。未知 `scope` 一律 400；**作用域与请求体不一致也拒**（`manual` 域里塞动作行 / 规则行），
+  不静默丢弃、也不"以请求体为准"。真库防线见 `ModuleBusinessConfigScopeLiveTests`。
+- **保存即发布**：`actions` / `manual` 两个配置面保存成功后，服务端**自动发布一次**，响应由 204 变成
+  `{ saved, publish: WorkbenchPublishResult }`——校验不通过时语义是"已保存，但未生效"+ `checks[]` 逐条原因；
+  `all`（合成保存 / 助手侧）**不**自动发布。显式发布端点 `POST .../{id}/publish` 仍是模块级动作，门留 230101。
+- **配置面自取目标模块形状**：`GET /admin/module-business-config/{moduleId}/target`（门 230104）回
+  主表 / 副表 + 表描述——配置面不借用 230101 的 `/admin/menus`（那扇门属于模块定义面）。

@@ -52,12 +52,12 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
         {
             await _repository.SaveUserModuleRightsAsync(
                 _userId,
-                [ModuleInput(2306, "B", addNew: true), ModuleInput(2301, "C", edit: true, cost: true)],
+                [ModuleInput(2306, "B", addNew: true), ModuleInput(230101, "C", edit: true, cost: true)],
                 "admin", "IT", CancellationToken.None);
 
             var matrix = await _repository.GetUserModuleMatrixAsync("admin", _userId, CancellationToken.None);
             var row2306 = matrix.Single(row => row.ModuleId == 2306);
-            var row2301 = matrix.Single(row => row.ModuleId == 2301);
+            var row2301 = matrix.Single(row => row.ModuleId == 230101);
             Assert.True(row2306.HasPersonal);
             Assert.Equal("B", row2306.ExecTag);
             Assert.True(row2306.AddNew);
@@ -66,12 +66,12 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
             Assert.True(row2301.Edit);
             Assert.True(row2301.Cost);
 
-            // 清空 2306 → 个人行删除（回退组权限），2301 保留
+            // 清空 2306 → 个人行删除（回退组权限），230101 保留
             await _repository.SaveUserModuleRightsAsync(
                 _userId, [ModuleInput(2306)], "admin", "IT", CancellationToken.None);
             matrix = await _repository.GetUserModuleMatrixAsync("admin", _userId, CancellationToken.None);
             Assert.False(matrix.Single(row => row.ModuleId == 2306).HasPersonal);
-            Assert.True(matrix.Single(row => row.ModuleId == 2301).HasPersonal);
+            Assert.True(matrix.Single(row => row.ModuleId == 230101).HasPersonal);
 
             // 组权限 + 成员 → 用户生效值来源为 group
             await _repository.SaveGroupModuleRightsAsync(

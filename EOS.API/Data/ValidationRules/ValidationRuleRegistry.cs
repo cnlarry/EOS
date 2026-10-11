@@ -15,7 +15,7 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> SharedParamKeys = KeySet("when");
 
     /// <summary>
-    /// 模板参数根键白名单（供 2301 渲染结构化参数编辑器）。
+    /// 模板参数根键白名单（供 230101 渲染结构化参数编辑器）。
     /// 未登记的模板返回空集——界面据此提示"该模板不允许配置参数"。
     /// </summary>
     public static IReadOnlyCollection<string> ParamRootKeys(string? validationKey) =>

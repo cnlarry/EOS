@@ -214,8 +214,18 @@ export interface LabelLookups {
 /** 行为配置页签：容器按当前页签只渲染对应视图，切换页签不卸载容器。 */
 export type BusinessActionsView = 'actions' | 'rules' | 'manual'
 
+/**
+ * 面板只依赖模块的这几个字段（主/副表与它们的表描述）——把 props 收窄成结构子集，
+ * 拆出去的两个配置面（230103 按钮 / 230104 动作+规则）就不必为了满足整行模块类型去伪造字段。
+ * ADR-033 拆页面后，本面板被三个面共用：230101（旧容器，已摘掉行为页签）、230104。
+ */
+export type BusinessConfigTargetModule = Pick<
+  MenuAdminModule,
+  'M_IDX' | 'M_DESC' | 'MASTER_TABLE' | 'DETAIL_TABLE' | 'MASTER_TABLE_DESC' | 'DETAIL_TABLE_DESC'
+>
+
 interface BusinessActionsPanelProps {
-  module: MenuAdminModule
+  module: BusinessConfigTargetModule
   /**
    * 当前显示的行为页签；null 表示不在任何行为页签上。
    * 容器始终持有草稿与查询，页签切换只换视图，不重挂组件——否则未保存编辑会被
@@ -1038,7 +1048,7 @@ function EditorModal({
   onConfirm,
 }: {
   editor: EditorState
-  module: MenuAdminModule
+  module: BusinessConfigTargetModule
   catalog: BusinessConfigCatalog
   schemas: BusinessConfigSchemas
   labels: LabelLookups
@@ -1107,7 +1117,7 @@ function ActionForm({
   schemas: BusinessConfigSchemas
   labels: LabelLookups
   names: BusinessNameLookup
-  module: MenuAdminModule
+  module: BusinessConfigTargetModule
   /** 事件可用性（库内 0 行 + 接不到效果链 ⇒ 不可选；接不到但有行 ⇒ 可选 + 标注）。 */
   eventAvailabilityOf?: (eventCode: string) => { selectable: boolean; note: string | null }
   onChange: (value: BusinessAction) => void
@@ -1275,7 +1285,7 @@ function OpForm({
   catalog: BusinessConfigCatalog
   labels: LabelLookups
   names: BusinessNameLookup
-  module: MenuAdminModule
+  module: BusinessConfigTargetModule
   matchPresets: MatchGroupPreset[]
   onApplyMatchToSiblings: (json: string) => void
   onChange: (value: BusinessActionOp) => void

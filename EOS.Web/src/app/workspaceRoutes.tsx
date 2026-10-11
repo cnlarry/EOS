@@ -30,6 +30,8 @@ import {
   GroupMembersPage,
   MenuAdminPage,
   ModuleGroupsPage,
+  ModuleButtonsPage,
+  ModuleActionsPage,
   AdminSessionsPage,
   MechanismOverviewPage,
   KbAdminPage,
@@ -58,10 +60,20 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
     { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },
     { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
   ] },
-  { element: <RequirePermission permission={moduleReadPermission(2301)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
-  // 模块分组（模块 2315，根 23 系统管理）：为其它模块维护列表分组；定制页，不走统一表单与发布
-  { element: <RequirePermission permission={moduleReadPermission(2315)} />, children: [
+  { element: <RequirePermission permission={moduleReadPermission(230101)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
+  // 模块分组（模块 230102，根 23 系统管理）：为其它模块维护列表分组；定制页，不走统一表单与发布
+  { element: <RequirePermission permission={moduleReadPermission(230102)} />, children: [
     { path: 'admin/module-groups', element: withSuspense(<ModuleGroupsPage />) },
+  ] },
+  // 自定义按钮（模块 230103，根 23 系统管理）：为其它统一工作台模块维护 MANUAL 按钮行；定制页，
+  // 保存走服务端的 manual 作用域（只替换按钮行，不碰该模块的行为动作与校验规则）
+  { element: <RequirePermission permission={moduleReadPermission(230103)} />, children: [
+    { path: 'admin/module-buttons', element: withSuspense(<ModuleButtonsPage />) },
+  ] },
+  // 行为动作 + 校验规则（模块 230104，根 23 系统管理）：页内两个页签共用一份草稿与一次提交；
+  // 保存走服务端的 actions 作用域（只替换效果链动作 + 校验规则，不碰该模块的自定义按钮），保存后自动发布
+  { element: <RequirePermission permission={moduleReadPermission(230104)} />, children: [
+    { path: 'admin/module-actions', element: withSuspense(<ModuleActionsPage />) },
   ] },
   { element: <RequirePermission permission={moduleReadPermission(2305)} />, children: [
     { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },

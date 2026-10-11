@@ -6,7 +6,7 @@
     Asserts that the effect/validation key sets are aligned across the three
     authoritative sources:
       A) the ADR catalog (docs/decisions/ADR-012 §18 effect table, §14.2 validation table)
-      B) the 2301 frontend catalog (EOS.API/Data/BusinessActionCatalog.cs)
+      B) the 230101 frontend catalog (EOS.API/Data/BusinessActionCatalog.cs)
       C) the code registries (EOS.API/Data/Effects/EffectRegistry.cs,
          EOS.API/Data/ValidationRules/ValidationRuleRegistry.cs)
 

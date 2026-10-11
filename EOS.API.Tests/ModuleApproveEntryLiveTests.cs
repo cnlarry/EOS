@@ -128,6 +128,45 @@ public sealed class ModuleApproveEntryLiveTests : IDisposable
     }
 
     [Fact]
+    public async Task 新增模块按父编号加两位序号取号()
+    {
+        if (ConnectionString.Value is null) return;
+        // 真实父号取 2301：分配器是"父编号 × 100 + 段内空序号"，临时大号会溢出 int（父号须 < 21,000,000）。
+        var parent = await _menus.GetModuleAsync(2301, CancellationToken.None);
+        if (parent is null) return;   // 库里还没有系统功能目录时跳过（迁移 347 之前）
+        var child = parent with
+        {
+            M_IDX = 0,
+            M_DESC = "编号分配集成测试-子模块",
+            M_P_IDX = 2301,
+            SORT_IDX = 0,
+            M_TAG = true,
+        };
+
+        var createdId = await _menus.SaveAllAsync(
+            new SaveMenuModuleRequest(child), null, "integration-test", CancellationToken.None);
+        try
+        {
+            Assert.InRange(createdId, 230101, 230199);   // 父 2301 ⇒ 230101 起，不再被别段的大号带跑
+            var created = await _menus.GetModuleAsync(createdId, CancellationToken.None);
+            Assert.Equal(2301, created!.M_P_IDX);
+        }
+        finally
+        {
+            await DeleteModuleAsync(createdId);
+        }
+    }
+
+    private async Task DeleteModuleAsync(int moduleId)
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("DELETE FROM dbo.MODULES WHERE M_IDX=@Id;", connection);
+        command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    [Fact]
     public async Task 迁移置位的模块主表批核三列齐全()
     {
         if (ConnectionString.Value is null) return;

@@ -8,7 +8,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 模块业务动作/校验配置工作区读写（2301 可视化配置的数据通道）。
+/// 模块业务动作/校验配置工作区读写（230101 可视化配置的数据通道）。
 /// 保存 = 整模块替换 + 事务：结构校验（ModuleBusinessConfigValidator）→
 /// 模块形态/物理列校验 → 删旧插新 → 标脏 → 审计。
 /// 定位键/条件深校验待单据关系效果侧登记（FIELD_RELATION 扩展）落地后补。
@@ -69,6 +69,34 @@ public sealed class ModuleBusinessConfigRepository(
             usage[reader.GetString(0)] = reader.GetInt32(1);
         }
         return usage;
+    }
+
+    /// <summary>
+    /// 配置面的目标模块形状（主表 / 副表 + 表描述）。表描述取法与菜单侧一致（`TABLES.T_DESC`
+    /// 关联子查询）；这里只读、只回一个模块，供配置面在选中模块后展示与校验用。
+    /// </summary>
+    public async Task<ModuleConfigTargetDto?> ReadTargetAsync(int moduleId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT TOP 1 m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
+                   LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))),
+                   LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t WITH (NOLOCK)
+                                        WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.MASTER_TABLE))),''))),
+                   LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t WITH (NOLOCK)
+                                        WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.DETAIL_TABLE))),'')))
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE m.M_IDX=@ModuleId;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+            return null;
+        return new ModuleConfigTargetDto(
+            reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+            reader.GetString(4), reader.GetString(5));
     }
 
     public async Task<ModuleBusinessConfigDto?> GetAsync(int moduleId, CancellationToken token)
@@ -192,6 +220,7 @@ public sealed class ModuleBusinessConfigRepository(
         SaveModuleBusinessConfigRequest request,
         string updatedBy,
         CancellationToken token,
+        BusinessConfigScope scope = BusinessConfigScope.All,
         string? idempotencyKey = null)
     {
         var resultKey = $"MODULE_BUSINESS_ACTION:{moduleId}";
@@ -210,7 +239,7 @@ public sealed class ModuleBusinessConfigRepository(
                     return existing.ResultKey;
                 }
             }
-            await SaveScopedAsync(connection, transaction, moduleId, request, updatedBy, token);
+            await SaveScopedAsync(connection, transaction, moduleId, request, updatedBy, scope, token);
             await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, updatedBy, token);
             await auditWriter.WriteEventAsync(connection, transaction, moduleId, "MODULE_BUSINESS_ACTION",
                 "SAVE", "保存业务动作/校验配置", updatedBy, "MENU", result: 1, fieldChanges: null, token);
@@ -291,8 +320,11 @@ public sealed class ModuleBusinessConfigRepository(
         int moduleId,
         SaveModuleBusinessConfigRequest request,
         string updatedBy,
+        BusinessConfigScope scope,
         CancellationToken token)
     {
+        // 作用域与请求体必须一致（ADR-033 §6）：越域的行直接拒，不静默丢弃。
+        ModuleBusinessConfigValidator.EnsureScopeMatchesRequest(request, scope);
         var validation = ModuleBusinessConfigValidator.Validate(request, documentActions.KeySet);
         if (!validation.Ok)
             throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", validation.Messages));
@@ -312,15 +344,26 @@ public sealed class ModuleBusinessConfigRepository(
         if (physicalIssues.Count > 0)
             throw new ArgumentException("业务动作配置物理校验未通过：\r\n" + string.Join("\r\n", physicalIssues));
 
-        await using (var deleteRules = new SqlCommand(
-            "DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE M_IDX=@ModuleId;",
-            connection, transaction))
+        // 作用域决定"删哪一片"（ADR-033 §6）：按钮与动作同表，整模块替换会让另一面静默消失。
+        // 校验规则属于"非按钮动作"那一面（230104 存动作 + 全部规则），故 Manual 作用域不碰它们。
+        if (scope != BusinessConfigScope.Manual)
         {
+            await using var deleteRules = new SqlCommand(
+                "DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE M_IDX=@ModuleId;",
+                connection, transaction);
             deleteRules.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
             await deleteRules.ExecuteNonQueryAsync(token);
         }
+
+        // 谓词是编译期固定字面量（按枚举分支选取），不掺任何外部输入，故这里的拼接没有注入面。
+        var actionPredicate = scope switch
+        {
+            BusinessConfigScope.Manual => " AND EVENT_CODE=N'MANUAL'",
+            BusinessConfigScope.Actions => " AND EVENT_CODE<>N'MANUAL'",
+            _ => string.Empty,
+        };
         await using (var deleteActions = new SqlCommand(
-            "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE M_IDX=@ModuleId;",
+            $"DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE M_IDX=@ModuleId{actionPredicate};",
             connection, transaction))
         {
             deleteActions.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -520,7 +563,7 @@ public sealed class ModuleBusinessConfigRepository(
     }
 
     /// <summary>
-    /// 读取 2301 定位键编辑器可选的已登记效果关系边组：目标表等于 <paramref name="targetTable"/>，
+    /// 读取 230101 定位键编辑器可选的已登记效果关系边组：目标表等于 <paramref name="targetTable"/>，
     /// 来源表是模块的操作主表/副表，或调用方显式给出的上下文表（TABLE 源）。
     /// 与保存期校验同一事实源（FIELD_RELATION, RELATION_KIND=EFFECT），界面选出来的键必然可保存。
     /// </summary>

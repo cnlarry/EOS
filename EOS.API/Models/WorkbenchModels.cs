@@ -57,7 +57,7 @@ public sealed record WorkbenchDefinition(
     string? ExecTag = null,
     ModuleBusinessRule? BusinessRule = null,
     bool AutoApprove = false,
-    // 分组表达式按 GROUP_ID 索引（配置见 MODULE_GROUPS / 2315 模块分组）。**不进快照**：
+    // 分组表达式按 GROUP_ID 索引（配置见 MODULE_GROUPS / 230102 模块分组）。**不进快照**：
     // 分组是"保存即生效"的配置，每次装配定义时实时读取，故与 FormLayout 那类随快照冻结的段不同。
     [property: JsonIgnore] IReadOnlyDictionary<int, string>? GroupExpressions = null,
     string? FormTabs = null,

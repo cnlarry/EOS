@@ -45,7 +45,7 @@ public sealed record ConfigInconsistencyReport(
 /// 预演与行为说明书属 ADR-021 的既有交付，本类不重复实现。
 /// </para>
 /// <para>
-/// 权限门与配置面同源：<c>CanBrowse(2301) && CanModuleConfig</c>，fail-closed。
+/// 权限门与配置面同源：<c>CanBrowse(230101) && CanModuleConfig</c>，fail-closed。
 /// </para>
 /// </summary>
 public sealed class ConfigDiagnosisService(
@@ -191,7 +191,7 @@ public sealed class ConfigDiagnosisService(
     private async Task<bool> AllowedAsync(string userId, int moduleId, CancellationToken token)
     {
         var permission = await permissions.GetAsync(userId, moduleId, token);
-        // 与配置面同源：能看 + 能配，缺一不可（配置对象本身可能来自别的模块，故按 2301 判）。
+        // 与配置面同源：能看 + 能配，缺一不可（配置对象本身可能来自别的模块，故按 230101 判）。
         return permission is { CanBrowse: true, CanModuleConfig: true };
     }
 }
@@ -202,7 +202,7 @@ public interface IConfigDiagnosisReader
     Task<ConfigConsistencyFacts?> LoadAsync(int moduleId, CancellationToken token);
 }
 
-/// <summary>事实读取实现：复用 2301 编辑器的读取入口（模块动作链）与全库效果键分布。</summary>
+/// <summary>事实读取实现：复用 230101 编辑器的读取入口（模块动作链）与全库效果键分布。</summary>
 public sealed class ConfigDiagnosisReader(ModuleBusinessConfigRepository config) : IConfigDiagnosisReader
 {
     public async Task<ConfigConsistencyFacts?> LoadAsync(int moduleId, CancellationToken token)

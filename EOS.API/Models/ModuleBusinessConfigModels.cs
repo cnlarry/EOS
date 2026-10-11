@@ -54,6 +54,19 @@ public sealed record ModuleValidationRuleDto(
     [property: JsonPropertyName("remark")] string? Remark = null,
     [property: JsonPropertyName("sourceRef")] string? SourceRef = null);
 
+/// <summary>
+/// 配置面的**目标模块形状**：配置面选中一个模块后要显示它的主表 / 副表（含表描述）。
+/// 与 `/admin/menus` 的模块列表是同一组事实，但那个端点的门在 230101（模块定义面），
+/// 配置面不该借用它——故由配置面自己按自己的门取这一份（字段名与菜单侧一致，前端可直接用）。
+/// </summary>
+public sealed record ModuleConfigTargetDto(
+    [property: JsonPropertyName("M_IDX")] int ModuleId,
+    [property: JsonPropertyName("M_DESC")] string Description,
+    [property: JsonPropertyName("MASTER_TABLE")] string MasterTable,
+    [property: JsonPropertyName("DETAIL_TABLE")] string DetailTable,
+    [property: JsonPropertyName("MASTER_TABLE_DESC")] string MasterTableDesc,
+    [property: JsonPropertyName("DETAIL_TABLE_DESC")] string DetailTableDesc);
+
 /// <summary>模块业务配置读回结果（动作链 + 校验规则）。</summary>
 public sealed record ModuleBusinessConfigDto(
     [property: JsonPropertyName("moduleId")] int ModuleId,
@@ -65,7 +78,7 @@ public sealed record SaveModuleBusinessConfigRequest(
     [property: JsonPropertyName("actions")] IReadOnlyList<BusinessActionDto> Actions,
     [property: JsonPropertyName("validationRules")] IReadOnlyList<ModuleValidationRuleDto> ValidationRules);
 
-/// <summary>配置编辑目录（2301 下拉来源；与 BusinessActionCatalog 闭式集合一致）。</summary>
+/// <summary>配置编辑目录（230101 下拉来源；与 BusinessActionCatalog 闭式集合一致）。</summary>
 public sealed record BusinessConfigCatalogDto(
     [property: JsonPropertyName("events")] IReadOnlyList<string> Events,
     [property: JsonPropertyName("failModes")] IReadOnlyList<string> FailModes,
@@ -84,7 +97,7 @@ public sealed record BusinessConfigCatalogDto(
     // 而"已有行"的事件保持可选但必须标注——隐藏会让既有配置无法编辑。
     [property: JsonPropertyName("eventUsage")] IReadOnlyDictionary<string, int>? EventUsage = null);
 
-/// <summary>一个可配置的自定义按钮（2301 下拉项）。</summary>
+/// <summary>一个可配置的自定义按钮（230101 下拉项）。</summary>
 public sealed record DocumentActionCatalogEntryDto(
     [property: JsonPropertyName("key")] string Key,
     [property: JsonPropertyName("label")] string Label,
@@ -119,7 +132,7 @@ public sealed record BusinessConfigLabelsDto(
 
 /// <summary>
 /// 定位键候选：FIELD_RELATION 里一条已登记的效果关系边组（同一关系的主键列集合）。
-/// 2301 选一条边组即可生成整段 MATCH_STRUCT，替代手写 JSON。
+/// 230101 选一条边组即可生成整段 MATCH_STRUCT，替代手写 JSON。
 /// </summary>
 public sealed record BusinessRelationGroupDto(
     [property: JsonPropertyName("relationId")] long RelationId,
@@ -136,13 +149,13 @@ public sealed record BusinessRelationKeyDto(
 
 /// <summary>
 /// 本模块涉及的表/字段中文名（表键 `T_ID`，字段键 `T_ID.F_ID`）。
-/// 供 2301 把配置渲染成人话（"收料数量（RECEIVE_QTY）"）；缺元数据的键回落显示列名本身。
+/// 供 230101 把配置渲染成人话（"收料数量（RECEIVE_QTY）"）；缺元数据的键回落显示列名本身。
 /// </summary>
 public sealed record BusinessFieldLabelsDto(
     [property: JsonPropertyName("tables")] IReadOnlyDictionary<string, string> Tables,
     [property: JsonPropertyName("fields")] IReadOnlyDictionary<string, string> Fields);
 
-/// <summary>效果参数 Schema 元数据（根键白名单；供 2301 按 Schema 渲染参数编辑器）。</summary>
+/// <summary>效果参数 Schema 元数据（根键白名单；供 230101 按 Schema 渲染参数编辑器）。</summary>
 public sealed record EffectParamSchemaDto(
     [property: JsonPropertyName("effectKey")] string EffectKey,
     [property: JsonPropertyName("rootKeys")] IReadOnlyList<string> RootKeys);
@@ -279,3 +292,49 @@ public sealed record EffectSimulationReportDto(
 public sealed record DisableAllActionsResultDto(
     [property: JsonPropertyName("moduleId")] int ModuleId,
     [property: JsonPropertyName("disabled")] int Disabled);
+
+/// <summary>
+/// 业务配置保存的**显式作用域**（[ADR-033](../../docs/decisions/ADR-033-系统功能目录与模块配置面拆分.md) §6）。
+///
+/// 自定义按钮与行为动作**同表**（`MODULE_BUSINESS_ACTION`，按钮是 `EVENT_CODE='MANUAL'` 的行），
+/// 而写路径是"整模块全删全插"。配置面一旦拆开，两个页面各自保存若都发全量请求，保存按钮就会删光
+/// 行为动作（反之亦然）——**静默数据损失**，而且两边都会标脏、都会写审计"保存成功"。
+///
+/// 所以保存必须显式声明作用域：`Manual` 只替换按钮行；`Actions` 只替换非按钮动作行 + 全部校验规则；
+/// `All` 保留今天的全量替换语义（供"模块 + 配置"同事务合成保存）。**显式优于推导**：
+/// 空列表与"未提交此域"在 JSON 上是同一件事，服务端不可能从负载里推出来。
+/// </summary>
+public enum BusinessConfigScope
+{
+    All,
+    Actions,
+    Manual,
+}
+
+/// <summary>作用域的解析（HTTP 查询参数 / 请求体字段共用一处，避免两处口径分叉）。</summary>
+public static class BusinessConfigScopes
+{
+    /// <summary>
+    /// 解析作用域字面量：`all`（**默认**）/`actions`/`manual`，大小写不敏感。
+    /// 其它值返回 false，由调用方回 400——**不静默回退到 all**：那会让一个拼错的 scope 变成"全量替换"，
+    /// 正是这套机制要防的静默损失。
+    /// </summary>
+    public static bool TryParse(string? value, out BusinessConfigScope scope)
+    {
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case null or "" or "all":
+                scope = BusinessConfigScope.All;
+                return true;
+            case "actions":
+                scope = BusinessConfigScope.Actions;
+                return true;
+            case "manual":
+                scope = BusinessConfigScope.Manual;
+                return true;
+            default:
+                scope = BusinessConfigScope.All;
+                return false;
+        }
+    }
+}

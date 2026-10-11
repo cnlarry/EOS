@@ -17,7 +17,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
@@ -36,34 +36,23 @@ import { ApiError } from '../../types/api'
 import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 import { describeApiError } from '../../lib/errors'
-import {
-  BusinessActionsPanel,
-  type BusinessActionsView,
-  type ModuleBusinessConfigDraft,
-} from './BusinessActionsPanel'
 
-/** 菜单编辑表单页签：前三个是模块定义，后三个按"谁触发"划分的行为配置。
- *  列表分组不在这里——它是 MODULE_GROUPS 的配置面（2315 模块分组），保存即生效、不走发布流程。 */
-type MenuFormTab = 'basic' | 'master' | 'detail' | 'actions' | 'rules' | 'manual'
+/** 菜单编辑表单页签：**只定义"模块是什么"**（基础 / 主表 / 子表），不定义"模块怎么动"。
+ *  行为配置已全部迁出（ADR-033：自定义按钮 → 230103，行为动作 + 校验规则 → 230104），
+ *  列表分组在 230102。发布结果与版本历史仍在本页——它们是**模块级**事实。 */
+type MenuFormTab = 'basic' | 'master' | 'detail'
 
 const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
   { key: 'basic', label: '基础' },
   { key: 'master', label: '主表' },
   { key: 'detail', label: '子表' },
-  // 顺序按"常一起改的相邻"排：配了库存扣减通常紧接着配数量校验。
-  { key: 'actions', label: '行为动作' },
-  { key: 'rules', label: '校验规则' },
-  { key: 'manual', label: '自定义按钮' },
 ]
-
-/** 行为配置页签：共用一份草稿与同一个常驻容器。 */
-const BEHAVIOR_TAB_KEYS: MenuFormTab[] = ['actions', 'rules', 'manual']
 
 /**
  * 菜单节点形态。判据在**服务端**（`dbo.V_MODULE_NODE` + `ModuleRouteValidator.ResolveKind`，
  * 同一规则的两侧实现），这里只消费 `NODE_KIND`，不重算——前端重算会变成第三处判据。
  *
- * 三形态能配的东西完全不同，所以 2301 按形态决定露出哪些页签：
+ * 三形态能配的东西完全不同，所以 230101 按形态决定露出哪些页签：
  * - `WORKBENCH`  统一工作台模块：全部配置面（主表/子表/分组/行为动作/校验规则/自定义按钮）；
  * - `CUSTOMPAGE` 自定义承载页：业务由该页面自己解释，只有基础 + 数据源锚点，主表/副表只读；
  * - `DIRECTORY`  目录节点：只承担层级/排序/图标/权限锚点，没有可配项。
@@ -356,7 +345,7 @@ export function MenuAdminPage() {
   const [formTab, setFormTab] = useState<MenuFormTab>('basic')
   // 右键菜单视口定位：菜单树贴近屏幕下缘时翻到落点上方，不被窗口裁掉
   const contextMenuPlacement = useMenuPlacement(contextMenu?.x ?? 0, contextMenu?.y ?? 0, contextMenu !== null)
-  // 当前账号在 2301 上的能力：无模块配置权时不渲染配置页签（服务端各端点独立判权，这里只决定是否展示）。
+  // 当前账号在 230101 上的能力：无模块配置权时不渲染配置页签（服务端各端点独立判权，这里只决定是否展示）。
   const capabilitiesQuery = useQuery({
     queryKey: ['menu-admin', 'capabilities'],
     queryFn: () =>
@@ -365,14 +354,8 @@ export function MenuAdminPage() {
       ),
   })
   const canModuleConfig = capabilitiesQuery.data?.canModuleConfig === true
-  // 无主/副表的模块没有可挂载的行为配置：三个行为页签禁用并说明原因，而不是进得去却空转。
-  const hasTables = draft != null && (draft.MASTER_TABLE != null || draft.DETAIL_TABLE != null)
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
-  // 行为动作/校验规则草稿：由行为动作页签上报（未打开该页签时为 null，保存时保持不动）
-  const [actionsDraft, setActionsDraft] = useState<ModuleBusinessConfigDraft | null>(null)
-  // 要求行为配置面板重新装载草稿的信号（「取消」丢弃本地改动时用）。
-  const [configReloadSignal, setConfigReloadSignal] = useState(0)
   // 本次在界面上编辑过的默认查询列（未编辑的表不参与保存）
   const [defaultColumnDrafts, setDefaultColumnDrafts] = useState<Record<string, string[]> | null>(null)
   const [publishResult, setPublishResult] = useState<WorkbenchPublishResult | null>(null)
@@ -431,29 +414,20 @@ export function MenuAdminPage() {
       : 'WORKBENCH')
   const isCustomPage = nodeKind === 'CUSTOMPAGE'
   // 统一工作台（含新增）：行为三类配置才有消费方；工作台定义不装配的节点配了也是空转。
-  // 列表分组不在此处：见 2315 模块分组（MODULE_GROUPS）。
+  // 列表分组不在此处：见 230102 模块分组（MODULE_GROUPS）。
   const isWorkbenchShape = nodeKind === null || nodeKind === 'WORKBENCH'
   // 自定义承载页的数据源锚点：主表/副表由开发团队定义（报表数据集、搜索中心与选择器按它取数），
   // 只读；没有数据源表的那一栏不出现（12 个自定义承载页只有页面、没有数据源）。
   const showMasterTab = !isCustomPage || draft?.MASTER_TABLE != null
   const showDetailTab = !isCustomPage || draft?.DETAIL_TABLE != null
+  // 页签只剩模块定义那三个：行为配置面已迁出（ADR-033），本页不再按形态/权限裁剪行为页签。
   const formTabs = useMemo(
-    () => MENU_FORM_TABS
-      .filter((tab) => {
-        if (tab.key === 'master') return showMasterTab
-        if (tab.key === 'detail') return showDetailTab
-        if (BEHAVIOR_TAB_KEYS.includes(tab.key)) return isWorkbenchShape && canModuleConfig
-        return true
-      })
-      .map((tab) => {
-        if (!BEHAVIOR_TAB_KEYS.includes(tab.key)) return tab
-        // 浏览态里这三个页签看得见、点不开：它们的内容本身就是编辑面板（预演/保存都在里面），
-        // 而"看一眼配了什么"的需求由「编辑」一步满足，不必额外做一套只读渲染。
-        if (!editing) return { ...tab, disabled: true, disabledReason: '浏览态：点「编辑」后可配置行为动作 / 校验规则 / 自定义按钮' }
-        if (!hasTables) return { ...tab, disabled: true, disabledReason: '该模块未配置操作主表/副表，没有可挂载的行为配置' }
-        return tab
-      }),
-    [canModuleConfig, hasTables, isWorkbenchShape, showMasterTab, showDetailTab, editing],
+    () => MENU_FORM_TABS.filter((tab) => {
+      if (tab.key === 'master') return showMasterTab
+      if (tab.key === 'detail') return showDetailTab
+      return true
+    }),
+    [showMasterTab, showDetailTab],
   )
   // 形态或权限变化后，当前页签可能已经不在名单里（例如从工作台模块切到目录节点）：
   // 渲染时直接落回基础页签，而不是用副作用去改状态（那会多一次渲染，且中间一帧是空白的）。
@@ -469,21 +443,16 @@ export function MenuAdminPage() {
   const stateBadge = moduleStateBadge(
     draft,
     selected,
-    defaultColumnDrafts != null || actionsDraft?.dirty === true,
+    defaultColumnDrafts != null,
     isWorkbenchShape,
   )
 
   // 切换模块时丢弃上一模块的关联草稿与发布结果，避免误提交到新模块
   useEffect(() => {
-    setActionsDraft(null)
     setDefaultColumnDrafts(null)
     setPublishResult(null)
     setPublishError(null)
   }, [selectedId])
-
-  const handleActionsDraftChange = useCallback((next: ModuleBusinessConfigDraft | null) => {
-    setActionsDraft(next)
-  }, [])
 
   const versionColumns = useMemo<ColumnDef<MenuModuleVersion, unknown>[]>(() => [
     { accessorKey: 'definitionVersion', header: '版本', cell: (info) => <code>{String(info.getValue())}</code> },
@@ -588,20 +557,6 @@ export function MenuAdminPage() {
    * 保存载荷：模块行 + 行为动作/校验规则 + 默认查询列，由服务端在同一事务内落库。
    * 未加载或未编辑过的部分传 null，表示保持不动。
    */
-  const buildBusinessConfig = (input: MenuAdminModule) => {
-    if (!actionsDraft || actionsDraft.moduleId !== input.M_IDX) return null
-    if (input.MASTER_TABLE == null && input.DETAIL_TABLE == null) return null
-    return {
-      actions: actionsDraft.actions.map((action) => ({
-        ...action,
-        ops: (action.ops ?? []).map((op) =>
-          op.sourceScope === 'CONSTANT' ? { ...op, sourceConstant: op.sourceConstant ?? '' } : op,
-        ),
-      })),
-      validationRules: actionsDraft.validationRules,
-    }
-  }
-
   const buildDefaultColumns = () =>
     defaultColumnDrafts == null
       ? null
@@ -609,9 +564,10 @@ export function MenuAdminPage() {
 
   const save = useMutation({
     mutationFn: async (input: MenuAdminModule) => {
+      // 本页只保存"模块是什么"：行为配置（动作 / 校验规则 / 按钮）已迁到 230103 / 230104 各自的配置面，
+      // 不再随本端点提交——本端点因此也不需要作用域（不碰 `MODULE_BUSINESS_ACTION` 等表）。
       const payload = {
         module: input,
-        businessConfig: buildBusinessConfig(input),
         defaultColumns: buildDefaultColumns(),
       }
       if (selectedId != null && byId.has(selectedId)) {
@@ -834,11 +790,7 @@ export function MenuAdminPage() {
     setPublishResult(null)
     setPublishError(null)
     setEditing(false)
-    // 行为页签在浏览态是禁用的，别把用户停在一个点不开的页签上
-    if (BEHAVIOR_TAB_KEYS.includes(formTab)) setFormTab('basic')
-    // 面板的装载点只在切换模块或显式重新加载时推进，故取消时也要推一次，让它回到服务端配置。
-    setConfigReloadSignal((signal) => signal + 1)
-    if (selectedId != null) void queryClient.invalidateQueries({ queryKey: ['module-business-config', selectedId] })
+    setFormTab('basic')
   }
 
   const addChildOf = (module: MenuAdminModule) => {
@@ -973,7 +925,6 @@ export function MenuAdminPage() {
       selected == null
       || JSON.stringify(draft) !== JSON.stringify(selected)
       || defaultColumnDrafts != null
-      || actionsDraft?.dirty === true
     )
 
   /** 离开当前编辑对象前的确认：草稿脏时先问一句，避免静默丢掉刚配的东西。 */
@@ -1346,18 +1297,8 @@ export function MenuAdminPage() {
                         </div>
                       </>
                     )}
-                    {isWorkbenchShape && canModuleConfig && editing && (
-                      // 与上面的页签条件同层级、不被 formTab 包裹：切页签只换视图，
-                      // 组件不卸载，否则未保存的行为配置会被装载副作用重置掉。
-                      // 只有统一工作台会执行行为动作与校验规则，其余形态连页签都不渲染；
-                      // 浏览态也不渲染（面板自身就是编辑面，进出编辑态时按需重装草稿）。
-                      <BusinessActionsPanel
-                        module={draft}
-                        view={BEHAVIOR_TAB_KEYS.includes(activeFormTab) ? activeFormTab as BusinessActionsView : null}
-                        reloadSignal={configReloadSignal}
-                        onDraftChange={handleActionsDraftChange}
-                      />
-                    )}
+                    {/* 行为配置面已迁出本页（ADR-033）：自定义按钮 → 230103，行为动作 + 校验规则 → 230104。
+                        本页只留发布与版本历史——它们是模块级事实，结构性改动仍从这里统一发布。 */}
                   </TabbedPanel>
                   {publishError && (
                     <div className="alert alert-danger py-2 mb-0 mt-3" role="alert">发布失败：{publishError}</div>

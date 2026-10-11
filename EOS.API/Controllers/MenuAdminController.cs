@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 菜单管理（模块 2301，
+/// 菜单管理（模块 230101，
 /// 读要求 CanBrowse，写要求 CanSetup；编号变更自动级联子级与权限引用。
 /// 模块**基础属性**（菜单名称/承载页/默认查询列/启停/排序/移动/删除）由 SETUP_TAG 管；
 /// 同一保存入口载荷里的**配置面**（业务动作、校验规则、自定义按钮）另需模块配置权。
@@ -20,7 +20,8 @@ public sealed class MenuAdminController(
     CurrentUserContext userContext,
     IConfiguration configuration) : ControllerBase
 {
-    private const int MenuAdminModuleId = 2301;
+    // 权限锚点随配置面走（ADR-033）：2301 已改判纯目录「系统功能」，模块管理是 230101。
+    private const int MenuAdminModuleId = 230101;
 
     [HttpGet]
     public async Task<IActionResult> Modules([FromQuery] string? keyword = null, CancellationToken token = default)
@@ -36,7 +37,7 @@ public sealed class MenuAdminController(
         return Ok(new MenuAdminList(result.Total, modules));
     }
 
-    /// <summary>表选择器候选（操作主表/副表选择，CanBrowse 2301 即可读取）。</summary>
+    /// <summary>表选择器候选（操作主表/副表选择，CanBrowse 230101 即可读取）。</summary>
     [HttpGet("tables")]
     public async Task<IActionResult> Tables(CancellationToken token)
     {
@@ -44,7 +45,7 @@ public sealed class MenuAdminController(
         return Ok(await repository.GetTablesAsync(token));
     }
 
-    /// <summary>字段选择器候选（排序字段/必需字段/不可解批字段/过滤条件选择，CanBrowse 2301 即可读取）。</summary>
+    /// <summary>字段选择器候选（排序字段/必需字段/不可解批字段/过滤条件选择，CanBrowse 230101 即可读取）。</summary>
     [HttpGet("fields")]
     public async Task<IActionResult> Fields([FromQuery] string table, CancellationToken token)
     {
@@ -80,7 +81,7 @@ public sealed class MenuAdminController(
     }
 
     /// <summary>
-    /// 当前账号在 2301 上的能力：页面可见 / 基础属性可写 / 配置面可读写。
+    /// 当前账号在 230101 上的能力：页面可见 / 基础属性可写 / 配置面可读写。
     /// 供页面决定是否渲染配置页签——服务端各端点仍独立判权。
     /// </summary>
     [HttpGet("capabilities")]

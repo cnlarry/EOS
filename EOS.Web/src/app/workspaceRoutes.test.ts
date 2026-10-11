@@ -20,6 +20,8 @@ describe('WORKSPACE_ROUTES', () => {
       '/admin/users',
       '/admin/menus',
       '/admin/module-groups',
+      '/admin/module-buttons',
+      '/admin/module-actions',
       '/my-tasks',
       '/jobs',
       '/import',

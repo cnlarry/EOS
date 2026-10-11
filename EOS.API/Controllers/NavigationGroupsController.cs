@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 菜单分组（第 4 级）：读取模块的分组定义与分组值（分组配置见 2315 模块分组）。
+/// 菜单分组（第 4 级）：读取模块的分组定义与分组值（分组配置见 230102 模块分组）。
 /// 权限：与模块浏览权限一致（CanBrowse）；GROUP_EXP 不可受控解析时返回 403。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/navigation")]

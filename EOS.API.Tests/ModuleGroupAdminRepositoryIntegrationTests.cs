@@ -10,7 +10,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 模块分组配置面（2315）的写入路径真库验证：新增 / 修改 / 删除 / 排序，以及三条拒存规则
+/// 模块分组配置面（230102）的写入路径真库验证：新增 / 修改 / 删除 / 排序，以及三条拒存规则
 /// （表达式超出受控子集、目标模块不是统一工作台模块、模块不存在）。
 ///
 /// **为什么非要有真库用例**：写入路径的校验在**已开事务**的连接上跑，而读路径在事务外跑——
@@ -119,9 +119,9 @@ public sealed class ModuleGroupAdminRepositoryIntegrationTests : IDisposable
     {
         if (ConnectionString.Value is null) return;
 
-        // 2301 菜单管理是自定义承载页：没有分组消费方
+        // 230101 菜单管理是自定义承载页：没有分组消费方
         var error = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _repository.CreateAsync(2301, "x", "AREA", "integration-test", CancellationToken.None));
+            _repository.CreateAsync(230101, "x", "AREA", "integration-test", CancellationToken.None));
         Assert.Contains("统一工作台模块", error.Message);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
@@ -136,7 +136,7 @@ public sealed class ModuleGroupAdminRepositoryIntegrationTests : IDisposable
         var created = await _repository.CreateAsync(_moduleId, "供应商", "AREA", "integration-test", CancellationToken.None);
 
         var error = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _repository.UpdateAsync(2301, created.GroupId, "改错地方", "AREA", "integration-test", CancellationToken.None));
+            _repository.UpdateAsync(230101, created.GroupId, "改错地方", "AREA", "integration-test", CancellationToken.None));
         Assert.Contains("不属于模块", error.Message);
 
         var view = await _repository.GetAsync(_moduleId, CancellationToken.None);

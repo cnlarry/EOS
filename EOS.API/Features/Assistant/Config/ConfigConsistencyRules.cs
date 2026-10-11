@@ -45,7 +45,7 @@ public static class ConfigConsistencyRules
     public const string ReverseKindUnsupported = "reverse-kind-unsupported";
     public const string EffectKeySingleton = "effect-key-singleton";
 
-    /// <summary>效果面的事实来源标注（与 2301 编辑器同一批读取入口）。</summary>
+    /// <summary>效果面的事实来源标注（与 230101 编辑器同一批读取入口）。</summary>
     private const string Source = "MODULE_BUSINESS_ACTION(_OP) + EffectStructSchemas/EffectReverseCompatibility";
 
     public static IReadOnlyList<ConfigFinding> Check(ConfigConsistencyFacts facts)

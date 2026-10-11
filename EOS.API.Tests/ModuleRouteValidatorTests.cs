@@ -15,7 +15,11 @@ public class ModuleRouteValidatorTests
     }
 
     [Theory]
-    [InlineData("/admin/menus", 2301)]
+    [InlineData("/admin/menus", 230101)]
+    // ADR-033 拆出的三个配置面：菜单里点进去必须是它们自己（漏登记即回落占位页）
+    [InlineData("/admin/module-groups", 230102)]
+    [InlineData("/admin/module-buttons", 230103)]
+    [InlineData("/admin/module-actions", 230104)]
     [InlineData("/admin/report-setup", 2201)]
     [InlineData("/admin/groups", 2305)]
     [InlineData("/admin/logs", 2313)]
@@ -74,7 +78,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/reports/129801", 129801)]          // 编号不应写进 M_URL
     [InlineData("/workbench/1406", 1406)]
     [InlineData("/reports?x=1", 129801)]
-    [InlineData("/admin/nope", 2301)]
+    [InlineData("/admin/nope", 230101)]
     [InlineData("https://evil.example/x", 129801)]
     [InlineData("javascript:alert(1)", 129801)]
     [InlineData("data:text/html;base64,xx", 129801)]
@@ -171,7 +175,7 @@ public class ModuleRouteValidatorTests
 
     /// <summary>
     /// 节点形态三分（SQL 视图 `dbo.V_MODULE_NODE` 的代码侧同源实现）：先判工作台，
-    /// 不是工作台且承载页留空即目录节点，其余是自定义承载页。2301 按它决定露出哪些配置项与页签，
+    /// 不是工作台且承载页留空即目录节点，其余是自定义承载页。230101 按它决定露出哪些配置项与页签，
     /// SQL 侧按同一规则过滤——两侧不一致会出现"界面藏了、后端还在按它办事"。
     /// </summary>
     [Theory]
@@ -192,7 +196,7 @@ public class ModuleRouteValidatorTests
 
     /// <summary>
     /// 形态的线上名必须与视图定义里的取值逐字一致：两侧共用一套名字（`NODE_KIND`），
-    /// 改一边而不改另一边会让 2301 的页签显隐整体错位，而编译、单测都不会报。
+    /// 改一边而不改另一边会让 230101 的页签显隐整体错位，而编译、单测都不会报。
     /// </summary>
     [Fact]
     public void WireName_MatchesViewDefinition()

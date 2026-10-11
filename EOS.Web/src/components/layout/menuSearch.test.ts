@@ -21,11 +21,11 @@ const navigation: NavigationItem[] = [
         ],
       },
       {
-        id: 'module-2301',
+        id: 'module-230101',
         label: '模块管理',
         route: '/admin/menus',
         icon: 'settings',
-        moduleId: 2301,
+        moduleId: 230101,
         children: [
           { id: 'module-2302', label: '数据表、字段维护', route: '/admin/tables', icon: 'settings', moduleId: 2302 },
         ],
@@ -42,12 +42,16 @@ describe('searchMenu 菜单搜索', () => {
   })
 
   it('既是分组又有自己页面的模块同样按编号命中', () => {
-    const hits = searchMenu(navigation, '2301')
-    expect(hits.map((hit) => hit.breadcrumb)).toEqual([
+    // ADR-033：模块管理与它的父目录不再是同一个节点——精确输入模块自己的编号只命中它
+    expect(searchMenu(navigation, '230101').map((hit) => hit.breadcrumb)).toEqual([
       '系统管理 / 模块管理',
-      // 编号只是包含该串（23012）的项排在其后：回车直达的必须是输入的那个编号
-      '系统管理 / 数据表维护 / 接口日志',
     ])
+  })
+
+  it('编号前缀命中：目录不参与，同前缀的叶子仍搜得到', () => {
+    const breadcrumbs = searchMenu(navigation, '2301').map((hit) => hit.breadcrumb)
+    expect(breadcrumbs).toContain('系统管理 / 模块管理')
+    expect(breadcrumbs).toContain('系统管理 / 数据表维护 / 接口日志')
   })
 
   it('纯目录分组没有落点，不参与匹配（按编号与按名称都不命中）', () => {

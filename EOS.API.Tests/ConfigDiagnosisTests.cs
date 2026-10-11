@@ -158,12 +158,12 @@ public sealed class ConfigDiagnosisTests
     {
         var reader = new FakeConfigReader();
         var permissions = new AssistantSituationDoubles.FakePermissions();
-        permissions.Browsable.Add(2301); // 能看，但不能配
+        permissions.Browsable.Add(230101); // 能看，但不能配
         var service = new ConfigDiagnosisService(
             reader, permissions, NullLogger<ConfigDiagnosisService>.Instance);
 
-        Assert.Null(await service.DiagnoseAsync("u1", 2301, CancellationToken.None));
-        Assert.Null(await service.ExplainAsync("u1", 2301, new ConfigExplanationRequest("inventory-move"), CancellationToken.None));
+        Assert.Null(await service.DiagnoseAsync("u1", 230101, CancellationToken.None));
+        Assert.Null(await service.ExplainAsync("u1", 230101, new ConfigExplanationRequest("inventory-move"), CancellationToken.None));
         Assert.Equal(0, reader.Calls);
     }
 
@@ -175,12 +175,12 @@ public sealed class ConfigDiagnosisTests
             Facts = Facts([Action(1, "DEAPPROVE", "car-filloil-sync", """{"kind":"auto-reverse"}""")]),
         };
         var permissions = new AssistantSituationDoubles.FakePermissions();
-        permissions.Browsable.Add(2301);
-        permissions.ModuleConfigModules.Add(2301);
+        permissions.Browsable.Add(230101);
+        permissions.ModuleConfigModules.Add(230101);
         var service = new ConfigDiagnosisService(
             reader, permissions, NullLogger<ConfigDiagnosisService>.Instance);
 
-        var report = await service.DiagnoseAsync("u1", 2301, CancellationToken.None);
+        var report = await service.DiagnoseAsync("u1", 230101, CancellationToken.None);
 
         Assert.NotNull(report);
         Assert.Contains(report!.Findings, finding => finding.Code == ConfigConsistencyRules.ReverseKindUnsupported);

@@ -9,10 +9,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 模块分组（2315「模块分组」，定制承载页 `/admin/module-groups`）：为**其它**模块维护列表分组
+/// 模块分组（230102「模块分组」，定制承载页 `/admin/module-groups`）：为**其它**模块维护列表分组
 /// （分组名称 + 分组表达式 + 顺序）。
 ///
-/// 权限门挂在 2315 上：读要求 CanBrowse，写要求 CanSetup；2315 的授权行按 2301 模块管理镜像
+/// 权限门挂在 230102 上：读要求 CanBrowse，写要求 CanSetup；230102 的授权行按 230101 模块管理镜像
 /// （同一批配置维护者）。目标模块的形态与表达式由 <see cref="ModuleGroupAdminRepository"/> 把关——
 /// 只有统一工作台模块才有分组消费方，表达式必须来自它主表的物理字段。
 ///
@@ -25,7 +25,8 @@ public sealed class ModuleGroupAdminController(
     CurrentUserContext userContext,
     WorkbenchAuditWriter auditWriter) : ControllerBase
 {
-    private const int ModuleGroupsModuleId = 2315;
+    // 权限锚点随配置面走（ADR-033）：2315 已重编号为 230102「模块分组」。
+    private const int ModuleGroupsModuleId = 230102;
 
     [HttpGet("{moduleId:int}")]
     public async Task<IActionResult> Groups(int moduleId, CancellationToken token)

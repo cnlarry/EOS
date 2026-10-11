@@ -25,7 +25,7 @@ public sealed record ModuleGroupAdminModule(
     IReadOnlyList<ModuleGroupAdminRow> Groups);
 
 /// <summary>
-/// 2315「模块分组」的读写：为**其它**模块维护列表分组（名称 + 表达式 + 顺序）。
+/// 230102「模块分组」的读写：为**其它**模块维护列表分组（名称 + 表达式 + 顺序）。
 ///
 /// 这个配置面不装配工作台定义、也不走发布流程：分组表达式在组装工作台定义时**实时读取**
 /// （<c>WorkbenchDefinition.GroupExpressions</c> 带 `[JsonIgnore]`，从不进快照），保存即生效。

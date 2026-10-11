@@ -96,18 +96,20 @@ function mockPageWithBusinessConfig(
 }
 
 /** 渲染页面并进入含表模块（默认打开「行为动作」页签；行为页签只在编辑态可开）。 */
-async function openModuleTab(tab = '行为动作') {
+/** 导航到 110101 公司基本资料并进入编辑态；给了页签名再切过去。
+ *  行为页签已迁出本页（ADR-033），故默认停在「基础」页。 */
+async function openModuleTab(tab?: string) {
   renderPage()
   await waitForMenuTree()
   fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
   fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
   fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
   enterEdit()
-  fireEvent.click(screen.getByRole('tab', { name: tab }))
+  if (tab) fireEvent.click(screen.getByRole('tab', { name: tab }))
 }
 
 /**
- * 页面首屏会读一次 2301 能力（决定是否渲染配置页签）。
+ * 页面首屏会读一次 230101 能力（决定是否渲染配置页签）。
  * 统一包一层：能力查询固定返回全权，其余请求交给用例自己的实现，
  * 这样各用例不必为它单独分支。
  */
@@ -840,7 +842,7 @@ describe('MenuAdminPage', () => {
     expect(screen.getByLabelText('操作副表名')).toBeInTheDocument()
     expect(screen.getByLabelText('新增明细时必需字段')).toBeInTheDocument()
 
-    // 「分组」页签已迁走：列表分组是 MODULE_GROUPS 的配置面（2315 模块分组），随模块保存即发布，
+    // 「分组」页签已迁走：列表分组是 MODULE_GROUPS 的配置面（230102 模块分组），随模块保存即发布，
     // 不再占模块管理的一个页签，模块记录上也没有那 15 个字段。
     expect(screen.queryByRole('tab', { name: '分组' })).toBeNull()
     expect(screen.queryByLabelText('表达式1（如 TABLE.COL、CASE 或日期函数）')).toBeNull()
@@ -1051,110 +1053,27 @@ describe('MenuAdminPage', () => {
     expect(screen.queryByText(/缺少 CONFIRM_TAG/)).not.toBeInTheDocument()
   })
 
-  it('切页签保草稿：切走再切回，未保存的行为配置编辑仍在且脏标记不回退', async () => {
-    mockPageWithBusinessConfig()
-    await openModuleTab()
-    await screen.findByText('业务动作（1）')
-
-    fireEvent.click(screen.getByText('收料量回写采购单'))
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
-    const dialog = within(await screen.findByRole('dialog'))
-    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
-    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
-
-    // 切到别的页签再切回来：面板不得被卸载重挂，草稿与脏标记都要保持。
-    fireEvent.click(screen.getByRole('tab', { name: '基础' }))
-    fireEvent.click(screen.getByRole('tab', { name: '行为动作' }))
-
-    // 动作列表的名称列与影响面自检的问题文案都会出现该名称，故只断言"仍在"。
-    await waitFor(() => expect(screen.getAllByText('改过的名称').length).toBeGreaterThan(0))
-    expect(screen.getByText('已修改未保存')).toBeInTheDocument()
-  })
-
-  it('行为配置拆成三个页签，无操作主/副表的模块三个页签禁用并说明原因', async () => {
+  it('230101 只定义模块本身：页签只剩基础 / 主表 / 子表，行为配置已全部迁出', async () => {
     mockPageWithBusinessConfig()
     renderPage()
     await waitForMenuTree()
 
-    // 纯菜单节点（无主表也无副表）：三个行为页签都在，但点不动，且说明原因。
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     enterEdit()
-    // 6 个：基础/主表/子表 + 三个行为页签（「统一表单」页签已删，2026-10-06；「分组」页签迁到 2315）
-    expect(screen.getAllByRole('tab')).toHaveLength(6)
-    for (const label of ['行为动作', '校验规则', '自定义按钮']) {
-      expect(screen.getByRole('tab', { name: label })).toBeDisabled()
+    // ADR-033：自定义按钮迁 230103、行为动作 + 校验规则迁 230104——本页不再有行为页签，
+    // 也不再按形态/权限裁剪它们（那套裁剪逻辑随拆分一起消失）。
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    for (const label of ['基础', '主表', '子表']) {
+      expect(screen.getByRole('tab', { name: label })).toBeInTheDocument()
     }
-    expect(screen.getByRole('tab', { name: '校验规则' })).toHaveAttribute(
-      'title',
-      expect.stringContaining('未配置操作主表/副表'),
-    )
-
-    // 含表模块：三个页签可用（选中节点回到浏览态，故重新进入编辑态）。
-    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
-    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
-    enterEdit()
-    for (const label of ['行为动作', '校验规则', '自定义按钮']) {
-      expect(screen.getByRole('tab', { name: label })).toBeEnabled()
+    for (const label of ['行为动作', '校验规则', '自定义按钮', '分组', '统一表单']) {
+      expect(screen.queryByRole('tab', { name: label })).toBeNull()
     }
-  })
-
-  it('三个行为页签之间来回切换后草稿与脏标记都保持', async () => {
-    mockPageWithBusinessConfig()
-    await openModuleTab()
-    await screen.findByText('业务动作（1）')
-
-    fireEvent.click(screen.getByText('收料量回写采购单'))
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
-    const dialog = within(await screen.findByRole('dialog'))
-    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
-    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
-
-    fireEvent.click(screen.getByRole('tab', { name: '校验规则' }))
-    expect(await screen.findByText('校验规则（0）')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '自定义按钮' }))
-    expect(await screen.findByText('自定义按钮（0）')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '行为动作' }))
-
-    await waitFor(() => expect(screen.getAllByText('改过的名称').length).toBeGreaterThan(0))
-    expect(screen.getByText('已修改未保存')).toBeInTheDocument()
-  })
-
-  it('「取消」丢弃改动：行为配置回到服务端配置', async () => {
-    mockPageWithBusinessConfig()
-    await openModuleTab()
-    await screen.findByText('业务动作（1）')
-
-    fireEvent.click(screen.getByText('收料量回写采购单'))
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
-    const dialog = within(await screen.findByRole('dialog'))
-    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
-    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
-
-    fireEvent.click(screen.getByRole('button', { name: '取消' }))
-
-    // 取消 = 丢弃改动并退出编辑态；再进来时面板按服务端配置重新装载。
-    enterEdit()
-    fireEvent.click(screen.getByRole('tab', { name: '行为动作' }))
-    // 名称列与影响面自检文案都会出现动作名，故只断言"回到服务端配置"。
-    await waitFor(() => expect(screen.getAllByText('收料量回写采购单').length).toBeGreaterThan(0))
-    expect(screen.queryByText('改过的名称')).not.toBeInTheDocument()
-    expect(screen.getByText('未发布')).toBeInTheDocument()
   })
 
   it('切换模块前提示未保存改动：取消则留在原模块，确认后才切走', async () => {
-    mockPageWithBusinessConfig()
     await openModuleTab()
-    await screen.findByText('业务动作（1）')
-
-    fireEvent.click(screen.getByText('收料量回写采购单'))
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
-    const dialog = within(await screen.findByRole('dialog'))
-    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
-    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '改过的名称' } })
 
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
@@ -1166,18 +1085,18 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('系统参数'))
   })
 
-  it('内置动作（受控注册码）在 2301 整页不存在，自定义按钮页签自带说明', async () => {
-    mockPageWithBusinessConfig()
-    // 行为配置页签要模块有操作主表/副表才点得动：进 110101 公司基本资料（openModuleTab 内含）
-    await openModuleTab('自定义按钮')
+  it('内置动作（受控注册码）在 230101 整页不存在，行为页签一个都不留', async () => {
+    await openModuleTab()
 
     // 那一列已随迁移 320 退役；它当年的宿主页签（统一表单）也已删——整页不再有它的输入框
     expect(screen.queryByLabelText('内置动作（受控注册码）')).toBeNull()
     expect(screen.queryByRole('tab', { name: '统一表单' })).toBeNull()
 
-    // 说明搬到了自定义按钮页签里：内置动作不在这里、也不需要配（由能力 + 权限 + 单据状态决定）。
-    // 认 <strong> 那一小段：整段文案被 <strong> 切成多个文本节点，按整句匹配会碎。
-    await waitFor(() => expect(screen.getByText('不需要配')).toBeInTheDocument())
+    // ADR-033：三个行为页签全部迁出（自定义按钮 → 230103，行为动作 + 校验规则 → 230104）。
+    // 本页不留只读视图——留一份只读等于把"改完要回哪一面"再讲一遍。
+    for (const label of ['行为动作', '校验规则', '自定义按钮']) {
+      expect(screen.queryByRole('tab', { name: label })).toBeNull()
+    }
   })
 
   it('无模块配置权的账号不渲染行为页签，预演与说明书入口随之不出现', async () => {

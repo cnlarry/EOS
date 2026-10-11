@@ -69,7 +69,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const [groupValues,setGroupValues]=useState<string[]|null>(null)
   const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
   const [groupMenuOpen,setGroupMenuOpen]=useState(false)
-  // 分组筛选的深链参数是分组编号（MODULE_GROUPS.GROUP_ID，见 2315 模块分组），不是"第几组"：
+  // 分组筛选的深链参数是分组编号（MODULE_GROUPS.GROUP_ID，见 230102 模块分组），不是"第几组"：
   // 序号只决定下拉顺序，拿它当身份会让调序/删除后的旧链接指向另一个表达式。
   const rawGroupId=searchParams.get('groupId')
   const rawGroupValue=searchParams.get('groupValue')

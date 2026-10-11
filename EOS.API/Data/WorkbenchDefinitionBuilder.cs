@@ -779,7 +779,7 @@ public sealed class WorkbenchDefinitionBuilder(
     /// <summary>
     /// 读模块的分组表达式（MODULE_GROUPS，按 GROUP_ID 索引）。
     /// 分组是"保存即生效"的配置，**不进快照**（WorkbenchDefinition.GroupExpressions 带 [JsonIgnore]），
-    /// 故每次装配定义都实时读一次，管理员在 2315 改完立刻生效、不需要重新发布。
+    /// 故每次装配定义都实时读一次，管理员在 230102 改完立刻生效、不需要重新发布。
     /// </summary>
     private static async Task<IReadOnlyDictionary<int, string>> ReadGroupExpressionsAsync(
         SqlConnection connection, int moduleId, CancellationToken token)

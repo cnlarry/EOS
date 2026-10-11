@@ -46,6 +46,33 @@ public static class ModuleBusinessConfigValidator
             ["inventory-move"] = Set("field-accumulate"),
         };
 
+    /// <summary>
+    /// 作用域与请求体的一致性校验（ADR-033 §6 的"显式优于推导"）：作用域是调用方的**声明**，
+    /// 请求体必须与之一致——不一致就拒，绝不"以请求体为准"，也绝不静默丢弃越域的行
+    /// （静默丢弃会让调用方以为存上了，那是"两面互删"的另一种形态）。
+    /// </summary>
+    /// <exception cref="ArgumentException">请求体里出现了不属于该作用域的行。</exception>
+    public static void EnsureScopeMatchesRequest(
+        SaveModuleBusinessConfigRequest request,
+        BusinessConfigScope scope)
+    {
+        switch (scope)
+        {
+            case BusinessConfigScope.Manual:
+                if (request.Actions.Any(action => !BusinessActionCatalog.IsManualEvent(action.EventCode)))
+                    throw new ArgumentException("manual 作用域只接受自定义按钮行（EVENT_CODE='MANUAL'）。");
+                if (request.ValidationRules.Count > 0)
+                    throw new ArgumentException("manual 作用域不接受校验规则：校验规则随行为动作那一面（actions）保存。");
+                break;
+            case BusinessConfigScope.Actions:
+                if (request.Actions.Any(action => BusinessActionCatalog.IsManualEvent(action.EventCode)))
+                    throw new ArgumentException("actions 作用域不接受自定义按钮行（EVENT_CODE='MANUAL'）：按钮归 manual 作用域。");
+                break;
+            case BusinessConfigScope.All:
+                break;
+        }
+    }
+
     /// <param name="documentActionKeys">
     /// 单据操作注册表的键集（用户点击类动作的封闭目录）。MANUAL 行的键必须在此集合内——
     /// 它的实现来自注册的处理器，不在效果目录里，因此不能拿效果键集合去判它。

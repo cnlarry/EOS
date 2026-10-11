@@ -36,8 +36,9 @@ public sealed class ConfigWriteService(
     /// <summary>字段维护的权限门（与字段维护写端点同一个模块号）。</summary>
     public const int FieldAdminModuleId = 2302;
 
-    /// <summary>配置面的权限门（与预演端点、2301 行为配置写端点同一个模块号）。</summary>
-    public const int MenuAdminModuleId = 2301;
+    /// <summary>配置面的权限门（与预演端点、230101 行为配置写端点同一个模块号）。</summary>
+    // 权限锚点随配置面走（ADR-033）：2301 已改判纯目录「系统功能」，模块管理是 230101。
+    public const int MenuAdminModuleId = 230101;
 
     /// <summary>该类配置在助手侧尚未开放时的原因码。</summary>
     public const string SurfaceDisabledCode = "CONFIG_SURFACE_DISABLED";
@@ -253,7 +254,11 @@ public sealed class ConfigWriteService(
         {
             await moduleConfig.SaveAsync(
                 moduleId, new SaveModuleBusinessConfigRequest([.. actions], [.. current.ValidationRules]),
-                employeeName, token, batchKey);
+                employeeName, token,
+                // 助手的配置写是"整模块语义"（把改动合并进当前配置后整体提交），故作用域是 all；
+                // ADR-033 §6 拆开配置面后，各面才按自己的域传 actions / manual。
+                scope: BusinessConfigScope.All,
+                idempotencyKey: batchKey);
         }
         catch (Exception exception) when (!token.IsCancellationRequested
             && exception is not OperationCanceledException)

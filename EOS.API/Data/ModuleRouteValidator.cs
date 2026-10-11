@@ -20,7 +20,7 @@ namespace EOS.API.Data;
 /// </summary>
 /// <summary>
 /// 菜单节点形态：承载页与主表的组合决定一个 `MODULES` 行**是什么**。
-/// 它是 2301 配置面的形状依据（哪些配置项对它有消费方），也是运行期承载面的判据。
+/// 它是 230101 配置面的形状依据（哪些配置项对它有消费方），也是运行期承载面的判据。
 ///
 /// 这个判定**只有两处实现，且必须逐字一致**：
 /// 本枚举与 <see cref="ModuleRouteValidator.ResolveKind"/>（代码侧，值为已在内存里的行），
@@ -74,7 +74,8 @@ internal static class ModuleRouteValidator
         "/admin/fields", "/admin/depot-stock-policy", "/admin/logs", "/admin/business-flow",
         "/admin/assistant/sessions", "/admin/assistant/mechanism", "/admin/assistant/kb", "/admin/assistant/models",
         "/admin/assistant/settings",
-        "/admin/groups", "/admin/report-setup", "/admin/module-groups",
+        "/admin/groups", "/admin/report-setup", "/admin/module-groups", "/admin/module-buttons",
+        "/admin/module-actions",
         "/import", "/settings/system", "/settings/hr-setup", "/settings/hrm-setup",
         "/bom-expand", "/jobs", "/my-tasks", "/car-summary",
         "/workflow/design", "/workflow/monitor",

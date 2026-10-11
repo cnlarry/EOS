@@ -31,11 +31,11 @@ public sealed class ChooserRepositoryTests
     }
 
     [Theory]
-    [InlineData("menu-admin.tables", 2301)]
-    [InlineData("menu-admin.fields", 2301)]
-    [InlineData("menu-admin.sprocs", 2301)]
-    [InlineData("menu-admin.columns", 2301)]
-    [InlineData("menu-admin.modules", 2301)]
+    [InlineData("menu-admin.tables", 230101)]
+    [InlineData("menu-admin.fields", 230101)]
+    [InlineData("menu-admin.sprocs", 230101)]
+    [InlineData("menu-admin.columns", 230101)]
+    [InlineData("menu-admin.modules", 230101)]
     [InlineData("report-admin.fields", 2201)]
     [InlineData("report-admin.modules", 2201)]
     [InlineData("user-admin.employees", 2306)]

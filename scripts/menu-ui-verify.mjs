@@ -92,14 +92,14 @@ try {
   record('工具条分组下拉进入组值筛选（170204/结案/NO）', page.url().includes('groupId=2&groupValue=NO'))
   await page.screenshot({ path: join(shotDir, '06-group-filter-chip.png'), fullPage: false })
 
-  // 6. 菜单管理页（2301）：树渲染 + 选中节点加载表单
+  // 6. 菜单管理页（230101）：树渲染 + 选中节点加载表单
   await page.goto(`${baseUrl}/admin/menus`, { waitUntil: 'networkidle' })
-  await page.getByText('菜单管理（模块 2301）').waitFor({ state: 'visible', timeout: 10000 })
+  await page.getByText('菜单管理（模块 230101）').waitFor({ state: 'visible', timeout: 10000 })
   const menuTreeRow = page.locator('.erp-menu-tree').getByRole('button', { name: /基本参数/ })
   await menuTreeRow.waitFor({ state: 'visible', timeout: 8000 })
   await menuTreeRow.click()
   await page.getByLabel('菜单名称').waitFor({ state: 'visible', timeout: 5000 })
-  record('菜单管理页（2301）树与表单加载', true)
+  record('菜单管理页（230101）树与表单加载', true)
   await page.screenshot({ path: join(shotDir, '07-menu-admin.png'), fullPage: false })
 
   // 7. 控制台错误

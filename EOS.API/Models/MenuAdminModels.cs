@@ -7,7 +7,7 @@ namespace EOS.API.Models;
 /// JSON 字段名与数据库/完全一致（M_IDX / MASTER_TABLE 等）。
 /// M_P_IDX 为 0 或 null 表示根节点。
 /// 列表分组（原 GROUP1..5 / GROUP_EXP1..5 / GROUP_DESC1..5）已独立为 MODULE_GROUPS 表，
-/// 在 2315 模块分组里维护，不在本记录上。
+/// 在 230102 模块分组里维护，不在本记录上。
 /// </summary>
 public sealed record MenuAdminModule(
     [property: JsonPropertyName("M_IDX")] int M_IDX,
@@ -63,19 +63,19 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("PUBLISHED_AT")] DateTime? PublishedAt = null,
     /// <summary>
     /// 模块备注：写"这个模块是干什么的"、口径约定等附加信息，给后来接手的人看。
-    /// 2301「基础」页签可编辑（2026-10-06 用户要求把它放出来）；空串按 NULL 落库。
+    /// 230101「基础」页签可编辑（2026-10-06 用户要求把它放出来）；空串按 NULL 落库。
     /// </summary>
     [property: JsonPropertyName("REMARK")] string? REMARK = null,
     /// <summary>
     /// **只读**形态判定（服务端算，保存时忽略）：`WORKBENCH` 统一工作台模块 / `CUSTOMPAGE` 自定义承载页 /
-    /// `DIRECTORY` 目录节点。与 SQL 视图 `dbo.V_MODULE_NODE` 同源，2301 据此决定哪些配置项该出现
+    /// `DIRECTORY` 目录节点。与 SQL 视图 `dbo.V_MODULE_NODE` 同源，230101 据此决定哪些配置项该出现
     /// （目录没有可配项；自定义承载页只留基础与数据源锚点；工作台模块全配）。
     /// </summary>
     [property: JsonPropertyName("NODE_KIND")] string? NODE_KIND = null);
     // 表单呈现配置（打开方式 / 弹窗宽高）不在这张只读投影里：模块管理只管模块自身的字段，
     // 呈现配置与页签级一行几列都在——且只在——表单设计器里配（`FormLayoutRepository` 读写
     // `MODULES.FORM_OPEN_MODE` 等三列与 `MODULE_FORM_TAB.LAYOUT_COLUMNS`）。
-    // 此前这三个字段只是 2301「统一表单」页签的只读摘要，该页签已删，投影随之收口。
+    // 此前这三个字段只是 230101「统一表单」页签的只读摘要，该页签已删，投影随之收口。
     // 迁移 324 把 MODULES 的八列旧系统遗产删了（CONFIRM_TAG/OWNER/OWNER_G/CONFIRM_DATE/
     // CONFIRM_PERSON/CI/CREATE_PERSON/CREATE_DATE），REMARK 是那批里唯一留下的（用来写备注）。
 
@@ -86,7 +86,12 @@ public sealed record MenuAdminModule(
 public sealed record SaveMenuModuleRequest(
     [property: JsonPropertyName("module")] MenuAdminModule Module,
     [property: JsonPropertyName("businessConfig")] SaveModuleBusinessConfigRequest? BusinessConfig = null,
-    [property: JsonPropertyName("defaultColumns")] IReadOnlyList<SaveMenuDefaultColumns>? DefaultColumns = null);
+    [property: JsonPropertyName("defaultColumns")] IReadOnlyList<SaveMenuDefaultColumns>? DefaultColumns = null,
+    /// <summary>
+    /// 业务配置的保存作用域（ADR-033 §6）：`all`（缺省）/`actions`/`manual`。
+    /// 拆开配置面后，各面必须显式声明自己那一域，否则合成保存会把另一面的行删掉。
+    /// </summary>
+    [property: JsonPropertyName("businessConfigScope")] string? BusinessConfigScope = null);
 
 public sealed record MenuRenameRequest([property: JsonPropertyName("description")] string Description);
 

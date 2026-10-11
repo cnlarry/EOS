@@ -1,7 +1,7 @@
 namespace EOS.API.Data;
 
 /// <summary>
-/// 业务动作配置目录的中文显示名（2301 配置界面用）。
+/// 业务动作配置目录的中文显示名（230101 配置界面用）。
 /// 目录值本身仍是 <see cref="BusinessActionCatalog"/> 的闭式枚举；本类只提供人类可读标签，
 /// 不参与保存校验。新增目录值时必须同时补标签——<see cref="MissingLabelKeys"/> 为缺口清单，
 /// 由单测保证为空，避免界面回落到英文码。

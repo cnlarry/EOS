@@ -12,9 +12,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 模块业务动作/校验配置工作区读写（2301 行为动作配置区）。
-/// 本控制器的端点全部属于**配置面**：读要求 CanBrowse(2301) + 模块配置权，
-/// 写要求 CanSetup(2301) + 模块配置权；
+/// 模块业务动作/校验配置工作区读写（230101 行为动作配置区）。
+/// 本控制器的端点几乎全部属于**行为动作用于 + 校验规则配置面**（230104，ADR-033 批 3）：
+/// 读要求 CanBrowse(230104) + 模块配置权，写要求 CanSetup(230104) + 模块配置权；
+/// **显式发布**是例外——它是模块级事实，门留在 230101（`CanPublish`）。
 /// 模块基础属性（菜单名称、承载页、默认查询列等）走另一道门（仅 SETUP_TAG）。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/admin/module-business-config")]
@@ -29,7 +30,12 @@ public sealed class ModuleBusinessConfigController(
     ILogger<ModuleBusinessConfigController> logger,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int MenuAdminModuleId = 2301;
+    // 权限锚点随配置面走（ADR-033）：2301 已改判纯目录「系统功能」，模块管理是 230101。
+    // 模块级事实（发布、版本历史）仍在 230101：ADR-033 §2 —— "230101 只定义模块是什么"，
+    // 但发布结果与版本历史是**模块级**事实，故显式发布端点留在 230101 的门上。
+    private const int MenuAdminModuleId = 230101;
+    // 行为动作 + 校验规则配置面的门（ADR-033 批 3，迁移 349 登记）：本控制器的读写面全归它。
+    private const int BehaviorModuleId = 230104;
 
     [HttpGet("meta")]
     public async Task<IActionResult> Meta(CancellationToken token)
@@ -105,7 +111,7 @@ public sealed class ModuleBusinessConfigController(
         return Ok(new DisableAllActionsResultDto(moduleId, disabled));
     }
 
-    /// <summary>效果参数根键与反向 kind 枚举（2301 Schema 化参数编辑器数据源）。</summary>
+    /// <summary>效果参数根键与反向 kind 枚举（230101 Schema 化参数编辑器数据源）。</summary>
     [HttpGet("schemas")]
     public async Task<IActionResult> Schemas(CancellationToken token)
     {
@@ -185,25 +191,57 @@ public sealed class ModuleBusinessConfigController(
         return result is null ? NotFound() : Ok(result);
     }
 
+    /// <summary>
+    /// 目标模块形状（主表 / 副表 + 表描述）：配置面选中模块后展示与判形态用。
+    /// 与 `/admin/menus` 同一组事实，但门在本配置面上（不借用模块定义面的门）。
+    /// </summary>
+    [HttpGet("{moduleId:int}/target")]
+    public async Task<IActionResult> Target(int moduleId, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var target = await repository.ReadTargetAsync(moduleId, token);
+        return target is null
+            ? NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, $"模块 {moduleId} 不存在。"))
+            : Ok(target);
+    }
+
+    /// <summary>
+    /// 保存该模块的业务配置。**作用域必须显式**（ADR-033 §6）：`?scope=manual` 只替换自定义按钮、
+    /// `?scope=actions` 只替换非按钮动作 + 全部校验规则、`scope=all`（默认）保留全量替换语义。
+    /// 拆开配置面后两面各自保存，若不声明作用域，保存按钮会删光行为动作（反之亦然）——静默数据损失。
+    /// 未知 scope 一律 400，不静默回退成 all。
+    /// </summary>
     [HttpPut("{moduleId:int}")]
     public async Task<IActionResult> Save(
         int moduleId,
         SaveModuleBusinessConfigRequest request,
+        [FromQuery] string? scope,
         CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        await repository.SaveAsync(moduleId, request, userContext.EmployeeName, token);
-        return NoContent();
+        if (!BusinessConfigScopes.TryParse(scope, out var configScope))
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_CONFIG_SCOPE",
+                $"scope 只接受 all / actions / manual，收到 '{scope}'。"));
+        }
+        await repository.SaveAsync(moduleId, request, userContext.EmployeeName, token, configScope);
+        // 方案 B（ADR-033 §7.3）：配置面保存成功后**自动走一次发布**——用户看到的就是「保存」。
+        // 校验不通过时语义是"**已保存，但未生效**"，逐条原因随 checks 回去（前端照 publishResult 展示位渲染）。
+        // 只给配置面（actions / manual）：`all` 是合成保存与助手侧的整模块写，不替调用方决定生效时机。
+        if (configScope == BusinessConfigScope.All)
+            return NoContent();
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        return Ok(new { saved = true, publish = results.FirstOrDefault() });
     }
 
     /// <summary>
     /// 发布当前模块 Definition 快照（校验通过才写快照并清脏，失败保留脏标记）。
-    /// 与工作台快照发布共用同一校验器与写入服务；2301 配置区提供页面内发布入口。
+    /// 与工作台快照发布共用同一校验器与写入服务；230101 配置区提供页面内发布入口。
     /// </summary>
     [HttpPost("{moduleId:int}/publish")]
     public async Task<IActionResult> Publish(int moduleId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanPublish(token)) return Forbid();
         var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
         return Ok(results);
     }
@@ -288,14 +326,21 @@ public sealed class ModuleBusinessConfigController(
     /// <summary>配置面读门：页面可见 + 该模块的配置权。</summary>
     private async Task<bool> CanBrowse(CancellationToken token)
     {
-        var rights = await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, BehaviorModuleId, token);
         return rights.CanBrowse && rights.CanModuleConfig;
+    }
+
+    /// <summary>显式发布是**模块级**动作（结构性改动常需改多项后统一发布），门留在 230101。</summary>
+    private async Task<bool> CanPublish(CancellationToken token)
+    {
+        var rights = await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token);
+        return rights.CanSetup && rights.CanModuleConfig;
     }
 
     /// <summary>配置面写门：设置权 + 该模块的配置权。</summary>
     private async Task<bool> CanSetup(CancellationToken token)
     {
-        var rights = await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, BehaviorModuleId, token);
         return rights.CanSetup && rights.CanModuleConfig;
     }
 }

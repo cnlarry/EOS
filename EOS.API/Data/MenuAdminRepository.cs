@@ -7,7 +7,7 @@ using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 菜单管理（模块 2301）：MODULES 增删改查。
+/// 菜单管理（模块 230101）：MODULES 增删改查。
 /// 语义 / P_SYS_DelTreeNode / P_Change_M_IDX：
 /// - 保存：事务内更新/插入，编号变更时级联子级 M_P_IDX、权限与引用表；
 /// - M_ROOT_IDX 按父链根重算并同步到子树；
@@ -481,7 +481,7 @@ public sealed class MenuAdminRepository(
             if (oldId is null)
             {
                 if (input.M_IDX <= 0)
-                    input = input with { M_IDX = await NextModuleIdAsync(connection, transaction, token) };
+                    input = input with { M_IDX = await NextModuleIdAsync(connection, transaction, input.M_P_IDX, token) };
                 if (input.SORT_IDX <= 0)
                     input = input with { SORT_IDX = await NextSiblingSortAsync(connection, transaction, input.M_P_IDX, token) };
             }
@@ -523,8 +523,13 @@ public sealed class MenuAdminRepository(
             }
             if (request.BusinessConfig is { } businessConfig)
             {
+                // 作用域来自请求（ADR-033 §6）：合成保存默认 all（今天的全量语义）；拆开后的配置面
+                // 各自传 actions / manual，避免把另一面的行删掉。未知值直接拒（不静默回退 all）。
+                if (!BusinessConfigScopes.TryParse(request.BusinessConfigScope, out var configScope))
+                    throw new ArgumentException(
+                        $"businessConfigScope 只接受 all / actions / manual，收到 '{request.BusinessConfigScope}'。");
                 await businessConfigRepository.SaveScopedAsync(
-                    connection, transaction, input.M_IDX, businessConfig, updatedBy, token);
+                    connection, transaction, input.M_IDX, businessConfig, updatedBy, configScope, token);
             }
             if (request.DefaultColumns is { Count: > 0 } defaultColumns)
             {
@@ -941,10 +946,37 @@ public sealed class MenuAdminRepository(
     private static string? NullIfEmpty(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static async Task<int> NextModuleIdAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    /// <summary>
+    /// 新增模块的编号分配（ADR-033）：**父编号 × 100 + 下一个空序号**；根级按"同段当前最大 + 1"
+    /// （只比根级节点，不再被别的段的大号带跑——旧的 `MAX(M_IDX)+1` 今天会给出 18010120，
+    /// 看着像 18 段某模块的子节点）。
+    ///
+    /// 根级只在两位段内递增：历史遗留的 4 位根级编号（如 1232）不参与取号，否则新根号会长成
+    /// "12 段子节点"的样子，正是本次要消除的观感问题。
+    /// </summary>
+    private static async Task<int> NextModuleIdAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int? parentId,
+        CancellationToken token)
     {
-        await using var command = new SqlCommand("SELECT ISNULL(MAX(M_IDX),0)+1 FROM dbo.MODULES;", connection, transaction);
-        return (int)(await command.ExecuteScalarAsync(token) ?? 1);
+        if (parentId is { } parent && parent > 0)
+        {
+            // 子节点：父编号 × 100 起，取段内已用的最大编号 + 1（父 2301 下依次 230101、230102、230103…）
+            var baseId = parent * 100;
+            await using var child = new SqlCommand(
+                "SELECT ISNULL(MAX(M_IDX),0) FROM dbo.MODULES WHERE M_IDX >= @Base AND M_IDX < @Limit;",
+                connection, transaction);
+            child.Parameters.Add("@Base", SqlDbType.Int).Value = baseId;
+            child.Parameters.Add("@Limit", SqlDbType.Int).Value = baseId + 100;
+            var currentMax = (int)(await child.ExecuteScalarAsync(token) ?? 0);
+            return currentMax >= baseId ? currentMax + 1 : baseId + 1;
+        }
+
+        await using var root = new SqlCommand(
+            "SELECT ISNULL(MAX(M_IDX),0)+1 FROM dbo.MODULES WHERE ISNULL(M_P_IDX,0)=0 AND M_IDX < 100;",
+            connection, transaction);
+        return (int)(await root.ExecuteScalarAsync(token) ?? 1);
     }
 
     private static async Task<int> NextSiblingSortAsync(SqlConnection connection, SqlTransaction transaction, int? parentId, CancellationToken token)
@@ -1137,7 +1169,7 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
         // 批核入口声明（ADR-035）：勾选时校验主表批核三列，见 EnsureApproveColumnsAsync
         command.Parameters.Add("@APPROVE_ENABLED", SqlDbType.Bit).Value = m.ApproveEnabled;
-        // 模块备注：写"这个模块是干什么的"（2301「基础」页签可编辑）。空串归一成 NULL，
+        // 模块备注：写"这个模块是干什么的"（230101「基础」页签可编辑）。空串归一成 NULL，
         // 免得列表/详情在两处显示口径上出现"空串 vs NULL"的假差异。
         command.Parameters.AddWithValue("@REMARK", string.IsNullOrWhiteSpace(m.REMARK) ? DBNull.Value : m.REMARK.Trim());
         return command;
