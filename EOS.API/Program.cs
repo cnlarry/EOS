@@ -216,7 +216,10 @@ builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.D
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.CopSendMoFlagHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.PurPurchaseSyncHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.StocktakeScopeGenerateHandler>();
-builder.Services.AddSingleton(builder.Configuration.GetSection("EffectEngine").Get<EffectEngineSettings>() ?? new EffectEngineSettings());
+// 效果引擎总闸（ADR-034）：绑成可监视的选项，改 appsettings.json 即生效（不再"启动读一次"）；
+// 读坏值的兜底在 EffectEngineSwitch 里（沿用上一次有效值并记警告）。
+builder.Services.Configure<EffectEngineSettings>(builder.Configuration.GetSection("EffectEngine"));
+builder.Services.AddSingleton<EffectEngineSwitch>();
 builder.Services.AddScoped<EffectEngineInvoker>();
 builder.Services.AddScoped<EffectPipeline>();
 // 单据操作（自定义按钮）：键集来自这里的处理器注册，发布校验与端点执行读的是同一份。

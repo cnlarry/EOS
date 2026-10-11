@@ -1,6 +1,7 @@
 using System.Text.Json;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace EOS.API.Data.Effects;
 
@@ -10,23 +11,55 @@ public sealed class EffectEngineSettings
 }
 
 /// <summary>
+/// 效果引擎总闸（ADR-034：**断路器**语义，不再是"启动读一次"的灰度开关）。
+///
+/// 每次判定义务都从 <see cref="IOptionsMonitor{T}"/> 现读——改 `appsettings.json` 即生效，不必重启
+/// （重启会把在线用户踢下线，那正是它要替代的"止血方式"）。读到**坏值**（例如 `Enabled` 被写成
+/// 字符串）时沿用上一次有效值并记警告：不让"配置写错"升级成"所有单据保存/批核 500"——那会把
+/// 一次可回退的配置失误变成一次事故。
+/// </summary>
+public sealed class EffectEngineSwitch(
+    IOptionsMonitor<EffectEngineSettings> monitor,
+    ILogger<EffectEngineSwitch> logger)
+{
+    private bool _lastGood;
+
+    public bool Enabled
+    {
+        get
+        {
+            try
+            {
+                _lastGood = monitor.CurrentValue.Enabled;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception,
+                    "效果引擎总闸读取失败，沿用上一次有效值 enabled={Enabled}（ADR-034 断路器兜底）", _lastGood);
+            }
+            return _lastGood;
+        }
+    }
+}
+
+/// <summary>
 /// Entry point the baseline-bridge call sites consult before invoking a workflow
-/// stored procedure. Gated by the global switch (appsettings EffectEngine:Enabled)
-/// AND the question "does this definition actually carry an enabled effect action"
-/// (ADR-035: the per-module switch <c>MODULES.EFFECT_ENGINE_TAG</c> is retired —
-/// "配了动作" is the only fact that decides takeover). When either is off the caller
-/// falls back to the stored procedure unchanged; when on, the effect pipeline runs
-/// instead and errors surface as user-facing messages.
+/// stored procedure. Gated by the global breaker (<see cref="EffectEngineSwitch"/>,
+/// appsettings EffectEngine:Enabled, read live — ADR-034) AND the question "does this
+/// definition actually carry an enabled effect action" (ADR-035: the per-module switch
+/// <c>MODULES.EFFECT_ENGINE_TAG</c> is retired — "配了动作" is the only fact that decides
+/// takeover). When either is off the caller falls back to the stored procedure unchanged;
+/// when on, the effect pipeline runs instead and errors surface as user-facing messages.
 /// </summary>
 public sealed class EffectEngineInvoker(
-    EffectEngineSettings settings,
+    EffectEngineSwitch engineSwitch,
     EffectPlanLoader planLoader,
     EffectPipeline pipeline,
     ILogger<EffectEngineInvoker> logger)
 {
     public bool IsEnabledFor(WorkbenchDefinition definition)
     {
-        if (!settings.Enabled)
+        if (!engineSwitch.Enabled)
         {
             return false;
         }

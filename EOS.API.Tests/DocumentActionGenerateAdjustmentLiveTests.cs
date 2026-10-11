@@ -219,7 +219,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         var provider = _provider;
         var auditWriter = new WorkbenchAuditWriter(connections, new HttpContextAccessor(), provider, Options.Create(new AuditSettings()));
         var engine = new EffectEngineInvoker(
-            new EffectEngineSettings { Enabled = true },
+            TestOptions.EngineSwitch(true),
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);

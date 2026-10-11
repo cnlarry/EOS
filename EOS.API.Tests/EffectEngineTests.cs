@@ -1013,9 +1013,9 @@ public class EffectEngineGateTests
     [Fact]
     public void Definition_takeover_requires_enabled_effect_actions()
     {
-        EOS.API.Data.Effects.EffectEngineSettings settings = new() { Enabled = true };
         var invoker = new EOS.API.Data.Effects.EffectEngineInvoker(
-            settings, null!, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
+            TestOptions.EngineSwitch(true), null!, null!,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
         var none = DefinitionWith(Actions("[{\"seq\":1,\"eventCode\":\"SAVE\",\"effectKey\":\"detail-field-sync\",\"enabled\":false}]"));
         var on = DefinitionWith(Actions("[{\"seq\":1,\"eventCode\":\"SAVE\",\"effectKey\":\"detail-field-sync\",\"enabled\":true}]"));
         var manualOnly = DefinitionWith(Actions("[{\"seq\":1,\"eventCode\":\"MANUAL\",\"effectKey\":\"recalc-account\",\"enabled\":true}]"));
@@ -1028,10 +1028,24 @@ public class EffectEngineGateTests
     public void Global_master_switch_gates_everything()
     {
         var invoker = new EOS.API.Data.Effects.EffectEngineInvoker(
-            new EOS.API.Data.Effects.EffectEngineSettings { Enabled = false }, null!, null!,
+            TestOptions.EngineSwitch(false), null!, null!,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
         Assert.False(invoker.IsEnabledFor(DefinitionWith(
             Actions("[{\"seq\":1,\"eventCode\":\"SAVE\",\"effectKey\":\"detail-field-sync\",\"enabled\":true}]"))));
+    }
+
+    // ADR-034 断路器兜底：配置写了坏值不该让所有单据保存/批核 500——沿用上一次有效值并记警告。
+    [Fact]
+    public void 总闸读到坏值沿用上一次有效值()
+    {
+        var monitor = new TestOptions.FlakyMonitor<EOS.API.Data.Effects.EffectEngineSettings>(
+            new EOS.API.Data.Effects.EffectEngineSettings { Enabled = true });
+        var breaker = new EOS.API.Data.Effects.EffectEngineSwitch(
+            monitor, Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineSwitch>.Instance);
+
+        Assert.True(breaker.Enabled);
+        monitor.Fail = true;
+        Assert.True(breaker.Enabled);   // 读取失败 ⇒ 沿用上一次有效值，而不是抛异常
     }
 
     private static JsonElement Actions(string json) => JsonDocument.Parse(json).RootElement.Clone();

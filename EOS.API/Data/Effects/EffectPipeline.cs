@@ -249,7 +249,7 @@ public sealed class EffectPipeline(
 
         if (!EffectRegistry.IsImplemented(action.EffectKey))
             throw new EffectConfigException(
-                $"效果键 '{action.EffectKey}' 尚未实现执行（模块 {plan.ModuleId} SEQ={action.Seq}），灰度开启前需补齐 Handler。");
+                $"效果键 '{action.EffectKey}' 尚未实现执行（模块 {plan.ModuleId} SEQ={action.Seq}），引擎开启前需补齐 Handler。");
         if (!_handlers.TryGetValue(action.EffectKey, out var handler))
             throw new EffectConfigException(
                 $"效果键 '{action.EffectKey}' 未注册服务 Handler（模块 {plan.ModuleId} SEQ={action.Seq}）。");

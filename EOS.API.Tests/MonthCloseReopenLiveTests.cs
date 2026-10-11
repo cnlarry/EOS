@@ -160,7 +160,7 @@ public sealed class MonthCloseReopenLiveTests
             connections, new HttpContextAccessor(), provider,
             Options.Create(new AuditSettings { FieldChangesEnabled = true }));
         var engine = new EffectEngineInvoker(
-            new EffectEngineSettings { Enabled = true },
+            TestOptions.EngineSwitch(true),
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);

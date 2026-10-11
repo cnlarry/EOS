@@ -41,7 +41,7 @@ internal static class AssistantActionTestHarness
         DbConnectionFactory connections, string connectionString, WorkbenchAuditWriter auditWriter)
     {
         var engine = new EffectEngineInvoker(
-            new EffectEngineSettings { Enabled = true },
+            TestOptions.EngineSwitch(true),
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(connectionString),
             NullLogger<EffectEngineInvoker>.Instance);

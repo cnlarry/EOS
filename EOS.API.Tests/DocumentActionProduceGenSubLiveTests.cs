@@ -198,7 +198,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         var rights = new ModuleRightsRepository(connections, NullLogger<ModuleRightsRepository>.Instance);
         var permissions = new PermissionService(rights, new PermissionCache(configuration));
         var engine = new EffectEngineInvoker(
-            new EffectEngineSettings { Enabled = true },
+            TestOptions.EngineSwitch(true),
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);

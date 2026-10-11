@@ -195,7 +195,7 @@ public sealed class InboundLocationResolveLiveTests
             connections, new Microsoft.AspNetCore.Http.HttpContextAccessor(), provider,
             Microsoft.Extensions.Options.Options.Create(new AuditSettings { FieldChangesEnabled = true }));
         var engine = new EffectEngineInvoker(
-            new EffectEngineSettings { Enabled = true },
+            TestOptions.EngineSwitch(true),
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);

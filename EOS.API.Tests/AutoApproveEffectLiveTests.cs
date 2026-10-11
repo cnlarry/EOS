@@ -51,7 +51,7 @@ public sealed class AutoApproveEffectLiveTests
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var auditWriter = new WorkbenchAuditWriter(connections, new HttpContextAccessor(), provider, Options.Create(new AuditSettings()));
         var engine = new EffectEngineInvoker(
-            new EffectEngineSettings { Enabled = engineEnabled },
+            TestOptions.EngineSwitch(engineEnabled),
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);

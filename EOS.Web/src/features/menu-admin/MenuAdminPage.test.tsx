@@ -927,7 +927,6 @@ describe('MenuAdminPage', () => {
     expect(screen.getByTitle('清除主表过滤条件')).toBeEnabled()
     // 单据行为只属于统一工作台：这些开关在自定义承载页上不出现
     expect(screen.queryByRole('checkbox', { name: '自动批核' })).toBeNull()
-    expect(screen.queryByRole('checkbox', { name: '效果引擎（灰度开关）' })).toBeNull()
     // 但通用查询留着：搜索中心是独立于承载页的可达面
     expect(screen.getByRole('checkbox', { name: '通用查询（主表）' })).toBeEnabled()
   })
