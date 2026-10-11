@@ -56,16 +56,16 @@ interface LogEntry {
 interface StepMeta {
   label: string
   Icon: ComponentType<{ size?: number }>
-  title: string
 }
 
-/** 一次导入的最大步数：一步一步来，前一步的界面在下一次点「下一步」时消失。 */
+/** 一次导入的最大步数：一步一步来，前一步的界面在下一次点「下一步」时消失。
+    `label` 是这一步唯一的名字——进度条节点与「上一步/下一步」按钮上的节点名都用它。 */
 const STEPS: StepMeta[] = [
-  { label: '选择模块', Icon: IconLayoutGrid, title: '第 1 步：选择目标模块' },
-  { label: '选择文档', Icon: IconFileSpreadsheet, title: '第 2 步：选择数据文档' },
-  { label: '字段映射', Icon: IconArrowsExchange, title: '第 3 步：字段映射' },
-  { label: '数据预览', Icon: IconTable, title: '第 4 步：数据预览' },
-  { label: '开始导入', Icon: IconDatabaseImport, title: '第 5 步：开始导入' },
+  { label: '选择模块', Icon: IconLayoutGrid },
+  { label: '选择文档', Icon: IconFileSpreadsheet },
+  { label: '字段映射', Icon: IconArrowsExchange },
+  { label: '数据预览', Icon: IconTable },
+  { label: '开始导入', Icon: IconDatabaseImport },
 ]
 
 /** 日志里逐行列出的上限：再多就不是给人看的了，失败行另有导出。 */
@@ -399,11 +399,17 @@ export function ImportPage() {
   })()
   const canGoBack = step > 1 && busy == null
   const canGoNext = nextGate == null && busy == null
-  // 第 4 步的按钮推进的是**写库**，所以它不叫「下一步」——就四个字。
+  // 第 4 步的按钮推进的是**写库**，所以它不叫「下一步」——就四个字「开始导入」
+  // （它要去的节点恰好也叫这个名，无需再加「下一步，」前缀）。
   // 不带行数：`开始导入 2 行` 会被读成"只导 2 行"（实际是这一批里通过的全导），
   // 而"这一批有多少行、能导多少行"这一屏的计数条已经写清楚了（共 N 行：可导入 M ｜ 失败 K）。
+  // 其余步骤的按钮带**目标节点名**（下一步，选择文档 / 上一步，选择模块）：点下去会去哪一步
+  // 写在按钮上，不必回头看进度条；第 1 步没有上一个节点，退回按钮只写「上一步」。
   // 不能推进时按钮禁用，原因由 title 给出（正在校验… / 还没有校验结论 / 预演里没有可导入的行）。
-  const nextLabel = step === 4 ? '开始导入' : '下一步'
+  const nextNode = STEPS[step] ?? null
+  const nextLabel = step === 4 ? '开始导入' : nextNode != null ? `下一步，${nextNode.label}` : '下一步'
+  const backNode = step > 1 ? STEPS[step - 2] : null
+  const backLabel = backNode != null ? `上一步，${backNode.label}` : '上一步'
 
   const goBack = () => {
     if (!canGoBack) return
@@ -552,10 +558,10 @@ export function ImportPage() {
     return columns
   }, [fileData, rowStates])
 
-  // 向导导航只此两个按钮，与「第 N 步」标题同一行、靠右对齐；进度条上的节点是唯一的例外（可点回看）
+  // 向导导航只此两个按钮，与第 1 步的搜索框同一行、靠右对齐；进度条上的节点是唯一的例外（可点回看）
   const navigation = (
     <>
-      <Button size="sm" icon={<IconArrowLeft size={16} />} disabled={!canGoBack} onClick={goBack}>上一步</Button>
+      <Button size="sm" icon={<IconArrowLeft size={16} />} disabled={!canGoBack} onClick={goBack}>{backLabel}</Button>
       {step < 5 && (
         <Button
           size="sm"
@@ -579,8 +585,6 @@ export function ImportPage() {
       )}
     </>
   )
-
-  const current = STEPS[step - 1]
 
   if (targets.isPending) {
     return (
@@ -626,7 +630,7 @@ export function ImportPage() {
                     title={`第 ${index + 1} 步：${item.label}`}
                     onClick={() => runNode(index)}
                   >
-                    <span className="erp-import-node-mark"><Icon size={16} /></span>
+                    <span className="erp-import-node-mark"><Icon size={18} /></span>
                     <span className="erp-import-node-label">{item.label}</span>
                   </button>
                 </li>
@@ -652,29 +656,29 @@ export function ImportPage() {
           )}
 
           <section className="erp-import-step">
-            {/* 步骤标题与「上一步/下一步」同一行：按钮紧挨它要推进的那一步，比挂在卡片顶部更好读 */}
+            {/* 步骤头一行：第 1 步左侧是模块搜索框（紧贴它要过滤的清单上方），右侧是「上一步 / 下一步」。
+                不写「第 N 步：…」标题——当前在哪一步由顶部进度条的选中节点承担，同一句话写两遍只是占地方。 */}
             <div className="erp-import-step-head">
-              <span className="erp-import-step-title">{current.title}</span>
+              {step === 1 && (
+                <div className="erp-import-search">
+                  <ErpSearchBox
+                    value={keyword}
+                    onChange={setKeyword}
+                    placeholder="搜索模块号 / 模块名 / 主表"
+                    ariaLabel="搜索目标模块"
+                  />
+                  {keyword.trim().length > 0 && (
+                    <span className="erp-import-hint">
+                      匹配 {filteredTargets.length} / 共 {targets.data?.length ?? 0} 个模块
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="erp-import-step-actions">{navigation}</div>
             </div>
             <div className="erp-import-step-body">
               {step === 1 && (
                 <>
-                  {/* 搜索框紧贴它要过滤的清单上方（不挂到卡片顶部的命令栏——那里离内容太远，
-                      和「上一步/下一步」挤在一起也说不清是谁的）。模块共 260 个左右，靠翻找太慢。 */}
-                  <div className="erp-import-search">
-                    <ErpSearchBox
-                      value={keyword}
-                      onChange={setKeyword}
-                      placeholder="搜索模块号 / 模块名 / 主表"
-                      ariaLabel="搜索目标模块"
-                    />
-                    {keyword.trim().length > 0 && (
-                      <span className="erp-import-hint">
-                        匹配 {filteredTargets.length} / 共 {targets.data?.length ?? 0} 个模块
-                      </span>
-                    )}
-                  </div>
                   <div className="erp-import-scroll">
                     <ErpTable
                       columns={targetColumns}
