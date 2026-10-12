@@ -564,7 +564,7 @@ export function ReportAdminPage() {
           <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void reports.refetch()}>刷新</Button>
           <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} onClick={() => setReportEditor({ mode: 'new' })}>新增报表</Button>
         </div>}
-        header={reports.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {rows.length} 个报表{keyword.trim() ? `，筛选后 ${filteredRows.length} 个` : ''}；点击行选中报表，下方显示其排序/分组方案。</div> : undefined}
+        header={reports.data ? <div className="erp-list-header">共 {rows.length} 个报表{keyword.trim() ? `，筛选后 ${filteredRows.length} 个` : ''}；点击行选中报表，下方显示其排序/分组方案。</div> : undefined}
       >
         <div className="erp-master-table-region">
           {reports.isPending ? <LoadingState label="正在加载报表…" /> : reports.isError ? (
@@ -586,7 +586,7 @@ export function ReportAdminPage() {
         </div>
       </ErpListCard>
       <section className="card erp-detail-card">
-        <div className="card-header erp-detail-toolbar d-flex align-items-center gap-2">
+        <div className="card-header erp-card-toolbar">
           <span className="small fw-semibold">{selectedReport ? `排序/分组方案（REPORT_SORT）——报表：${selectedReport}` : '排序/分组方案（REPORT_SORT）'}</span>
           <div className="ms-auto">
             <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} disabled={!selectedReport} onClick={() => setSortEditor({ mode: 'new' })}>新增方案</Button>

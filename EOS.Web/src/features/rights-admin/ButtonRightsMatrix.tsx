@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
+import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -213,8 +214,9 @@ export function ButtonRightsMatrix({ open, mode, targetId, title, onClose, onSav
   if (variant === 'page') {
     return (
       <div className="erp-full-list-page">
-        <section className="card erp-list-card">
-          <section className="erp-list-command-bar" aria-label="按钮授权工具栏">
+        <ErpListCard
+          ariaLabel="按钮授权工具栏"
+          search={(
             <div className="erp-nav-search erp-menu-search">
               <IconSearch size={16} aria-hidden="true" />
               <input
@@ -228,15 +230,18 @@ export function ButtonRightsMatrix({ open, mode, targetId, title, onClose, onSav
                 <button type="button" className="erp-nav-search-clear" aria-label="清除搜索" onClick={() => setSearch('')}>×</button>
               )}
             </div>
-            <div className="erp-list-actions d-flex gap-2 align-items-center">
+          )}
+          actions={(
+            <>
               <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={onClose}>
                 {mode === 'user' ? '返回用户列表' : '返回用户组'}
               </Button>
               <Button size="sm" variant="primary" onClick={() => void save()} loading={saving}>保存</Button>
-            </div>
-          </section>
+            </>
+          )}
+        >
           <div className="erp-report-matrix-body p-2">{matrixBody}</div>
-        </section>
+        </ErpListCard>
       </div>
     )
   }

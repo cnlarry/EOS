@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
+import { ErpListCard } from '../../components/common/ErpListCard'
 import { Button } from '../../components/ui/Button'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { useTabDirty } from '../../components/layout/workspaceDirty'
@@ -154,17 +155,21 @@ export function FieldEditorRoute() {
 
   return (
     <div className="erp-field-editor-page d-flex flex-column">
-      <section className="card erp-list-card">
-        <section className="erp-list-command-bar" aria-label="字段设置工具栏">
+      <ErpListCard
+        ariaLabel="字段设置工具栏"
+        search={(
           <span className="fw-semibold small font-monospace">
             {isNew ? (copyFrom ? `复制字段：${copyFrom}` : `新增字段（${tableDescription || tableId}）`) : `${tableId}.${fieldId}`}
           </span>
-          <div className="erp-list-actions d-flex gap-2 align-items-center">
+        )}
+        actions={(
+          <>
             <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={() => navigate(backTo)}>返回</Button>
             <Button size="sm" variant="secondary" icon={<IconX size={16} />} onClick={() => navigate(backTo)}>取消</Button>
             <Button size="sm" variant="primary" icon={<IconDeviceFloppy size={16} />} loading={saveState.saving} disabled={!saveState.canSave} onClick={() => actionRef.current?.save()}>保存</Button>
-          </div>
-        </section>
+          </>
+        )}
+      >
           <div className="card-body p-0">
             <div className="row g-0">
               <div className="col-auto border-end d-flex flex-column erp-field-nav">
@@ -204,7 +209,7 @@ export function FieldEditorRoute() {
               </div>
             </div>
           </div>
-      </section>
+      </ErpListCard>
     </div>
   )
 }

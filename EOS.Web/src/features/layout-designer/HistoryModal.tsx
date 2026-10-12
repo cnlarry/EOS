@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import type { LayoutVersionInfo } from './types'
 
@@ -27,16 +28,13 @@ export function HistoryModal({ moduleId, isCustom, canDesign, onClose }: History
   })
 
   return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-      style={{ background: 'rgba(0,0,0,0.4)', zIndex: 1000 }}
-      onClick={onClose}
+    <Modal
+      title="版本历史"
+      onClose={onClose}
+      dialogStyle={{ width: 520 }}
+      scrollable
+      footer={<Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>}
     >
-      <div className="card shadow" style={{ width: 520, maxHeight: '75vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="card-header d-flex align-items-center justify-content-between">
-          <strong>版本历史</strong>
-          <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
-        </div>
-        <div className="card-body overflow-auto">
           {!isCustom ? (
             <div className="text-secondary small">
               当前使用内置版式，尚无定制历史。保存首次自定义后，每次保存都会生成一个版本，可随时回滚。
@@ -67,11 +65,6 @@ export function HistoryModal({ moduleId, isCustom, canDesign, onClose }: History
               )}
             </div>
           )}
-        </div>
-        <div className="card-footer d-flex justify-content-end">
-          <Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

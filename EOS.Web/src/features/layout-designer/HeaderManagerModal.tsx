@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import type { LayoutHeaderOption } from './types'
 
@@ -54,16 +55,13 @@ export function HeaderManagerModal({
   })
 
   return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-      style={{ background: 'rgba(0,0,0,0.4)', zIndex: 1000 }}
-      onClick={onClose}
+    <Modal
+      title="页头字典（HEADER_ID 引用）"
+      onClose={onClose}
+      dialogStyle={{ width: 620 }}
+      scrollable
+      footer={<Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>}
     >
-      <div className="card shadow" style={{ width: 620, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="card-header d-flex align-items-center justify-content-between">
-          <strong>页头字典（HEADER_ID 引用）</strong>
-          <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
-        </div>
-        <div className="card-body overflow-auto">
           <div className="mb-3">
             <div className="text-secondary small mb-1">本版式使用的页头（打印时按 CLIENT → SYSQR → REPORT 链解析）</div>
             <div className="d-flex gap-2">
@@ -142,11 +140,6 @@ export function HeaderManagerModal({
               )}
             </div>
           ))}
-        </div>
-        <div className="card-footer d-flex justify-content-end">
-          <Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

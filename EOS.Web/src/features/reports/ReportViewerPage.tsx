@@ -375,7 +375,7 @@ export function ReportViewerPage({
 
       {hasPrintPermission && printOpen && (
         <section className="card erp-report-print-panel">
-          <div className="card-header py-2 d-flex align-items-center gap-2">
+          <div className="card-header erp-card-toolbar">
             <span className="fw-semibold small">打印设置</span>
             <span className="text-secondary small">页头/表尾可随时更换，选择后即时预览</span>
           </div>
@@ -484,7 +484,7 @@ export function ReportViewerPage({
 
       {def.conditions.length > 0 && (
         <section className="card erp-report-conditions">
-          <div className="card-header d-flex align-items-center gap-2">
+          <div className="card-header erp-card-toolbar">
             <span className="fw-semibold small">查询条件</span>
             <span className="text-secondary small">{def.conditions.length} 项</span>
             <div className="ms-auto d-flex align-items-center gap-2">

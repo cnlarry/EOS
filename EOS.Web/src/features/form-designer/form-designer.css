@@ -3,13 +3,8 @@
    改版式走右键精修，画布得以横向铺满。
    页边距不在这里给：工作区容器已提供 10px（.erp-tab-panel 上下 + .container-fluid 左右）。 */
 
-.erp-designer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  height: 100%;
-}
+/* 页根骨架（占满内容区 / 竖排 / 区块间距）统一声明在 app.css 的「页面骨架」段，
+   本文件只管设计器自己的零件 */
 
 .erp-designer-loading,
 .erp-designer-error {

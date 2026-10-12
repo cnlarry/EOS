@@ -311,7 +311,7 @@ export function AdminSessionsPage() {
           ))}
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void sessions.refetch()}>刷新</Button>
         </>}
-        header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+        header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">会话管理</h2>
           <span className="text-secondary small">共 {total} 个{view === 'archived' ? '已归档' : view === 'active' ? '在列' : ''}会话</span>
           {selectedRows.length > 0 && (

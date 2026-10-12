@@ -531,7 +531,7 @@ export function ModelAdminPage() {
                 <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />}
                   onClick={refresh}>刷新</Button>
               </>}
-              header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+              header={<div className="card-header erp-card-toolbar">
                 <h2 className="card-title mb-0">模型管理</h2>
                 {/* 两个用途各说一句：它们坏掉的表现完全不同（"助手不回话"对"问制度没答案"），
                     合成一句"模型未配置"会让人去查错方向。
@@ -579,7 +579,7 @@ export function ModelAdminPage() {
             {/* 子表：所选供应商的模型。用途用一个小切换器分开，而不是并成一张表——
                 两个用途的列根本不一样（嵌入看维度、对话看窗口与输出） */}
             <section className="card erp-detail-card">
-              <div className="card-header erp-detail-toolbar d-flex align-items-center gap-2 flex-wrap">
+              <div className="card-header erp-card-toolbar">
                 <span className="small fw-semibold">
                   {selectedProvider ? `${selectedProvider.displayName} 的模型` : '模型'}
                 </span>
@@ -693,7 +693,7 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
           <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />}
             onClick={onRefresh}>刷新</Button>
         </>}
-        header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+        header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">用量</h2>
           <span className="text-secondary small">
             按模型（近 {usage.data?.days ?? days} 天）
@@ -721,7 +721,7 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
       </ErpListCard>
 
       <section className="card erp-detail-card">
-        <div className="card-header erp-detail-toolbar d-flex align-items-center gap-2">
+        <div className="card-header erp-card-toolbar">
           <span className="small fw-semibold">按天（近 {usage.data?.days ?? days} 天）</span>
         </div>
         {usage.isPending ? <LoadingState label="正在汇总用量…" /> : trend.length === 0 ? (

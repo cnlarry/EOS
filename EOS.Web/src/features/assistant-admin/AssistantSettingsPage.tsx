@@ -148,7 +148,7 @@ export function AssistantSettingsPage() {
           </Button>
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={refresh}>刷新</Button>
         </>}
-        header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+        header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">助手设置</h2>
           <span className="text-secondary small">
             共 {items.length} 项，其中 <strong>{overridden}</strong> 项被改过；其余用默认值

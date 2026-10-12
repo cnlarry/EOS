@@ -2,6 +2,7 @@ import { IconArrowLeft, IconChevronRight, IconCopy, IconFolder, IconSearch, Icon
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { LoadingState } from '../../components/common/AsyncState'
+import { ErpListCard } from '../../components/common/ErpListCard'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
@@ -485,17 +486,19 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
   if (variant === 'page') {
     return (
       <div className="erp-menu-admin">
-        <section className="card erp-list-card">
-          <section className="erp-list-command-bar" aria-label="权限矩阵工具栏">
-            <span className="fw-semibold small">{headerTitle}</span>
-            <div className="erp-list-actions d-flex gap-2 align-items-center flex-wrap">
+        <ErpListCard
+          ariaLabel="权限矩阵工具栏"
+          search={<span className="fw-semibold small">{headerTitle}</span>}
+          actions={(
+            <>
               <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={onClose}>
                 {mode === 'user' ? '返回用户列表' : '返回用户组'}
               </Button>
               {matrixActions}
               <Button variant="primary" size="sm" onClick={() => void save()} loading={saving}>保存</Button>
-            </div>
-          </section>
+            </>
+          )}
+        >
           <div className="card-body p-0">
             <div className="row g-0">
               <div className="col-lg-5 border-end erp-menu-tree erp-rights-tree">
@@ -537,7 +540,7 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
               </div>
             </div>
           </div>
-        </section>
+        </ErpListCard>
         {fieldPickerOverlay}
         {copySourcePicker}
       </div>

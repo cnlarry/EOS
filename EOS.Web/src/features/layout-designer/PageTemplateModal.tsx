@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import type { LayoutDocument, LayoutElement, LayoutSection } from './types'
 
 type TemplateKey = 'first' | 'continuation' | 'last'
@@ -53,16 +54,18 @@ export function PageTemplateModal({ doc, onApply, onClose }: PageTemplateModalPr
   const elements = section().elements
 
   return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-      style={{ background: 'rgba(0,0,0,0.4)', zIndex: 1000 }}
-      onClick={onClose}
+    <Modal
+      title="页模板（多页版式：第一页 / 续页 / 末页）"
+      onClose={onClose}
+      dialogStyle={{ width: 720 }}
+      scrollable
+      footer={(
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose}>取消</Button>
+          <Button size="sm" onClick={() => { onApply(templates); onClose() }}>保存页模板</Button>
+        </>
+      )}
     >
-      <div className="card shadow" style={{ width: 720, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="card-header d-flex align-items-center justify-content-between">
-          <strong>页模板（多页版式：第一页 / 续页 / 末页）</strong>
-          <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
-        </div>
-        <div className="card-body overflow-auto">
           <div className="d-flex gap-2 mb-2">
             {(['first', 'continuation', 'last'] as const).map((key) => (
               <button
@@ -162,12 +165,6 @@ export function PageTemplateModal({ doc, onApply, onClose }: PageTemplateModalPr
               ))}
             </div>
           )}
-        </div>
-        <div className="card-footer d-flex justify-content-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>取消</Button>
-          <Button size="sm" onClick={() => { onApply(templates); onClose() }}>保存页模板</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

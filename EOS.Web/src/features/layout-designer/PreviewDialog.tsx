@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import type { PreviewSettings } from './types'
 
 interface PreviewDialogProps {
@@ -38,16 +39,18 @@ export function PreviewDialog({ title, onConfirm, onClose }: PreviewDialogProps)
   }
 
   return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-      style={{ background: 'rgba(0,0,0,0.4)', zIndex: 1000 }}
-      onClick={onClose}
+    <Modal
+      title={`预览 ${title}`}
+      onClose={onClose}
+      dialogStyle={{ width: 460 }}
+      footer={(
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose}>取消</Button>
+          <Button size="sm" disabled={source === 'real' && !key.trim()} onClick={confirm}>生成预览</Button>
+        </>
+      )}
     >
-      <div className="card shadow" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
-        <div className="card-header d-flex align-items-center justify-content-between">
-          <strong>预览 {title}</strong>
-          <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
-        </div>
-        <div className="card-body d-flex flex-column gap-3">
+      <div className="d-flex flex-column gap-3">
           <div>
             <div className="text-secondary small mb-1">数据来源</div>
             <div className="d-flex gap-3">
@@ -79,12 +82,7 @@ export function PreviewDialog({ title, onConfirm, onClose }: PreviewDialogProps)
                 onChange={(e) => setKey(e.target.value)} placeholder="输入真实单据的单号" />
             </label>
           )}
-        </div>
-        <div className="card-footer d-flex justify-content-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>取消</Button>
-          <Button size="sm" disabled={source === 'real' && !key.trim()} onClick={confirm}>生成预览</Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }

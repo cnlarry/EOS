@@ -1,11 +1,11 @@
 /* 画布元素：默认虚线框，hover 磁吸高亮（浅色虚线强调，未选中），点击左键即选中 */
 .canvas-element {
-  outline: 1px dashed rgba(0, 0, 0, 0.25);
+  outline: 1px dashed color-mix(in srgb, var(--tblr-body-color) 25%, transparent);
 }
 
 .canvas-element:hover {
   outline: 2px dashed var(--tblr-primary, #206bc4);
-  box-shadow: 0 0 0 1px rgba(32, 107, 196, 0.18);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 18%, transparent);
 }
 
 .canvas-element[data-selected='true'] {

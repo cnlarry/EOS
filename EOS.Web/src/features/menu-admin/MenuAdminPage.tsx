@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar } from '../../components/common/ErpCommandBar'
+import { ErpListCard } from '../../components/common/ErpListCard'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpTable } from '../../components/common/ErpTable'
@@ -1064,10 +1065,11 @@ export function MenuAdminPage() {
 
   return (
     <div className="erp-menu-admin">
-      <div className="card">
-        <div className="card-header d-flex align-items-center gap-2">
-          <strong>{selected ? `已选择：${selected.M_DESC}（ID：${selected.M_IDX}）` : '已选择：—'}</strong>
-          <div className="ms-auto d-flex gap-2">
+      <ErpListCard
+        ariaLabel="菜单管理工具栏"
+        search={<strong>{selected ? `已选择：${selected.M_DESC}（ID：${selected.M_IDX}）` : '已选择：—'}</strong>}
+        actions={(
+          <>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewRoot}>新增根节点</Button>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewChild}>新增子节点</Button>
             {/* 发布快照只属于统一工作台模块：其余形态没有快照可看，按钮不出现 */}
@@ -1075,8 +1077,9 @@ export function MenuAdminPage() {
               <Button size="sm" icon={<IconHistory size={16} />} title="查看该模块的历史发布版本" disabled={selectedId == null} onClick={() => setVersionsOpen(true)}>版本历史</Button>
             )}
             <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void modules.refetch()}>刷新</Button>
-          </div>
-        </div>
+          </>
+        )}
+      >
         <div className="card-body p-0">
           <div className="row g-0">
             <div className="col-lg-5 border-end erp-menu-tree">
@@ -1374,7 +1377,7 @@ export function MenuAdminPage() {
             </div>
           </div>
         </div>
-      </div>
+      </ErpListCard>
       <UnifiedChooser
         open={tableChooser !== null}
         title={tableChooser === 'master' ? '选择操作主表' : '选择操作副表'}

@@ -192,7 +192,7 @@ export function GroupMembersPage() {
           <Button size="sm" variant="primary" icon={<IconUsers size={16} />} onClick={() => saveMembers.mutate(draftMembers.map((member) => member.userId))} loading={saveMembers.isPending} disabled={!dirty}>保存</Button>
         </div>}
         header={(
-          <div className="erp-list-header text-secondary small px-3 pt-2">
+          <div className="erp-list-header">
             当前成员 {draftMembers.length} 人{dirty ? `（含 ${draftMembers.length} 人未保存变更，点「保存」按组全量替换生效）` : ''}；添加成员通过选择器按用户搜索。
           </div>
         )}

@@ -1169,7 +1169,7 @@ describe('FormEditorPage', () => {
     const masterButton = await screen.findByRole('button', { name: '归位到库位' })
     const detailButton = screen.getByRole('button', { name: '生成调整单' })
     // 明细级落在子表标题栏；单据级落在主表工具条（帮助之后）
-    expect(container.querySelector('.erp-detail-toolbar')?.contains(detailButton)).toBe(true)
+    expect(container.querySelector('.erp-card-toolbar')?.contains(detailButton)).toBe(true)
     expect(container.querySelector('.erp-form-toolbar')?.contains(masterButton)).toBe(true)
     expect(masterButton.compareDocumentPosition(detailButton)).toBeTruthy()
   })

@@ -289,7 +289,7 @@ export function UserAdminPage() {
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => { itemsRef.current = []; setItems([]); setPage(1); void users.refetch() }}>刷新</Button>
           <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setNewUserOpen(true)}>新增用户</Button>
         </div>}
-        header={users.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {total} 个账号；向下滚动自动加载更多；「新增用户」为员工开户（选择器选员工）；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
+        header={users.data ? <div className="erp-list-header">共 {total} 个账号；向下滚动自动加载更多；「新增用户」为员工开户（选择器选员工）；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
       >
         {users.isPending && page === 1 ? <LoadingState label="正在加载用户…" /> : users.isError ? <ErrorState message={errorMessage} onRetry={() => void users.refetch()} /> : (
           <ErpTable

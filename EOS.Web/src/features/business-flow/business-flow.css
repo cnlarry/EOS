@@ -1,5 +1,23 @@
 /* 业务流程图（/admin/business-flow）：dagre 分层布局 + React Flow 画布 */
 
+/* 本页色板：图形用色集中在此声明一次。
+   语义色直接引用 --tblr-*（主题变更随之生效）；其余中性灰与域色是本页专用档位
+   （与参考图形的取色一致），原先是散在十几条规则里的裸色值 */
+:root {
+  --erp-flow-ink: #1f2937;
+  --erp-flow-ink-muted: #5b6b7d;
+  --erp-flow-ink-soft: #6b7280;
+  --erp-flow-ink-faint: #9aa4b2;
+  --erp-flow-line-weak: #cbd5e1;
+  --erp-flow-border: #d3dbe3;
+  --erp-flow-border-soft: #dbe3ec;
+  --erp-flow-surface-soft: #eef2f7;
+  --erp-flow-surface-faint: #fafbfc;
+  --erp-flow-domain-accent: #4299e1;
+  --erp-flow-domain-wash: #f2f8ff;
+  --erp-flow-tertiary: #0b7285;
+}
+
 .erp-flow-canvas {
   /* React Flow 要求容器有确定高度，否则不渲染（"容器需要宽高"）。 */
   height: calc(100vh - 216px);
@@ -51,7 +69,7 @@
   display: flex;
   gap: 14px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--erp-flow-ink-soft);
 }
 
 .erp-flow-legend-item {
@@ -63,11 +81,11 @@
 .erp-flow-legend-line {
   display: inline-block;
   width: 22px;
-  border-top: 2px solid #206bc4;
+  border-top: 2px solid var(--tblr-primary);
 }
 
 .erp-flow-legend-line--external {
-  border-top: 2px dashed #adb5bd;
+  border-top: 2px dashed var(--tblr-gray-400);
 }
 
 /* 总览图：线色表示上游域，用一小段渐变示意"这里是一组不同颜色" */
@@ -75,16 +93,16 @@
   height: 3px;
   border: 0;
   border-radius: 2px;
-  background: linear-gradient(90deg, #206bc4, #d63939, #f76707, #2fb344, #ae3ec9);
+  background: linear-gradient(90deg, var(--tblr-primary), var(--tblr-danger), var(--tblr-warning), var(--tblr-success), var(--tblr-purple));
 }
 
 .erp-flow-legend-line--weak {
-  border-top-color: #cbd5e1;
+  border-top-color: var(--erp-flow-line-weak);
 }
 
 /* 已登记单据关系：深青粗实线，与域内流程的蓝、跨域引用的灰虚线都拉得开 */
 .erp-flow-legend-line--registered {
-  border-top: 3px solid #0b7285;
+  border-top: 3px solid var(--erp-flow-tertiary);
 }
 
 /* 尺寸由 flowGraph.ts 的 nodeSize() 按行数算出并传给 React Flow（内边距 8、行高 16、
@@ -100,9 +118,9 @@
   height: 100%;
   padding: 8px 12px;
   position: relative;
-  border: 1px solid #d3dbe3;
+  border: 1px solid var(--erp-flow-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--tblr-bg-surface);
   box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
   font-size: 12px;
   /* 固定 px 行高（标题 12px、表代码与补充信息 11px 共用此行高）：行高是那套算式的基准 */
@@ -112,7 +130,7 @@
 
 .erp-flow-node-title {
   overflow: hidden;
-  color: #1f2937;
+  color: var(--erp-flow-ink);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -120,7 +138,7 @@
 
 .erp-flow-node-code {
   overflow: hidden;
-  color: #6b7280;
+  color: var(--erp-flow-ink-soft);
   font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   text-overflow: ellipsis;
@@ -129,7 +147,7 @@
 
 .erp-flow-node-meta {
   overflow: hidden;
-  color: #9aa4b2;
+  color: var(--erp-flow-ink-faint);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -140,21 +158,21 @@
   top: -8px;
   right: -4px;
   padding: 1px 6px;
-  border: 1px solid #dbe3ec;
+  border: 1px solid var(--erp-flow-border-soft);
   border-radius: 8px;
-  background: #eef2f7;
-  color: #5b6b7d;
+  background: var(--erp-flow-surface-soft);
+  color: var(--erp-flow-ink-muted);
   font-size: 10px;
 }
 
 .erp-flow-node--domain {
-  border-color: #4299e1;
-  background: linear-gradient(180deg, #f2f8ff 0%, #fff 100%);
+  border-color: var(--erp-flow-domain-accent);
+  background: linear-gradient(180deg, var(--erp-flow-domain-wash) 0%, var(--tblr-bg-surface) 100%);
 }
 
 .erp-flow-node--table-external {
   border-style: dashed;
-  background: #fafbfc;
+  background: var(--erp-flow-surface-faint);
   opacity: 0.85;
 }
 
@@ -162,8 +180,8 @@
 .erp-flow-handle {
   width: 7px;
   height: 7px;
-  border: 1px solid #fff;
-  background: #9aa4b2;
+  border: 1px solid var(--tblr-bg-surface);
+  background: var(--erp-flow-ink-faint);
 }
 
 /* 单域聚焦：与当前聚焦节点无关的节点/连线淡出。 */
@@ -194,7 +212,7 @@
 
 /* 选中的连线：加一圈浅色描边把它从同色邻居里挑出来（点它才会开右侧细节） */
 .react-flow__edge.erp-flow-edge-selected .react-flow__edge-path {
-  filter: drop-shadow(0 0 3px rgb(32 107 196 / 55%));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--tblr-primary) 55%, transparent));
 }
 
 /* 连线细节面板：回答"这两张表为什么有一条线"——登记键列与取值来源字段 */
@@ -218,7 +236,7 @@
 }
 
 .erp-flow-detail-title {
-  color: #1f2937;
+  color: var(--erp-flow-ink);
   font-weight: 600;
   line-height: 1.4;
   word-break: break-all;
@@ -226,7 +244,7 @@
 
 .erp-flow-detail-arrow {
   padding: 0 6px;
-  color: #9aa4b2;
+  color: var(--erp-flow-ink-faint);
 }
 
 .erp-flow-detail-section + .erp-flow-detail-section {
@@ -237,19 +255,19 @@
 
 .erp-flow-detail-label {
   margin-bottom: 6px;
-  color: #5b6b7d;
+  color: var(--erp-flow-ink-muted);
   font-weight: 600;
 }
 
 .erp-flow-detail-note {
   margin: 0 0 6px;
-  color: #9aa4b2;
+  color: var(--erp-flow-ink-faint);
 }
 
 .erp-flow-detail-list {
   margin: 0;
   padding-left: 16px;
-  color: #1f2937;
+  color: var(--erp-flow-ink);
 }
 
 .erp-flow-detail-list li {
@@ -257,6 +275,6 @@
 }
 
 .erp-flow-detail-list code {
-  color: #0b7285;
+  color: var(--erp-flow-tertiary);
   word-break: break-all;
 }

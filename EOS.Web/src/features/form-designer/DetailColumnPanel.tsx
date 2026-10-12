@@ -39,7 +39,7 @@ export default function DetailColumnPanel({
   const columns = rows.filter(row => !row.hidden)
   return (
     <section className="card erp-detail-card erp-designer-detail">
-      <div className="card-header erp-detail-toolbar">
+      <div className="card-header erp-card-toolbar">
         <div className="d-flex gap-2 w-100 align-items-center">
           <span className="fw-semibold small">明细列（{table}）</span>
           <button

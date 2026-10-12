@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import type { LayoutTemplateInfo } from './types'
 
@@ -17,16 +18,13 @@ export function TemplateModal({ currentModuleId, canDesign, onApply, onClose }: 
   })
 
   return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-      style={{ background: 'rgba(0,0,0,0.4)', zIndex: 1000 }}
-      onClick={onClose}
+    <Modal
+      title="模板库"
+      onClose={onClose}
+      dialogStyle={{ width: 620 }}
+      scrollable
+      footer={<Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>}
     >
-      <div className="card shadow" style={{ width: 620, maxHeight: '75vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="card-header d-flex align-items-center justify-content-between">
-          <strong>模板库</strong>
-          <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
-        </div>
-        <div className="card-body overflow-auto">
           <div className="text-secondary small mb-2">
             从内置版式模板开始（覆盖当前画布，保存后按当前单据类型定制；当前单据类型版本式会丢失未保存改动）。
           </div>
@@ -51,11 +49,6 @@ export function TemplateModal({ currentModuleId, canDesign, onApply, onClose }: 
                 </div>
               ))}
           </div>
-        </div>
-        <div className="card-footer d-flex justify-content-end">
-          <Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

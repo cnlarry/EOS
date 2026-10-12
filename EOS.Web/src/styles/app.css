@@ -390,9 +390,83 @@ button, input, select { font: inherit; }
 .erp-filter-op { flex: 0 0 80px !important; }
 .erp-filter-row-issues { display: flex; flex-direction: column; gap: 2px; padding-left: 2px; font-size: 12px; }
 .erp-menu-form { overflow-y: auto; }
+/* ==========================================================================
+   页面骨架（**唯一事实源**）：三件事——页根、卡片、卡内表格区。
+
+   1) 页根：占满内容区 + 竖排 + 区块间距 10px + 最低高度 0、默认不出页面级滚动条。
+      原先每个页面各抄一份，同一个骨架长出多种写法：间距有 `var(--erp-block-gap)` 与裸
+      `10px`，最低高度有 `0` 与 `320px`，`overflow` 有有无。
+   2) 卡片：满屏表格页的卡片要撑满，并把滚动权下放给表格区。
+   3) 表格区：表格自己滚（表头吸顶），`table-responsive` 让位。
+
+   共同部分只在这里写一次；**各页只声明与标准不同的地方**（最低高度、是否裁溢出、
+   grid 形态、固定高度、媒体查询下的退让等）。差异项写在本文件各自区块里，
+   都在本段之后，同特异性下后出现者生效，故能覆盖这里的声明。
+   ========================================================================== */
+.erp-menu-admin,
+.erp-config-workbench,
+.erp-full-list-page,
+.erp-import-page,
+.erp-search-center-page,
+.erp-field-editor-page,
+.erp-catalog-page,
+.erp-report-page,
+.erp-report-inbox-page,
+.erp-workbench-page,
+.erp-form-page,
+.erp-dashboard,
+.erp-assistant-page,
+.erp-designer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--erp-block-gap);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* 满屏表格页的卡片：撑满页根并把滚动交给内部。固定高度的卡片（工作台子表、
+   模型管理的分区卡）不在此列，各自声明 */
+.erp-full-list-page > .erp-list-card,
+.erp-report-page > .erp-list-card,
+.erp-field-editor-page > .erp-list-card,
+.erp-workbench-page > .erp-list-card,
+.erp-dashboard-pane .erp-list-card,
+.erp-dashboard-started > .erp-list-card,
+.erp-catalog-card,
+.erp-import-page > .erp-list-card,
+.erp-form-page > .erp-form-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* 上面这些卡片里的表格区：页内唯一滚动容器（表头吸顶随之滚动） */
+.erp-full-list-page .erp-list-card .erp-table-shell,
+.erp-report-page > .erp-list-card .erp-table-shell,
+.erp-dashboard-pane .erp-list-card .erp-table-shell,
+.erp-dashboard-started > .erp-list-card .erp-table-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.erp-full-list-page .erp-list-card .table-responsive,
+.erp-report-page > .erp-list-card .table-responsive,
+.erp-dashboard-pane .erp-list-card .table-responsive,
+.erp-dashboard-started > .erp-list-card .table-responsive {
+  overflow: visible;
+}
+.erp-full-list-page .erp-data-table thead th,
+.erp-report-page .erp-data-table thead th,
+.erp-dashboard-pane .erp-data-table thead th,
+.erp-dashboard-started .erp-data-table thead th,
+.erp-workbench-page .erp-data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
 /* 菜单管理：页面随内容区高度自适应（工作台同款思路：根节点/卡片填满、树与表单内部滚动），
-   消除内容不满视口时底部留白大于其它边的问题 */
-.erp-menu-admin { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }
+   消除内容不满视口时底部留白大于其它边的问题——页根那两条已由上面的骨架给 */
 .erp-menu-admin > .card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .erp-menu-admin > .card > .card-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .erp-menu-admin .card-body > .row { flex: 1 1 auto; min-height: 0; }
@@ -408,21 +482,19 @@ button, input, select { font: inherit; }
   .erp-menu-admin .col-lg-5.erp-menu-tree { display: flex; flex-direction: column; min-height: 0; max-height: none; }
   .erp-menu-admin .col-lg-7 { display: flex; flex-direction: column; min-height: 0; }
 }
+/* 模块分组（230102）/ 自定义按钮（230103）/ 行为动作、校验规则（230104）三页共用的两栏外壳：
+   外层是页面根，白色圆角卡片与顶部命令栏都由 ErpListCard 提供（与全站列表页同一套外壳），
+   模块清单与配置区两栏走 card-body。卡片内边距取区块间距，与页面其余留白口径一致 */
+.erp-config-workbench .card-body { padding: var(--erp-block-gap); }
 /* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
    表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
-.erp-full-list-page { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+.erp-full-list-page { min-height: 320px; overflow: hidden; }
 /* 区块间距只由 CSS 一处定义（--erp-block-gap）。JSX 上一律不写间距工具类：
    Bootstrap 的 gap-* 带 !important，会把这里的 10px 静默压成 8px / 16px。
    2026-10-01 实测该问题**复发过四处**（3102 / 3105 挂 gap-3 = 16px，菜单管理 / 用户组权限矩阵
    挂 gap-2 = 8px），已全部去掉并回归 10px。**新增页面照此办理**：类名只写语义类，间距交给本文件。 */
-/* 同类页面级容器的区块间距同样收口到 10px。这几个类此前在 CSS 里没有定义，
-   间距全靠 JSX 上的 gap-2（8px），与设计口径不一致。
-   报表查看器页（.erp-report-page）已在下方「报表中心」区块完整定义，不在此列 */
-.erp-import-page,
-.erp-search-center-page,
-.erp-field-editor-page { gap: var(--erp-block-gap); }
 /* 基本资料导入（230902）：**安装向导**形态——一次只显示一步，右上角只有「上一步 / 下一步」，
    辅助动作一律走文字链接，进度条上的节点是全页唯一允许出现按钮的地方（可点回看已过的步骤）。
    进度条占满整宽且节点等距：每个 li 等分宽度，段内用 1fr auto 1fr 让左右连线各占一半；
@@ -431,8 +503,7 @@ button, input, select { font: inherit; }
    卡片高度随内容（选模块后多出来的一行摘要、一次定义请求的加载态）涨落，会连带把页面撑开再缩回，
    看上去就是"选中时抖一下"；更糟的是页面级滚动条随之出现/消失，它会吃掉约 15px 宽度，
    整页跟着横向重排。d-grid 的 display 带 !important，故这里不动 display，只给行高让卡片撑满。 */
-.erp-import-page { flex: 1 1 auto; min-height: 320px; overflow: hidden; grid-template-rows: minmax(0, 1fr); }
-.erp-import-page > .erp-list-card { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-import-page { min-height: 320px; overflow: hidden; grid-template-rows: minmax(0, 1fr); }
 /* 顶部留白比其余三边多 6px：进度条是这一页的开头，贴上边框会显得被卡片压住 */
 .erp-import-body { display: flex; flex-direction: column; gap: var(--erp-block-gap); padding: 16px var(--erp-block-gap) var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }
 .erp-import-track { display: flex; width: 100%; margin: 0; padding: 0; list-style: none; flex: 0 0 auto; }
@@ -496,10 +567,6 @@ button, input, select { font: inherit; }
 .erp-import-badge-bad { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--tblr-danger-lt); color: var(--tblr-danger); font-size: 11px; font-weight: 600; }
 .erp-import-cell-bad { color: var(--tblr-danger); font-weight: 600; text-decoration: underline dotted; text-underline-offset: 2px; }
 .erp-import-row-bad > td { background: color-mix(in srgb, var(--tblr-danger) 7%, transparent); }
-.erp-full-list-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.erp-full-list-page .erp-list-card .table-responsive { overflow: visible; }
-.erp-full-list-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
 /* 助手设置（3105）：这一页是**长表单**——设置项比一屏高，而 .erp-full-list-page 的 overflow:hidden 是
    给高密度列表页用的（滚动交给表格内部），在这里会把下方的设置项直接裁掉、页面也出不来滚动条。
    给设置项区域一个**自己的滚动位**：命令栏（保存/刷新）与页头因此固定不动，不会出现"往下滚就找不着
@@ -516,15 +583,7 @@ button, input, select { font: inherit; }
    查看器页是「参数 + 结果」的取数页：标题栏与条件区固定，结果区铺满剩余高度
    并内部滚动（与列表页同一滚动契约：表头吸顶、表格区滚动）。
    ========================================================================== */
-.erp-catalog-page {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 1 1 auto;
-  min-height: 320px;
-  overflow: hidden;
-}
-.erp-catalog-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-catalog-page { min-height: 320px; overflow: hidden; }
 .erp-catalog-head {
   flex: 0 0 auto;
   min-height: 48px;
@@ -689,11 +748,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-query-control .form-select-sm { height: 28px; }
 .erp-query-control .erp-query-range { flex: 1 1 0; min-width: 0; }
 .erp-report-page > .card { flex: 0 0 auto; }
-.erp-report-page { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 320px; overflow: hidden; }
-.erp-report-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.erp-report-page > .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.erp-report-page > .erp-list-card .table-responsive { overflow: visible; }
-.erp-report-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+.erp-report-page { min-height: 320px; overflow: hidden; }
 /* 页级错误条（导出/打印/下载失败）：内联提示，替代浏览器原生 alert */
 .erp-report-alert {
   flex: 0 0 auto;
@@ -719,7 +774,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-narrow-input { width: 72px; }
 
 /* 收件箱页：页级工具栏 + 页签面板（订阅 / 收件箱两态，不再上下堆叠两张表） */
-.erp-report-inbox-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
 .erp-inbox-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .erp-report-inbox-page .erp-tabbed-panel-body > .erp-inbox-toolbar:first-child { margin-top: -2px; }
 @media (max-width: 991.98px) {
@@ -735,8 +789,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 字段设置全页：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动。
    卡片体直接作为 grid 承载两栏（row/col 的 flex 行对内部行高度不是确定尺寸，栏会按内容
    高度撑开而不滚动）；行轨道 minmax(0,1fr) 给出确定高度，两栏 min-height:0 + 滚动条生效 */
-.erp-field-editor-page { flex: 1 1 auto; min-height: 0; }
-.erp-field-editor-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-field-editor-page > .erp-list-card > .card-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -765,12 +817,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   .erp-field-editor-page .erp-field-nav { width: 100%; max-height: 45vh; }
   .erp-field-editor-page .card-body > .row.g-0 > .col { overflow-y: visible; }
 }
-/* 未管理 / 幽灵字段弹窗：电子表格列表限高内部滚动 */
-.erp-unmanaged-table .erp-table-shell, .erp-ghost-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
-.erp-unmanaged-table .table-responsive, .erp-ghost-table .table-responsive { overflow: visible; }
-/* 新增数据表元数据的物理表选取弹窗：同样限高内部滚动 */
-.erp-physical-table-picker .erp-table-shell { max-height: 42vh; overflow-y: auto; }
-.erp-physical-table-picker .table-responsive { overflow: visible; }
 /* 系统级页签面板（TabbedPanel 设计语言）：
    内容面板带完整边框 + 系统圆角 + padding 10px；
    激活标签向下延伸 1px、用面板底色覆盖面板上边框，与面板融为一体；未激活标签仍完整显示面板上边框 */
@@ -783,8 +829,20 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-tabbed-panel-tabs .nav-item + .nav-item .nav-link { margin-left: -1px; }
 .erp-tabbed-panel-body { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background-color: var(--tblr-bg-surface); padding: 10px; }
 .erp-mobile-menu-trigger { position: fixed; top: 8px; left: 8px; z-index: 1035; }
-.erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; }
+/* 命令栏：允许换行。元素多的命令栏（配置面：标题 + 搜索框 + 复选框 + 按钮）在窄视口下
+   折到第二行，而不是把按钮挤出卡片；放得下时恒为一行 */
+.erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; flex-wrap: wrap; }
 .erp-list-command-bar .btn { flex: 0 0 auto; white-space: nowrap; }
+/* 卡片标题行（卡内工具条）：命令栏下方那一行的"标题 + 状态徽标 + 行内动作"，
+   以及内嵌卡片自己的头部。原先各处手拼 `card-header py-2 d-flex align-items-center gap-2`
+   （十几种排列组合，padding 有 py-1/py-2/px-3，间距有 gap-1/gap-2），
+   内边距、元素间距与是否折行就此一处定义，页面只写语义类 */
+/* 选择器带上 .card-header：Tabler 的卡头自身带 padding 变量，靠同级选择器会被它的
+   `padding: var(--tblr-card-cap-*)` 与卡头内建的间距口径盖掉，导致"改了类但间距没变" */
+.card-header.erp-card-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; }
+/* 列表上方的统计/说明行（"共 N 个…"）：卡头之下、表格之上的一行提示文字。
+   样式（字号 / 次要色 / 内边距）就此一处定义 */
+.erp-list-header { padding: 8px 16px 0; font-size: 12px; color: var(--tblr-secondary); }
 /* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称）；
    ErpCommandBar 按钮（.erp-command-btn）为图标+文字、工具栏纯图标触发器
    （.erp-command-icon-btn，分组/导出分割）为 28px，均豁免此强制方块尺寸 */
@@ -801,7 +859,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
 .erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
-.erp-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-left: auto; }
+/* 命令栏右侧按钮区：允许换行——按钮多的页（权限矩阵、版式设计器）在窄视口下
+   不横向溢出，放得下时仍是一行，视觉与单行时一致 */
+.erp-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-left: auto; flex-wrap: wrap; }
 .erp-list-global-search input { min-width: 0; }
 .erp-list-global-search kbd { flex: 0 0 auto; }
 .erp-list-card { overflow: visible; }
@@ -991,7 +1051,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
 .erp-detail-card { overflow: hidden; }
 .erp-detail-card .card-header { min-height: 2.8rem; }
-.erp-detail-card .card-header.erp-detail-toolbar { padding: 10px; }
 .erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 366px - var(--erp-tabbar-height) - var(--erp-workspace-gap)); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
 .erp-detail-card tfoot td { background: var(--tblr-bg-surface-secondary); }
 .erp-detail-card tfoot tr:last-child td:first-child { border-bottom-left-radius: var(--tblr-border-radius); }
@@ -1009,11 +1068,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    见字段设置页两栏同理）。卡片间隙与页边距一致（10px）。 */
 .erp-dashboard {
   --erp-dashboard-cols: repeat(3, minmax(0, 1fr));
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 1 1 auto;
-  min-height: 0;
   overflow: hidden;
 }
 .erp-dashboard > * { min-width: 0; }
@@ -1032,20 +1086,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-dashboard-pane > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
 .erp-dashboard-pane > .card { overflow: hidden; }
 /* 待批核列表：滚动权交给表格容器（吸顶表头随之滚动）；状态区放宽 18rem 定高，避免在小视口被裁 */
-.erp-dashboard-pane .erp-list-card { display: flex; flex-direction: column; overflow: hidden; }
-.erp-dashboard-pane .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.erp-dashboard-pane .erp-list-card .table-responsive { overflow: visible; }
 .erp-dashboard-pane .erp-list-card > .erp-state { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.erp-dashboard-pane .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
 /* 快捷入口：卡片标题固定，入口清单占满其余高度并内部滚动 */
 .erp-dashboard-links { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 /* 我发起的在途流程：有数据才出现的第三块，限高 260px（同子表卡上限口径）、超出在表内滚动，
    不与主区抢高度；视口不足时允许被压缩 */
 .erp-dashboard-started { flex: 0 1 auto; min-height: 0; max-height: 260px; display: flex; flex-direction: column; }
-.erp-dashboard-started > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.erp-dashboard-started > .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.erp-dashboard-started > .erp-list-card .table-responsive { overflow: visible; }
-.erp-dashboard-started .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
 @media (max-width: 991.98px) {
   /* 窄屏：两栏改为上下堆叠，固定高度会把两块压成一条，交回页面滚动；
      列表与入口清单仍限高（60vh）内部滚动，只是不再由视口高度决定 */
@@ -1169,8 +1215,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动）。
    主表卡与明细卡之间的间隙取 10px，与全站留白口径（--erp-workspace-gap、页面顶部留白、
    标签面板 padding、工具栏下边距）一致，不再用 8px */
-.erp-workbench-page { display: flex; flex-direction: column; gap: 10px; min-height: 320px; flex: 1 1 auto; overflow: hidden; }
-.erp-workbench-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-workbench-page { min-height: 320px; overflow: hidden; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; margin-bottom: 6px; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
 /* 子表卡按工作台高度 30% 分配（150~260px 区间），主表占满剩余空间 */
@@ -1181,7 +1226,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 单表模块（无子表）：列表卡占满整页，主表区域自适应视口高度，不再被子表预留高度压矮 */
 .erp-workbench-page.erp-workbench-single > .erp-list-card { flex: 1 1 auto; }
 .erp-workbench-page.erp-workbench-single > .erp-list-card .erp-master-table-region { max-height: none; }
-.erp-workbench-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
 .erp-workbench-page .erp-data-table thead th.erp-frozen-left,
 .erp-workbench-page .erp-data-table thead th.erp-frozen-right { z-index: 4; }
 .erp-login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 480px); align-items: center; gap: 8vw; padding: 8vh 10vw; background: radial-gradient(circle at 15% 20%, var(--tblr-primary-lt), transparent 35%), var(--tblr-bg-surface-secondary); }
@@ -1653,7 +1697,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 
 /* 统一表单：视口撑满（与工作台一致），主表单占剩余位置、明细固定高度，各自内部滚动。
    主表单卡与明细卡之间取 10px，与工作台、全站留白口径统一 */
-.erp-form-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.erp-form-page { overflow: hidden; }
 
 /* 弹窗打开方式（MODULES.FORM_OPEN_MODE='DIALOG'）的**背景底图**：把该模块的工作台列表渲染在
    窗体背后，弹窗才像"浮在工作台上"，而不是"先开一张空白页再弹窗"。底图由表单页渲染、
@@ -1699,7 +1743,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-dialog .table-responsive { overscroll-behavior: contain; }
 /* JSX 上曾挂着 Bootstrap 工具类 gap-2（0.5rem !important）压掉本规则的 10px，
    已改为不在 JSX 上写间距类：主表单与明细网格的间距只由本规则一处定义 */
-.erp-form-page > .erp-form-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-form-page > .erp-form-card .card-body { display: flex; flex-direction: column; min-height: 0; }
 .erp-form-page > .erp-form-card .erp-form-toolbar { flex: 0 0 auto; }
 .erp-form-page > .erp-form-card .erp-form-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -1816,12 +1859,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    就成了全系统里唯一没有页框的页面。
    **不要再加留白**：标签内容外面已有一层 `container-fluid px-3 px-lg-4` 出左右 10px、
    `.erp-tab-panel` 出上下 10px，这就是设计语言的 10px 页边距；这里再加一层会变成 20px。 */
-.erp-assistant-page {
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 .erp-assistant-page > .erp-assistant-panel {
   flex: 1 1 auto;
   min-height: 0;

@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
+import { ErpListCard } from '../../components/common/ErpListCard'
 import { Button } from '../../components/ui/Button'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { apiClient } from '../../services/api'
@@ -793,63 +794,69 @@ export function LayoutDesignerPage() {
 
   return (
     <div className="erp-full-list-page">
-      <div className="card erp-list-card">
-        <div className="d-flex flex-column h-100">
-      <div className="d-flex align-items-center gap-2 border-bottom px-3 py-2">
-        <Button variant="secondary" size="sm" onClick={() => navigate(-1)}>
-          <IconArrowLeft size={16} /> 返回
-        </Button>
-        <strong className="ms-2">{definition.data?.title ?? ''} · 版式设计器</strong>
-        {!canEdit && <span className="badge bg-danger">无设计权限</span>}
-        <div className="ms-auto d-flex align-items-center gap-2">
-          <Button variant="secondary" size="sm" disabled={history.past.length === 0} onClick={undo}>
-            <IconRotate2 size={16} /> 撤销
-          </Button>
-          <Button variant="secondary" size="sm" disabled={history.future.length === 0} onClick={redo}>
-            <IconRotateClockwise2 size={16} /> 重做
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowGrid((g) => !g)}>
-            <IconGridDots size={16} /> 网格
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowTemplates(true)} title="模板库">
-            模板
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowHistory(true)} title="版本历史"
-            disabled={!definition.data?.isCustom}>
-            历史
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowHeaderManager(true)} title="页头字典引用">
-            页头
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowPageTemplates(true)} title="多页版式模板">
-            页模板
-          </Button>
-          <select
-            className="form-select form-select-sm"
-            style={{ width: 86 }}
-            aria-label="画布缩放"
-            value={zoom}
-            onChange={(e) => setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(e.target.value))))}
-          >
-            {[1, 1.5, 2, 2.5, 3, 4, 5, 6].map((z) => (
-              <option key={z} value={z}>{Math.round(z * 100 / 3)}%</option>
-            ))}
-          </select>
-          <Button variant="secondary" size="sm" onClick={fitZoom} title="适配窗口">适配</Button>
-          <Button variant={viewMode === 'edit' ? 'primary' : 'secondary'} size="sm"
-            onClick={() => viewMode === 'edit' ? enterPreviewMode() : exitPreviewMode()}>
-            {viewMode === 'edit' ? '渲染预览' : '返回编辑'}
-          </Button>
-          <Button variant="secondary" size="sm" disabled={!canEdit}
-            onClick={() => setShowPreviewDialog(true)} title="PDF 预览（样例/真实单据）">
-            <IconCheck size={16} /> 预览
-          </Button>
-          <Button size="sm" disabled={!canEdit || saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}>
-            <IconDeviceFloppy size={16} /> {saved ? '已保存' : '保存'}
-          </Button>
-        </div>
-      </div>
+      <ErpListCard
+        ariaLabel="版式设计器工具栏"
+        search={(
+          <>
+            <Button variant="secondary" size="sm" onClick={() => navigate(-1)}>
+              <IconArrowLeft size={16} /> 返回
+            </Button>
+            <strong className="ms-2">{definition.data?.title ?? ''} · 版式设计器</strong>
+            {!canEdit && <span className="badge bg-danger">无设计权限</span>}
+          </>
+        )}
+        actions={(
+          <>
+            <Button variant="secondary" size="sm" disabled={history.past.length === 0} onClick={undo}>
+              <IconRotate2 size={16} /> 撤销
+            </Button>
+            <Button variant="secondary" size="sm" disabled={history.future.length === 0} onClick={redo}>
+              <IconRotateClockwise2 size={16} /> 重做
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowGrid((g) => !g)}>
+              <IconGridDots size={16} /> 网格
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowTemplates(true)} title="模板库">
+              模板
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowHistory(true)} title="版本历史"
+              disabled={!definition.data?.isCustom}>
+              历史
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowHeaderManager(true)} title="页头字典引用">
+              页头
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowPageTemplates(true)} title="多页版式模板">
+              页模板
+            </Button>
+            <select
+              className="form-select form-select-sm"
+              style={{ width: 86 }}
+              aria-label="画布缩放"
+              value={zoom}
+              onChange={(e) => setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(e.target.value))))}
+            >
+              {[1, 1.5, 2, 2.5, 3, 4, 5, 6].map((z) => (
+                <option key={z} value={z}>{Math.round(z * 100 / 3)}%</option>
+              ))}
+            </select>
+            <Button variant="secondary" size="sm" onClick={fitZoom} title="适配窗口">适配</Button>
+            <Button variant={viewMode === 'edit' ? 'primary' : 'secondary'} size="sm"
+              onClick={() => viewMode === 'edit' ? enterPreviewMode() : exitPreviewMode()}>
+              {viewMode === 'edit' ? '渲染预览' : '返回编辑'}
+            </Button>
+            <Button variant="secondary" size="sm" disabled={!canEdit}
+              onClick={() => setShowPreviewDialog(true)} title="PDF 预览（样例/真实单据）">
+              <IconCheck size={16} /> 预览
+            </Button>
+            <Button size="sm" disabled={!canEdit || saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}>
+              <IconDeviceFloppy size={16} /> {saved ? '已保存' : '保存'}
+            </Button>
+          </>
+        )}
+      >
+        <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
 
       {draft && (
         <div className="d-flex align-items-center gap-2 border-bottom px-3 py-1 bg-warning-subtle">
@@ -963,10 +970,10 @@ export function LayoutDesignerPage() {
               >
                 {/* 水平标尺 */}
                 <div className="position-absolute"
-                  style={{ top: -24, left: 0, right: 0, height: 22, background: '#f8f9fa', borderBottom: '1px solid #dee2e6', zIndex: 5, overflow: 'hidden' }}>
+                  style={{ top: -24, left: 0, right: 0, height: 22, background: 'var(--tblr-bg-surface-secondary)', borderBottom: '1px solid var(--tblr-border-color)', zIndex: 5, overflow: 'hidden' }}>
                   {Array.from({ length: Math.ceil(geometry.contentWidth / 5) + 1 }, (_, i) => i * 5).map((mm) => (
                     <div key={`h-${mm}`} className="position-absolute"
-                      style={{ left: geometry.marginLeftMm * zoom + mm * zoom - 0.5, top: 0, bottom: 0, width: 1, background: mm % 10 === 0 ? '#adb5bd' : '#e9ecef' }}>
+                      style={{ left: geometry.marginLeftMm * zoom + mm * zoom - 0.5, top: 0, bottom: 0, width: 1, background: mm % 10 === 0 ? 'var(--tblr-gray-400)' : 'var(--tblr-gray-200)' }}>
                       {mm % 10 === 0 && (
                         <span className="position-absolute text-secondary" style={{ top: 4, left: 2, fontSize: 8, lineHeight: 1 }}>{mm}</span>
                       )}
@@ -975,10 +982,10 @@ export function LayoutDesignerPage() {
                 </div>
                 {/* 垂直标尺 */}
                 <div className="position-absolute"
-                  style={{ top: 0, bottom: 0, left: -24, width: 22, background: '#f8f9fa', borderRight: '1px solid #dee2e6', zIndex: 5, overflow: 'hidden' }}>
+                  style={{ top: 0, bottom: 0, left: -24, width: 22, background: 'var(--tblr-bg-surface-secondary)', borderRight: '1px solid var(--tblr-border-color)', zIndex: 5, overflow: 'hidden' }}>
                   {Array.from({ length: Math.ceil(geometry.pageHeightMm / 5) + 1 }, (_, i) => i * 5).map((mm) => (
                     <div key={`v-${mm}`} className="position-absolute"
-                      style={{ top: mm * zoom - 0.5, left: 0, right: 0, height: 1, background: mm % 10 === 0 ? '#adb5bd' : '#e9ecef' }}>
+                      style={{ top: mm * zoom - 0.5, left: 0, right: 0, height: 1, background: mm % 10 === 0 ? 'var(--tblr-gray-400)' : 'var(--tblr-gray-200)' }}>
                       {mm % 10 === 0 && (
                         <span className="position-absolute text-secondary" style={{ left: 4, top: -6, fontSize: 8, lineHeight: 1 }}>{mm}</span>
                       )}
@@ -988,11 +995,11 @@ export function LayoutDesignerPage() {
                 {/* 实时对齐参考线 */}
                 {snapLines.xs.map((x, i) => (
                   <div key={`sx-${i}`} className="position-absolute"
-                    style={{ left: x, top: 0, bottom: 0, width: 1, background: '#206bc4', zIndex: 45 }} />
+                    style={{ left: x, top: 0, bottom: 0, width: 1, background: 'var(--tblr-primary)', zIndex: 45 }} />
                 ))}
                 {snapLines.ys.map((y, i) => (
                   <div key={`sy-${i}`} className="position-absolute"
-                    style={{ top: y, left: 0, right: 0, height: 1, background: '#206bc4', zIndex: 45 }} />
+                    style={{ top: y, left: 0, right: 0, height: 1, background: 'var(--tblr-primary)', zIndex: 45 }} />
                 ))}
                 {sectionSpecs.map(({ key, topMm, hMm }) => {
                 const elements = doc.sections[key].elements.filter((el) => el.visible !== false)
@@ -1279,7 +1286,7 @@ export function LayoutDesignerPage() {
           }
         />
       )}
-      </div>
+      </ErpListCard>
     </div>
   )
 }

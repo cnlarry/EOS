@@ -180,7 +180,7 @@ function StepCard({
   const set = <K extends keyof FlowStep>(key: K, value: FlowStep[K]) => onUpdate({ ...step, [key]: value })
   return (
     <div className="card mb-2">
-      <div className="card-header py-2 d-flex align-items-center gap-2">
+      <div className="card-header erp-card-toolbar">
         <span className="fw-semibold small">步骤 {index + 1}</span>
         <input
           className="form-control form-control-sm font-monospace"
@@ -432,10 +432,10 @@ export function FlowDesignPage() {
   const errorMessage = describeApiError(list.error, '加载失败，请稍后重试。')
 
   return (
-    <div className="d-flex flex-column erp-full-list-page" style={{ height: 'calc(100dvh - 96px)' }}>
+    <div className="erp-full-list-page">
       <div className="d-flex gap-2 flex-grow-1" style={{ minHeight: 0 }}>
         <div className="card d-flex flex-column" style={{ width: 460 }}>
-          <div className="card-header py-2 d-flex gap-2 align-items-center">
+          <div className="card-header erp-card-toolbar">
             <input
               className="form-control form-control-sm"
               value={keyword}
@@ -468,7 +468,7 @@ export function FlowDesignPage() {
             <div className="d-flex align-items-center justify-content-center text-secondary flex-grow-1">← 从左侧选择模块配置审批流程</div>
           ) : (
             <>
-              <div className="card-header py-2 d-flex gap-2 align-items-center">
+              <div className="card-header erp-card-toolbar">
                 <span className="fw-semibold">{selectedTitle}（{selectedModuleId}）</span>
                 <span className={`badge ${selectedConfigured ? 'text-bg-success' : 'text-bg-secondary'}`}>{selectedConfigured ? '已配置流程' : '未配置'}</span>
                 <div className="ms-auto d-flex gap-2">

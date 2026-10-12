@@ -66,7 +66,7 @@ export function BusinessActionSheet({
   const params = parseJsonObject(action.params)
   return (
     <div className="card border">
-      <div className="card-header py-2 px-3 d-flex flex-wrap align-items-center gap-2">
+      <div className="card-header erp-card-toolbar">
         <strong className="fs-6">{action.effectName?.trim() || effectText}</strong>
         <span className="badge text-bg-secondary">{eventText}</span>
         <span className="badge text-bg-light text-dark border">{effectText}</span>

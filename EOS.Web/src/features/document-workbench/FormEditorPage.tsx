@@ -537,7 +537,7 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
   return (
     <section className="card erp-detail-card">
       {showToolbar ? (
-        <div className="card-header erp-detail-toolbar">
+        <div className="card-header erp-card-toolbar">
           <div className="d-flex gap-2 w-100 align-items-center">
             {!viewing ? (
               <>

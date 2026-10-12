@@ -478,7 +478,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       </div>
     </ErpListCard>
     {definition.data.detailTable&&<section className="card erp-detail-card">
-      <div className="card-header d-flex align-items-center gap-2 py-1">
+      <div className="card-header erp-card-toolbar">
         <span className="small fw-semibold text-secondary text-nowrap">明细</span>
         {active&&masterDescribe?(<div className="small text-truncate" title={masterDescribe}>{masterDescribe}</div>):(<span className="small text-secondary text-nowrap">选择主表行查看明细</span>)}
         {details.isFetching&&<span className="small text-secondary ms-auto text-nowrap">正在加载明细…</span>}

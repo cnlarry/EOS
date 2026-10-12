@@ -45,7 +45,6 @@ param(
         'src/components/layout/AppShell.tsx|erp-nav-child-depth-*',
         'src/components/layout/AppShell.tsx|erp-nav-children-depth-*',
         'src/components/layout/WorkspaceTabBar.tsx|erp-workspace-tab',
-        'src/features/admin/ReportAdminPage.tsx|erp-list-header',
         'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory',
         'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory-form',
         'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory-item',
@@ -55,12 +54,9 @@ param(
         'src/features/menu-admin/MenuAdminPage.tsx|erp-nav-children-depth-*',
         'src/features/print/PrintViewPage.tsx|erp-pdf-frame',
         'src/features/print/PrintViewPage.tsx|erp-print-page',
-        'src/features/rights-admin/GroupAdminPages.tsx|erp-list-header',
         'src/features/rights-admin/RightsMatrix.tsx|erp-nav-child-depth-*',
         'src/features/rights-admin/RightsMatrix.tsx|erp-nav-children-depth-*',
-        'src/features/rights-admin/UserGroupAdminPage.tsx|erp-list-header',
-        'src/features/settings/SystemSettingsTabs.tsx|erp-settings-tabs',
-        'src/features/user-admin/UserAdminPage.tsx|erp-list-header'
+        'src/features/settings/SystemSettingsTabs.tsx|erp-settings-tabs'
     )
 )
 

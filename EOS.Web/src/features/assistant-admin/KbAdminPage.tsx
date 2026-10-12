@@ -151,7 +151,7 @@ export function KbAdminPage() {
           <Button size="sm" icon={<IconRefresh size={16} />}
             onClick={() => { void collections.refetch(); void documents.refetch() }}>刷新</Button>
         </>}
-        header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+        header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">知识库管理</h2>
           <span className="text-secondary small">共 {items.length} 篇文档</span>
           <span className="ms-auto text-secondary small">

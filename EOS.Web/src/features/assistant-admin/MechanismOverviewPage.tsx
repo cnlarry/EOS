@@ -82,7 +82,7 @@ export function MechanismOverviewPage() {
     <div className="erp-full-list-page">
       <ErpListCard
         ariaLabel="助手机制与工具总览"
-        header={<div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+        header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">机制与工具总览</h2>
           <span className="text-secondary small">
             共 {tools.length} 个工具、{actions.length} 个可代理动作；数据现算，不缓存

@@ -182,7 +182,7 @@ export function FlowMonitorPage() {
   const selected = detail.data?.monitor
 
   return (
-    <div className="d-flex flex-column erp-full-list-page" style={{ height: 'calc(100dvh - 96px)' }}>
+    <div className="erp-full-list-page">
       <ErpListCard
         ariaLabel="流程监控"
         search={null}

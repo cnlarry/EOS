@@ -129,7 +129,7 @@ export function UserGroupAdminPage() {
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void groups.refetch()}>刷新</Button>
           <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>
         </div>}
-        header={groups.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {groups.data.length} 个用户组{keyword.trim() ? `，筛选后 ${filtered.length} 个` : ''}；操作列提供组权限/成员/编辑/删除，双击行也可编辑。</div> : undefined}
+        header={groups.data ? <div className="erp-list-header">共 {groups.data.length} 个用户组{keyword.trim() ? `，筛选后 ${filtered.length} 个` : ''}；操作列提供组权限/成员/编辑/删除，双击行也可编辑。</div> : undefined}
       >
         {groups.isPending ? <LoadingState label="正在加载用户组…" /> : groups.isError ? <ErrorState message={errorMessage} onRetry={() => void groups.refetch()} /> : (
           <ErpTable
