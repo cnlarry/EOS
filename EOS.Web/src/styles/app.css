@@ -1234,6 +1234,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 子表卡内部：erp-table-shell 是唯一滚动容器（内容过多时出现上下滚动条），表头 sticky 跟随其滚动 */
 .erp-workbench-page > .erp-detail-card .erp-table-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
 .erp-workbench-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow: visible; border-radius: var(--tblr-border-radius); }
+/* 工作台「分组」下拉：这个类名被 JS 当作「点击到外区域就收起」的判据
+   （DocumentWorkbenchPage 的 closest('.erp-group-dropdown')），删不得——这里补上显式定义，
+   兼作下拉的定位锚点（Tabler 的 .dropdown 也给了相对定位，但不该靠第三方类兜住自家判据） */
+.erp-group-dropdown { position: relative; }
 /* 单表模块（无子表）：列表卡占满整页，主表区域自适应视口高度，不再被子表预留高度压矮 */
 .erp-workbench-page.erp-workbench-single > .erp-list-card { flex: 1 1 auto; }
 .erp-workbench-page.erp-workbench-single > .erp-list-card .erp-master-table-region { max-height: none; }
@@ -2290,7 +2294,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-config-result { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--tblr-border-color, #e6e7e9); }
 
 /* ---- 页面级选项卡（3102 模型与用量：整页分成"模型 / 用量"两个页签）----
-   与卡片内的页签（.erp-tabbed-panel 的默认形态）不同：这里的页签内容自己就是一整块工作台，
+   与卡片内的页签（.erp-tabbed-panel-tabs / -body 的默认形态）不同：这里的页签内容自己就是一整块工作台，
    所以 body 要去掉那圈"内容卡片"的边框与内边距，并且**把高度接着往下传**——
    否则工作台的 flex 链断在这一层，表格内部滚动条不会出现，反而是整页出现滚动条。 */
 .erp-page-tabs { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }

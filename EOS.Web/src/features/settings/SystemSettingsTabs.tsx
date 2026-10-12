@@ -68,7 +68,6 @@ export function SystemSettingsTabs({
               tabs={groups.map((group) => ({ key: group.groupCode, label: group.groupLabel }))}
               activeKey={active.groupCode}
               onActiveKeyChange={onSelectGroup}
-              className="erp-settings-tabs"
             >
               <div className="erp-settings-form">
                 {rows.map((row, rowIndex) => (

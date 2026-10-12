@@ -39,25 +39,10 @@ param(
     # 打印当前悬空类名清单的基线字面量（用于登记/下调基线）
     [switch] $DumpBaseline,
     # 已知悬空类名存量（键为 相对路径|类名）。只许减不许增：新增失败，清理后请下调本列表。
-    [string[]] $DanglingBaseline = @(
-        'src/components/common/ErpFieldChooser.tsx|erp-field-chooser-list',
-        'src/components/common/TabbedPanel.tsx|erp-tabbed-panel',
-        'src/components/layout/AppShell.tsx|erp-nav-child-depth-*',
-        'src/components/layout/AppShell.tsx|erp-nav-children-depth-*',
-        'src/components/layout/WorkspaceTabBar.tsx|erp-workspace-tab',
-        'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory',
-        'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory-form',
-        'src/features/assistant/AssistantMemoryPanel.tsx|erp-assistant-memory-item',
-        'src/features/document-workbench/DocumentWorkbenchPage.tsx|erp-group-dropdown',
-        'src/features/field-admin/FieldPickerSelect.tsx|erp-picker-option',
-        'src/features/menu-admin/MenuAdminPage.tsx|erp-nav-child-depth-*',
-        'src/features/menu-admin/MenuAdminPage.tsx|erp-nav-children-depth-*',
-        'src/features/print/PrintViewPage.tsx|erp-pdf-frame',
-        'src/features/print/PrintViewPage.tsx|erp-print-page',
-        'src/features/rights-admin/RightsMatrix.tsx|erp-nav-child-depth-*',
-        'src/features/rights-admin/RightsMatrix.tsx|erp-nav-children-depth-*',
-        'src/features/settings/SystemSettingsTabs.tsx|erp-settings-tabs'
-    )
+    # 2026-10-12 清空：17 处存量已逐条判定——深度类名（已被 --menu-line / --menu-cpad 取代）、
+    # 无样式的容器/装饰类名一律删除；erp-group-dropdown 被 JS 当点击外区域判据，改为补 CSS 定义。
+    # 此后本列表重新增长即视为新债。
+    [string[]] $DanglingBaseline = @()
 )
 
 $ErrorActionPreference = 'Stop'

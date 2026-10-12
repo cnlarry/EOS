@@ -1033,7 +1033,7 @@ export function MenuAdminPage() {
               </div>
               {expanded && (
                 <div
-                  className={`erp-nav-children erp-nav-children-depth-${depth + 2}`}
+                  className="erp-nav-children"
                   style={{ '--menu-line': `${lineTree(depth + 2)}px` } as React.CSSProperties}
                 >
                   {renderTree(entry.children, depth + 1)}
@@ -1044,7 +1044,7 @@ export function MenuAdminPage() {
             <div className={nodeClass} {...dragProps}>
               <button
                 type="button"
-                className={`nav-link ${depth > 0 ? `erp-nav-child erp-nav-child-depth-${depth + 1}` : ''} ${active ? 'active' : ''}`}
+                className={`nav-link ${depth > 0 ? 'erp-nav-child' : ''} ${active ? 'active' : ''}`}
                 onClick={() => selectModule(module)}
                 style={childStyle}
               >

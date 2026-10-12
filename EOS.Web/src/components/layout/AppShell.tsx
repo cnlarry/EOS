@@ -850,7 +850,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
             </div>
             {isExpanded && !sidebarCollapsed && (
               <div
-                className={`erp-nav-children erp-nav-children-depth-${depth + 1}`}
+                className="erp-nav-children"
                 style={{ '--menu-line': `${lineSidebar(depth + 1)}px` } as React.CSSProperties}
               >
                 {renderChildren(item.children, depth + 1)}
@@ -867,7 +867,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
       return (
         <Fragment key={item.id}>
           <NavLink
-            className={({ isActive }) => `nav-link ${depth > 1 ? `erp-nav-child erp-nav-child-depth-${depth}` : ''} ${isActive ? 'active' : ''}`}
+            className={({ isActive }) => `nav-link ${depth > 1 ? 'erp-nav-child' : ''} ${isActive ? 'active' : ''}`}
             to={item.route!}
             title={sidebarCollapsed ? item.label : undefined}
             style={childStyle}

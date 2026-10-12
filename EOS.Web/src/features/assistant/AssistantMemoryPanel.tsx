@@ -91,7 +91,7 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
   }, [forgetArmed, refresh])
 
   return (
-    <div className="erp-assistant-memory" aria-label="我的记忆">
+    <div aria-label="我的记忆">
       <div className="d-flex align-items-center justify-content-between mb-2">
         <strong>我的记忆（仅本人可见）</strong>
         <div className="d-flex gap-1">
@@ -112,7 +112,7 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
         <div className="mb-2" aria-label="待确认记忆">
           <div className="text-secondary small mb-1">AI 想记住这些，请确认（确认前不会生效）：</div>
           {pendings.map(item => (
-            <div key={item.id} className="erp-assistant-memory-item">
+            <div key={item.id}>
               <span className="badge bg-warning me-1">待确认{item.confidence ?? ''}</span>
               <strong>{item.key}</strong>
               <div className="text-secondary small">{item.value}</div>
@@ -142,7 +142,7 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
         <div className="text-secondary small mb-2">暂无记忆，可把常用查询与偏好记下来。</div>
       )}
       {memories.map(item => (
-        <div key={item.id} className="erp-assistant-memory-item">
+        <div key={item.id}>
           <span className="badge bg-secondary me-1">{item.type}</span>
           <strong>{item.key}</strong>
           <div className="text-secondary small">{item.value}</div>
@@ -153,7 +153,7 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
           </button>
         </div>
       ))}
-      <div className="erp-assistant-memory-form">
+      <div>
         <select className="form-select form-select-sm" value={memoryType}
           onChange={(event) => setMemoryType(event.target.value)} aria-label="记忆类型">
           <option value="fact">事项</option>

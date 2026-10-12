@@ -68,7 +68,7 @@ export function TabbedPanel<T extends string>({
   }
 
   return (
-    <div className={`erp-tabbed-panel ${className}`.trim()}>
+    <div className={className}>
       <ul
         className="nav nav-tabs erp-tabbed-panel-tabs"
         role="tablist"

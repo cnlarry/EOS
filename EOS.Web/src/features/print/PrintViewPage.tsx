@@ -96,7 +96,7 @@ export function PrintViewPage() {
   if (settings.data.reports.length === 0) return <ErrorState message="没有可打印的报表，或您没有该报表的预览/打印权限。" onRetry={() => void settings.refetch()} />
 
   return (
-    <div className="erp-print-page d-flex flex-column vh-100">
+    <div className="d-flex flex-column vh-100">
       <div className="border-bottom bg-white px-3 py-2 d-flex align-items-center gap-3 flex-wrap">
         <div className="fw-semibold">{title}</div>
         {settings.data.reports.length > 1 && (
@@ -130,7 +130,7 @@ export function PrintViewPage() {
       {pdfError && <div className="px-3 py-2 text-danger small">{pdfError}</div>}
       <div className="flex-grow-1">
         {pdfUrl ? (
-          <iframe ref={iframeRef} title={`${title} PDF 预览`} src={pdfUrl} className="erp-pdf-frame w-100 h-100 border-0" />
+          <iframe ref={iframeRef} title={`${title} PDF 预览`} src={pdfUrl} className="w-100 h-100 border-0" />
         ) : (
           <div className="p-4"><LoadingState label="正在生成 PDF…" /></div>
         )}

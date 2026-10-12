@@ -239,7 +239,7 @@ export function ErpFieldChooser<T extends UnifiedChooserRow = UnifiedChooserRow>
                 <div className="small text-secondary mb-1">
                   待选字段（共 {total} 个{rows.length < total ? `，已加载 ${rows.length} 个` : ''}），勾选加入右侧
                 </div>
-                <div className="erp-field-picker-list erp-field-chooser-list" aria-label="待选字段列表" onScroll={handleScroll}>
+                <div className="erp-field-picker-list" aria-label="待选字段列表" onScroll={handleScroll}>
                   {error ? <ErrorState message={error} onRetry={() => void fetchPage(1)} /> : null}
                   {!error && loading && rows.length === 0 ? <LoadingState label="正在加载字段…" /> : null}
                   {!error && !loading && rows.length === 0 ? (
@@ -269,7 +269,7 @@ export function ErpFieldChooser<T extends UnifiedChooserRow = UnifiedChooserRow>
               <div className="erp-field-chooser-pane">
                 <div className="erp-field-chooser-search" aria-hidden="true" />
                 <div className="small text-secondary mb-1">已选字段（{selected.length} 个，顺序即保存顺序）</div>
-                <div className="erp-field-picker-list erp-field-chooser-list" aria-label="已选字段列表">
+                <div className="erp-field-picker-list" aria-label="已选字段列表">
                   {selected.map((item, index) => {
                     const { desc } = describe(item.key)
                     return (

@@ -208,7 +208,7 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
           </div>
           {isExpanded && (
             <div
-              className={`erp-nav-children erp-nav-children-depth-${depth + 2}`}
+              className="erp-nav-children"
               style={{ '--menu-line': `${lineTree(depth + 2)}px` } as CSSProperties}
             >
               {node.children.map((child) => renderNode(child, depth + 1))}
@@ -223,7 +223,7 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
         key={node.row.moduleId}
         className={rootLeaf
           ? `nav-link erp-rights-leaf-root ${isSelected ? 'active' : ''}`
-          : `erp-nav-child erp-nav-child-depth-${depth + 1} ${isSelected ? 'active' : ''}`}
+          : `erp-nav-child ${isSelected ? 'active' : ''}`}
         style={childStyle}
         role="treeitem"
         aria-selected={isSelected}

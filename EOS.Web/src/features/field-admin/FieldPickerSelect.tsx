@@ -93,7 +93,7 @@ export function FieldPickerSelect({ options, value, onChange, placeholder, ariaL
               key={option.value}
               type="button"
               role="option"
-              className={`erp-picker-option d-flex w-100 align-items-center justify-content-between px-2 py-1 border-0 bg-transparent ${option.value === value ? 'bg-primary-lt' : ''}`}
+              className={`d-flex w-100 align-items-center justify-content-between px-2 py-1 border-0 bg-transparent ${option.value === value ? 'bg-primary-lt' : ''}`}
               onClick={() => { onChange(option.value); close() }}
             >
               <span className="text-break">{option.label}</span>
