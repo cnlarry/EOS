@@ -154,7 +154,7 @@ export function FieldEditorRoute() {
   }), [tableId, fieldId, copyFrom, isNew])
 
   return (
-    <div className="erp-field-editor-page d-flex flex-column">
+    <div className="erp-field-editor-page">
       <ErpListCard
         ariaLabel="字段设置工具栏"
         search={(

@@ -1594,7 +1594,7 @@ export function FormEditorPage() {
   // 弹窗打开方式：同一份表单内容换个容器（统一弹窗组件）——地址与路由不变，
   // 这样"弹窗"不引入第二套渲染路径：保存、校验、脏位登记、权限判定全走同一条。
   const formPage = (
-    <div className="d-flex flex-column erp-form-page">
+    <div className="erp-form-page">
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
       {warnings && warnings.length > 0 ? (
         <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">

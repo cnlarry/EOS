@@ -138,7 +138,7 @@
 .erp-designer-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--erp-block-gap);
   align-items: stretch;
   min-height: 0;
   flex: 1;

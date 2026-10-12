@@ -423,6 +423,17 @@ button, input, select { font: inherit; }
   flex: 1 1 auto;
   min-height: 0;
 }
+/* 全高裁溢出页：卡片铺满页根高度、页级不出滚动条（滚动交给卡内的表格区）。
+   这五个页面此前各自覆写同一对声明，现集中在这一处；各自的差异项留在本文件各区
+   （导入页的 grid 行高、模型管理页把 min-height 收回到 0）。 */
+.erp-full-list-page,
+.erp-catalog-page,
+.erp-report-page,
+.erp-workbench-page,
+.erp-import-page {
+  min-height: 320px;
+  overflow: hidden;
+}
 /* 满屏表格页的卡片：撑满页根并把滚动交给内部。固定高度的卡片（工作台子表、
    模型管理的分区卡）不在此列，各自声明 */
 .erp-full-list-page > .erp-list-card,
@@ -489,8 +500,8 @@ button, input, select { font: inherit; }
 /* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
-   表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
-.erp-full-list-page { min-height: 320px; overflow: hidden; }
+   表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航。
+   页根的 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
 /* 区块间距只由 CSS 一处定义（--erp-block-gap）。JSX 上一律不写间距工具类：
    Bootstrap 的 gap-* 带 !important，会把这里的 10px 静默压成 8px / 16px。
    2026-10-01 实测该问题**复发过四处**（3102 / 3105 挂 gap-3 = 16px，菜单管理 / 用户组权限矩阵
@@ -503,7 +514,7 @@ button, input, select { font: inherit; }
    卡片高度随内容（选模块后多出来的一行摘要、一次定义请求的加载态）涨落，会连带把页面撑开再缩回，
    看上去就是"选中时抖一下"；更糟的是页面级滚动条随之出现/消失，它会吃掉约 15px 宽度，
    整页跟着横向重排。d-grid 的 display 带 !important，故这里不动 display，只给行高让卡片撑满。 */
-.erp-import-page { min-height: 320px; overflow: hidden; grid-template-rows: minmax(0, 1fr); }
+.erp-import-page { grid-template-rows: minmax(0, 1fr); }
 /* 顶部留白比其余三边多 6px：进度条是这一页的开头，贴上边框会显得被卡片压住 */
 .erp-import-body { display: flex; flex-direction: column; gap: var(--erp-block-gap); padding: 16px var(--erp-block-gap) var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }
 .erp-import-track { display: flex; width: 100%; margin: 0; padding: 0; list-style: none; flex: 0 0 auto; }
@@ -583,7 +594,7 @@ button, input, select { font: inherit; }
    查看器页是「参数 + 结果」的取数页：标题栏与条件区固定，结果区铺满剩余高度
    并内部滚动（与列表页同一滚动契约：表头吸顶、表格区滚动）。
    ========================================================================== */
-.erp-catalog-page { min-height: 320px; overflow: hidden; }
+/* .erp-catalog-page 的页根 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
 .erp-catalog-head {
   flex: 0 0 auto;
   min-height: 48px;
@@ -747,8 +758,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-query-control .form-control-sm,
 .erp-query-control .form-select-sm { height: 28px; }
 .erp-query-control .erp-query-range { flex: 1 1 0; min-width: 0; }
+/* .erp-report-page 的页根 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
 .erp-report-page > .card { flex: 0 0 auto; }
-.erp-report-page { min-height: 320px; overflow: hidden; }
 /* 页级错误条（导出/打印/下载失败）：内联提示，替代浏览器原生 alert */
 .erp-report-alert {
   flex: 0 0 auto;
@@ -1214,8 +1225,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 
 /* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动）。
    主表卡与明细卡之间的间隙取 10px，与全站留白口径（--erp-workspace-gap、页面顶部留白、
-   标签面板 padding、工具栏下边距）一致，不再用 8px */
-.erp-workbench-page { min-height: 320px; overflow: hidden; }
+   标签面板 padding、工具栏下边距）一致，不再用 8px。
+   页根的 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
 .erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; margin-bottom: 6px; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
 /* 子表卡按工作台高度 30% 分配（150~260px 区间），主表占满剩余空间 */
