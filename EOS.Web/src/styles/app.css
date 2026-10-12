@@ -153,6 +153,14 @@ button, input, select { font: inherit; }
    sticky 由 header 容器统一承担，避免两行各自 top:0 互相覆盖 */
 .erp-menu-tree-header { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
 .erp-menu-tree-header .erp-menu-tree-toolbar { position: static; }
+.erp-menu-sort-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
 .erp-menu-sort-bar .btn { flex: 0 0 auto; white-space: nowrap; }
 /* 实现左侧系统菜单（AppShell 侧栏）的样式：图标、展开折叠箭头、虚线、圆点 */
 .erp-menu-tree .nav-link {
@@ -217,7 +225,22 @@ button, input, select { font: inherit; }
   outline: 1px dashed var(--tblr-primary);
   outline-offset: -1px;
 }
-.erp-menu-tree-toolbar { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
+/* 菜单管理左栏的工具行（搜索 / 展开折叠）与排序行：几何在此一处定义，JSX 只挂语义类。
+   原先手拼 `p-2 border-bottom d-flex gap-1 align-items-center`，两处写法还不一样（权限矩阵那处
+   多写 flex-wrap）——间距与折行行为因此各页不一致。内边距 8px、按钮间距 4px 是这一族自己的档位，
+   与卡内工具条（.erp-card-toolbar 的 8px）同源，不是区块间距 */
+.erp-menu-tree-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--tblr-border-color);
+  background: var(--tblr-bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
 .erp-menu-search { flex: 1 1 auto; min-width: 0; margin: 0; }
 .erp-menu-context-menu {
   position: fixed;
@@ -433,6 +456,15 @@ button, input, select { font: inherit; }
 .erp-import-page {
   min-height: 320px;
   overflow: hidden;
+}
+/* 流程设计 / 流程监控：列表卡 + 左侧固定宽度卡片的两栏布局。
+   原先这层的 display / gap / flex / min-height 分散在 JSX 上（Bootstrap 的 gap-2 带 !important，
+   再加一条内联 minHeight），现在一处定义。两栏间距 8px 是本域档位，不是区块间距 */
+.erp-flow-split {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 /* 满屏表格页的卡片：撑满页根并把滚动交给内部。固定高度的卡片（工作台子表、
    模型管理的分区卡）不在此列，各自声明 */

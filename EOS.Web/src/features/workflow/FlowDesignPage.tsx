@@ -433,7 +433,7 @@ export function FlowDesignPage() {
 
   return (
     <div className="erp-full-list-page">
-      <div className="d-flex gap-2 flex-grow-1" style={{ minHeight: 0 }}>
+      <div className="erp-flow-split">
         <div className="card d-flex flex-column" style={{ width: 460 }}>
           <div className="card-header erp-card-toolbar">
             <input

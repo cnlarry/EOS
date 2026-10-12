@@ -502,7 +502,7 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
           <div className="card-body p-0">
             <div className="row g-0">
               <div className="col-lg-5 border-end erp-menu-tree erp-rights-tree">
-                <div className="erp-menu-tree-toolbar p-2 border-bottom d-flex flex-wrap gap-1 align-items-center">
+                <div className="erp-menu-tree-toolbar">
                   <div className="erp-nav-search erp-menu-search">
                     <IconSearch size={16} aria-hidden="true" />
                     <input
