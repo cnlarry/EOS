@@ -12,6 +12,10 @@
        遮罩浓淡由它一处决定。
     3) `card-header py-` / `card-header d-flex`：手拼卡内工具条。命令栏下方那一行用
        `.card-header.erp-card-toolbar`（app.css 定义一次）。
+    4) `card erp-list-card` / `erp-data-table`：**手抄统一组件的骨架**——在页面里直接拼这两个
+       类名，而不是用 `ErpListCard` / `ErpTable`。DOM 看着一样，但组件后续长出的能力（列宽
+       持久化、选择列、键盘导航……）这些页面一个都拿不到，将来改骨架还得记得改 N 处。
+       产出这些类名的组件定义文件豁免（见 $classNameOwners）。
 
     判据（只扫源码文本，不解析 CSS）：
     - 范围：`EOS.Web/src` 下的 `.ts` / `.tsx`（含测试文件——用例里复制这些写法同样是债）；
@@ -49,6 +53,18 @@ try {
         @{ Name = '手拼卡内工具条（card-header + py- / d-flex）'; Regex = 'card-header\s+(py-|d-flex)' }
     )
 
+    # 「手抄骨架」判据：这两个类名只应由统一组件产出，别处手写就是抄了骨架没复用组件
+    $ownedClassNameChecks = @(
+        @{ Name = '手抄列表卡骨架（card erp-list-card）'; Regex = 'card\s+erp-list-card' },
+        @{ Name = '手抄数据表（erp-data-table）'; Regex = 'erp-data-table' }
+    )
+    # 豁免：这三个文件就是产出上述类名的组件本身
+    $classNameOwners = @(
+        'components/common/ErpListCard.tsx',
+        'components/common/ErpDataTable.tsx',
+        'components/common/ResizableTable.tsx'
+    )
+
     function Remove-SourceComments([string] $text) {
         # 块注释先换成等长空白（保留行号），再删行注释。字符串里的 // 会被一并处理，
         # 后果只是"少报"，不会误报——门禁宁可漏也不误伤。
@@ -56,12 +72,13 @@ try {
         return [regex]::Replace($noBlock, '//[^\r\n]*', '')
     }
 
-    function Get-ShellHits([string] $text) {
+    function Get-ShellHits([string] $text, [bool] $includeOwned = $true) {
         $clean = Remove-SourceComments $text
         $lines = $clean -split "`r?`n"
         $hits = @()
+        $active = if ($includeOwned) { $checks + $ownedClassNameChecks } else { $checks }
         for ($i = 0; $i -lt $lines.Count; $i++) {
-            foreach ($check in $checks) {
+            foreach ($check in $active) {
                 if ($lines[$i] -match $check.Regex) {
                     $hits += [pscustomobject]@{ Line = $i + 1; Name = $check.Name; Text = $lines[$i].Trim() }
                 }
@@ -75,13 +92,18 @@ try {
         $positive = @(
             "<div className={`"d-flex flex-column erp-full-list-page`"} style={{ height: 'calc(100dvh - 96px)' }}>",
             "<div style={{ background: 'rgba(0, 0, 0, 0.4)', zIndex: 1000 }}>",
-            '<div className="card-header py-2 d-flex align-items-center gap-2">'
+            '<div className="card-header py-2 d-flex align-items-center gap-2">',
+            '<section className="card erp-list-card">',
+            '<table className="table table-vcenter card-table erp-data-table">'
         )
         $negative = @(
             "// 页面根不要写 calc(100dvh - 96px) 这种魔数",
             "/* 手写遮罩 rgba(0, 0, 0, 0.4) 已被 Modal 取代 */",
+            "/* 也不要在页面里手抄 card erp-list-card / erp-data-table 骨架 */",
             '<div className="card-header erp-card-toolbar">',
-            '<div className="card-header">'
+            '<div className="card-header">',
+            '<ErpListCard ariaLabel="字段设置工具栏" search={<span>x</span>}>',
+            '<ErpDataTable className="erp-designer-detail-table">'
         )
         foreach ($sample in $positive) {
             if (@(Get-ShellHits $sample).Count -eq 0) {
@@ -104,8 +126,10 @@ try {
     $found = @()
     foreach ($file in $files) {
         $text = Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8
-        foreach ($hit in (Get-ShellHits $text)) {
-            $relative = $file.FullName.Substring($SrcDir.Length).TrimStart('\', '/')
+        $relative = $file.FullName.Substring($SrcDir.Length).TrimStart('\', '/') -replace '\\', '/'
+        # 组件定义文件豁免「手抄骨架」判据——那两个类名本来就由它们产出
+        $isOwner = $classNameOwners -contains $relative
+        foreach ($hit in (Get-ShellHits $text (-not $isOwner))) {
             $found += [pscustomobject]@{
                 Where = "$relative`:$($hit.Line)"
                 Name  = $hit.Name
@@ -120,7 +144,7 @@ try {
         exit 1
     }
 
-    Write-Host "PASS 页面外壳：$($files.Count) 个前端源文件中无手写壳（视口高度魔数 / 弹窗遮罩 / 手拼卡内工具条）" -ForegroundColor Green
+    Write-Host "PASS 页面外壳：$($files.Count) 个前端源文件中无手写壳（视口高度魔数 / 弹窗遮罩 / 手拼卡内工具条 / 手抄组件骨架）" -ForegroundColor Green
     exit 0
 }
 catch {
