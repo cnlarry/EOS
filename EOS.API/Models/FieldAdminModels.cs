@@ -11,16 +11,6 @@ public sealed record FieldAdminTable(
 
 public sealed record FieldAdminModule(int Id, string Label);
 
-/// <summary>
-/// 未登记进 TABLES 的物理表/视图候选：数据表维护新增走「选取物理对象」而不是手敲表名。
-/// ObjectType 取 sys.objects.type（U=表、V=视图），Description 取表说明（MS_Description）。
-/// </summary>
-public sealed record FieldAdminPhysicalObject(
-    string TableId,
-    string ObjectType,
-    string Description,
-    int ColumnCount);
-
 /// <summary>从物理表/视图登记表元数据（同时按物理列生成字段元数据）。</summary>
 public sealed record RegisterPhysicalTableRequest(string TableId);
 
@@ -88,12 +78,6 @@ public sealed record FieldAdminUnmanagedField(string FieldId, string DataType);
 public sealed record CreateUnmanagedFieldsRequest(string TableId, IReadOnlyList<string> FieldIds);
 
 public sealed record CreateUnmanagedFieldsResult(int Created, int Skipped, IReadOnlyList<string> SkippedReasons);
-
-/// <summary>
-/// 幽灵字段：FIELDS 有元数据、物理表已无同名列。虚拟字段结构上就没有物理列，
-/// 不属幽灵字段，故不在本清单内。
-/// </summary>
-public sealed record FieldAdminGhostField(string FieldId, string Description, string DataType);
 
 public sealed record CleanupGhostFieldsRequest(string TableId, IReadOnlyList<string> FieldIds);
 

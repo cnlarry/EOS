@@ -139,15 +139,32 @@ describe('TableAdminPage', () => {
   it('新增改为选取物理表/视图登记，并按物理结构生成字段元数据', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path === '/admin/tables') return tables
-      if (path === '/admin/lookups/physical-tables') return [
-        { tableId: 'KB_COLLECTION', objectType: 'U', description: '知识库集合', columnCount: 6 },
-        { tableId: 'V_USERS', objectType: 'V', description: '用户视图', columnCount: 5 },
-      ]
       throw new Error(`unexpected GET ${path}`)
     })
-    apiClientMock.post.mockResolvedValue({
-      tableId: 'KB_COLLECTION', description: '知识库集合', kind: 'P', type: 'TABLE',
-      fieldCreated: 6, fieldSkipped: 0, skippedReasons: [],
+    // 候选走统一选择器的数据源（POST /chooser/query），登记仍走字段维护端点
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/chooser/query') {
+        return {
+          columns: [
+            { key: 'T_ID', label: '表/视图', dataType: 'nvarchar', format: null },
+            { key: 'OBJECT_TYPE', label: '类型', dataType: 'nvarchar', format: null },
+            { key: 'DESCRIPTION', label: '说明', dataType: 'nvarchar', format: null },
+            { key: 'COLUMN_COUNT', label: '列数', dataType: 'int', format: null },
+          ],
+          rows: [
+            { T_ID: 'KB_COLLECTION', OBJECT_TYPE: 'U', DESCRIPTION: '知识库集合', COLUMN_COUNT: 6 },
+            { T_ID: 'V_USERS', OBJECT_TYPE: 'V', DESCRIPTION: '用户视图', COLUMN_COUNT: 5 },
+          ],
+          total: 2,
+        }
+      }
+      if (path === '/admin/tables/from-physical') {
+        return {
+          tableId: 'KB_COLLECTION', description: '知识库集合', kind: 'P', type: 'TABLE',
+          fieldCreated: 6, fieldSkipped: 0, skippedReasons: [],
+        }
+      }
+      throw new Error(`unexpected POST ${path}`)
     })
     renderPage()
     await loaded()
@@ -155,14 +172,13 @@ describe('TableAdminPage', () => {
     await waitFor(() => expect(screen.getByText('新增数据表元数据（选取物理表或视图）')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByText('KB_COLLECTION')).toBeInTheDocument())
     expect(screen.getByText('V_USERS')).toBeInTheDocument()
-    // 未选行时不能登记
-    expect(screen.getByRole('button', { name: '登记并生成字段' })).toBeDisabled()
+    // 未选行时不能登记：确认按钮由统一选择器给（无选中项即禁用）
+    expect(screen.getByRole('button', { name: '确认' })).toBeDisabled()
 
     // 弹窗迭在列表之上，两者都有"选择此行"单选列：必须限定在弹窗内取行
     const dialog = screen.getByRole('dialog')
     fireEvent.click(within(dialog).getAllByRole('radio', { name: '选择此行' })[0])
-    expect(screen.getByRole('button', { name: '登记并生成字段' })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: '登记并生成字段' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/tables/from-physical',
       { tableId: 'KB_COLLECTION' },

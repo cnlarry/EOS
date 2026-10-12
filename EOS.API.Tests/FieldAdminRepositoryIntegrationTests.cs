@@ -219,10 +219,6 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             _createdFields.Add((table, ghost));
             _createdFields.Add((table, virtualField));
 
-            var ghosts = await _repository.GetGhostFieldsAsync(table, CancellationToken.None);
-            Assert.Contains(ghosts, item => item.FieldId.Equals(ghost, StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(ghosts, item => item.FieldId.Equals(virtualField, StringComparison.OrdinalIgnoreCase));
-
             // 两个夹具一起插入后计数只涨 1：虚拟字段那一行不进幽灵计数
             Assert.Equal(orphansBefore + 1, await OrphanCountAsync(table));
 

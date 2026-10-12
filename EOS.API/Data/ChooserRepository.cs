@@ -52,6 +52,12 @@ public sealed class ChooserRepository(
             // 助手参数作用域（ADR-030 §6.2）：候选集 = MODULES 全表，与服务端的键校验同源
             ["assistant-admin.modules"] = ["M_IDX", "M_DESC"],
             ["field-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
+            // 字段维护（2302）的三个「物理库对象候选」：源是 sys.objects / sys.columns，不是已登记的
+            // TABLES / FIELDS 行——"还没登记"正是它们的全部意义，所以列表达式只能在服务端写死
+            // （同 menu-admin.columns 对 sys.columns 的做法），列名不来自任何元数据表。
+            ["field-admin.unregistered-tables"] = ["T_ID", "OBJECT_TYPE", "DESCRIPTION", "COLUMN_COUNT"],
+            ["field-admin.unmanaged-fields"] = ["COLUMN_NAME", "DATA_TYPE"],
+            ["field-admin.ghost-fields"] = ["F_ID", "F_DESC", "DATA_TYPE"],
             ["menu-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
@@ -85,6 +91,9 @@ public sealed class ChooserRepository(
             ["module-actions.targets"] = ["M_IDX"],
             ["assistant-admin.modules"] = ["M_IDX"],
             ["field-admin.fields"] = ["F_ID"],
+            ["field-admin.unregistered-tables"] = ["T_ID"],
+            ["field-admin.unmanaged-fields"] = ["COLUMN_NAME"],
+            ["field-admin.ghost-fields"] = ["F_ID"],
             ["menu-admin.fields"] = ["F_ID"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID"],
@@ -155,6 +164,23 @@ public sealed class ChooserRepository(
                 ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
                 ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) LIKE @Keyword",
+            },
+            ["field-admin.unregistered-tables"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["T_ID"] = "LTRIM(RTRIM(o.name)) LIKE @Keyword",
+                ["OBJECT_TYPE"] = "o.type LIKE @Keyword",
+                ["DESCRIPTION"] = "LTRIM(RTRIM(ISNULL(CONVERT(nvarchar(500), ep.value),''))) LIKE @Keyword",
+            },
+            ["field-admin.unmanaged-fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name)) LIKE @Keyword",
+                ["DATA_TYPE"] = "TYPE_NAME(c.user_type_id) LIKE @Keyword",
+            },
+            ["field-admin.ghost-fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["F_ID"] = "LTRIM(RTRIM(f.F_ID)) LIKE @Keyword",
+                ["F_DESC"] = "LTRIM(RTRIM(ISNULL(f.F_DESC,''))) LIKE @Keyword",
+                ["DATA_TYPE"] = "LTRIM(RTRIM(ISNULL(f.F_TYPE,''))) LIKE @Keyword",
             },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -271,6 +297,23 @@ public sealed class ChooserRepository(
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
                 ["MASTER_TABLE"] = "LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))",
             },
+            ["field-admin.unregistered-tables"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["T_ID"] = "LTRIM(RTRIM(o.name))",
+                ["OBJECT_TYPE"] = "o.type",
+                ["DESCRIPTION"] = "LTRIM(RTRIM(ISNULL(CONVERT(nvarchar(500), ep.value),'')))",
+            },
+            ["field-admin.unmanaged-fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name))",
+                ["DATA_TYPE"] = "TYPE_NAME(c.user_type_id)",
+            },
+            ["field-admin.ghost-fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID)))",
+                ["DATA_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar')",
+            },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
@@ -359,7 +402,8 @@ public sealed class ChooserRepository(
     public static int? PermissionModuleId(string? sourceKey) => sourceKey?.Trim().ToLowerInvariant() switch
     {
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" or "menu-admin.columns" or "menu-admin.modules" or "menu-admin.records" => MenuAdminModuleId,
-        "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
+        "field-admin.tables" or "field-admin.columns" or "field-admin.fields"
+            or "field-admin.unregistered-tables" or "field-admin.unmanaged-fields" or "field-admin.ghost-fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
         // 助手作用域要按模块配置：门挂在 3105（助手设置），与写覆盖的端点同一道门——
         // 能看候选集的正是能改它的人，不必另开一个"只读模块表"的口子
@@ -479,6 +523,9 @@ public sealed class ChooserRepository(
             "menu-admin.columns" => await QueryColumnsAsync(request, token, sourceKey!),
             "menu-admin.modules" => await QueryBusinessModulesAsync(request, token),
             "field-admin.fields" => await QueryFieldsAsync(request, token),
+            "field-admin.unregistered-tables" => await QueryUnregisteredTablesAsync(request, token),
+            "field-admin.unmanaged-fields" => await QueryUnmanagedFieldsAsync(request, token),
+            "field-admin.ghost-fields" => await QueryGhostFieldsAsync(request, token),
             "menu-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
             "report-admin.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
@@ -888,6 +935,180 @@ public sealed class ChooserRepository(
         return new UnifiedChooserResult(
             [
                 new UnifiedChooserColumn("COLUMN_NAME", "列名", "nvarchar", null),
+                new UnifiedChooserColumn("DATA_TYPE", "类型", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// field-admin.unregistered-tables：未登记进 TABLES 的物理表/视图（权限门 2302）。
+    ///
+    /// 列与说明取自 `sys.objects` + 扩展属性 `MS_Description`——**不看 TABLES / FIELDS 元数据**，
+    /// "还没登记"就是这个数据源的全部意义。名字先按标识符口径用等价的 SQL 条件筛掉，免得候选里
+    /// 出现登记动作必然拒绝的名字（与 `WorkbenchSql.Identifier` 同一口径）。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryUnregisteredTablesAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "field-admin.unregistered-tables";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var fromClause = $"""
+            FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            LEFT JOIN sys.extended_properties ep
+              ON ep.class=1 AND ep.major_id=o.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
+            WHERE s.name=N'dbo' AND o.type IN ('U','V')
+              AND o.name LIKE '[A-Za-z_]%' AND o.name NOT LIKE '%[^A-Za-z0-9_]%' AND LEN(o.name) <= 128
+              AND NOT EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=o.name)
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            """;
+        command.CommandText = $"""
+            SELECT COUNT_BIG(1)
+            {fromClause};
+            SELECT LTRIM(RTRIM(o.name)) AS T_ID, o.type AS OBJECT_TYPE,
+                   LTRIM(RTRIM(ISNULL(CONVERT(nvarchar(500), ep.value),''))) AS DESCRIPTION,
+                   (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id=o.object_id) AS COLUMN_COUNT
+            {fromClause}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["T_ID", "OBJECT_TYPE", "DESCRIPTION", "COLUMN_COUNT"]);
+        logger.LogInformation("统一选择器未登记物理表查询 page={Page} total={Total} rows={Rows}", page, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("T_ID", "表/视图", "nvarchar", null),
+                new UnifiedChooserColumn("OBJECT_TYPE", "类型", "nvarchar", null),
+                new UnifiedChooserColumn("DESCRIPTION", "说明", "nvarchar", null),
+                new UnifiedChooserColumn("COLUMN_COUNT", "列数", "int", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// field-admin.unmanaged-fields：某表"物理列存在、FIELDS 里没有元数据"的字段
+    /// （权限门 2302，`args.tableId`）。候选判定与字段维护页的批量生成同源：`sys.columns − FIELDS`。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryUnmanagedFieldsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "field-admin.unmanaged-fields";
+        var tableId = ResolveFieldsTableId(request.Args);
+        if (tableId is null) return null;
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var fromClause = $"""
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId
+              AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WITH (NOLOCK)
+                               WHERE f.T_ID=@TableId AND LTRIM(RTRIM(f.F_ID))=c.name)
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            """;
+        command.CommandText = $"""
+            SELECT COUNT_BIG(1)
+            {fromClause};
+            SELECT LTRIM(RTRIM(c.name)) AS COLUMN_NAME, TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            {fromClause}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["COLUMN_NAME", "DATA_TYPE"]);
+        logger.LogInformation("统一选择器未管理字段查询 table={Table} page={Page} total={Total} rows={Rows}",
+            tableId, page, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("COLUMN_NAME", "字段名", "nvarchar", null),
+                new UnifiedChooserColumn("DATA_TYPE", "类型", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// field-admin.ghost-fields：某表"FIELDS 有元数据、物理列已不存在"的字段
+    /// （权限门 2302，`args.tableId`）。判定与字段维护页的清理口径一致：虚拟字段结构上就没有物理列，
+    /// 一律排除（`IS_VIRTUAL=1` 不是幽灵字段）。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryGhostFieldsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "field-admin.ghost-fields";
+        var tableId = ResolveFieldsTableId(request.Args);
+        if (tableId is null) return null;
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var fromClause = $"""
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.T_ID=@TableId
+              AND ISNULL(f.IS_VIRTUAL,0)=0
+              AND NOT EXISTS (SELECT 1 FROM sys.columns c
+                                JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                WHERE s.name=N'dbo' AND o.name=@TableId AND c.name=LTRIM(RTRIM(f.F_ID)))
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            """;
+        command.CommandText = $"""
+            SELECT COUNT_BIG(1)
+            {fromClause};
+            SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
+                   COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') AS DATA_TYPE
+            {fromClause}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["F_ID", "F_DESC", "DATA_TYPE"]);
+        logger.LogInformation("统一选择器幽灵字段查询 table={Table} page={Page} total={Total} rows={Rows}",
+            tableId, page, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("F_ID", "字段名", "nvarchar", null),
+                new UnifiedChooserColumn("F_DESC", "说明", "nvarchar", null),
                 new UnifiedChooserColumn("DATA_TYPE", "类型", "nvarchar", null),
             ],
             rows,

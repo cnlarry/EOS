@@ -121,14 +121,6 @@ public sealed class FieldAdminRepositoryTests
     }
 
     [Fact]
-    public async Task GetGhostFields_RejectsInvalidIdentifier()
-    {
-        var repository = CreateRepository();
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => repository.GetGhostFieldsAsync("bad table", CancellationToken.None));
-    }
-
-    [Fact]
     public async Task CleanupGhostFields_RejectsEmptySelection()
     {
         var repository = CreateRepository();

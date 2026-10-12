@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 524fbe9f3548c704 -->
+<!-- code-map-fingerprint: b47ee569343b48e3 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 42 个、方法级路由属性 286 处、解析出 286 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 42 个、方法级路由属性 283 处、解析出 283 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -75,7 +75,6 @@
 | GET | `api/v1/admin/groups/{groupId}/rights` | GroupRights | `RightsAdminController.cs` |
 | PUT | `api/v1/admin/groups/{groupId}/rights` | SaveGroupRights | `RightsAdminController.cs` |
 | GET | `api/v1/admin/lookups/modules` | LookupModules | `FieldAdminController.cs` |
-| GET | `api/v1/admin/lookups/physical-tables` | LookupPhysicalTables | `FieldAdminController.cs` |
 | GET | `api/v1/admin/menus` | Modules | `MenuAdminController.cs` |
 | POST | `api/v1/admin/menus` | Create | `MenuAdminController.cs` |
 | DELETE | `api/v1/admin/menus/{id:int}` | Delete | `MenuAdminController.cs` |
@@ -124,9 +123,7 @@
 | GET | `api/v1/admin/tables/{table}/columns` | TableColumns | `FieldAdminController.cs` |
 | GET | `api/v1/admin/tables/{table}/fields` | Fields | `FieldAdminController.cs` |
 | POST | `api/v1/admin/tables/{table}/fields/batch` | CreateUnmanagedFields | `FieldAdminController.cs` |
-| GET | `api/v1/admin/tables/{table}/fields/ghosts` | GhostFields | `FieldAdminController.cs` |
 | POST | `api/v1/admin/tables/{table}/fields/ghosts/cleanup` | CleanupGhostFields | `FieldAdminController.cs` |
-| GET | `api/v1/admin/tables/{table}/fields/unmanaged` | UnmanagedFields | `FieldAdminController.cs` |
 | GET | `api/v1/admin/tables/{table}/relations` | TableRelations | `FieldAdminController.cs` |
 | POST | `api/v1/admin/tables/from-physical` | RegisterPhysicalTable | `FieldAdminController.cs` |
 | GET | `api/v1/admin/users` | Users | `UserAdminController.cs` |

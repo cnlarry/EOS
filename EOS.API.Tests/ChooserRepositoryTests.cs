@@ -199,9 +199,51 @@ public sealed class ChooserRepositoryTests
     /// </summary>
     [Theory]
     [InlineData("assistant-admin.modules")]
+    [InlineData("field-admin.unregistered-tables")]
+    [InlineData("field-admin.unmanaged-fields")]
+    [InlineData("field-admin.ghost-fields")]
     public void RegisteredSource_IsCompleteAcrossTheFourTables(string sourceKey)
     {
         Assert.Empty(ChooserRepository.MissingRegistrations(sourceKey));
+    }
+
+    /// <summary>
+    /// 三个「物理库对象候选」数据源都挂在字段维护模块（2302）上。漏登记权限门的表现是
+    /// **任何人都能查到库结构**——<c>PermissionModuleId</c> 返回 null 时控制器不校验权限。
+    /// </summary>
+    [Theory]
+    [InlineData("field-admin.unregistered-tables")]
+    [InlineData("field-admin.unmanaged-fields")]
+    [InlineData("field-admin.ghost-fields")]
+    public void PermissionModule_IsTheFieldAdminModule(string sourceKey)
+    {
+        Assert.Equal(2302, ChooserRepository.PermissionModuleId(sourceKey));
+    }
+
+    /// <summary>
+    /// 按表收窄的数据源靠 `args.tableId` 定范围，解析 fail-closed：缺失或非法一律返回 null，
+    /// 调用方据此拒绝查询，不会退化成"查全库"。
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("bad table")]
+    [InlineData("1ABC")]
+    public void ResolveFieldsTableId_RejectsMissingOrInvalidTableId(string? tableId)
+    {
+        IReadOnlyDictionary<string, string>? args = tableId is null
+            ? null
+            : new Dictionary<string, string> { ["tableId"] = tableId };
+        Assert.Null(ChooserRepository.ResolveFieldsTableId(args));
+    }
+
+    [Fact]
+    public void ResolveFieldsTableId_AcceptsIdentifier()
+    {
+        Assert.Equal(
+            "PRODUCT",
+            ChooserRepository.ResolveFieldsTableId(new Dictionary<string, string> { ["tableId"] = "PRODUCT" }));
     }
 }
 

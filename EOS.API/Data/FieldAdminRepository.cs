@@ -400,40 +400,6 @@ public sealed class FieldAdminRepository(
     }
 
     /// <summary>
-    /// 未登记进 TABLES 的物理表/视图候选（新增数据表元数据走选取而不是手敲表名）。
-    /// 描述取扩展属性 MS_Description（本库表描述在 class=1, minor_id=0）；候选是"还没登记的对象"，
-    /// 正常环境只有几十个（系统自用表与视图），上限 1000 只为兜底。
-    /// </summary>
-    public async Task<IReadOnlyList<FieldAdminPhysicalObject>> GetPhysicalObjectsAsync(CancellationToken token)
-    {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(token);
-        const string sql = """
-            SELECT TOP (1000) o.name AS T_ID,o.type AS OBJECT_TYPE,
-                   ISNULL(CONVERT(nvarchar(500), ep.value),N'') AS DESCRIPTION,
-                   (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id=o.object_id) AS COLUMN_COUNT
-            FROM sys.objects o
-            JOIN sys.schemas s ON o.schema_id=s.schema_id
-            LEFT JOIN sys.extended_properties ep
-              ON ep.class=1 AND ep.major_id=o.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
-            WHERE s.name=N'dbo' AND o.type IN ('U','V')
-              AND NOT EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=o.name)
-            ORDER BY o.name;
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new List<FieldAdminPhysicalObject>();
-        while (await reader.ReadAsync(token))
-        {
-            var table = reader.GetString(0).Trim();
-            if (!WorkbenchSql.Identifier.IsMatch(table)) continue;
-            var objectType = reader.GetString(1).Trim();
-            result.Add(new(table, objectType, ResolveLabel(reader.GetString(2), table), reader.GetInt32(3)));
-        }
-        return result;
-    }
-
-    /// <summary>
     /// 从物理表/视图登记表元数据并自动生成字段元数据（同一事务）：
     /// 表描述取表说明（无则用表名）、类型与性质来自物理对象（表=TABLE/P、视图=VIEW/V）；
     /// 字段的类型与说明来自物理列（列说明无则用列名），主键/自增/计算列标志取自物理结构。
@@ -505,22 +471,6 @@ public sealed class FieldAdminRepository(
         logger.LogInformation("从物理对象登记表元数据 table={Table} fields={Created} skipped={Skipped} by={UpdatedBy}",
             request.TableId, created, skipped, updatedBy);
         return new(request.TableId, tableInput.Description, tableInput.Kind ?? "", tableInput.Type ?? "", created, skipped, reasons);
-    }
-
-    /// <summary>
-    /// 幽灵字段：FIELDS 有元数据、物理表已无同名列。虚拟字段结构上就没有物理列，不是幽灵字段，
-    /// 故判定一律排除 IS_VIRTUAL=1 的行（与字段列表的物理列口径一致）。
-    /// </summary>
-    public async Task<IReadOnlyList<FieldAdminGhostField>> GetGhostFieldsAsync(string tableId, CancellationToken token)
-    {
-        EnsureIdentifier(tableId, null);
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(token);
-        var statuses = await ReadFieldPhysicalStatusAsync(connection, null, tableId, token);
-        return statuses
-            .Where(item => !item.IsVirtual && !item.PhysicalExists)
-            .Select(item => new FieldAdminGhostField(item.FieldId, item.Description, item.DataType))
-            .ToList();
     }
 
     /// <summary>

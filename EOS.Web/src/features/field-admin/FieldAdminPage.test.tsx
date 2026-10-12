@@ -47,18 +47,31 @@ const fieldMeta = {
   lastUpdatedAt: '2026-08-01T00:00:00Z',
 }
 
+/** 统一选择器下发的未管理字段候选（数据源 field-admin.unmanaged-fields）。 */
+const unmanagedChooserResult = {
+  columns: [
+    { key: 'COLUMN_NAME', label: '字段名', dataType: 'nvarchar', format: null },
+    { key: 'DATA_TYPE', label: '类型', dataType: 'nvarchar', format: null },
+  ],
+  rows: [
+    { COLUMN_NAME: 'UNMANAGED_1', DATA_TYPE: 'nvarchar' },
+    { COLUMN_NAME: 'UNMANAGED_2', DATA_TYPE: 'int' },
+  ],
+  total: 2,
+}
+
 function installMocks() {
   apiClientMock.get.mockImplementation(async (path: string) => {
     const p = String(path)
     if (p === '/admin/tables') return tables
     if (p.includes('/admin/tables/') && p.endsWith('/fields')) return fieldsPage
-    if (p.endsWith('/fields/unmanaged')) return [{ fieldId: 'UNMANAGED_1', dataType: 'nvarchar' }, { fieldId: 'UNMANAGED_2', dataType: 'int' }]
     if (p.includes('/admin/fields/')) return fieldMeta
     if (p === '/admin/lookups/modules') return [{ id: 1305, label: '库存仓别' }]
     throw new Error(`unexpected GET ${p}`)
   })
-  apiClientMock.post.mockResolvedValue(undefined)
+  // 候选清单统一走选择器数据源（POST /chooser/query）；写路径仍各走自己的端点
   apiClientMock.post.mockImplementation(async (path: string) => {
+    if (path === '/chooser/query') return unmanagedChooserResult
     if (path.endsWith('/fields/batch')) return { created: 1, skipped: 0, skippedReasons: [] }
     return undefined
   })
@@ -206,26 +219,36 @@ describe('FieldAdminPage', () => {
       const p = String(path)
       if (p === '/admin/tables') return [{ tableId: 'PRODUCT_EDITION', description: '产品版次', kind: 'P', type: 'TABLE', fieldCount: 2, unmanagedCount: 0, orphanCount: 2 }]
       if (p.includes('/admin/tables/') && p.endsWith('/fields')) return fieldsPage
-      if (p.endsWith('/fields/unmanaged')) return []
-      if (p.endsWith('/fields/ghosts')) return [
-        { fieldId: 'OLD_COL', description: '旧列', dataType: 'nvarchar' },
-        { fieldId: 'GONE_COL', description: '已删列', dataType: 'int' },
-      ]
       if (p.includes('/admin/fields/')) return fieldMeta
       if (p === '/admin/lookups/modules') return []
       throw new Error(`unexpected GET ${p}`)
     })
     apiClientMock.post.mockImplementation(async (path: string) => {
+      // 幽灵候选由选择器数据源给出（虚拟字段不在其中，那条口径由服务端把守）
+      if (path === '/chooser/query') {
+        return {
+          columns: [
+            { key: 'F_ID', label: '字段名', dataType: 'nvarchar', format: null },
+            { key: 'F_DESC', label: '说明', dataType: 'nvarchar', format: null },
+            { key: 'DATA_TYPE', label: '类型', dataType: 'nvarchar', format: null },
+          ],
+          rows: [
+            { F_ID: 'OLD_COL', F_DESC: '旧列', DATA_TYPE: 'nvarchar' },
+            { F_ID: 'GONE_COL', F_DESC: '已删列', DATA_TYPE: 'int' },
+          ],
+          total: 2,
+        }
+      }
       if (path.endsWith('/fields/ghosts/cleanup')) return { removed: 1, skipped: 0, skippedReasons: [] }
       return undefined
     })
     renderPage()
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: '清理幽灵字段' }))
-    await waitFor(() => expect(screen.getByText('清理幽灵字段（产品版次）')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/清理幽灵字段（产品版次）/)).toBeInTheDocument())
     await waitFor(() => expect(screen.getAllByRole('checkbox', { name: '选择此行' })).toHaveLength(2))
     fireEvent.click(screen.getAllByRole('checkbox', { name: '选择此行' })[0])
-    fireEvent.click(screen.getByRole('button', { name: '清理' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/tables/PRODUCT_EDITION/fields/ghosts/cleanup',
       expect.objectContaining({ tableId: 'PRODUCT_EDITION', fieldIds: ['OLD_COL'] }),
@@ -237,10 +260,10 @@ describe('FieldAdminPage', () => {
     renderPage()
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: '未管理字段' }))
-    await waitFor(() => expect(screen.getByText('未管理字段批量生成（产品版次）')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/未管理字段批量生成（产品版次）/)).toBeInTheDocument())
     await waitFor(() => expect(screen.getAllByRole('checkbox', { name: '选择此行' })).toHaveLength(2))
     fireEvent.click(screen.getAllByRole('checkbox', { name: '选择此行' })[0])
-    fireEvent.click(screen.getByRole('button', { name: /^生成$/ }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/tables/PRODUCT_EDITION/fields/batch',
       expect.objectContaining({ tableId: 'PRODUCT_EDITION', fieldIds: ['UNMANAGED_1'] }),

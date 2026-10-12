@@ -140,7 +140,7 @@ export function FieldAdminPage() {
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void fields.refetch()}>刷新</Button>
           <Button size="sm" onClick={() => navigate('/admin/tables')}>返回</Button>
         </>}
-        header={<div className="card-header py-2 d-flex align-items-center gap-2">
+        header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">{table?.description ?? tableId}</h2>
           <span className="badge bg-blue-lt font-monospace">{tableId}</span>
           <span className="ms-auto d-flex align-items-center gap-2">
