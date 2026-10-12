@@ -1,18 +1,20 @@
-/* 画布元素：默认虚线框，hover 磁吸高亮（浅色虚线强调，未选中），点击左键即选中 */
+/* 画布元素：默认虚线框，hover 磁吸高亮（浅色虚线强调，未选中），点击左键即选中。
+   颜色只用 --tblr-* 语义位，不写具体色值回退——回退值里那个旧版主色（#206bc4）
+   早已不是当前主题的主色，留着只会在主题变更时被误读为"设计的颜色" */
 .canvas-element {
   outline: 1px dashed color-mix(in srgb, var(--tblr-body-color) 25%, transparent);
 }
 
 .canvas-element:hover {
-  outline: 2px dashed var(--tblr-primary, #206bc4);
+  outline: 2px dashed var(--tblr-primary);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 18%, transparent);
 }
 
 .canvas-element[data-selected='true'] {
-  outline: 2px solid var(--tblr-primary, #206bc4);
+  outline: 2px solid var(--tblr-primary);
 }
 
 .canvas-element[data-selected='true']:hover {
-  outline: 2px solid var(--tblr-primary, #206bc4);
+  outline: 2px solid var(--tblr-primary);
   box-shadow: none;
 }
