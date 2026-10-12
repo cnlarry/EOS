@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: 02f339bf60ca6b3c -->
+<!-- inventory-fingerprint: f83d7a549877deb0 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,7 +21,7 @@
 
 ## 一、总览
 
-- 入库脚本 **74** 个：门禁（CI） 13 · 门禁（本地按需） 15 · 一次性批次 16 · 工具 30
+- 入库脚本 **74** 个：门禁（CI） 14 · 门禁（本地按需） 14 · 一次性批次 16 · 工具 30
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**12** 个，见第七节
@@ -44,14 +44,15 @@
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 7 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 7 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
-| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 3 |
+| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 4 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
 | `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 12 |
-| `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 8 |
+| `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 5 |
+| `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 9 |
 | `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 2 |
 | `check-workbench-policy-single-entry.ps1` | 统一工作台策略层单入口门禁：授权/名单/幂等判定不得回到控制器，且策略服务必须是共享入口。 | 仅静态 | 5 |
 | `gen-adr-index.ps1` | 决策记录索引：把 docs/decisions/ADR-*.md 抽成一张表（编号 / 标题 / 状态 / 日期 / 决策者 / 交叉引用），并守住它与决策目录一致。 | 仅静态 | 7 |
-| `gen-code-map.ps1` | 代码地图：从源码生成「后端路由」与「前端页面」两张表，并守住它们与源码一致。 | 需 API 在线 | 5 |
+| `gen-code-map.ps1` | 代码地图：从源码生成「后端路由」与「前端页面」两张表，并守住它们与源码一致。 | 需 API 在线 | 6 |
 | `script-inventory.ps1` | 脚本台账：把 scripts/ 下每个 ps1 的作用、类别、依赖与引用点汇成一张表，并守住"不写说明、无人引用"的堆积。 | 连库、需 API 在线、git、工具链 | 6 |
 
 ## 四、门禁（本地按需，多数需连库或服务在线）
@@ -67,7 +68,6 @@
 | `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 5 |
 | `check-module-filter-columns.ps1` | 写名单模块的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 2 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 9 |
-| `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 1 |
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
 | `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 11 |
 | `check-system-params.ps1` | 系统参数门禁：参数定义完整性 + 引用键存在性 + 归属模块合法性。 | 连库 | 4 |

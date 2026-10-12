@@ -81,6 +81,12 @@ jobs:
         run: ./scripts/check-di-registrations.ps1
       - name: 前端样式类
         run: ./scripts/check-css-classes.ps1
+      # 页面外壳只有一套：JSX 里不得写死视口高度、手绘弹窗遮罩、手拼卡内工具条，
+      # 也不得直接手写"统一组件才该产出的类名"（card erp-list-card / erp-data-table）——
+      # 那正是「手抄了骨架却没复用组件」的特征。口径见 docs/guide/03 第七节。
+      # 不带这条，规范就只是"谁记得谁跑"。
+      - name: 前端页面外壳
+        run: ./scripts/check-page-shell.ps1
       - name: 数据层边界
         run: ./scripts/check-data-layer-boundary.ps1
       - name: 已退役库对象
