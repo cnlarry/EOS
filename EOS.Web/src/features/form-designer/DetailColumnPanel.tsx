@@ -1,5 +1,6 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { IconColumns, IconListDetails } from '@tabler/icons-react'
+import { ErpDataTable } from '../../components/common/ErpDataTable'
 import { dragId, type DropTarget } from './formDesignerDrag'
 import type { DesignRow } from './types'
 
@@ -53,46 +54,44 @@ export default function DetailColumnPanel({
           </button>
         </div>
       </div>
-      <div className="table-responsive">
-        <table className="table table-vcenter card-table erp-data-table erp-designer-detail-table">
-          <thead>
-            <tr>
-              {columns.map(row => (
-                <DetailHeadCell
-                  key={row.key}
-                  row={row}
-                  table={table}
-                  selected={selectedKey === row.key}
-                  dragging={draggingKey === row.key}
-                  dropClass={
-                    dropTarget?.kind === 'insert' && dropTarget.key === row.key
-                      ? dropTarget.before ? 'is-drop-before' : 'is-drop-after'
-                      : ''
-                  }
-                  onSelect={onSelect}
-                  onContextMenu={(x, y) => onRowContextMenu(row.key, x, y)}
-                />
-              ))}
-            </tr>
-          </thead>
-          {/* 一行占位体：列名在表头、字段代号在格里（与主表画布同一口径）。
-              这一行也是实体列与虚拟列的样式落点——占位框本身就是区分标记，表头不必再挂角标 */}
-          <tbody>
-            <tr>
-              {columns.map(row => (
-                <DetailPlaceholderCell
-                  key={row.key}
-                  row={row}
-                  table={table}
-                  selected={selectedKey === row.key}
-                  onSelect={onSelect}
-                  onContextMenu={(x, y) => onRowContextMenu(row.key, x, y)}
-                />
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <ErpDataTable className="erp-designer-detail-table">
+        <thead>
+          <tr>
+            {columns.map(row => (
+              <DetailHeadCell
+                key={row.key}
+                row={row}
+                table={table}
+                selected={selectedKey === row.key}
+                dragging={draggingKey === row.key}
+                dropClass={
+                  dropTarget?.kind === 'insert' && dropTarget.key === row.key
+                    ? dropTarget.before ? 'is-drop-before' : 'is-drop-after'
+                    : ''
+                }
+                onSelect={onSelect}
+                onContextMenu={(x, y) => onRowContextMenu(row.key, x, y)}
+              />
+            ))}
+          </tr>
+        </thead>
+        {/* 一行占位体：列名在表头、字段代号在格里（与主表画布同一口径）。
+            这一行也是实体列与虚拟列的样式落点——占位框本身就是区分标记，表头不必再挂角标 */}
+        <tbody>
+          <tr>
+            {columns.map(row => (
+              <DetailPlaceholderCell
+                key={row.key}
+                row={row}
+                table={table}
+                selected={selectedKey === row.key}
+                onSelect={onSelect}
+                onContextMenu={(x, y) => onRowContextMenu(row.key, x, y)}
+              />
+            ))}
+          </tr>
+        </tbody>
+      </ErpDataTable>
     </section>
   )
 }
