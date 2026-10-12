@@ -886,6 +886,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 列表上方的统计/说明行（"共 N 个…"）：卡头之下、表格之上的一行提示文字。
    样式（字号 / 次要色 / 内边距）就此一处定义 */
 .erp-list-header { padding: 8px 16px 0; font-size: 12px; color: var(--tblr-secondary); }
+/* 模块分组（230102）列表：同一模块的多行在视觉上是一块——每块的第一行画一条上分隔线。
+   刻意**不用跨行合并单元格**：`ErpTable` 每行每列必产出一个 `<td>`（合并要改公共组件），
+   而合并会打坏复制（按列索引取单元格）与排序（同模块的行一被重排，合并块就碎）。
+   线由页面的 rowClassName 在"没按列排序"时挂上——一按列重排，同模块的行散开，线就该收起来 */
+.erp-group-block-start > td { border-top: 2px solid var(--tblr-border-color); }
 /* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称）；
    ErpCommandBar 按钮（.erp-command-btn）为图标+文字、工具栏纯图标触发器
    （.erp-command-icon-btn，分组/导出分割）为 28px，均豁免此强制方块尺寸 */
