@@ -108,7 +108,13 @@ public sealed record ModuleBusinessConfigOverviewDto(
     [property: JsonPropertyName("actions")] IReadOnlyList<ModuleBusinessActionOverviewDto> Actions,
     [property: JsonPropertyName("validationRules")] IReadOnlyList<ModuleValidationRuleOverviewDto> ValidationRules,
     /// <summary>调用者在本配置面上是否有写权。界面据此决定"能编辑 / 只读"，而不是把控件灰掉让人猜。</summary>
-    [property: JsonPropertyName("canWrite")] bool CanWrite = false);
+    [property: JsonPropertyName("canWrite")] bool CanWrite = false,
+    /// <summary>
+    /// 全库按钮行的**授权镜子**（只有 230103 的总览填充）。跨模块的扁平列表要在行上回答
+    /// "这个按钮配了有没有人能用"，就必须随总览一起下发——否则界面只能逐模块再查一次。
+    /// </summary>
+    [property: JsonPropertyName("buttonAuthorization")]
+    IReadOnlyList<ModuleButtonAuthorizationMirrorDto>? ButtonAuthorization = null);
 
 /// <summary>
 /// 配置面的**目标模块形状**：配置面选中一个模块后要显示它的主表 / 副表（含表描述）。
@@ -169,6 +175,14 @@ public sealed record DocumentActionAuthorizationEntryDto(
     [property: JsonPropertyName("label")] string Label,
     [property: JsonPropertyName("users")] int Users,
     [property: JsonPropertyName("groups")] int Groups);
+
+/// <summary>
+/// 授权镜子**按模块**的一层分组：授权粒度是「模块 + 按钮键」，同一个键配在不同模块上互不相干，
+/// 全库列表因此必须按模块分开取数，不能合成一份。
+/// </summary>
+public sealed record ModuleButtonAuthorizationMirrorDto(
+    [property: JsonPropertyName("moduleId")] int ModuleId,
+    [property: JsonPropertyName("buttons")] IReadOnlyList<DocumentActionAuthorizationEntryDto> Buttons);
 
 /// <summary>
 /// 目录值的中文显示名（与目录集合同源，缺标签即在界面上露出英文码）。

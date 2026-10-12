@@ -52,15 +52,50 @@ public sealed class ModuleButtonAdminController(
     }
 
     /// <summary>
-    /// 系统级总览：全库按钮行（`MANUAL`）+ 所属模块。配置面首屏用它——只支持"先选模块"会让打开页面
-    /// 变成一片空态。编辑仍按模块进行（选中某行即进那个模块）。
+    /// 系统级总览：全库按钮行（`MANUAL`）+ 所属模块 + 每行的授权镜子。跨模块的扁平列表用它——
+    /// 只支持"先选模块"会让打开页面变成一片空态。
     /// </summary>
     [HttpGet("overview")]
     public async Task<IActionResult> Overview(CancellationToken token)
     {
         if (!await CanBrowse(token)) return Forbid();
         var overview = await repository.ReadOverviewAsync(BusinessConfigScope.Manual, token);
-        return Ok(overview with { CanWrite = await CanSetup(token) });
+        return Ok(overview with
+        {
+            CanWrite = await CanSetup(token),
+            // 授权镜子随总览一起回：扁平列表要在行上回答"配了有没有人能用"，逐模块再查一次就变成 N 个请求。
+            ButtonAuthorization = await ReadButtonAuthorizationAsync(overview.Actions, token),
+        });
+    }
+
+    /// <summary>
+    /// 全库按钮行的授权计数，按模块分组（授权粒度是「模块 + 按钮键」，跨模块不能合并）。
+    /// 只统计**启用**的行：停用的按钮点不了，它的授权数在列表上没有意义。
+    /// </summary>
+    private async Task<IReadOnlyList<ModuleButtonAuthorizationMirrorDto>> ReadButtonAuthorizationAsync(
+        IReadOnlyList<ModuleBusinessActionOverviewDto> actions,
+        CancellationToken token)
+    {
+        var mirrors = new List<ModuleButtonAuthorizationMirrorDto>();
+        foreach (var module in actions.Where(action => action.Enabled).GroupBy(action => action.ModuleId))
+        {
+            var keys = module
+                .Select(action => action.EffectKey.Trim())
+                .Where(key => key.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var counts = await documentActionAuthorization.CountsAsync(module.Key, keys, token);
+            mirrors.Add(new ModuleButtonAuthorizationMirrorDto(
+                module.Key,
+                module.Select(action => new DocumentActionAuthorizationEntryDto(
+                    action.Seq,
+                    action.EffectKey.Trim(),
+                    string.IsNullOrWhiteSpace(action.Label) ? documentActions.LabelOf(action.EffectKey) : action.Label!,
+                    counts.TryGetValue(action.EffectKey.Trim(), out var users) ? users.Users : 0,
+                    counts.TryGetValue(action.EffectKey.Trim(), out var groups) ? groups.Groups : 0))
+                    .ToList()));
+        }
+        return mirrors;
     }
 
     /// <summary>该模块的按钮行（只回 `MANUAL`；行为动作与校验规则归 230104 那一面）。</summary>
