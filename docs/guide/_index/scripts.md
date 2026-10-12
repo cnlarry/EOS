@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: f83d7a549877deb0 -->
+<!-- inventory-fingerprint: 4f0052182d66b0f2 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,7 +21,7 @@
 
 ## 一、总览
 
-- 入库脚本 **74** 个：门禁（CI） 14 · 门禁（本地按需） 14 · 一次性批次 16 · 工具 30
+- 入库脚本 **75** 个：门禁（CI） 14 · 门禁（本地按需） 15 · 一次性批次 16 · 工具 30
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**12** 个，见第七节
@@ -44,7 +44,7 @@
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 7 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 7 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
-| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 4 |
+| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 5 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
 | `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 12 |
 | `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 5 |
@@ -60,6 +60,7 @@
 | 脚本 | 作用 | 依赖 | 引用 |
 |---|---|---|---|
 | `check-base-data.ps1` | 基础数据一致性门禁：模块清单、建库种子与库内实际三者必须一致。 | 连库 | 5 |
+| `check-button-remarks.ps1` | 自定义按钮备注巡检：MANUAL 行的 REMARK 必须是人话，不得为空、不得是写给开发者的编号。 | 连库 | 1 |
 | `check-docs.ps1` | 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链。 | git | 8 |
 | `check-field-labels.ps1` | 字段元数据巡检：FIELDS 的字段中文名不得是占位文本，批核/结案状态位不得进入复合格。 | 连库 | 2 |
 | `check-form-layout.ps1` | 模块级表单版式巡检：版式行不得悬空、越界或把不该藏的字段藏起来。 | 连库 | 5 |
@@ -103,7 +104,7 @@
 | `auto-enable-batch.ps1` | 统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写 appsettings.json）→ 重启 API → 真实数据 CRUD 回路（尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。 全绿则保留启用并出报告… | 需 API 在线 | 5 |
 | `dev-services.ps1` | EOS 本地开发服务管理：EOS.API 一键启动、停止、重启、状态与日志。 | 需 API 在线、工具链 | 5 |
 | `eos-sql-selftest.ps1` | eos-sql.ps1 托管回退路径的结果集回归自检。 | 连库 | 1 |
-| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 36 |
+| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 37 |
 | `export-bootstrap-baseline.ps1` | 重建迁移基线登记 `db/bootstrap/40_journal_baseline.sql`。 | 连库 | 2 |
 | `export-bootstrap-metadata.ps1` | 从当前库重建元数据种子 `db/bootstrap/20_metadata.sql`。 | 连库 | 1 |
 | `export-bootstrap-schema.ps1` | 从当前库重建结构种子 `db/bootstrap/10_schema.sql`。 | 连库 | 2 |
