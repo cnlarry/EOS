@@ -172,6 +172,30 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
 - 类型名用 `TYPE_NAME(user_type_id)`；`nvarchar`/`nchar` 的 `max_length` 是字节数（÷2 为字符数），
   `max_length = -1` 为 max 类型（长度语义返回 NULL）；列顺序用 `column_id`，主键键序用 `key_ordinal`。
 
+### 新增前端页面（登记清单）
+
+**动手写代码前，先读 [`docs/guide/03-工程规范与硬约束.md`](docs/guide/03-工程规范与硬约束.md)
+第七节**（列表 / 页面骨架 / 页面级几何 / 列表卡外壳 / 表格与域内档位 / 弹窗 / 选择器 七个小节）——
+组件的用法与禁止项以那一节为准，本节只列"要对哪些地方做登记"，不重抄细则。
+
+新建一个页面要同时改到这些位置，缺一处就表现为"功能在、入口不通"或"CI 红"：
+
+| # | 改哪里 | 判据 |
+|---|---|---|
+| 1 | 页面组件落 `EOS.Web/src/features/<域>/` | 不建根级 `pages/`（见 [01-代码地图与仓库结构](docs/guide/01-代码地图与仓库结构.md)） |
+| 2 | `src/app/lazyRoutes.tsx` 加懒加载导出 | 每个页面一条 |
+| 3 | `src/app/workspaceRoutes.tsx` 加路由项，用 `RequirePermission` 包住 | 该表只允许 `element` 形式 |
+| 4 | 模块号引用 `EOS.API/Security/ModuleIds.cs` 常量 | 禁止散落裸数字 |
+| 5 | 承载页 / 定制页**三处同改**：库内 `MODULES.M_URL`、后端 `ModuleRouteValidator`、前端 `workspaceRoutes.tsx` | 漏一处 → 菜单点进去是回落页 |
+| 6 | `EOS.API.Tests/ModuleRouteValidatorTests.cs` 补 `[InlineData(路径, 模块号)]` | 漏改即红 |
+| 7 | `EOS.Web/src/app/workspaceRoutes.test.ts` 的 `paths` 数组补路径 | 前端侧钉住 |
+| 8 | 模块行（含 `M_URL`）走 DbUp 迁移 | 见本文第四节「迁移脚本约定」 |
+| 9 | 新增域目录在 `docs/guide/_map.md` 登记 | 否则手册陈旧检测扫不到它 |
+| 10 | 跑 `pwsh scripts/gen-code-map.ps1` 重新生成路由索引 | 否则 CI 的 `-Check` 红 |
+| 11 | 跑 `pwsh scripts/impact.ps1` 反查还漏了哪些登记面 | 它是查询工具、不阻断提交，但列得全 |
+
+页面根只加**一个**页面根语义类名（形如 `erp-*-page`），骨架声明在 `app.css` 一处——不要重抄。
+
 ### 前端列表
 
 - **所有列表一律使用 `EOS.Web/src/components/common/ErpTable`（统一电子表格）**，禁止手写 `<table>`；
@@ -197,6 +221,10 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
   工具栏纯图标下拉触发器用 `.erp-command-icon-btn`（28×28）。
 - **列表支持点击行内选中**（单选语义，交互控件所在处除外），启用 `ErpTable` 的 `rowClickSingleSelect`，
   不使用手写事件；首列复选框仍可多选。
+- **上面这些有门禁兜底**：`scripts/check-css-classes.ps1`（`erp-*` 类名必须在 CSS 里有定义，
+  悬空存量已清零）与 `scripts/check-page-shell.ps1`（禁写死视口高度、禁手绘弹窗遮罩、
+  禁手拼卡内工具条、**禁手抄 `ErpListCard` / `ErpTable` 的骨架类名**）**都在 CI 里跑**——
+  它们拦不住的只剩"用对了组件但用法不对"，那要靠评审。
 
 ### 统一选择器
 
@@ -264,6 +292,10 @@ dotnet build
 快照落后、Agent 技能引用等）。按改动范围挑着跑，至少跑 `scripts/check-di-registrations.ps1`——
 它拦的是"编译 0 错、单测全绿，但端点全挂"那类问题。完整清单见
 [`docs/guide/06-测试与质量门禁.md`](docs/guide/06-测试与质量门禁.md)。
+
+**改前端再加跑这两条**（它们也在 CI 里，本地跑一次能提前发现，不必等推送才发现）：
+`pwsh scripts/check-page-shell.ps1`（手写页面外壳、手抄组件骨架）、
+`pwsh scripts/check-css-classes.ps1`（`erp-*` 类名有没有 CSS 定义）。
 
 动手前可先跑 `pwsh scripts/impact.ps1`：按本次改动路径列出要同步的手册篇目、必须同批跟改的
 登记面与该跑的验证（`-Staged` 只看暂存、`-Json` 给机器读）。反向查询（路径 → 接口 / 页面在哪）
