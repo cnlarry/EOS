@@ -37,15 +37,15 @@
 
 ## 界面预览
 
-| 统一工作台 | 统一表单编辑 |
+| 统一工作台 | 统一表单 |
 | --- | --- |
 | ![单据列表](screenshots/workbench-sales-order-list.png) | ![统一表单](screenshots/unified-form-editor.png) |
 
-| 报价单 | 版式设计器 |
+| 报价单 | 表单设计器 |
 | --- | --- |
 | ![报价单](screenshots/workbench-quote-list.png) | ![版式设计器](screenshots/layout-designer.png) |
 
-| 菜单与模块管理 | 深色主题 |
+| 模块管理 | 深色主题 |
 | --- | --- |
 | ![模块管理](screenshots/module-admin.png) | ![深色主题](screenshots/dark-theme.png) |
 
