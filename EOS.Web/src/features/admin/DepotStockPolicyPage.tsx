@@ -388,7 +388,12 @@ export function DepotStockPolicyPage() {
         {policies.isPending || tiers.isPending ? <LoadingState label="正在加载库存策略…" /> : policies.isError || tiers.isError ? (
           <ErrorState message={errorMessage} onRetry={refreshAll} />
         ) : (
-          <div className="d-flex flex-column gap-2 p-2">
+          <>
+            {/* 表格区必须是卡片的直接子项（Fragment 不产生 DOM）：卡内滚动靠
+                `.erp-list-card`（flex 列 + overflow:hidden）→ `.erp-table-shell`（flex:1 + min-height:0 + overflow:auto）
+                这条链撑着。中间再套一层容器，那一层会按内容高度撑开、把表格一起顶出卡片，
+                被 overflow:hidden 裁掉——表现成「看不到滚动条、下方内容也露不出来」。
+                归位面板挂在同一层：它高度自适应，不与表格抢剩余高度。 */}
             <ErpTable
               columns={columns}
               data={policies.data ?? []}
@@ -403,7 +408,7 @@ export function DepotStockPolicyPage() {
               onRowDoubleClick={(row) => openEdit(row)}
             />
             {selected && selected.depotId !== '*' ? (
-              <div className="card">
+              <div className="card m-2">
                 <div className="card-body py-2">
                   <div className="fw-semibold small mb-1">哨兵存量归位：{selected.depotId}</div>
                   <div className="text-secondary small mb-2">
@@ -456,7 +461,7 @@ export function DepotStockPolicyPage() {
                 </div>
               </div>
             ) : null}
-          </div>
+          </>
         )}
       </ErpListCard>
 
