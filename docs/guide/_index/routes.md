@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: b47ee569343b48e3 -->
+<!-- code-map-fingerprint: 1acc7632d0095e04 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 42 个、方法级路由属性 283 处、解析出 283 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 42 个、方法级路由属性 284 处、解析出 284 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -42,6 +42,7 @@
 | PUT | `api/v1/admin/assistant/settings/scopes` | UpsertScope | `AssistantAdminController.cs` |
 | DELETE | `api/v1/admin/assistant/settings/scopes/{scopeType}/{scopeKey}` | DeleteScopeLayer | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/usage` | GetModelUsage | `AssistantAdminController.cs` |
+| GET | `api/v1/admin/business-flow/domains/{fromRootIdx:int}/links/{toRootIdx:int}` | DomainLink | `BusinessFlowController.cs` |
 | GET | `api/v1/admin/business-flow/domains/{rootIdx:int}` | Domain | `BusinessFlowController.cs` |
 | GET | `api/v1/admin/business-flow/overview` | Overview | `BusinessFlowController.cs` |
 | GET | `api/v1/admin/depot-stock-policy` | List | `DepotStockPolicyController.cs` |
