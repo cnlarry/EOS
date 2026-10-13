@@ -23,7 +23,7 @@ import { describeApiError } from '../../lib/errors'
  *
  * **不做跨行合并单元格**：`ErpTable` 每行每列必产出一个 `<td>`，跨行合并要改公共组件，
  * 而且会打坏复制（它按列索引取单元格）与排序（同模块的行一被重排，合并块就碎）。
- * 改为在每块的第一行画一条分隔线（`rowClassName` + `.erp-group-block-start`）：
+ * 改为在每块的第一行画一条分隔线（`rowClassName` + `.erp-module-block-start`）：
  * 列排序一开，同模块的行本就会散开，分块线随之隐藏。
  *
  * 与按钮面（230103）的差别在**写路径**：分组是逐行增删改（`POST` / `PUT` / `DELETE` / `move`），
@@ -424,7 +424,7 @@ export function ModuleGroupsPage() {
             data={rows}
             getRowId={(row) => String(row.groupId)}
             // 分块线只在"没按列排序"时出现：一按列重排，同模块的行就散开了，线反而误导
-            rowClassName={(row) => (sorting.length === 0 && row.blockStart ? 'erp-group-block-start' : undefined)}
+            rowClassName={(row) => (sorting.length === 0 && row.blockStart ? 'erp-module-block-start' : undefined)}
             empty={(
               <EmptyState
                 title="系统里还没有模块分组"

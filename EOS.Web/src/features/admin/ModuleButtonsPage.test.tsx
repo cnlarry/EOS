@@ -18,6 +18,14 @@ const overview = {
       moduleId: 170204, moduleDesc: '其它付款凭证', seq: 2, eventCode: 'MANUAL', effectKey: 'print-voucher',
       effectName: '打印凭证', enabled: false, failMode: 'BLOCK', label: null, remark: null,
     },
+    {
+      moduleId: 1610, moduleDesc: '采购收货单', seq: 1, eventCode: 'MANUAL', effectKey: 'purchase-reprice',
+      effectName: '重新取价', enabled: true, failMode: 'BLOCK', label: '取价', remark: null,
+    },
+    {
+      moduleId: 1610, moduleDesc: '采购收货单', seq: 2, eventCode: 'MANUAL', effectKey: 'print-receive',
+      effectName: '打印单据', enabled: true, failMode: 'BLOCK', label: '打印', remark: null,
+    },
   ],
   buttonAuthorization: [
     { moduleId: 1607, buttons: [{ seq: 1, key: 'recalc-account', label: '重算科目', users: 0, groups: 0 }] },
@@ -31,6 +39,21 @@ const buttonsView = {
     {
       seq: 1, eventCode: 'MANUAL', effectKey: 'recalc-account', enabled: true, failMode: 'BLOCK',
       label: '重算科目', remark: '月结前用', condition: null, params: null, ops: [],
+    },
+  ],
+}
+
+/** 1610 配了两个按钮：用来验模块内排序（只有一个的模块两个方向都不该给点）。 */
+const purchaseView = {
+  moduleId: 1610,
+  buttons: [
+    {
+      seq: 1, eventCode: 'MANUAL', effectKey: 'purchase-reprice', enabled: true, failMode: 'BLOCK',
+      label: '取价', remark: null, condition: null, params: null, ops: [],
+    },
+    {
+      seq: 2, eventCode: 'MANUAL', effectKey: 'print-receive', enabled: true, failMode: 'BLOCK',
+      label: '打印', remark: null, condition: null, params: null, ops: [],
     },
   ],
 }
@@ -78,6 +101,7 @@ describe('ModuleButtonsPage', () => {
       }
       // 170204 还没有按钮行：新增到它上面时 SEQ 从 1 起
       if (path === '/admin/module-buttons/170204') return { moduleId: 170204, buttons: [] }
+      if (path === '/admin/module-buttons/1610') return purchaseView
       return buttonsView
     })
     apiClientMock.post.mockResolvedValue(chooserData)
@@ -108,6 +132,38 @@ describe('ModuleButtonsPage', () => {
 
     expect(await screen.findByText('⚠ 无人可用')).toBeInTheDocument()
     expect(screen.getByText('停用不计')).toBeInTheDocument()
+  })
+
+  it('同一模块的多行在视觉上是一块：每块第一行挂分块标记', async () => {
+    renderWithProviders(<ModuleButtonsPage />)
+    await screen.findByText('收料单')
+
+    // 三个模块各一个块首（1610 的两行只算第一行）
+    expect(document.querySelectorAll('tr.erp-module-block-start')).toHaveLength(3)
+  })
+
+  it('模块内排序互换相邻两行的顺序；只配了一个按钮的模块两个方向都点不动', async () => {
+    renderWithProviders(<ModuleButtonsPage />)
+    await screen.findByText('收料单')
+
+    // 1610 有两行：块内第一行不能上移、最后一行不能下移
+    expect(screen.getByRole('button', { name: '上移 取价' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '下移 取价' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '下移 打印' })).toBeDisabled()
+
+    // 1607 / 170204 各只有一个按钮：两个方向都点不动
+    expect(screen.getByRole('button', { name: '上移 重算科目' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '下移 重算科目' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: '下移 取价' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
+    const [path, body] = apiClientMock.put.mock.calls[0]
+    expect(path).toBe('/admin/module-buttons/1610')
+    const typed = body as { actions: { seq: number; effectKey: string }[] }
+    // 走的是"按模块整面替换"：两行的 SEQ 互换，其余字段原样带回
+    const seqByKey = new Map(typed.actions.map((row) => [row.effectKey, row.seq]))
+    expect(seqByKey.get('purchase-reprice')).toBe(2)
+    expect(seqByKey.get('print-receive')).toBe(1)
   })
 
   it('操作列「编辑」开弹窗并预填，保存按模块整面替换且只发按钮行', async () => {

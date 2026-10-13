@@ -109,7 +109,7 @@ describe('ModuleGroupsPage', () => {
     await screen.findByText('应付月份')
 
     // 两个模块各一个块首 = 2 处标记；第二行（同模块）不该有
-    expect(document.querySelectorAll('tr.erp-group-block-start')).toHaveLength(2)
+    expect(document.querySelectorAll('tr.erp-module-block-start')).toHaveLength(2)
   })
 
   it('表达式校验列给出可用性与不可用原因', async () => {

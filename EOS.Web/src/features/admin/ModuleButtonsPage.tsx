@@ -1,9 +1,9 @@
 import {
-  IconDeviceFloppy, IconPencil, IconPlus, IconRefresh, IconTrash, IconUsers,
+  IconArrowDown, IconArrowUp, IconDeviceFloppy, IconPencil, IconPlus, IconRefresh, IconTrash, IconUsers,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
-import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
+import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
@@ -27,6 +27,11 @@ import { MANUAL_EVENT } from '../menu-admin/documentActionConfig'
  * 编辑对象是 `MODULE_BUSINESS_ACTION` 里 `EVENT_CODE='MANUAL'` 的行；保存走显式作用域 `manual`，
  * 该模块的行为动作与校验规则一行不动（真库防线见 `ModuleBusinessConfigScopeLiveTests`）。
  * 服务端保存成功后自动发布一次，故按钮就叫「保存」；发布不过关时的说法是"已保存，但未生效"。
+ *
+ * 同一模块的多行在视觉上是一块（每块第一行画一条分隔线，与 230102 同款视觉）：**不合并单元格**——
+ * `ErpTable` 每行每列必产出一个 `<td>`，合并会打坏复制与排序。顺序调整没有专门的端点（那是分组面的），
+ * 走的是同一条"按模块整面替换"：取该模块完整行、互换相邻两行的 `SEQ`、再整面提交，顺序随保存自动发布。
+ * 只有一个按钮的模块，两个排序按钮都点不动。
  */
 
 /** 服务端下发的可配置按钮处理器（`GET /admin/module-buttons/meta`）。 */
@@ -48,6 +53,9 @@ type ButtonRow = {
 
 /** 授权镜像的一行（0/0 = 配了没人能用，属 fail-closed 的正常态，界面上必须说出来）。 */
 type AuthorizationEntry = { seq: number; key: string; label: string; users: number; groups: number }
+
+/** 带"块首"标记的行：按「模块号 + 顺序」聚拢后，与上一行不同模块的即为块首。 */
+type PlacedButtonRow = ButtonRow & { blockStart: boolean }
 
 type OverviewView = {
   actions: ButtonRow[]
@@ -123,6 +131,9 @@ export function ModuleButtonsPage() {
   const [deleting, setDeleting] = useState<DeleteState | null>(null)
   const [authTarget, setAuthTarget] = useState<AuthorizationState | null>(null)
   const [outcome, setOutcome] = useState<ConfigSaveOutcome | null>(null)
+  const [pageError, setPageError] = useState<string | null>(null)
+  // 受控排序：只为知道"用户有没有按列重排"——分块线在按列排序后没有意义，要收起来
+  const [sorting, setSorting] = useState<SortingState>([])
 
   const overview = useQuery({
     queryKey: ['module-buttons', 'overview'],
@@ -149,17 +160,80 @@ export function ModuleButtonsPage() {
     return map
   }, [overview.data])
 
-  const rows = useMemo(() => {
-    const all = overview.data?.actions ?? []
+  // 按「模块号 + 顺序」聚拢后逐行标出块首；关键字只影响显示，不影响标记口径（先过滤再标记）
+  const rows = useMemo<PlacedButtonRow[]>(() => {
     const needle = keyword.trim().toLowerCase()
-    if (needle === '') return all
-    return all.filter((row) =>
-      `${row.moduleId} ${row.moduleDesc} ${row.label ?? ''} ${row.effectKey}`.toLowerCase().includes(needle))
+    const kept = (overview.data?.actions ?? []).filter((row) =>
+      needle === '' || `${row.moduleId} ${row.moduleDesc} ${row.label ?? ''} ${row.effectKey}`
+        .toLowerCase().includes(needle))
+    const ordered = [...kept].sort((left, right) =>
+      (left.moduleId - right.moduleId) || (left.seq - right.seq))
+    // 用 reduce 累积而不是"边 map 边改外层变量"：块首只看上一行，不引入渲染期的可变状态
+    return ordered.reduce<PlacedButtonRow[]>((acc, row) => {
+      const previous = acc.length === 0 ? null : acc[acc.length - 1]
+      acc.push({ ...row, blockStart: previous == null || previous.moduleId !== row.moduleId })
+      return acc
+    }, [])
   }, [overview.data, keyword])
+
+  // 该行在**它所属模块内**是否还能上移 / 下移（按全量数据算，不受关键字过滤影响）。
+  // 只有一个按钮的模块天然"既是块内第一行也是最后一行"，两个按钮都点不动。
+  const moveBounds = useMemo(() => {
+    const bounds = new Map<string, { first: boolean; last: boolean }>()
+    const byModule = new Map<number, ButtonRow[]>()
+    for (const button of overview.data?.actions ?? []) {
+      const list = byModule.get(button.moduleId)
+      if (list == null) byModule.set(button.moduleId, [button])
+      else list.push(button)
+    }
+    for (const list of byModule.values()) {
+      const ordered = [...list].sort((left, right) => left.seq - right.seq)
+      ordered.forEach((button, index) => {
+        bounds.set(`${button.moduleId}#${button.seq}`, {
+          first: index === 0,
+          last: index === ordered.length - 1,
+        })
+      })
+    }
+    return bounds
+  }, [overview.data])
+
   const refreshAll = useCallback(() => {
     setOutcome(null)
     void queryClient.invalidateQueries({ queryKey: ['module-buttons'] })
   }, [queryClient])
+
+  /**
+   * 模块内排序：按钮面没有 move 端点（那是分组面的），而这里的写路径本来就是"按模块整面替换"，
+   * 所以取该模块的完整行、把相邻两行的 SEQ 互换、再整面提交——与编辑 / 删除走同一条路径。
+   * 顺序会随保存自动发布（按钮在单据面上的出现次序由 SEQ 决定）。
+   */
+  const move = useMutation({
+    mutationFn: async (input: { moduleId: number; seq: number; action: 'up' | 'down' }) => {
+      const current = await apiClient.get<ButtonsView>(`/admin/module-buttons/${input.moduleId}`)
+      const ordered = [...(current.buttons ?? [])].sort((left, right) => left.seq - right.seq)
+      const index = ordered.findIndex((row) => row.seq === input.seq)
+      const neighbor = input.action === 'up' ? index - 1 : index + 1
+      if (index < 0 || neighbor < 0 || neighbor >= ordered.length) return null
+      const target = ordered[index]
+      const swapped = ordered[neighbor]
+      ordered[index] = { ...target, seq: swapped.seq }
+      ordered[neighbor] = { ...swapped, seq: target.seq }
+      return await apiClient.put<ConfigSaveOutcome>(`/admin/module-buttons/${input.moduleId}`, {
+        actions: ordered.map((row) => ({ ...row, eventCode: MANUAL_EVENT })),
+        validationRules: [],
+      })
+    },
+    onSuccess: async (result) => {
+      setPageError(null)
+      setOutcome(result ?? null)
+      await queryClient.invalidateQueries({ queryKey: ['module-buttons'] })
+    },
+    onError: (error) => {
+      setOutcome(null)
+      setPageError(describeSaveError(error))
+    },
+  })
 
   const save = useMutation({
     mutationFn: async (changes: SaveChanges) => {
@@ -254,7 +328,7 @@ export function ModuleButtonsPage() {
     })
   }
 
-  const columns = useMemo<ColumnDef<ButtonRow>[]>(() => [
+  const columns = useMemo<ColumnDef<PlacedButtonRow>[]>(() => [
     {
       id: 'select',
       enableSorting: false,
@@ -320,8 +394,37 @@ export function ModuleButtonsPage() {
     {
       id: 'seq',
       header: '顺序',
-      size: 70,
-      accessorFn: (row) => row.seq,
+      size: 110,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const bounds = moveBounds.get(`${row.original.moduleId}#${row.original.seq}`)
+        const name = row.original.label?.trim() || row.original.effectKey
+        return (
+          <div className="d-flex align-items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<IconArrowUp size={14} />}
+              aria-label={`上移 ${name}`}
+              disabled={!canWrite || move.isPending || (bounds?.first ?? true)}
+              onClick={() => move.mutate({
+                moduleId: row.original.moduleId, seq: row.original.seq, action: 'up',
+              })}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<IconArrowDown size={14} />}
+              aria-label={`下移 ${name}`}
+              disabled={!canWrite || move.isPending || (bounds?.last ?? true)}
+              onClick={() => move.mutate({
+                moduleId: row.original.moduleId, seq: row.original.seq, action: 'down',
+              })}
+            />
+            <span className="text-secondary small">{row.original.seq}</span>
+          </div>
+        )
+      },
     },
     {
       id: 'enabled',
@@ -411,7 +514,7 @@ export function ModuleButtonsPage() {
         </div>
       ),
     },
-  ], [authByKey, canWrite, openEdit, optionsByKey])
+  ], [authByKey, canWrite, move, moveBounds, openEdit, optionsByKey])
 
   const errorMessage = describeApiError(overview.error ?? meta.error, '加载自定义按钮失败。')
   const editorDefaultLabel = editor == null
@@ -446,6 +549,9 @@ export function ModuleButtonsPage() {
                 本页只给了查看权：能看不能改，要改请让管理员放开本配置面的 SETUP。
               </div>
             )}
+            {pageError ? (
+              <div className="px-3 pt-2"><div className="alert alert-danger py-2 mb-0" role="alert">{pageError}</div></div>
+            ) : null}
             {outcome ? (
               <div className="px-3 pt-2"><ConfigPublishAlerts outcome={outcome} /></div>
             ) : null}
@@ -471,6 +577,10 @@ export function ModuleButtonsPage() {
                 description="点右上角「新增」加一个——没配按钮的模块，单据面上不出现任何自定义按钮。"
               />
             )}
+            // 分块线只在"没按列排序"时出现：一按列重排，同模块的行就散开了，线反而误导
+            rowClassName={(row) => (sorting.length === 0 && row.blockStart ? 'erp-module-block-start' : undefined)}
+            sorting={sorting}
+            onSortingChange={setSorting}
             resizable
             storageKey="module-buttons"
             clientSideSorting
