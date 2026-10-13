@@ -118,8 +118,8 @@ export function FieldAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      // 操作列固定宽度：容纳三个文字按钮，不随内容/拖拽变化
-      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 220, minWidthFloor: true, resizable: false },
+      // 操作列：右对齐冻结；初始宽度按按钮组自适应，之后与普通列一样可拖
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-flex gap-1 justify-content-end">
           <Button size="sm" variant="ghost" icon={<IconCopy size={14} />} title="复制" onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/new?copyFrom=${encodeURIComponent(row.original.fieldId)}`)}>复制</Button>

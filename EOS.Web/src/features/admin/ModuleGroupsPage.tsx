@@ -338,10 +338,9 @@ export function ModuleGroupsPage() {
     {
       id: 'actions',
       header: '操作',
-      size: 190,
       enableSorting: false,
       enableHiding: false,
-      meta: { frozenRight: true, resizable: false, truncate: false, minWidth: 190 },
+      meta: { frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-flex gap-1">
           <Button

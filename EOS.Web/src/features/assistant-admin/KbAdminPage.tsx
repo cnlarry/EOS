@@ -117,7 +117,7 @@ export function KbAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 110, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} title="删除（转墓碑并移除向量）"
           loading={remove.isPending && remove.variables === row.original.docId}

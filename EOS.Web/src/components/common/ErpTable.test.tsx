@@ -307,6 +307,26 @@ describe('ErpTable', () => {
     expect(nameTh.querySelector('.erp-col-resizer')).toBeInTheDocument()
   })
 
+  it('autoWidth 列（操作列）标记 data-col-autofit 并同样带拖拽手柄', async () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'name', header: '名称' },
+      {
+        id: 'actions',
+        header: '操作',
+        enableSorting: false,
+        meta: { frozenRight: true, truncate: false, autoWidth: true },
+        cell: () => <button type="button">编辑</button>,
+      },
+    ]
+    const { container } = render(
+      <ErpTable columns={columns} data={rows} getRowId={(row) => row.id} resizable storageKey="erp-autofit-test" />,
+    )
+    await waitFor(() => expect(container.querySelectorAll('.erp-col-resizer').length).toBeGreaterThan(0))
+    const actionsTh = container.querySelectorAll('thead th')[1]!
+    expect(actionsTh).toHaveAttribute('data-col-autofit', 'true')
+    expect(actionsTh.querySelector('.erp-col-resizer')).toBeInTheDocument()
+  })
+
   it('clientSideSorting 使用 TanStack 内置排序', () => {
     const data = [
       { id: '1', name: 'B' },

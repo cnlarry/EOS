@@ -171,6 +171,8 @@ export function AssistantScopeOverrides() {
     {
       id: 'actions',
       header: '',
+      // 表头是空的，初始宽度必须按按钮组算，否则会被压到最小宽度把按钮裁掉
+      meta: { truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-flex gap-1">
           <Button size="sm" onClick={() => clearOne.mutate(row.original)}

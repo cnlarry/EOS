@@ -160,7 +160,7 @@ export function FlowMonitorPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+      meta: { className: 'text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
           <Button size="sm" className="erp-table-action" title="查看流程明细" onClick={() => setSelectedWfId(row.original.wfId)}>

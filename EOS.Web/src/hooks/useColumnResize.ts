@@ -27,6 +27,8 @@ const MAX_MEASURE_ROWS = 300
  * - 通过 `<colgroup>` 控制列宽；列结构变化（选择列、模块切换、列顺序变化）自动重应用，
  *   宽度始终按列键对齐，不再依赖列索引；
  * - 默认宽度来源：`data-col-min-width`（DISPLAY_LENGTH）变化时自动跟随，否则取表头实测宽度；
+ *   带 `data-col-autofit="true"` 的列（操作列）例外——初始宽度按实测内容自适应，
+ *   与双击把手得到的宽度同一算法，只是不必等用户去双击；拖过的列仍以拖拽值为准；
  * - 宽度持久化到 `localStorage['erp-table-cols:<storageKey>']`（可选，按列键存储）；
  * - `onColumnResize` 可把拖拽结果写回服务端字段元数据。
  *
@@ -120,6 +122,16 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       ths.forEach((th, index) => {
         const key = keys[index]
         const minWidth = parseFloat(th.dataset.colMinWidth ?? '') || 0
+        // 初始按内容自适应的列（操作列）：默认宽度取实测内容宽度，
+        // 而不是写死的 data-col-min-width，也不是表头文字那点宽度。
+        if (th.dataset.colAutofit === 'true') {
+          if (!defaults.has(key)) {
+            const { width, measuredRows } = measureFitWidth(index)
+            // 一行数据都没量到（表先挂载、数据后到）时先不钉死，等行数据到达再补算
+            if (measuredRows > 0) defaults.set(key, width)
+          }
+          return
+        }
         if (minWidth > 0) {
           // DISPLAY_LENGTH 是服务端来源：变化时跟随（列宽写回后自动更新）
           if (defaults.get(key) !== minWidth) defaults.set(key, minWidth)
@@ -229,14 +241,13 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
     }
 
     /**
-     * 计算并应用单列自适应宽度：取「表头内容宽度」与「当前分页该列所有单元格中
-     * 最宽的一个（内容 + 内边距 + 边框）」的较大值，使最宽内容不换行；
-     * 直接落 <col> 宽度并持久化 localStorage，但不触发 onColumnResize（由调用方决定写回服务端）。
+     * 单列的自适应宽度：取「表头内容宽度」与「当前数据里该列最宽单元格（内容 + 内边距 + 边框）」
+     * 的较大值，使最宽内容不换行。同时报告实测到多少行——0 行说明数据还没渲染出来，
+     * 这时量到的只有表头，拿去当初始宽度会把列钉死在"标题那么宽"上。
      */
-    const fitColumn = (index: number): number => {
-      const ths = thsOf()
-      const th = ths[index]
-      if (!th) return 0
+    const measureFitWidth = (index: number): { width: number; measuredRows: number } => {
+      const th = thsOf()[index]
+      if (!th) return { width: 0, measuredRows: 0 }
       const thStyle = getComputedStyle(th)
       const thPadding = (parseFloat(thStyle.paddingLeft) || 0) + (parseFloat(thStyle.paddingRight) || 0)
       const thBorder = th.offsetWidth - th.clientWidth
@@ -263,11 +274,20 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
           )
         }
       }
-      const cols = ensureCols()
       const maxWidth = parseFloat(th.dataset.colMaxWidth ?? '') || 0
       const width = maxWidth > 0
         ? Math.min(Math.max(MIN_WIDTH, headerWidth, dataWidth), maxWidth)
         : Math.max(MIN_WIDTH, headerWidth, dataWidth)
+      return { width, measuredRows }
+    }
+
+    /**
+     * 计算并应用单列自适应宽度：落 <col> 宽度并持久化 localStorage，
+     * 但不触发 onColumnResize（由调用方决定写回服务端）。
+     */
+    const fitColumn = (index: number): number => {
+      const { width } = measureFitWidth(index)
+      const cols = ensureCols()
       if (cols[index]) cols[index].style.width = `${width}px`
       saveWidths()
       return width
@@ -314,6 +334,30 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
         attributeFilter: ['data-col-key', 'data-col-min-width'],
       })
     }
+
+    /**
+     * 行数据到达 / 换页后补算"初始自适应"列的宽度。表头是不变的（`apply` 只在表头变化时重跑），
+     * 而操作列这类列的宽度取决于内容，故要跟着 tbody 的行变化再量一次。
+     * 只在用户还没拖过这一列（没有已保存宽度、也没量出过宽度）时生效——拖过就是用户定的宽度。
+     */
+    const reapplyAutoFit = () => {
+      const keys = colKeys()
+      let changed = false
+      thsOf().forEach((th, index) => {
+        if (th.dataset.colAutofit !== 'true') return
+        const key = keys[index]
+        if (defaults.has(key)) return
+        if (loadWidths()[key] !== undefined) return
+        const { width, measuredRows } = measureFitWidth(index)
+        if (measuredRows > 0 && width > 0) {
+          defaults.set(key, width)
+          changed = true
+        }
+      })
+      if (changed) apply()
+    }
+    const bodyObserver = new MutationObserver(reapplyAutoFit)
+    for (const tbody of Array.from(table.tBodies)) bodyObserver.observe(tbody, { childList: true })
 
     const endDrag = (event: PointerEvent) => {
       const handle = event.currentTarget as HTMLElement
@@ -386,6 +430,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       if (fitRef) fitRef.current = null
       table.removeEventListener('pointerdown', onPointerDown)
       observer.disconnect()
+      bodyObserver.disconnect()
     }
   }, [tableRef, storageKey, persist, onColumnResize, fitRef])
 }

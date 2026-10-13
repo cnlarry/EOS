@@ -126,8 +126,9 @@ export function TableAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      // 操作列对齐 2305/2306/字段维护：ghost + 14px 图标 + 文字，右对齐冻结，不随内容/拖拽变化
-      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 220, minWidthFloor: true, resizable: false },
+      // 操作列对齐 2305/2306/字段维护：ghost + 14px 图标 + 文字，右对齐冻结；
+      // 初始宽度按按钮组自适应，之后与普通列一样可拖
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-flex gap-1 justify-content-end">
           <Button size="sm" variant="ghost" icon={<IconListDetails size={14} />} title="管理字段" onClick={(event) => { event.stopPropagation(); navigate(`/admin/tables/${encodeURIComponent(row.original.tableId)}/fields`) }}>管理字段</Button>

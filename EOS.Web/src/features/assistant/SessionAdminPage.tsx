@@ -161,7 +161,7 @@ export function SessionAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 300, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => {
         const session = row.original
         const archived = Boolean(session.archivedAt)

@@ -517,7 +517,7 @@ export function ReportAdminPage() {
       id: 'actions',
       header: '操作',
       enableSorting: false,
-      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, minWidth: 132, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
           <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} onClick={() => setReportEditor({ mode: 'edit', row: row.original })}>编辑</Button>
@@ -538,7 +538,7 @@ export function ReportAdminPage() {
       id: 'actions',
       header: '操作',
       enableSorting: false,
-      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, minWidth: 132, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
           <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} onClick={() => setSortEditor({ mode: 'edit', row: row.original })}>编辑</Button>

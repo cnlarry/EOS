@@ -261,9 +261,9 @@ export function AdminSessionsPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      // 操作列最多两个按钮（在列：归档；已归档：归档 + 删除），220 是按三个按钮给的宽度。
-      // 收到 140 够放，省下的横向空间留给会话标题。
-      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 140, minWidthFloor: true, resizable: false },
+      // 操作列按钮数随会话状态变（在列：归档；已归档：归档 + 删除），故初始宽度按实际按钮组自适应，
+      // 不再按"最多三个按钮"预留一个偏宽的固定值，省下的横向空间留给会话标题。
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => {
         const session = row.original
         const archived = Boolean(session.archivedAt)

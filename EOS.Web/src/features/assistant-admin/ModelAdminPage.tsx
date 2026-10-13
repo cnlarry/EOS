@@ -318,7 +318,7 @@ export function ModelAdminPage() {
       // 不用来回拉才能点到"这一行的操作"
       meta: {
         className: 'text-nowrap text-end', frozenRight: true,
-        truncate: false, minWidth: 200, minWidthFloor: true, resizable: false,
+        truncate: false, autoWidth: true,
       },
       cell: ({ row }) => {
         const provider = row.original
@@ -378,7 +378,7 @@ export function ModelAdminPage() {
       // frozenRight 同供应商表：横向滚动时操作列始终在右侧
       meta: {
         className: 'text-nowrap text-end', frozenRight: true,
-        truncate: false, minWidth: 240, minWidthFloor: true, resizable: false,
+        truncate: false, autoWidth: true,
       },
       cell: ({ row }) => {
         const model = row.original

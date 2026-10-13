@@ -100,6 +100,7 @@ interface ErpTableProps<TData extends RowData> {
  * - `className`：td/th 追加类；
  * - `cellClassName`：仅作用于数据单元格（优先级高于 className）；
  * - `minWidth`：表头最小列宽（工作台 DISPLAY_LENGTH）；
+ * - `autoWidth`：初始列宽按内容自适应（操作列），之后与普通列一样可拖拽；
  * - `filterable` / `frozenLeft` / `frozenRight`：列头筛选 / 冻结。
  */
 export function ErpTable<TData>({
@@ -598,6 +599,7 @@ export function ErpTable<TData>({
                     data-col-max-width={meta?.maxWidth ?? undefined}
                     data-col-min-floor={meta?.minWidthFloor ? 'true' : undefined}
                     data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
+                    data-col-autofit={meta?.autoWidth ? 'true' : undefined}
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                   >
@@ -848,8 +850,14 @@ declare module '@tanstack/react-table' {
     frozenLeft?: boolean
     /** 冻结在右侧（sticky right，建议仅末列） */
     frozenRight?: boolean
-    /** 该列不允许拖拽调整列宽（如固定宽度的选择列/操作列） */
+    /** 该列不允许拖拽调整列宽（如固定宽度的选择列） */
     resizable?: boolean
+    /**
+     * 初始列宽按内容自适应：首次布局时按"表头 + 本页该列最宽单元格"实测宽度落列宽，
+     * 之后与普通列一样可拖拽（拖拽值优先于它）。操作列用它——按钮组的宽度由按钮个数决定，
+     * 写死一个够宽的固定值在按钮少的页面里就白白占着横向空间。
+     */
+    autoWidth?: boolean
     /** 编辑态列宽下限：data-col-min-width 同时作为硬下限，历史/拖拽宽度不得低于它（如表单明细录入列） */
     minWidthFloor?: boolean
     /** 单元格单行省略（默认 true）：不换行 + 超宽省略号 + title 悬停全文；复选框/按钮/输入框等交互列设为 false */

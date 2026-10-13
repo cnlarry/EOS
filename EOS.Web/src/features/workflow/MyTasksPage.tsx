@@ -142,7 +142,7 @@ export function MyTasksPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+      meta: { className: 'text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>去处理</Button>,
     },
   ], [navigate])
@@ -171,7 +171,7 @@ export function MyTasksPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+      meta: { className: 'text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
           <Button
@@ -295,7 +295,7 @@ export function MyTasksPage() {
                 header: '操作',
                 enableSorting: false,
                 enableHiding: false,
-                meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+                meta: { className: 'text-end', frozenRight: true, truncate: false, autoWidth: true },
                 cell: ({ row }) => (
                   <Button size="sm" variant="danger" className="erp-table-action" onClick={() => void withdrawFlow(row.original as MyStartedFlow)}>
                     撤回

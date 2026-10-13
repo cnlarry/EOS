@@ -130,7 +130,7 @@ export function DashboardPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap text-end', frozenRight: true, resizable: false, truncate: false, minWidth: 100, minWidthFloor: true },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <Button size="sm" variant="ghost" icon={<IconArrowUpRight size={14} />} onClick={() => openTab(workbenchList(row.original.moduleId))}>去处理</Button>
       ),
@@ -188,7 +188,7 @@ export function DashboardPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap text-end', frozenRight: true, resizable: false, truncate: false, minWidth: 92, minWidthFloor: true },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <Button size="sm" variant="ghost" icon={<IconEye size={14} />} onClick={() => openTab(workbenchList(row.original.moduleId))}>查看</Button>
       ),
