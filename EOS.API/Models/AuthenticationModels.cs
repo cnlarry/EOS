@@ -9,7 +9,9 @@ public sealed record LoginUser(
     string DepartmentId,
     string DepartmentName,
     string CompanyId,
-    string DefaultGroupId);
+    string DefaultGroupId,
+    // 所属用户组描述（SYSDG.G_DESC，多组用顿号连接）：用户组是这套权限模型里唯一的"角色"概念
+    string GroupNames);
 
 public enum LoginFailure { None, UserNotFound, InvalidPassword, Disabled }
 

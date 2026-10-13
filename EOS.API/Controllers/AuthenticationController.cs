@@ -68,7 +68,7 @@ public sealed class AuthenticationController(
             new Claim(ClaimTypes.NameIdentifier, user.UserId), new Claim(ClaimTypes.Name, user.EmployeeName),
             new Claim("employee_id", user.EmployeeId), new Claim("department_id", user.DepartmentId),
             new Claim("department_name", user.DepartmentName), new Claim("company_id", user.CompanyId),
-            new Claim("default_group_id", user.DefaultGroupId)
+            new Claim("default_group_id", user.DefaultGroupId), new Claim("group_names", user.GroupNames)
         };
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)),

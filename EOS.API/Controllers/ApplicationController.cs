@@ -21,7 +21,9 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             employeeId = User.FindFirstValue("employee_id") ?? "",
             avatarText = GetAvatarText(displayName),
             avatarUrl = (string?)null,
-            roleName = "ERP 用户",
+            // 界面上显示的"角色"就是用户组（SYSDG.G_DESC，登录时解析进票据，多组顿号连接）；
+            // 这套权限模型里没有独立的角色表，也没有可写死的固定角色。
+            groupNames = User.FindFirstValue("group_names") ?? "",
             organization = new { id = User.FindFirstValue("department_id") ?? "", name = User.FindFirstValue("department_name") ?? "" }
         };
         var modules = await navigationRepository.GetForUserAsync(userId, token);
@@ -98,7 +100,9 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             // 分组自己也有页面时带上落点与编号：否则"有下级"会吞掉这张页面的入口（菜单搜索按编号也就找不到）
             route = hasOwnPage ? RouteFor(module) : (string?)null,
             icon,
-            moduleId = hasOwnPage ? module.Id : (int?)null,
+            // 编号一律下发（纯目录分组也给）：菜单悬停提示按"{M_IDX}-{M_DESC}"呈现，
+            // 缺了编号就只能提示一个名字。菜单搜索另有 route 这道门，不受影响。
+            moduleId = module.Id,
             children = (object?)children
         };
     }
