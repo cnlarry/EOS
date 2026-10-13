@@ -15,8 +15,10 @@ export interface FlowDomain {
 
 /**
  * 域间连线：上游来源域 → 下游引用域。
- * 两个计数出自两个互不重叠的数据源（实测零交集），因此分开保留而不是合成一个数：
- * `edgeCount` 是字段取值来源（含大量"选基础资料"），`relationEdgeCount` 是已登记单据关系。
+ * 两个计数讲的是两件事，因此分开保留而不是合成一个数：
+ * `edgeCount` 是字段取值来源的对数（含大量"选基础资料"），`relationEdgeCount` 是已登记单据关系的对数。
+ * 注意**两者会重合**（同一对表既靠字段引用、又已登记为单据关系时两边都算），
+ * 所以两个数之和不等于"这个域对之间有几条关系"——明细视图里的行数是并集，可能更少。
  */
 export interface FlowDomainLink {
   fromRootIdx: number
@@ -74,6 +76,55 @@ export interface FlowDomainGraph {
   edges: FlowTableEdge[]
 }
 
+/**
+ * 两个业务域之间的一条关系事实（第三级「模块关系」视图）：上游表 → 下游表，
+ * 外加这条线为什么存在——字段取值来源明细，以及它是否同时是已登记单据关系。
+ * 两个来源合成一条记录，与域内图同一口径（同一对表只出现一次）。
+ */
+export interface FlowLinkEdge {
+  fromTable: string
+  toTable: string
+  fromTableName: string
+  toTableName: string
+  registered: boolean
+  relationName: string | null
+  fieldCount: number
+  fields: string[]
+  keyPairs: string[]
+}
+
+/**
+ * 两个业务域之间的全部关系：总览图上那条带数字的连线点进去看到的就是它。
+ * 每条关系的过滤判据与连线计数时一致，但**行数是两类事实的并集**：
+ * 同一对表在两类事实都成立时只出现一行（用两个标签标出双重身份），
+ * 故线上写 "6+3" 而明细 8 行是正常的——差的那 1 条被两类事实同时命中，界面要如实说明。
+ */
+export interface FlowLinkGraph {
+  fromRootIdx: number
+  fromName: string
+  toRootIdx: number
+  toName: string
+  edges: FlowLinkEdge[]
+}
+
+/** 第三级明细表的一行：一条关系事实整理成可直接展示的文本。 */
+export interface FlowLinkRow {
+  id: string
+  fromTable: string
+  fromTableName: string
+  toTable: string
+  toTableName: string
+  /** 这条关系为什么存在：两类事实可以同时成立，故是标签列表而不是单个类型。 */
+  relationKinds: string[]
+  registered: boolean
+  /** 已登记关系的语义名，挂在"已登记单据关系"标签上做悬停说明。 */
+  relationName: string | null
+  /** 字段取值来源的对数（0 表示这条关系不是字段引用），用于算两类事实的重合条数。 */
+  fieldCount: number
+  fields: string
+  keyPairs: string
+}
+
 /** 画布节点的展示载荷。 */
 export interface FlowNodeData extends Record<string, unknown> {
   title: string
@@ -108,12 +159,49 @@ export function domainRootIdxOf(nodeId: string): number | null {
 }
 
 /** 边的稳定 id：一对表只有一条边（两个数据源已合成），故两端表名即唯一键。 */
-export function flowEdgeId(edge: FlowTableEdge): string {
+export function flowEdgeId(edge: { fromTable: string; toTable: string }): string {
   return `${edge.fromTable}->${edge.toTable}`
 }
 
 export function domainLinkId(link: FlowDomainLink): string {
   return `${domainNodeId(link.fromRootIdx)}->${domainNodeId(link.toRootIdx)}`
+}
+
+/**
+ * 域间连线 id → 两端域编号，与 `domainLinkId` 互为逆运算；不是域间连线（如表间连线的 id）返回 null。
+ * 总览图上点一条带数字的连线要下钻到"这两个域之间"，靠的就是它把 id 还原成两端。
+ */
+export function parseDomainLinkId(edgeId: string): { fromRootIdx: number; toRootIdx: number } | null {
+  const separator = edgeId.indexOf('->')
+  if (separator < 0) return null
+  const fromRootIdx = domainRootIdxOf(edgeId.slice(0, separator))
+  const toRootIdx = domainRootIdxOf(edgeId.slice(separator + '->'.length))
+  return fromRootIdx == null || toRootIdx == null ? null : { fromRootIdx, toRootIdx }
+}
+
+/**
+ * 第三级明细表的行：把关系事实整理成展示文本。
+ * 两类事实合并成一条行、用标签列表表达"为什么有关联"，与画布上一条边只画一次同一口径。
+ */
+export function linkRows(data: FlowLinkGraph | undefined): FlowLinkRow[] {
+  return (data?.edges ?? []).map((edge) => {
+    const relationKinds: string[] = []
+    if (edge.registered) relationKinds.push('已登记单据关系')
+    if (edge.fieldCount > 0) relationKinds.push('字段取值来源')
+    return {
+      id: flowEdgeId(edge),
+      fromTable: edge.fromTable,
+      fromTableName: edge.fromTableName,
+      toTable: edge.toTable,
+      toTableName: edge.toTableName,
+      relationKinds,
+      registered: edge.registered,
+      relationName: edge.relationName,
+      fieldCount: edge.fieldCount,
+      fields: edge.fields.join('、'),
+      keyPairs: edge.keyPairs.join('、'),
+    }
+  })
 }
 
 /**
@@ -294,13 +382,6 @@ export function relationKeyLabel(keyPairs: string[]): string {
   const first = keyPairs[0]?.split('→')[0]?.trim()
   if (!first) return '登记关系'
   return keyPairs.length > 1 ? `${first} 等 ${keyPairs.length} 键` : first
-}
-
-/** 域节点与表节点共用的搜索：关键字命中表代码/表名/模块名，大小写不敏感。 */
-export function matchIds(items: { id: string; text: string }[], keyword: string): Set<string> {
-  const needle = keyword.trim().toUpperCase()
-  if (needle.length === 0) return new Set()
-  return new Set(items.filter((item) => item.text.toUpperCase().includes(needle)).map((item) => item.id))
 }
 
 /**

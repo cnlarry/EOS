@@ -166,4 +166,92 @@ public sealed class BusinessFlowRepositoryLiveTests
 
         Assert.Null(await _repository.GetDomainGraphAsync(999_999, CancellationToken.None));
     }
+
+    /// <summary>
+    /// 第三级「两个域之间的关系」：逐条关系的构成必须与总览那条连线的数字对得上——
+    /// 线上写 "6+3"，明细里就该有 6 条带字段取值来源、3 条带已登记单据关系。
+    ///
+    /// 行数是两者的<b>并集</b>而不是和：同一对表两类事实都成立时只出一行（两个标签并列），
+    /// 连线上那两个数字之和因此可能比行数大。逐条断言的是"每一类各有几条"，
+    /// 并额外证明这库里确实存在重合（否则"合并"这件事没有样本，成了纸面约定）。
+    ///
+    /// 逐个比对关系最多的若干条域间连线，而不是只看一条：只看一条时，
+    /// 恰好选到"全是字段引用、一条登记关系都没有"的那条，键列断言就成了恒真的假断言。
+    /// </summary>
+    [Fact]
+    public async Task GetDomainLinkGraphAsync_条数与总览连线对得上()
+    {
+        if (ConnectionString.Value is null) return;
+
+        var overview = await _repository.GetOverviewAsync(CancellationToken.None);
+        var links = overview.Links
+            .OrderByDescending(item => item.EdgeCount + item.RelationEdgeCount)
+            .Take(20)
+            .ToList();
+        Assert.NotEmpty(links);
+
+        var checkedRegistered = false;
+        var checkedOverlap = false;
+        foreach (var link in links)
+        {
+            var graph = await _repository.GetDomainLinkGraphAsync(link.FromRootIdx, link.ToRootIdx, CancellationToken.None);
+
+            Assert.NotNull(graph);
+            Assert.Equal(link.FromRootIdx, graph!.FromRootIdx);
+            Assert.Equal(link.ToRootIdx, graph.ToRootIdx);
+            Assert.False(string.IsNullOrWhiteSpace(graph.FromName));
+            Assert.False(string.IsNullOrWhiteSpace(graph.ToName));
+            // 两类事实各自的条数：与连线上分开写的两个数字逐一对应
+            Assert.Equal(link.RelationEdgeCount, graph.Edges.Count(edge => edge.Registered));
+            Assert.Equal(link.EdgeCount, graph.Edges.Count(edge => edge.FieldCount > 0));
+            // 一对表只出一条记录，不会因为两个来源都命中而重复计数
+            Assert.Equal(graph.Edges.Count, graph.Edges.Select(edge => (edge.FromTable, edge.ToTable)).Distinct().Count());
+            // 并集：每一行至少有一类身份，且行数不超过两个数字之和（重合时更少）
+            Assert.All(graph.Edges, edge =>
+            {
+                Assert.True(edge.Registered || edge.FieldCount > 0);
+                Assert.False(string.IsNullOrWhiteSpace(edge.FromTableName));
+                Assert.False(string.IsNullOrWhiteSpace(edge.ToTableName));
+            });
+            Assert.True(graph.Edges.Count <= link.EdgeCount + link.RelationEdgeCount);
+            if (graph.Edges.Any(edge => edge.Registered && edge.FieldCount > 0)) checkedOverlap = true;
+
+            // 登记关系必须带得出键列：这是它相对字段引用多出来的信息
+            foreach (var edge in graph.Edges.Where(edge => edge.Registered))
+            {
+                Assert.NotEmpty(edge.KeyPairs);
+                checkedRegistered = true;
+            }
+        }
+
+        Assert.True(checkedRegistered, "关系最多的若干条域间连线里一条登记关系都没有，键列断言会变成恒真的假断言。");
+        Assert.True(checkedOverlap, "这库里两类事实没有一对表重合，「一对表一条关系」的合并口径没有样本可比。");
+    }
+
+    /// <summary>未归属域（编号 0）没有对应的 MODULES 行，名字必须由服务端兜底给出，不能落到 404。</summary>
+    [Fact]
+    public async Task GetDomainLinkGraphAsync_未归属域可打开()
+    {
+        if (ConnectionString.Value is null) return;
+
+        var overview = await _repository.GetOverviewAsync(CancellationToken.None);
+        var candidate = overview.Links.FirstOrDefault(item => item.FromRootIdx == 0 || item.ToRootIdx == 0);
+        // 这个库里没有"未归属表"参与的关系时不虚构样本：那条 0 号兜底另有域内图的用例覆盖
+        if (candidate is null) return;
+
+        var graph = await _repository.GetDomainLinkGraphAsync(candidate.FromRootIdx, candidate.ToRootIdx, CancellationToken.None);
+
+        Assert.NotNull(graph);
+        Assert.Equal("未归属", candidate.FromRootIdx == 0 ? graph!.FromName : graph!.ToName);
+    }
+
+    /// <summary>任一端查不到模块编号的域都要说"不存在"，交给控制器 404。</summary>
+    [Fact]
+    public async Task GetDomainLinkGraphAsync_不存在的域返回null()
+    {
+        if (ConnectionString.Value is null) return;
+
+        Assert.Null(await _repository.GetDomainLinkGraphAsync(999_999, 0, CancellationToken.None));
+        Assert.Null(await _repository.GetDomainLinkGraphAsync(0, 999_999, CancellationToken.None));
+    }
 }

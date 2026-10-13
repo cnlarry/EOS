@@ -18,18 +18,56 @@
   --erp-flow-tertiary: #0b7285;
 }
 
-.erp-flow-canvas {
-  /* React Flow 要求容器有确定高度，否则不渲染（"容器需要宽高"）。 */
-  height: calc(100vh - 216px);
-  min-height: 460px;
-  position: relative;
-}
-
-/* 画布 + 连线细节面板：画布占满剩余宽度，面板固定宽、自己滚动 */
+/* 三级的图区都是页内的弹性容器：高度由页面 flex 链给（页根 → 卡片 / 页签面板 → 这一层），
+   React Flow 要求容器有确定高度，否则不渲染（"容器需要宽高"）。
+   **不要写 calc(100vh - Npx)**：N 是外壳高度，外壳一变（标签栏、页头）就算错，
+   而且改的人不知道要同步它——原先的 216 就是个魔数，页签的 34px 也没算进去。 */
 .erp-flow-body {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 320px;
   width: 100%;
-  height: 100%;
+}
+
+/* 第三级：页签面板本身即容器（标签行 + 一圈边框的内容面板），外面不再套卡片，
+   免得"卡片边框 + 面板边框"叠成粗边框。页头与内容都在面板体里，故面板体是 flex 列：
+   画布/表格吃掉剩余高度，切页签既不改页面高度，也不出页面级滚动条。 */
+.erp-flow-link-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.erp-flow-link-panel .erp-tabbed-panel-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+}
+
+/* 视图页签里的图：吃掉面板剩余高度 */
+.erp-flow-link-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 240px;
+  overflow: hidden;
+}
+
+/* 列表页签里的表：滚动收进表格外壳（表头吸顶），与其它满屏表格页同一契约 */
+.erp-flow-link-panel .erp-table-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.erp-flow-link-panel .erp-table-shell .table-responsive { overflow: visible; }
+
+.erp-flow-link-panel .erp-data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 /* 量尺寸用的包裹层：撑满外层，React Flow 仍以它为容器。 */
@@ -204,7 +242,7 @@
 }
 
 /* 缩略图统一成系统卡片外观（React Flow 默认是浅灰直角块）。 */
-.erp-flow-canvas .react-flow__minimap {
+.erp-flow-page .react-flow__minimap {
   overflow: hidden;
   border: 1px solid var(--tblr-border-color, #e6e8eb);
   border-radius: 6px;

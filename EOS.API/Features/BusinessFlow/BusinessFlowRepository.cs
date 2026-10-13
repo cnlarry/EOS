@@ -76,14 +76,49 @@ public sealed record BusinessFlowDomainGraph(
     IReadOnlyList<BusinessFlowEdge> Edges);
 
 /// <summary>
+/// 两个业务域之间的一条关系事实（第三级「模块关系」视图）：上游表 → 下游表，
+/// 外加这条线为什么存在——字段取值来源明细，以及它是否同时是已登记单据关系。
+/// 两个来源合成一条记录，与域内图同一口径（同一对表只出现一次）。
+/// </summary>
+public sealed record BusinessFlowLinkEdge(
+    string FromTable,
+    string ToTable,
+    string FromTableName,
+    string ToTableName,
+    bool Registered,
+    string? RelationName,
+    int FieldCount,
+    IReadOnlyList<string> Fields,
+    IReadOnlyList<string> KeyPairs);
+
+/// <summary>
+/// 两个业务域之间的全部关系：总览图上那条带数字的连线点进去看到的就是它。
+///
+/// 逐条关系的判据与总览给该连线计数时用的完全一致（上游表在本域、下游表在对端域），
+/// 但**条数不等于线上两个数字之和**：同一对表可能既靠字段取值来源、又是已登记单据关系，
+/// 而这里按"一对表一条关系"合并（与域内图同一口径），故行数是两类事实的**并集**。
+/// 线上写 "6+3" 而这里 8 条，说明其中 1 条被两类事实同时命中——
+/// 那个重合数由服务端如实给出（<c>Registered</c> 且 <c>Fields</c> 非空的条数），界面必须说出口。
+/// </summary>
+public sealed record BusinessFlowLinkGraph(
+    int FromRootIdx,
+    string FromName,
+    int ToRootIdx,
+    string ToName,
+    IReadOnlyList<BusinessFlowLinkEdge> Edges);
+
+/// <summary>
 /// 业务流程图数据源：把两张表承载的**表间关系事实**按业务域聚合后交给前端作图。
 ///
-/// 两个数据源互补且不重叠——没有任何一对表同时出现在两个源里：
+/// 两个数据源说明的是两件事，但**在同一对表上会重合**（实测：域 12→14 的 6 对表里有 3 对
+/// 同时是登记关系），故画布上按"一对表一条边"合并、用 Registered 标出它同时还是一张单据的上下游：
 /// <list type="bullet">
 /// <item>FIELD_DATASOURCE（字段数据来源）：量大、含大量"选基础资料"，语义是"字段取值来自谁"。</item>
 /// <item>FIELD_RELATION（已登记单据关系，RELATION_KIND=EFFECT）：量小、集中在业务域，
 /// 语义是"单据之间用键列关联到谁"，是真正意义上的单据上下游。</item>
 /// </list>
+/// 合并意味着"两类事实各自的条数之和"是**边数**、不是**并集大小**：域间连线上的
+/// <c>9+2</c> 只是两个计数，不保证能加成一个数。
 ///
 /// 业务域 = 表的归属模块的根模块（MODULES.M_ROOT_IDX）；归属同时认主表与明细表
 /// （单据的明细表要落到它所属单据的域里），无归属的表统一落在 <see cref="UnassignedRootIdx"/>。
@@ -509,6 +544,148 @@ public sealed class BusinessFlowRepository(DbConnectionFactory connections, ILog
             edges.Count);
 
         return new BusinessFlowDomainGraph(rootIdx, domainName, nodes, edges);
+    }
+
+    /// <summary>
+    /// 取两个业务域之间的全部关系事实（第三级视图）。每条关系的过滤判据与总览给
+    /// 「这两个域之间的连线」计数时用的完全一致——上游表属于 <paramref name="fromRootIdx"/>、
+    /// 下游表属于 <paramref name="toRootIdx"/>，登记关系同样先把 TO_TABLE 当上游再过滤。
+    /// 但返回的是**合并后**的关系：同一对表在两类事实都成立时只出一条（<c>Registered</c> 标出），
+    /// 故条数是并集、可能小于线上两个数字之和（见 <see cref="BusinessFlowLinkGraph"/>）。
+    /// 两端都用 LEFT JOIN 归域（未登记的表算未归属域），与总览的 <c>Resolved</c> 写法一致。
+    /// 域编号解析不出模块名（且不是未归属域）时返回 null，交由上层 404。
+    /// </summary>
+    public async Task<BusinessFlowLinkGraph?> GetDomainLinkGraphAsync(int fromRootIdx, int toRootIdx, CancellationToken token)
+    {
+        const string sql =
+            """
+            SELECT r.M_DESC FROM dbo.MODULES r WITH (NOLOCK) WHERE r.M_IDX = @FromRootIdx;
+            """
+            + """
+            SELECT r.M_DESC FROM dbo.MODULES r WITH (NOLOCK) WHERE r.M_IDX = @ToRootIdx;
+            """
+            + TableDomainCte + """
+            SELECT e.SOURCE_T_ID, e.T_ID, e.F_ID
+            FROM dbo.FIELD_DATASOURCE e WITH (NOLOCK)
+            LEFT JOIN TableDomain ud ON ud.T_ID = e.SOURCE_T_ID
+            LEFT JOIN TableDomain dd ON dd.T_ID = e.T_ID
+            WHERE ISNULL(ud.ROOT_IDX, 0) = @FromRootIdx AND ISNULL(dd.ROOT_IDX, 0) = @ToRootIdx
+            ORDER BY e.T_ID, e.SOURCE_T_ID, e.F_ID;
+            """
+            + TableDomainCte + """
+            SELECT r.FROM_TABLE, r.TO_TABLE, r.FROM_COLUMN, r.TO_COLUMN, ISNULL(r.RELATION_NAME, N'')
+            FROM dbo.FIELD_RELATION r WITH (NOLOCK)
+            LEFT JOIN TableDomain ud ON ud.T_ID = r.TO_TABLE
+            LEFT JOIN TableDomain dd ON dd.T_ID = r.FROM_TABLE
+            WHERE r.RELATION_KIND = N'EFFECT'
+              AND r.TO_TABLE <> r.FROM_TABLE
+              AND ISNULL(ud.ROOT_IDX, 0) = @FromRootIdx AND ISNULL(dd.ROOT_IDX, 0) = @ToRootIdx
+            ORDER BY r.FROM_TABLE, r.TO_TABLE, r.KEY_ORDINAL, r.FROM_COLUMN;
+            """
+            + TableDomainCte + """
+            SELECT td.T_ID, ISNULL(t.T_DESC, N'')
+            FROM TableDomain td
+            LEFT JOIN dbo.TABLES t WITH (NOLOCK) ON t.T_ID = td.T_ID
+            WHERE ISNULL(td.ROOT_IDX, 0) IN (@FromRootIdx, @ToRootIdx);
+            """;
+
+        string? fromName = null;
+        string? toName = null;
+        var edgeFields = new Dictionary<(string Up, string Down), List<string>>();
+        var relations = new Dictionary<(string Up, string Down), RelationEntry>();
+        var tableNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        await using (var connection = connections.Create())
+        {
+            await using var command = new SqlCommand(sql, connection);
+            command.Parameters.Add("@FromRootIdx", SqlDbType.Int).Value = fromRootIdx;
+            command.Parameters.Add("@ToRootIdx", SqlDbType.Int).Value = toRootIdx;
+            await connection.OpenAsync(token);
+            await using var reader = await command.ExecuteReaderAsync(token);
+
+            if (await reader.ReadAsync(token) && !reader.IsDBNull(0))
+                fromName = reader.GetString(0).Trim();
+
+            if (await reader.NextResultAsync(token) && await reader.ReadAsync(token) && !reader.IsDBNull(0))
+                toName = reader.GetString(0).Trim();
+
+            if (await reader.NextResultAsync(token))
+            {
+                while (await reader.ReadAsync(token))
+                {
+                    var up = reader.GetString(0).Trim();
+                    var down = reader.GetString(1).Trim();
+                    if (!edgeFields.TryGetValue((up, down), out var fields))
+                    {
+                        fields = [];
+                        edgeFields[(up, down)] = fields;
+                    }
+                    fields.Add(reader.GetString(2).Trim());
+                }
+            }
+
+            if (await reader.NextResultAsync(token))
+            {
+                while (await reader.ReadAsync(token))
+                {
+                    // 表里存的是「本单 → 定位目标」，本图统一按「上游 → 下游」画，故这里把 TO 当上游。
+                    var up = reader.GetString(1).Trim();
+                    var down = reader.GetString(0).Trim();
+                    if (!relations.TryGetValue((up, down), out var entry))
+                    {
+                        entry = new RelationEntry();
+                        relations[(up, down)] = entry;
+                    }
+                    entry.AddKeyPair(reader.GetString(2).Trim(), reader.GetString(3).Trim());
+                    if (!reader.IsDBNull(4)) entry.AddName(reader.GetString(4).Trim());
+                }
+            }
+
+            if (await reader.NextResultAsync(token))
+            {
+                while (await reader.ReadAsync(token))
+                    tableNames[reader.GetString(0).Trim()] = reader.GetString(1).Trim();
+            }
+        }
+
+        // 未归属域（编号 0）没有对应的 MODULES 行，名字由服务端兜底给。
+        if (fromRootIdx == UnassignedRootIdx) fromName = UnassignedName;
+        if (toRootIdx == UnassignedRootIdx) toName = UnassignedName;
+
+        // 任一端的域解析不出模块：请求了不存在的域，交由上层 404。
+        if (fromName is null || toName is null) return null;
+
+        var pairs = edgeFields.Keys.Union(relations.Keys).Where(pair => pair.Up != pair.Down).ToList();
+        pairs.Sort((left, right) =>
+        {
+            var byUp = string.CompareOrdinal(left.Up, right.Up);
+            return byUp != 0 ? byUp : string.CompareOrdinal(left.Down, right.Down);
+        });
+
+        var edges = new List<BusinessFlowLinkEdge>(pairs.Count);
+        foreach (var (up, down) in pairs)
+        {
+            var fields = edgeFields.GetValueOrDefault((up, down)) ?? [];
+            relations.TryGetValue((up, down), out var relation);
+            edges.Add(new BusinessFlowLinkEdge(
+                up,
+                down,
+                tableNames.GetValueOrDefault(up, up),
+                tableNames.GetValueOrDefault(down, down),
+                relation is not null,
+                relation?.Name,
+                fields.Count,
+                fields,
+                relation?.Keys ?? []));
+        }
+
+        logger.LogDebug(
+            "业务流程图域间明细从={FromRootIdx} 到={ToRootIdx} edges={EdgeCount}",
+            fromRootIdx,
+            toRootIdx,
+            edges.Count);
+
+        return new BusinessFlowLinkGraph(fromRootIdx, fromName, toRootIdx, toName, edges);
     }
 
     /// <summary>

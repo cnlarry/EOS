@@ -19,13 +19,16 @@ import {
   isWeakDomainLink,
   layoutFlowGraph,
   layoutGridGraph,
-  matchIds,
+  linkRows,
   nodeHeightForLines,
   nodeLineCount,
   nodeSize,
   orderByRelation,
+  parseDomainLinkId,
   relationKeyLabel,
   type FlowDomainLink,
+  type FlowLinkEdge,
+  type FlowLinkGraph,
   type FlowNodeData,
   type FlowNodeSize,
   type FlowTableEdge,
@@ -55,6 +58,26 @@ function link(overrides: Partial<FlowDomainLink> = {}): FlowDomainLink {
 /** 节点载荷工厂：默认是"两行"的表节点（标题 + 表代码，无补充信息）。 */
 function nodeData(overrides: Partial<FlowNodeData> = {}): FlowNodeData {
   return { title: '销售订单明细', code: 'COP_ORDER_D', meta: '', badge: '', variant: 'table', ...overrides }
+}
+
+/** 第二/三级的关系事实工厂：默认是"一对表、一个字段引用、无登记关系"。 */
+function linkEdge(overrides: Partial<FlowLinkEdge> = {}): FlowLinkEdge {
+  return {
+    fromTable: 'PRODUCT',
+    toTable: 'COP_ORDER_D',
+    fromTableName: '产品',
+    toTableName: '销售订单明细',
+    registered: false,
+    relationName: null,
+    fieldCount: 1,
+    fields: ['PRO_ID'],
+    keyPairs: [],
+    ...overrides,
+  }
+}
+
+function linkGraph(edges: FlowLinkEdge[]): FlowLinkGraph {
+  return { fromRootIdx: 10, fromName: '基本参数', toRootIdx: 14, toName: '销售管理', edges }
 }
 
 describe('flowGraph 标识与配色', () => {
@@ -152,26 +175,39 @@ describe('flowGraph 边与域间连线的判据', () => {
   })
 })
 
-describe('flowGraph 搜索', () => {
-  const items = [
-    { id: 'domain:14', text: '销售管理 14' },
-    { id: 'COP_ORDER_D', text: 'COP_ORDER_D 销售订单明细 销售管理' },
-    { id: 'PRODUCT', text: 'PRODUCT 产品 基本参数' },
-  ]
-
-  it('大小写不敏感，命中表代码或中文名', () => {
-    expect([...matchIds(items, 'cop_order')]).toEqual(['COP_ORDER_D'])
-    expect([...matchIds(items, '销售')]).toEqual(['domain:14', 'COP_ORDER_D'])
-    expect([...matchIds(items, '产品')]).toEqual(['PRODUCT'])
+describe('flowGraph 第三级（两个业务域之间）', () => {
+  it('域间连线 id 能还原成两端域编号，表间连线返回 null', () => {
+    expect(parseDomainLinkId('domain:14->domain:16')).toEqual({ fromRootIdx: 14, toRootIdx: 16 })
+    // 0 是合法编号（未归属域），不能被当成 falsy 丢掉
+    expect(parseDomainLinkId('domain:0->domain:14')).toEqual({ fromRootIdx: 0, toRootIdx: 14 })
+    expect(parseDomainLinkId('COP_ORDER_D->COP_ORDER_M')).toBeNull()
+    expect(parseDomainLinkId('domain:14')).toBeNull()
+    expect(parseDomainLinkId('domain:->domain:14')).toBeNull()
   })
 
-  it('空关键字视为未搜索，返回空集合而不是全部命中', () => {
-    expect(matchIds(items, '').size).toBe(0)
-    expect(matchIds(items, '   ').size).toBe(0)
+  it('明细行把"为什么有关联"表达成标签列表，字段与键列拼成可读文本', () => {
+    const rows = linkRows(linkGraph([
+      linkEdge(),
+      linkEdge({
+        fromTable: 'COP_ORDER_M', toTable: 'COP_SEND_M', fromTableName: '客户订单', toTableName: '发货单',
+        registered: true, relationName: '发货单定位键（效果）', fieldCount: 6,
+        fields: ['ORDER_NO', 'ORDER_TYPE'], keyPairs: ['ORDER_NO → ORDER_NO'],
+      }),
+    ]))
+
+    expect(rows.map((row) => row.id)).toEqual(['PRODUCT->COP_ORDER_D', 'COP_ORDER_M->COP_SEND_M'])
+    expect(rows[0].relationKinds).toEqual(['字段取值来源'])
+    // 两类事实可以同时成立：标签是列表而不是单一类型
+    expect(rows[1].relationKinds).toEqual(['已登记单据关系', '字段取值来源'])
+    expect(rows[1].fields).toBe('ORDER_NO、ORDER_TYPE')
+    expect(rows[1].keyPairs).toBe('ORDER_NO → ORDER_NO')
+    expect(rows[1].relationName).toBe('发货单定位键（效果）')
+    expect(rows[1].registered).toBe(true)
   })
 
-  it('保持传入顺序，首个命中即定位目标', () => {
-    expect([...matchIds(items, '销售')][0]).toBe('domain:14')
+  it('数据还没加载时返回空数组而不是抛错', () => {
+    expect(linkRows(undefined)).toEqual([])
+    expect(linkRows(linkGraph([]))).toEqual([])
   })
 })
 

@@ -12,7 +12,6 @@ import {
   type Edge,
   type Node,
   type NodeProps,
-  type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { IconMaximize, IconMinus, IconPlus } from '@tabler/icons-react'
@@ -91,10 +90,6 @@ interface BusinessFlowCanvasProps {
    * 域内明细用 layered（那里上下游是主角）。
    */
   layout?: 'grid' | 'layered'
-  /** 搜索命中的节点：高亮它们、其余淡出。空集合表示没在搜索。 */
-  highlightIds?: Set<string>
-  /** 搜索命中的首个节点：变化时把视口移过去。 */
-  focusNodeId?: string | null
   /** 当前选中的连线（细节面板正在看的那条）。 */
   selectedEdgeId?: string | null
   /** 双击节点（总览图上即下钻进入该域）。 */
@@ -109,15 +104,12 @@ interface BusinessFlowCanvasProps {
  * 业务流程图画布：布局（dagre 分层 / 网格）+ React Flow 交互。
  * 节点坐标是受控状态——布局在节点/边变化时重算，用户拖拽后由 React Flow 自己维护。
  *
- * 淡化优先级（越靠前越优先）：悬停的连线 → 搜索命中 → 悬停的节点。
- * 悬停连线优先是因为"这条线是谁跟谁"是最直接的问题；搜索次之，因为它是当前任务。
+ * 淡化优先级：悬停的连线 → 悬停的节点。悬停连线优先，因为"这条线是谁跟谁"是最直接的问题。
  */
 export function BusinessFlowCanvas({
   nodes: inputNodes,
   edges: inputEdges,
   layout = 'layered',
-  highlightIds,
-  focusNodeId,
   selectedEdgeId,
   onActivateNode,
   onOpenNode,
@@ -130,8 +122,6 @@ export function BusinessFlowCanvas({
   // 画布实际尺寸：网格的列数按它挑，宽高比贴合视口时 fitView 的缩放比最大
   const containerRef = useRef<HTMLDivElement>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
-  // React Flow 实例经 onInit 拿到：搜索定位要调它的 fitView（在 <ReactFlow> 外面用 hook 拿不到）
-  const [instance, setInstance] = useState<ReactFlowInstance<BusinessFlowNode, Edge> | null>(null)
 
   useEffect(() => {
     const element = containerRef.current
@@ -184,16 +174,6 @@ export function BusinessFlowCanvas({
     setEdges(inputEdges)
   }, [canvasSize.height, canvasSize.width, inputNodes, inputEdges, layout, setNodes, setEdges])
 
-  // 搜索定位：延到下一帧再 fitView，等布局坐标写进 React Flow 的 store。
-  useEffect(() => {
-    if (!focusNodeId || !instance) return
-    const handle = window.requestAnimationFrame(() => {
-      if (!instance.getNodes().some((node) => node.id === focusNodeId)) return
-      void instance.fitView({ nodes: [{ id: focusNodeId }], padding: 0.6, duration: 300, maxZoom: 1.2 })
-    })
-    return () => window.cancelAnimationFrame(handle)
-  }, [focusNodeId, instance])
-
   // 单域聚焦：点中某个节点时只保留它与直接相连的节点/连线，其余淡出。
   // 这张图默认是"全貌"，聚焦之后它才变成能顺着一条流向读下去的图。
   const related = useMemo(() => {
@@ -201,17 +181,6 @@ export function BusinessFlowCanvas({
     if (hoveredEdgeId) {
       const hovered = edges.find((edge) => edge.id === hoveredEdgeId)
       if (hovered) return { nodeIds: new Set([hovered.source, hovered.target]), edgeIds: new Set([hovered.id]) }
-    }
-    // 搜索命中：命中节点与"命中节点之间的连线"留在亮处，其余淡出
-    if (highlightIds && highlightIds.size > 0) {
-      return {
-        nodeIds: highlightIds,
-        edgeIds: new Set(
-          edges
-            .filter((edge) => highlightIds.has(edge.source) && highlightIds.has(edge.target))
-            .map((edge) => edge.id),
-        ),
-      }
     }
     if (!focusedId) return null
     // 聚焦的节点已不在当前图里（刚下钻、切了视图）时不淡化任何东西，避免整屏变灰
@@ -225,11 +194,10 @@ export function BusinessFlowCanvas({
       nodeIds.add(edge.target)
     }
     return { nodeIds, edgeIds }
-  }, [edges, focusedId, highlightIds, hoveredEdgeId, nodes])
+  }, [edges, focusedId, hoveredEdgeId, nodes])
 
   const displayNodes = useMemo(() => {
     if (!related) return nodes
-    // 搜索命中的节点即使连线不在命中之间也保持点亮：命中本身就是结果，不该被淡化
     return nodes.map((node) => ({
       ...node,
       className: related.nodeIds.has(node.id) ? '' : 'erp-flow-dimmed',
@@ -253,7 +221,6 @@ export function BusinessFlowCanvas({
         nodes={displayNodes}
         edges={displayEdges}
         nodeTypes={nodeTypes}
-        onInit={setInstance}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={(_event, node) => {
