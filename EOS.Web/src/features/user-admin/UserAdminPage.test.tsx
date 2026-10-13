@@ -54,7 +54,7 @@ const groupChooserData = {
 
 function renderPage() {
   vi.mocked(useAuth).mockReturnValue({
-    bootstrap: { user: { id: 'admin', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW', avatarUrl: null, roleName: '系统管理员', organization: { id: 'o', name: 'O' } }, permissions: [], navigation: [] },
+    bootstrap: { user: { id: 'admin', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW', avatarUrl: null, groupNames: '系统管理员', organization: { id: 'o', name: 'O' } }, permissions: [], navigation: [] },
     loading: false,
     login: vi.fn(),
     logout: vi.fn(),

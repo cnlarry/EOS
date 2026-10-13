@@ -38,7 +38,7 @@ describe('LoginPage', () => {
 
   it('已登录时跳转目标地址', () => {
     vi.mocked(useAuth).mockReturnValue({
-      bootstrap: { user: { id: 'u', username: 'admin', displayName: 'A', employeeId: 'E', avatarText: 'A', avatarUrl: null, roleName: 'R', organization: { id: 'o', name: 'O' } }, permissions: [], navigation: [] },
+      bootstrap: { user: { id: 'u', username: 'admin', displayName: 'A', employeeId: 'E', avatarText: 'A', avatarUrl: null, groupNames: 'R', organization: { id: 'o', name: 'O' } }, permissions: [], navigation: [] },
       loading: false,
       login: vi.fn(),
       logout: vi.fn(),

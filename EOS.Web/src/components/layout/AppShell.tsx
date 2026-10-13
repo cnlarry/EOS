@@ -22,6 +22,8 @@ import { workbenchAction, workbenchList, workbenchModuleId } from '../../feature
 import { RECENT_MODULES_KEY, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY, THEME_KEY, workspaceTabsKey } from '../../lib/storageKeys'
 import { PAGE_META } from '../../app/routeMeta'
 import { WORKSPACE_ROUTES } from '../../app/workspaceRoutes'
+import { PasswordChangeModal } from '../../features/settings/PasswordChangeModal'
+import { ThemePreferenceContext, type ResolvedTheme, type ThemePreference } from './themePreference'
 import { WorkspaceNavContext, tabLinkHandler } from './WorkspaceNavContext'
 import { DirtyConfirmDialog } from './DirtyConfirmDialog'
 import { WorkspacePanel } from './WorkspacePanel'
@@ -53,8 +55,6 @@ import {
   type TabCrumbPatch,
 } from './workspaceTabs'
 
-type Theme = 'light' | 'dark'
-
 const SIDEBAR_WIDTH_MIN = 160
 const SIDEBAR_WIDTH_MAX = 480
 const DEFAULT_SIDEBAR_WIDTH = 220
@@ -71,6 +71,16 @@ function filterNavRoute(items: NavigationItem[], route: string): NavigationItem[
     }
     return item.route === route ? [] : [item]
   })
+}
+
+/**
+ * 菜单项悬停提示：`{M_IDX}-{M_DESC}`（如 2301-模块管理）。
+ *
+ * 模块编号是模块在库里的身份——配置面、报表、流程图都按它指认模块。只给名字时，
+ * 用户没法把界面上的这一项与手上的模块号对上。分组节点也带编号（含纯目录分组，见服务端 BuildNode）。
+ */
+function menuTip(item: NavigationItem): string {
+  return item.moduleId != null ? `${item.moduleId}-${item.label}` : item.label
 }
 
 /** 待确认的关闭/离开动作 */
@@ -141,12 +151,15 @@ function avatarColor(username: string): string {
   return avatarPalette[hash % avatarPalette.length]
 }
 
-function getInitialTheme(): Theme {
+/** 读主题偏好：未存过或存了不认识的值都按"跟随系统"。 */
+function readThemePreference(): ThemePreference {
   const savedTheme = localStorage.getItem(THEME_KEY)
-  if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
+  return savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system' ? savedTheme : 'system'
+}
+
+/** 系统当前的深浅偏好，供"跟随系统"解析用。 */
+function systemTheme(): ResolvedTheme {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 /** 深度展开导航树，返回全部叶子（用于页面标题与菜单搜索）。 */
@@ -184,7 +197,9 @@ interface AppShellProps {
 }
 
 export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
+  // 跟随系统时要跟着系统变：单独听一次系统偏好，偏好本身仍是"跟随系统"不变
+  const [currentSystemTheme, setCurrentSystemTheme] = useState<ResolvedTheme>(systemTheme)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true')
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -193,6 +208,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   })
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
   // 折叠态下的多级菜单浮层：点一级图标只展开第一层，逐级悬停/点击再展开下一层
   const [navFlyout, setNavFlyout] = useState<NavFlyoutLevel[]>([])
   const [menuQuery, setMenuQuery] = useState('')
@@ -201,10 +217,18 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const { notify } = useToast()
   // 侧栏底部用户卡：姓名/角色缺失时退回用户名，避免卡片出现空行
   const displayName = bootstrap?.user.displayName ?? bootstrap?.user.username ?? '未登录'
-  const displayRole = bootstrap?.user.roleName ?? bootstrap?.user.username ?? ''
+  // 卡片第二行显示所属用户组（与 2306 用户管理同一事实源）；缺失时退回用户名，避免出现空行
+  const displayGroups = bootstrap?.user.groupNames ?? bootstrap?.user.username ?? ''
+  /** 生效主题：显式指定即用它，跟随系统则取系统偏好。 */
+  const theme: ResolvedTheme = themePreference === 'system' ? currentSystemTheme : themePreference
   // 折叠态只放一个切换按钮，图标与提示均指向"切换后"的模式
-  const nextTheme: Theme = theme === 'light' ? 'dark' : 'light'
+  const nextTheme: ResolvedTheme = theme === 'light' ? 'dark' : 'light'
   const themeToggleLabel = nextTheme === 'dark' ? '切换到深色模式' : '切换到浅色模式'
+  // 主题状态只有这一处真源：侧栏切换按钮与个人设置页都改它，改完立即生效
+  const themePreferenceValue = useMemo(
+    () => ({ preference: themePreference, theme, setPreference: setThemePreference }),
+    [themePreference, theme],
+  )
   // 数据路由下才支持导航拦截；其他路由形态（如单测的 MemoryRouter）退化为无拦截
   const dataRouter = useContext(UNSAFE_DataRouterContext)
   const navigate = useNavigate()
@@ -655,8 +679,20 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-bs-theme', theme)
-    localStorage.setItem(THEME_KEY, theme)
   }, [theme])
+
+  // 存的是"偏好"而不是"当前生效值"：跟随系统时把 light/dark 存进去，
+  // 下次启动就变成了显式锁定，用户再也回不到跟随系统。
+  useEffect(() => {
+    localStorage.setItem(THEME_KEY, themePreference)
+  }, [themePreference])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (event: MediaQueryListEvent) => setCurrentSystemTheme(event.matches ? 'dark' : 'light')
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('erp-sidebar-collapsed', sidebarCollapsed)
@@ -826,7 +862,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                 className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}${isBranchOpen ? ' group-open' : ''}`}
                 type="button"
                 aria-expanded={sidebarCollapsed ? navFlyout[0]?.id === item.id : isExpanded}
-                title={sidebarCollapsed ? item.label : undefined}
+                title={menuTip(item)}
                 onClick={(event) => {
                   // 折叠态不展开侧栏，改为在按钮右侧弹出第一层菜单，更深的层级再逐级展开
                   if (sidebarCollapsed) {
@@ -869,7 +905,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
           <NavLink
             className={({ isActive }) => `nav-link ${depth > 1 ? 'erp-nav-child' : ''} ${isActive ? 'active' : ''}`}
             to={item.route!}
-            title={sidebarCollapsed ? item.label : undefined}
+            title={menuTip(item)}
             style={childStyle}
             onClick={openTabFromLink(item.route!)}
           >
@@ -897,6 +933,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   // 缩进不改动，保持这次改动的 diff 只落在首尾两行。
   return (
     <AssistantProvider>
+    <ThemePreferenceContext.Provider value={themePreferenceValue}>
     <div
       className={`page erp-shell${sidebarResizing ? ' erp-sidebar-resizing' : ''}`}
       style={{ '--erp-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
@@ -990,6 +1027,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                   className={`erp-nav-flyout-item erp-nav-flyout-parent${navFlyout[index + 1]?.id === item.id ? ' active' : ''}`}
                   type="button"
                   role="menuitem"
+                  title={menuTip(item)}
                   aria-haspopup="menu"
                   aria-expanded={navFlyout[index + 1]?.id === item.id}
                   onMouseEnter={(event) => openFlyoutLevel(index, item, event.currentTarget.getBoundingClientRect())}
@@ -1004,6 +1042,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                   className={`erp-nav-flyout-item${item.route === basePath ? ' active' : ''}`}
                   type="button"
                   role="menuitem"
+                  title={menuTip(item)}
                   onMouseEnter={() => setNavFlyout((current) => (current.length > index + 1 ? current.slice(0, index + 1) : current))}
                   onClick={() => {
                     setNavFlyout([])
@@ -1024,7 +1063,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                   aria-label="用户菜单"
                   aria-haspopup="menu"
                   aria-expanded={userMenuOpen}
-                  title={sidebarCollapsed ? `${displayName}（${displayRole}）` : undefined}
+                  title={sidebarCollapsed ? `${displayName}${displayGroups ? `（${displayGroups}）` : ''}` : undefined}
                   onClick={() => setUserMenuOpen((open) => !open)}
                 >
                   <span className="erp-user-avatar">
@@ -1036,7 +1075,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                   </span>
                   <span className="erp-user-meta">
                     <span className="erp-user-name">{displayName}</span>
-                    <small className="erp-user-role">{displayRole}</small>
+                    <small className="erp-user-groups">{displayGroups}</small>
                   </span>
                   <IconChevronUp className="erp-user-chevron" size={14} aria-hidden="true" />
                 </button>
@@ -1048,10 +1087,23 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                       role="menuitem"
                       onClick={() => {
                         setUserMenuOpen(false)
-                        openTab('/settings/profile')
+                        openTab(PROFILE_ROUTE)
                       }}
                     >
                       个人设置
+                    </button>
+                    {/* 改密码是账号凭据操作、单次且带确认，用弹窗就地完成；
+                        个人设置页只管界面偏好，不再承担它 */}
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        setPasswordModalOpen(true)
+                      }}
+                    >
+                      修改密码
                     </button>
                     <div className="dropdown-divider" />
                     <button className="dropdown-item text-danger" type="button" role="menuitem" onClick={handleLogout}>退出登录</button>
@@ -1063,7 +1115,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                 type="button"
                 aria-label={themeToggleLabel}
                 title={themeToggleLabel}
-                onClick={() => setTheme(nextTheme)}
+                onClick={() => setThemePreference(nextTheme)}
               >
                 {nextTheme === 'dark' ? <IconMoon size={18} stroke={1.7} aria-hidden="true" /> : <IconSun size={18} stroke={1.7} aria-hidden="true" />}
               </button>
@@ -1163,9 +1215,12 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
           />
         )}
 
+        {passwordModalOpen && <PasswordChangeModal onClose={() => setPasswordModalOpen(false)} />}
+
         <AssistantDock />
       </div>
     </div>
+    </ThemePreferenceContext.Provider>
     </AssistantProvider>
   )
 }

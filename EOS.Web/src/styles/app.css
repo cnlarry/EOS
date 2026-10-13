@@ -428,6 +428,7 @@ button, input, select { font: inherit; }
    ========================================================================== */
 .erp-menu-admin,
 .erp-config-workbench,
+.erp-profile-page,
 .erp-full-list-page,
 .erp-import-page,
 .erp-search-center-page,
@@ -435,6 +436,7 @@ button, input, select { font: inherit; }
 .erp-catalog-page,
 .erp-report-page,
 .erp-report-inbox-page,
+.erp-flow-page,
 .erp-workbench-page,
 .erp-form-page,
 .erp-dashboard,
@@ -452,6 +454,7 @@ button, input, select { font: inherit; }
 .erp-full-list-page,
 .erp-catalog-page,
 .erp-report-page,
+.erp-flow-page,
 .erp-workbench-page,
 .erp-import-page {
   min-height: 320px;
@@ -470,6 +473,7 @@ button, input, select { font: inherit; }
    模型管理的分区卡）不在此列，各自声明 */
 .erp-full-list-page > .erp-list-card,
 .erp-report-page > .erp-list-card,
+.erp-flow-page > .erp-list-card,
 .erp-field-editor-page > .erp-list-card,
 .erp-workbench-page > .erp-list-card,
 .erp-dashboard-pane .erp-list-card,
@@ -531,6 +535,14 @@ button, input, select { font: inherit; }
 .erp-config-workbench .card-body { padding: var(--erp-block-gap); }
 /* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
+/* 个人设置（/settings/profile）：区块之间的 10px 间距由页面骨架给（页根类已加进那一组），
+   这里只管卡内行——一行一个偏好项，项与项之间 12px 是卡内档位，不是区块间距 */
+.erp-profile-field { max-width: 420px; margin-bottom: 16px; }
+.erp-profile-input { max-width: 240px; }
+.erp-profile-toggle { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+.erp-profile-toggle .form-check-input { flex: 0 0 auto; margin: 2px 0 0; }
+/* 整行可点：说明文字也是这一项的命中区，不必非要点那个 16px 的方块 */
+.erp-profile-toggle > label { margin: 0; cursor: pointer; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
    表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航。
    页根的 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
@@ -927,6 +939,22 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   margin-top: .25rem;
   z-index: 1030;
   min-width: 10rem;
+  /* Tabler 的 .dropdown-menu 自带上下各 .25rem 内边距，而菜单项本身既无外边距也无圆角，
+     于是悬停高亮只覆盖菜单项、上下各缺 4px，看上去"没占满整个菜单块"。这里去掉这层内边距。
+     第一/最后一项补回菜单的圆角：菜单没有 overflow:hidden（折叠态气泡的小三角要露在外面），
+     不补的话高亮的直角会盖住菜单自身的圆角。 */
+  padding: 0;
+}
+/* 菜单项随容器宽度走：Tabler 给 .dropdown-item 设了 min-width: 11rem（176px），
+   而侧栏这一层的菜单块只有约 164px，菜单项因此比菜单块更宽、悬停底色右缘会探出卡片外 */
+.erp-user-menu .dropdown-menu .dropdown-item { min-width: 0; }
+.erp-user-menu .dropdown-menu > .dropdown-item:first-child {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+}
+.erp-user-menu .dropdown-menu > .dropdown-item:last-child {
+  border-end-start-radius: inherit;
+  border-end-end-radius: inherit;
 }
 /* 侧栏底部用户区：用户卡（头像 + 姓名/角色，点开向上弹出个人设置/退出登录）+ 显示模式切换。
    外边距沿用全站 10px 留白，卡内边距取 8px 让头像左缘落在 18px——与导航项图标同一竖线。 */
@@ -945,7 +973,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 [data-bs-theme='dark'] .erp-user-avatar .avatar { background-color: color-mix(in srgb, var(--erp-avatar-color, var(--tblr-primary)) 66%, #0b1220); }
 .erp-sidebar-footer .erp-user-meta { flex: 1 1 auto; min-width: 0; }
 .erp-sidebar-footer .erp-user-name { display: block; overflow: hidden; color: var(--tblr-body-color); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.erp-sidebar-footer .erp-user-role { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.erp-sidebar-footer .erp-user-groups { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .erp-user-chevron { flex: 0 0 auto; color: var(--tblr-secondary); transition: transform .15s ease; }
 .erp-user-menu.is-open .erp-user-chevron { transform: rotate(180deg); }
 /* 菜单向上弹出：覆盖 .erp-user-menu .dropdown-menu 的向下定位 */

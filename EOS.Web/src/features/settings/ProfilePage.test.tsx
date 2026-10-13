@@ -1,21 +1,20 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
-import { apiClientMock } from '../../test/apiMock'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
+import { ThemePreferenceContext, type ThemePreferenceValue, type ThemePreference } from '../../components/layout/themePreference'
+import { WORKSPACE_TABS_ENABLED_KEY, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY } from '../../lib/storageKeys'
 import { ProfilePage } from './ProfilePage'
 
-
-vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 
 const user = {
   id: 'u1', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW',
-  avatarUrl: null, roleName: '系统管理员', organization: { id: 'east', name: '华东运营中心' },
+  avatarUrl: null, groupNames: 'ERP 管理员、采购组', organization: { id: 'east', name: '华东运营中心' },
 }
 
-function renderPage() {
+/** 页面消费外壳下发的主题偏好，测试里就自己提供一份（capture 改动便于断言）。 */
+function renderPage(overrides: Partial<ThemePreferenceValue> = {}) {
   vi.mocked(useAuth).mockReturnValue({
     bootstrap: { user, permissions: [], navigation: [] },
     loading: false,
@@ -23,60 +22,73 @@ function renderPage() {
     logout: vi.fn(),
     hasPermission: () => false,
   })
-  apiClientMock.put.mockResolvedValue(undefined)
-  return renderWithProviders(<ProfilePage />)
+  const setPreference = vi.fn()
+  const value: ThemePreferenceValue = {
+    preference: 'system' as ThemePreference,
+    theme: 'light',
+    setPreference,
+    ...overrides,
+  }
+  return {
+    setPreference,
+    ...renderWithProviders(
+      <ThemePreferenceContext.Provider value={value}>
+        <ProfilePage />
+      </ThemePreferenceContext.Provider>,
+    ),
+  }
 }
 
 describe('ProfilePage', () => {
   beforeEach(() => {
-    renderPage()
+    localStorage.clear()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('展示个人资料信息', () => {
+  it('展示账号信息且全部只读（含所属用户组）', () => {
+    renderPage()
     expect(screen.getByText('Demo User')).toBeInTheDocument()
     expect(screen.getByText('admin')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Demo User')).toBeDisabled()
     expect(screen.getByDisplayValue('E001')).toBeDisabled()
     expect(screen.getByDisplayValue('华东运营中心')).toBeDisabled()
-    expect(screen.getByDisplayValue('系统管理员')).toBeDisabled()
+    expect(screen.getByDisplayValue('ERP 管理员、采购组')).toBeDisabled()
   })
 
-  it('密码不合规时禁用修改按钮', () => {
-    const button = screen.getByRole('button', { name: '修改密码' })
-    expect(button).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('当前密码'), { target: { value: 'old-password' } })
-    fireEvent.change(screen.getByLabelText('新密码'), { target: { value: 'new-password' } })
-    fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'new-password' } })
-    expect(button).toBeEnabled()
+  it('不再提供修改密码表单（改密码走侧栏用户菜单的弹窗）', () => {
+    renderPage()
+    expect(screen.queryByLabelText('当前密码')).toBeNull()
+    expect(screen.queryByLabelText('新密码')).toBeNull()
+    expect(screen.queryByRole('button', { name: '修改密码' })).toBeNull()
   })
 
-  it('两次新密码不一致时提示', () => {
-    fireEvent.change(screen.getByLabelText('新密码'), { target: { value: 'new-password-1' } })
-    fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'other-password-1' } })
-    expect(screen.getByText('两次输入的新密码不一致。')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '修改密码' })).toBeDisabled()
+  it('显示模式改的是外壳下发的主题偏好', () => {
+    const { setPreference } = renderPage()
+    fireEvent.change(screen.getByLabelText('显示模式'), { target: { value: 'dark' } })
+    expect(setPreference).toHaveBeenCalledWith('dark')
   })
 
-  it('修改密码成功展示成功消息并清空输入', async () => {
-    fireEvent.change(screen.getByLabelText('当前密码'), { target: { value: 'old-password' } })
-    fireEvent.change(screen.getByLabelText('新密码'), { target: { value: 'new-password' } })
-    fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'new-password' } })
-    fireEvent.click(screen.getByRole('button', { name: '修改密码' }))
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/auth/password', { currentPassword: 'old-password', newPassword: 'new-password' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('密码修改成功。')
-    expect(screen.getByLabelText('新密码')).toHaveValue('')
+  it('多标签工作区开关写入本地并提示重新加载后生效', () => {
+    renderPage()
+    fireEvent.click(screen.getByLabelText(/多标签工作区/))
+    // 关闭即写 'off'（默认开启，与外壳读取时同一约定）
+    expect(localStorage.getItem(WORKSPACE_TABS_ENABLED_KEY)).toBe('off')
+    expect(screen.getByRole('status')).toHaveTextContent('重新打开页面')
   })
 
-  it('修改密码失败展示服务端消息', async () => {
-    apiClientMock.put.mockRejectedValue(new ApiError(400, { code: 'OLD_WRONG', message: '当前密码不正确。' }))
-    fireEvent.change(screen.getByLabelText('当前密码'), { target: { value: 'wrong' } })
-    fireEvent.change(screen.getByLabelText('新密码'), { target: { value: 'new-password' } })
-    fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'new-password' } })
-    fireEvent.click(screen.getByRole('button', { name: '修改密码' }))
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('当前密码不正确。'))
+  it('默认折叠菜单开关写入本地', () => {
+    renderPage()
+    fireEvent.click(screen.getByLabelText(/默认折叠左侧菜单/))
+    expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('true')
+  })
+
+  it('恢复默认菜单宽度清掉本地宽度', () => {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, '320')
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /恢复默认菜单宽度/ }))
+    expect(localStorage.getItem(SIDEBAR_WIDTH_KEY)).toBeNull()
   })
 })

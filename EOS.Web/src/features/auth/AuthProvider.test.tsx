@@ -17,7 +17,7 @@ vi.mock('../../services/api', () => ({
 }))
 
 const bootstrap: AppBootstrap = {
-  user: { id: 'u1', username: 'admin', displayName: '管理员', employeeId: 'E1', avatarText: '管', avatarUrl: null, roleName: '系统管理员', organization: { id: 'east', name: '华东' } },
+  user: { id: 'u1', username: 'admin', displayName: '管理员', employeeId: 'E1', avatarText: '管', avatarUrl: null, groupNames: '系统管理员', organization: { id: 'east', name: '华东' } },
   permissions: ['purchase-order.read'],
   navigation: [],
 }

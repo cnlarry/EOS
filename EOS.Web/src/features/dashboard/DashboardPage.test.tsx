@@ -12,7 +12,7 @@ vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 const bootstrap = {
   user: {
     id: 'admin', username: 'admin', displayName: '系统管理员', employeeId: 'E001',
-    avatarText: '管', avatarUrl: null, roleName: '系统管理员', organization: { id: 'o', name: '总公司' },
+    avatarText: '管', avatarUrl: null, groupNames: '系统管理员', organization: { id: 'o', name: '总公司' },
   },
   permissions: ['fallback-module.2102.read'],
   navigation: [

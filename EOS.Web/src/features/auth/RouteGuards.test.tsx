@@ -7,7 +7,7 @@ import { useAuth } from './authContext'
 vi.mock('./authContext', () => ({ useAuth: vi.fn() }))
 
 const authed = {
-  bootstrap: { user: { id: 'u', username: 'a', displayName: 'A', employeeId: 'E', avatarText: 'A', avatarUrl: null, roleName: 'R', organization: { id: 'o', name: 'O' } }, permissions: ['x'], navigation: [] },
+  bootstrap: { user: { id: 'u', username: 'a', displayName: 'A', employeeId: 'E', avatarText: 'A', avatarUrl: null, groupNames: 'R', organization: { id: 'o', name: 'O' } }, permissions: ['x'], navigation: [] },
   loading: false,
   login: vi.fn(),
   logout: vi.fn(),

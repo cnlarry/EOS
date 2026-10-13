@@ -9,10 +9,10 @@ const baseNavigation: NavigationItem[] = [
   { id: 'profile', label: '个人设置', route: '/settings/profile', icon: 'settings' },
 ]
 const users: Record<string, { user: AuthUser; permissions: string[]; menuIds: string[] }> = {
-  admin: { user: { id: 'u1', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW', avatarUrl: null, roleName: '系统管理员', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','sales','inventory','profile'] },
-  purchaser: { user: { id: 'u2', username: 'purchaser', displayName: '赵示例', employeeId: 'E002', avatarText: '陈晓', avatarUrl: null, roleName: '采购员', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','inventory','profile'] },
-  sales: { user: { id: 'u3', username: 'sales', displayName: '周文静', employeeId: 'E003', avatarText: '周文', avatarUrl: null, roleName: '销售员', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','sales','inventory','profile'] },
-  viewer: { user: { id: 'u4', username: 'viewer', displayName: '只读用户', employeeId: 'E004', avatarText: '只读', avatarUrl: null, roleName: '查询用户', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','profile'] },
+  admin: { user: { id: 'u1', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW', avatarUrl: null, groupNames: '系统管理员', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','sales','inventory','profile'] },
+  purchaser: { user: { id: 'u2', username: 'purchaser', displayName: '赵示例', employeeId: 'E002', avatarText: '陈晓', avatarUrl: null, groupNames: '采购员', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','inventory','profile'] },
+  sales: { user: { id: 'u3', username: 'sales', displayName: '周文静', employeeId: 'E003', avatarText: '周文', avatarUrl: null, groupNames: '销售员', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','sales','inventory','profile'] },
+  viewer: { user: { id: 'u4', username: 'viewer', displayName: '只读用户', employeeId: 'E004', avatarText: '只读', avatarUrl: null, groupNames: '查询用户', organization: { id: 'east', name: '华东运营中心' } }, permissions: [], menuIds: ['dashboard','profile'] },
 }
 let activeUsername = sessionStorage.getItem('erp-mock-session')
 function bootstrapFor(username: string): AppBootstrap { const account = users[username]; return { user: account.user, permissions: account.permissions, navigation: baseNavigation.filter((item) => account.menuIds.includes(item.id)) } }

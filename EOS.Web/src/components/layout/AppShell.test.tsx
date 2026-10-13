@@ -41,7 +41,7 @@ function DirtyPage() {
 const bootstrap: AppBootstrap = {
   user: {
     id: 'u1', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW',
-    avatarUrl: null, roleName: '系统管理员', organization: { id: 'east', name: '华东运营中心' },
+    avatarUrl: null, groupNames: '系统管理员', organization: { id: 'east', name: '华东运营中心' },
   },
   permissions: [],
   navigation: [
@@ -50,6 +50,8 @@ const bootstrap: AppBootstrap = {
       id: 'sales',
       label: '销售管理',
       icon: 'sales',
+      // 服务端对分组节点也下发编号（纯目录分组同样有），菜单提示据此显示"{M_IDX}-{M_DESC}"
+      moduleId: 1200,
       children: [
         { id: 'so', label: '销售订单', route: '/sales/orders', icon: 'sales' },
         {
@@ -235,12 +237,32 @@ describe('AppShell', () => {
     expect(localStorage.getItem('erp-theme')).toBe('light')
   })
 
-  it('用户菜单只保留个人设置与退出登录（模式切换已移出）', () => {
+  it('用户菜单只保留个人设置、修改密码与退出登录（模式切换已移出）', () => {
     renderShell('/dashboard')
     openUserMenu()
     expect(screen.getByRole('menuitem', { name: '个人设置' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '修改密码' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: '退出登录' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: '深色模式' })).not.toBeInTheDocument()
+  })
+
+  it('修改密码在弹窗里完成，不跳转页面', () => {
+    renderShell('/dashboard')
+    openUserMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '修改密码' }))
+    expect(screen.getByRole('dialog', { name: '修改密码' })).toBeInTheDocument()
+    expect(screen.getByLabelText('当前密码')).toBeInTheDocument()
+    // 菜单本身收起，弹窗成了唯一焦点
+    expect(screen.queryByRole('menuitem', { name: '修改密码' })).not.toBeInTheDocument()
+  })
+
+  it('菜单项悬停提示给出"{模块编号}-{模块名}"，分组节点同样带编号', () => {
+    renderShell('/dashboard')
+    expect(screen.getByRole('button', { name: '销售管理' })).toHaveAttribute('title', '1200-销售管理')
+    // 叶子（有落点的模块）按编号提示，逐级展开后可见
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
+    fireEvent.click(screen.getByRole('button', { name: '销售子组' }))
+    expect(screen.getByRole('link', { name: '分组模块' })).toHaveAttribute('title', '1209-分组模块')
   })
 
   it('折叠态下模式切换按钮保留在同一位置，仍可切换主题', () => {
