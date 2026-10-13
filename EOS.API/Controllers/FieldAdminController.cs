@@ -82,10 +82,12 @@ public sealed class FieldAdminController(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] bool excludeSystem = false,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool sortDesc = false,
         CancellationToken token = default)
     {
         if (!await CanBrowse(token)) return Forbid();
-        return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token, excludeSystem));
+        return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token, excludeSystem, sortBy, sortDesc));
     }
 
     [HttpPost("tables/{table}/fields/batch")]

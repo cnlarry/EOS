@@ -1,6 +1,6 @@
 import { IconCopy, IconEdit, IconEraser, IconListDetails, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ColumnDef } from '../../lib/tanstackTable'
+import type { ColumnDef, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
@@ -56,6 +56,9 @@ export function FieldAdminPage() {
   const [unmanagedOpen, setUnmanagedOpen] = useState(false)
   const [ghostOpen, setGhostOpen] = useState(false)
   const [selectedField, setSelectedField] = useState<string | null>(null)
+  // 排序交给服务端：列表是分页取数的，客户端排序只会排当前这一页。
+  // 只取首个排序项（服务端白名单也只支持单列），多列排序在这里没有意义。
+  const [sorting, setSorting] = useState<SortingState>([])
   // 系统列组默认隐藏；打开后服务端即不过滤（含徽标与删除保护）。
   const [showSystem, setShowSystem] = useState(false)
 
@@ -65,9 +68,13 @@ export function FieldAdminPage() {
   })
   const table = tablesQuery.data?.find((item) => item.tableId.toLowerCase() === tableId.toLowerCase())
 
+  const sortBy = sorting[0]?.id
+  const sortDesc = sorting[0]?.desc ?? false
   const fields = useQuery({
-    queryKey: ['field-admin', 'fields', tableId, keyword, page, showSystem],
-    queryFn: () => apiClient.get<FieldAdminPageResult>(`/admin/tables/${encodeURIComponent(tableId)}/fields`, { query: { keyword, page, pageSize, excludeSystem: showSystem ? undefined : 'true' } }),
+    queryKey: ['field-admin', 'fields', tableId, keyword, page, showSystem, sortBy, sortDesc],
+    queryFn: () => apiClient.get<FieldAdminPageResult>(`/admin/tables/${encodeURIComponent(tableId)}/fields`, {
+      query: { keyword, page, pageSize, excludeSystem: showSystem ? undefined : 'true', sortBy, sortDesc: sortDesc ? 'true' : undefined },
+    }),
   })
 
   const remove = useMutation({
@@ -165,6 +172,9 @@ export function FieldAdminPage() {
             data={items}
             getRowId={(row) => `${row.tableId}.${row.fieldId}`}
             onRowClick={(row) => setSelectedField(`${row.tableId}.${row.fieldId}`)}
+            // 服务端排序：表头菜单直接不渲染（不传这两个 prop 的话），故必须成对传
+            sorting={sorting}
+            onSortingChange={(next) => { setSorting(next); setPage(1) }}
             resizable
             storageKey={`field-admin-fields-${tableId}`}
             empty={<EmptyState title="没有找到字段" description="请调整搜索条件，或点击“新增”创建字段。" />}

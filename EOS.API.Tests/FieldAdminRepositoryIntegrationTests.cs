@@ -89,6 +89,47 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         Assert.True(companyId.IsPrimaryKey);
     }
 
+    /// <summary>
+    /// 字段列表排序：白名单里的每个列键都必须真的能排进 SQL。
+    ///
+    /// 拼接进语句的只有白名单字面量（注入风险已由白名单封死），但"库认不认"是另一回事——
+    /// `IS_PHYSICAL` 是 SELECT 里的计算别名，排它属于会在解析阶段报错的那一类，
+    /// 这类缺陷编译、单测与静态门禁都发现不了，只有把语句交给库才暴露。
+    /// 未登记的列键必须退回默认顺序（F_ID 升序）而不是报错。
+    /// </summary>
+    [Fact]
+    public async Task GetFields_SortWhitelistIsExecutable()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var whitelist = new[]
+        {
+            "fieldId", "description", "dataType", "isPrimaryKey", "physicalExists", "isVirtual",
+            "isVisible", "isDefault", "isQueryable", "isReadonly", "isCost", "isSecrecy",
+        };
+        foreach (var sortBy in whitelist)
+        {
+            var ascending = await _repository.GetFieldsAsync("COMPANY", null, 1, 100, CancellationToken.None, false, sortBy, false);
+            var descending = await _repository.GetFieldsAsync("COMPANY", null, 1, 100, CancellationToken.None, false, sortBy, true);
+            Assert.Equal(ascending.Items.Count, descending.Items.Count);
+        }
+
+        // 未登记的列键与空值走同一条默认路径：同页同序
+        var defaulted = await _repository.GetFieldsAsync("COMPANY", null, 1, 100, CancellationToken.None);
+        var unknownKey = await _repository.GetFieldsAsync("COMPANY", null, 1, 100, CancellationToken.None, false, "not-a-whitelisted-column", true);
+        Assert.Equal(
+            defaulted.Items.Select(item => item.FieldId),
+            unknownKey.Items.Select(item => item.FieldId));
+
+        // 排序真的落到了 SQL：按主键降序时首行必须是主键字段（COMPANY 的 COMPANY_ID 就是主键）
+        var byPrimaryKey = await _repository.GetFieldsAsync("COMPANY", null, 1, 100, CancellationToken.None, false, "isPrimaryKey", true);
+        Assert.NotEmpty(byPrimaryKey.Items);
+        Assert.True(byPrimaryKey.Items[0].IsPrimaryKey, "按主键降序时首行必须是主键字段");
+    }
+
     [Fact]
     public async Task CreateUnmanagedFields_GeneratesAndIsIdempotent_ThenDeleteCleans()
     {

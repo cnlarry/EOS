@@ -47,6 +47,26 @@ public sealed class FieldAdminRepository(
         "", "TABLE", "VIEW", "UNKNOW"
     };
 
+    /// <summary>
+    /// 字段列表可排序列白名单：列键（前端列 id）→ ORDER BY 用的库列。
+    /// 排序字段只能来自本表，前端提交的表只能用查表命中，拼接进 SQL 的永远只有这里的字面量。
+    /// </summary>
+    private static readonly Dictionary<string, string> FieldSortColumns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["fieldId"] = "F_ID",
+        ["description"] = "F_DESC",
+        ["dataType"] = "F_TYPE",
+        ["isPrimaryKey"] = "IS_PK",
+        ["physicalExists"] = "IS_PHYSICAL",
+        ["isVirtual"] = "IS_VIRTUAL",
+        ["isVisible"] = "IS_VISIBLE",
+        ["isDefault"] = "IS_DEFAULT_FIELDS",
+        ["isQueryable"] = "IS_QUERY",
+        ["isReadonly"] = "IS_READONLY",
+        ["isCost"] = "IS_COST",
+        ["isSecrecy"] = "IS_SECRECY",
+    };
+
     public async Task<IReadOnlyList<FieldAdminTable>> GetTablesAsync(string? kind, CancellationToken token)
     {
         using var timing = DbTimingCollector.Instance.Measure();
@@ -552,12 +572,21 @@ public sealed class FieldAdminRepository(
         int page,
         int pageSize,
         CancellationToken token,
-        bool excludeSystemColumns = false)
+        bool excludeSystemColumns = false,
+        string? sortBy = null,
+        bool sortDescending = false)
     {
         EnsureIdentifier(tableId, null);
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 100);
         var pattern = $"%{keyword?.Trim() ?? ""}%";
+        // 排序字段只认白名单键；命中不了就退回 F_ID。末尾带 F_ID 兜底，
+        // 让同值行有确定顺序——翻页时同一行不会因排序不稳而重复或漏掉。
+        // 兜底键不能与排序键重合：SQL Server 不接受 ORDER BY 里出现同一列两次（"排序依据列表中多次指定了某一列"）。
+        var direction = sortDescending ? "DESC" : "ASC";
+        var orderBy = FieldSortColumns.TryGetValue(sortBy?.Trim() ?? string.Empty, out var sortColumn)
+            ? sortColumn == "F_ID" ? $"F_ID {direction}" : $"{sortColumn} {direction}, F_ID"
+            : "F_ID";
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         // 系统列排除：闭式代码侧常量（WorkflowStates.LifecycleColumns），非用户输入，不拼接用户值。
@@ -591,10 +620,12 @@ public sealed class FieldAdminRepository(
             FROM base
             WHERE (@Keyword='' OR F_ID LIKE @Pattern OR F_DESC LIKE @Pattern)
             /*SYSTEM_FILTER*/
-            ORDER BY F_ID
+            ORDER BY /*ORDER_BY*/
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
-        var sql = sqlTemplate.Replace("/*SYSTEM_FILTER*/", systemFilter, StringComparison.Ordinal);
+        var sql = sqlTemplate
+            .Replace("/*SYSTEM_FILTER*/", systemFilter, StringComparison.Ordinal)
+            .Replace("/*ORDER_BY*/", orderBy, StringComparison.Ordinal);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
         command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 200).Value = keyword?.Trim() ?? "";

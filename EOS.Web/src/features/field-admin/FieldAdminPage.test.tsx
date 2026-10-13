@@ -183,6 +183,17 @@ describe('FieldAdminPage', () => {
     ))
   })
 
+  it('表头排序触发带 sortBy/sortDesc 的服务端查询（分页列表的排序只能服务端做）', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '表头操作字段名' }))
+    fireEvent.click(screen.getByRole('button', { name: '降序' }))
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/admin/tables/PRODUCT_EDITION/fields',
+      expect.objectContaining({ query: expect.objectContaining({ sortBy: 'fieldId', sortDesc: 'true' }) }),
+    ))
+  })
+
   it('系统列显示徽标且无删除按钮', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
