@@ -122,6 +122,7 @@ public sealed class JobsController(
             Updated = result.Updated,
             SkippedNoTimeType = result.SkippedNoTimeType,
             SkippedNotActive = result.SkippedNotActive,
+            SkippedBadTime = result.SkippedBadTime,
         });
     }
 

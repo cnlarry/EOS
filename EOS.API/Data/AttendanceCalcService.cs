@@ -19,7 +19,9 @@ public sealed class AttendanceCalcService(
 {
     private static readonly Regex DayColumn = new("^DAY_(0[1-9]|[12][0-9]|3[01])$", RegexOptions.Compiled);
 
-    public sealed record CalcResult(int EmployeeCount, int DiaryRows, int Updated, int SkippedNoTimeType, int SkippedNotActive);
+    public sealed record CalcResult(
+        int EmployeeCount, int DiaryRows, int Updated,
+        int SkippedNoTimeType, int SkippedNotActive, int SkippedBadTime);
 
     public async Task<CalcResult> CalculateAsync(
         DateTime startDate,
@@ -73,7 +75,7 @@ public sealed class AttendanceCalcService(
                     reader.IsDBNull(2) ? null : reader.GetDateTime(2));
             }
         }
-        if (employees.Count == 0) return new CalcResult(0, 0, 0, 0, 0);
+        if (employees.Count == 0) return new CalcResult(0, 0, 0, 0, 0, 0);
 
         // 配置与参照数据（参数化，一次性加载）
         var setup = await LoadSetupAsync(connection, token);
@@ -93,6 +95,7 @@ public sealed class AttendanceCalcService(
         var updated = 0;
         var skippedNoTimeType = 0;
         var skippedNotActive = 0;
+        var skippedBadTime = 0;
         for (var date = startDate; date <= endDate; date = date.AddDays(1))
         {
             var dayColumn = $"DAY_{date.Day:00}";
@@ -195,15 +198,30 @@ public sealed class AttendanceCalcService(
                     {
                         var onMinutes = ParseTime(on[slot]!);
                         var schedIn = ParseTime(inTime[slot]!);
-                        if (onMinutes > schedIn + tt.InLateMinute[slot])
-                            lateFor[slot] = onMinutes - schedIn;
+                        if (onMinutes is { } onMin && schedIn is { } schedInMin)
+                        {
+                            if (onMin > schedInMin + tt.InLateMinute[slot])
+                                lateFor[slot] = onMin - schedInMin;
+                        }
+                        else
+                        {
+                            // 读不懂的时间不参与迟到判定：过去一律按 0（午夜）参与，会算出荒谬的提前量
+                            skippedBadTime++;
+                        }
                     }
                     if (!string.IsNullOrWhiteSpace(outPunch[slot]) && !string.IsNullOrWhiteSpace(outTime[slot]))
                     {
                         var outMinutes = ParseTime(outPunch[slot]!);
                         var schedOut = ParseTime(outTime[slot]!);
-                        if (outMinutes < schedOut - tt.OutLateMinute[slot])
-                            leaveEarly[slot] = schedOut - outMinutes;
+                        if (outMinutes is { } outMin && schedOut is { } schedOutMin)
+                        {
+                            if (outMin < schedOutMin - tt.OutLateMinute[slot])
+                                leaveEarly[slot] = schedOutMin - outMin;
+                        }
+                        else
+                        {
+                            skippedBadTime++;
+                        }
                     }
                 }
 
@@ -214,11 +232,20 @@ public sealed class AttendanceCalcService(
                     var dAdd = addHours[slot];
                     if (tt.IsOutFlex[slot] && !string.IsNullOrWhiteSpace(outPunch[slot]) && !string.IsNullOrWhiteSpace(outTime[slot]))
                     {
-                        var flexMinutes = ParseTime(outPunch[slot]!) - ParseTime(outTime[slot]!);
-                        if (flexMinutes >= 30)
+                        var punchMinutes = ParseTime(outPunch[slot]!);
+                        var schedMinutes = ParseTime(outTime[slot]!);
+                        if (punchMinutes is { } punchMin && schedMinutes is { } schedMin)
                         {
-                            var flexHours = Math.Floor(flexMinutes / 60.0) + (flexMinutes % 60 >= 30 ? 0.5 : 0);
-                            if (dAdd > 0) dAdd += flexHours; else dWork += flexHours;
+                            var flexMinutes = punchMin - schedMin;
+                            if (flexMinutes >= 30)
+                            {
+                                var flexHours = Math.Floor(flexMinutes / 60.0) + (flexMinutes % 60 >= 30 ? 0.5 : 0);
+                                if (dAdd > 0) dAdd += flexHours; else dWork += flexHours;
+                            }
+                        }
+                        else
+                        {
+                            skippedBadTime++;
                         }
                     }
                     if (string.IsNullOrWhiteSpace(on[slot]) || string.IsNullOrWhiteSpace(outPunch[slot]))
@@ -286,16 +313,29 @@ public sealed class AttendanceCalcService(
                 diaryRows++;
             }
         }
-        logger.LogInformation("考勤计算完成 employees={Employees} rows={Rows} updated={Updated} noTimeType={NoTimeType}",
-            employees.Count, diaryRows, updated, skippedNoTimeType);
-        return new CalcResult(employees.Count, diaryRows, updated, skippedNoTimeType, skippedNotActive);
+        logger.LogInformation(
+            "考勤计算完成 employees={Employees} rows={Rows} updated={Updated} noTimeType={NoTimeType} notActive={NotActive} badTime={BadTime}",
+            employees.Count, diaryRows, updated, skippedNoTimeType, skippedNotActive, skippedBadTime);
+        return new CalcResult(employees.Count, diaryRows, updated, skippedNoTimeType, skippedNotActive, skippedBadTime);
     }
 
-    private static double ParseTime(string time)
+    /// <summary>
+    /// 把 "HH:mm" 解析为"从零点起算的分钟数"。
+    ///
+    /// 读不懂时返回 <see langword="null"/>（由调用方跳过该项计算），而不是返回 0：
+    /// 0 分钟就是午夜——一份脏的打卡/排班数据会被当成"零点整到岗"，算出提前八小时到岗
+    /// 或荒谬的工时，且不报错、不告警，只在报表上留一条没人看得懂的记录。
+    /// 越界也一并拦下：过去 "25:70" 会被当成次日凌晨、"-1:30" 算成负九十分钟。
+    /// </summary>
+    internal static int? ParseTime(string time)
     {
         var parts = time.Trim().Split(':');
-        var hours = parts.Length > 0 && int.TryParse(parts[0], out var h) ? h : 0;
-        var minutes = parts.Length > 1 && int.TryParse(parts[1], out var m) ? m : 0;
+        if (parts.Length < 2) return null;
+        if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var hours)) return null;
+        if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minutes)) return null;
+        // 跨天排班的时段可落到次日（上限取 47 时），但分钟必须落在 0..59
+        if (hours is < 0 or > 47) return null;
+        if (minutes is < 0 or > 59) return null;
         return hours * 60 + minutes;
     }
 
@@ -333,7 +373,10 @@ public sealed class AttendanceCalcService(
         var fore = isIn ? tt.InForeMinute[slot] : tt.OutForeMinute[slot];
         var back = isIn ? tt.InBackMinute[slot] : tt.OutBackMinute[slot];
         if (string.IsNullOrWhiteSpace(timeText)) return null;
-        var scheduled = date.Date.AddDays(moreDay ? 1 : 0).AddMinutes(ParseTime(timeText));
+        // 排班时间读不懂 → 该时段没有可匹配的窗口，与"排班时间为空"同路返回 null
+        var scheduledMinutes = ParseTime(timeText);
+        if (scheduledMinutes is null) return null;
+        var scheduled = date.Date.AddDays(moreDay ? 1 : 0).AddMinutes(scheduledMinutes.Value);
         var windowStart = scheduled.AddMinutes(-fore);
         var windowEnd = scheduled.AddMinutes(back);
         return punches
