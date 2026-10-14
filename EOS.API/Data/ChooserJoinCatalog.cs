@@ -19,17 +19,33 @@ public sealed record ChooserSourceJoins(
 /// </summary>
 public static class ChooserJoinCatalog
 {
-    private static readonly ConcurrentDictionary<string, Lazy<Task<ChooserSourceJoins>>> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, ChooserSourceJoins> Cache = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 取某源表的 JOIN 目录。缓存的是解析**结果**而不是尚未完成的 Task：
+    /// 缓存 <c>Lazy&lt;Task&lt;T&gt;&gt;</c> 会把首个调用方的连接、事务与取消令牌闭包进去，
+    /// 也会把首次失败（连接抖动、令牌取消）连同异常一起永久固化——该源表此后每次都抛同一个
+    /// 陈旧异常，直到进程重启。这里只缓存成功返回值，失败由调用方下一次请求自然重试。
+    /// </summary>
     public static async Task<ChooserSourceJoins> GetAsync(
         SqlConnection connection,
         string sourceTable,
         CancellationToken token,
         SqlTransaction? transaction = null)
     {
-        var lazy = Cache.GetOrAdd(sourceTable, _ => new Lazy<Task<ChooserSourceJoins>>(
-            () => LoadAsync(connection, sourceTable, token, transaction)));
-        return await lazy.Value.ConfigureAwait(false);
+        // 事务内的读取可能命中本次事务尚未提交的 QUERY_RELATION（元数据维护就在事务里改它）；
+        // 一旦回滚，缓存里留下的是从未真正生效过的值。带事务的调用因此绕开缓存，也不写缓存。
+        if (transaction is not null)
+        {
+            return await LoadAsync(connection, sourceTable, token, transaction).ConfigureAwait(false);
+        }
+        if (Cache.TryGetValue(sourceTable, out var cached))
+        {
+            return cached;
+        }
+        var loaded = await LoadAsync(connection, sourceTable, token).ConfigureAwait(false);
+        Cache[sourceTable] = loaded;
+        return loaded;
     }
 
     private static async Task<ChooserSourceJoins> LoadAsync(
