@@ -117,6 +117,7 @@ public class RecordPayloadValidatorTests
 
     [Theory]
     [InlineData("int", "5", 5)]
+    [InlineData("bigint", "5", 5L)]
     [InlineData("float", "3.5", 3.5)]
     [InlineData("bit", "1", true)]
     [InlineData("bit", "true", true)]
@@ -125,6 +126,19 @@ public class RecordPayloadValidatorTests
     {
         Assert.True(RecordPayloadValidator.TryConvert(dataType, raw, out var value));
         Assert.Equal(expected, value);
+    }
+
+    [Fact]
+    public void BigInt_IsParsedByItsOwnWidth_NotThroughInt32()
+    {
+        // bigint / smallint / tinyint 都含 "int"，只有 bigint 的值域超出 int：
+        // 不单列分支时三者共用 int.Parse，值域内的合法 bigint 被 OverflowException
+        // 吞成 "数值格式不正确"——是宽度问题却报成格式问题。
+        Assert.True(RecordPayloadValidator.TryConvert("bigint", "3000000000", out var value));
+        Assert.Equal(3000000000L, value);
+
+        // int 仍按 int 承接：超自身宽度的输入照旧被拒，不被放宽到 long
+        Assert.False(RecordPayloadValidator.TryConvert("int", "3000000000", out _));
     }
 
     [Fact]

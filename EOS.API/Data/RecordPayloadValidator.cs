@@ -360,6 +360,12 @@ internal static class RecordPayloadValidator
             {
                 value = DateTime.Parse(text, CultureInfo.InvariantCulture);
             }
+            else if (type.Contains("bigint", StringComparison.Ordinal))
+            {
+                // bigint / smallint / tinyint 都含 "int"，但只有 bigint 的值域超出 int：
+                // 不单列分支时，合法的 >2^31-1 会被当成"数值格式不正确"拒掉。
+                value = long.Parse(NormalizeNumericText(text), CultureInfo.InvariantCulture);
+            }
             else if (type.Contains("int", StringComparison.Ordinal))
             {
                 value = int.Parse(NormalizeNumericText(text), CultureInfo.InvariantCulture);

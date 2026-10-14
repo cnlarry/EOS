@@ -336,6 +336,11 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         {
             if(type.Contains("datetime",StringComparison.Ordinal)||type.Contains("date",StringComparison.Ordinal))
                 return DateTime.Parse(raw,System.Globalization.CultureInfo.InvariantCulture);
+            // bigint 与 int 都含 "int"，单列在前：值域超 int 的合法参数值
+            // 走 int.Parse 会OverflowException，被下面的 catch 吞成 null
+            // （谓词里比较 NULL 求值为 UNKNOWN，报表静默少出或错出行）。
+            if(type.Contains("bigint",StringComparison.Ordinal))
+                return long.Parse(raw,System.Globalization.CultureInfo.InvariantCulture);
             if(type.Contains("int",StringComparison.Ordinal))
                 return int.Parse(raw,System.Globalization.CultureInfo.InvariantCulture);
             if(type.Contains("float",StringComparison.Ordinal)||type.Contains("real",StringComparison.Ordinal)

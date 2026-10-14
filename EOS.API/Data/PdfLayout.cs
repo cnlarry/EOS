@@ -44,8 +44,12 @@ internal static class PdfLayout
         {
             var full = Path.GetFullPath(Path.Combine(root, relative));
             var rootFull = Path.GetFullPath(root);
-            // 越界防护：解析后的路径必须仍位于候选根内（LOGO_PATH 为服务端元数据，防御性校验）
-            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) continue;
+            // 越界防护：解析后的路径必须仍位于候选根内（LOGO_PATH 为服务端元数据，防御性校验）。
+            // 前缀必须补尾部分隔符，否则"与候选根同名前缀的兄弟目录"会被判成在根目录内
+            // （根 www 与 ../www-evil/x.png → C:\www-evil\x.png 以 C:\www 开头）。
+            var separator = Path.DirectorySeparatorChar;
+            var rootPrefix = rootFull.TrimEnd(separator, Path.AltDirectorySeparatorChar) + separator;
+            if (!full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)) continue;
             if (File.Exists(full)) return File.ReadAllBytes(full);
             // print-logo 兜底：已有路径文件名若已迁移到 print-logo，按文件名匹配
             if (root.EndsWith("print-logo", StringComparison.OrdinalIgnoreCase))

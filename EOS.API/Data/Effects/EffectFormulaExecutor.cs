@@ -672,10 +672,15 @@ public sealed class EffectFormulaExecutor
         }
     }
 
+    /// <summary>
+    /// 字面量按 CLR 标量回落。区域性与本国 digits 一律取不变区域性：
+    /// 配置里的数值是人写的文本而不是用户区域设置下的输入，按当前区域解析会让 "1.5"
+    /// 在小数点为逗号的区域下被读成 1500（同文件另两处解析点已按此口径，这里此前漏了）。
+    /// </summary>
     private static object? ParseScalar(string text) =>
         text.Equals("NULL", StringComparison.OrdinalIgnoreCase) ? null
-        : long.TryParse(text, out var l) ? l
-        : decimal.TryParse(text, out var d) ? d
+        : long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l
+        : decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d
         : bool.TryParse(text, out var b) ? b
         : text;
 
