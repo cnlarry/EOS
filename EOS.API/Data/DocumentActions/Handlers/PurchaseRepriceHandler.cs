@@ -249,23 +249,24 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
     }
 
     /// <summary>
-    /// 逐行重算金额：与旧过程逐字一致的税种公式（I 内含税 / O 外含税 / N 不含税），
-    /// 用传入行（取价后的最新值）计算，不二次读表。
+    /// 逐行重算金额（I 内含税 / O 外含税 / N 不含税），用传入行（取价后的最新值）计算，不二次读表。
+    ///
+    /// 金额一律走 <see cref="AmountCalculator"/>，与另两处同源：
+    /// 保存整单（WorkbenchCommandHandler）用它，主表汇总是 SQL 的 <c>ROUND(...,2)</c>
+    /// （SQL Server 的 ROUND 是远离零）。而 <c>Math.Round(x, 2)</c> 的默认是银行家舍入，
+    /// 与 SQL ROUND 不同——原先这里另写一份公式，既与那两处不同，税额又是从未舍入的金额
+    /// 单独算出来的，可能让「未税额 + 税额 ≠ 价税额」差一分。
     /// </summary>
     private static async Task RecomputeRowAsync(
         DocumentActionContext context, string type, string no, DetailRow row, CancellationToken token)
     {
         var q = ServiceEffectSql.Q;
-        var line = row.Qty * row.Price * row.Rebate / 100;
-        var amount = row.TaxType == "I" && row.TaxRate != 0
-            ? Math.Round(line / (1 + row.TaxRate / 100), 2)
-            : Math.Round(line, 2);
-        var amountTax = row.TaxType == "O"
-            ? Math.Round(line * (1 + row.TaxRate / 100), 2)
-            : Math.Round(line, 2);
-        var taxSum = row.TaxType == "N" ? 0d
-            : row.TaxType == "O" ? Math.Round(line * row.TaxRate / 100, 2)
-            : Math.Round(line * row.TaxRate / 100 / (1 + row.TaxRate / 100), 2);
+        var result = AmountCalculator.Calculate(
+            (decimal)row.Qty,
+            (decimal)row.Price,
+            (decimal)row.TaxRate,
+            row.TaxType,
+            (decimal)row.Rebate);
 
         await using var command = new SqlCommand(
             $"UPDATE dbo.{q(DetailTable)} SET {q(AmountField)}=@amount, {q(AmountTaxField)}=@amountTax, "
@@ -274,9 +275,9 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             + $"AND LTRIM(RTRIM({q(ProField)}))=@pro AND ISNULL({q(UnitField)}, N'')=@unit "
             + $"AND ISNULL({q(CurrField)}, N'')=@curr AND ISNULL({q(TaxIdField)}, N'')=@tax;",
             context.Connection, context.Transaction);
-        command.Parameters.Add("@amount", SqlDbType.Float).Value = amount;
-        command.Parameters.Add("@amountTax", SqlDbType.Float).Value = amountTax;
-        command.Parameters.Add("@taxSum", SqlDbType.Float).Value = taxSum;
+        command.Parameters.Add("@amount", SqlDbType.Decimal).Value = result.Amount;
+        command.Parameters.Add("@amountTax", SqlDbType.Decimal).Value = result.AmountTax;
+        command.Parameters.Add("@taxSum", SqlDbType.Decimal).Value = result.TaxSum;
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
         command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
         command.Parameters.Add("@pro", SqlDbType.NVarChar, 60).Value = row.ProNo;
