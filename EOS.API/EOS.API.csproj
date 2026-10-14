@@ -20,6 +20,10 @@
     <PackageReference Include="dbup-sqlserver" Version="7.2.0" />
     <!-- 显式升级传递依赖：Microsoft.OpenApi 2.0.0 存在高危漏洞 GHSA-v5pm-xwqc-g5wc，2.7.5+ 已修复 -->
     <PackageReference Include="Microsoft.OpenApi" Version="2.12.2" />
+    <!-- 显式升级传递依赖：System.Security.Cryptography.Pkcs 9.0.18 受 CVE-2026-84008（高，7.5）
+         与 CVE-2026-70162（中，5.9）影响——Windows 下解析 CMS/PKCS#7 数据时会做平方级重复解析，
+         致攻击者可控的 CPU 耗尽；两条均在 9.0.21 修复。 -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <!-- 基本资料导入的 .xlsx 读取（Apache-2.0）：客户旧系统导出的表格多为 Excel，逐行解析留给它 -->
     <PackageReference Include="MiniExcel" Version="1.46.0" />
