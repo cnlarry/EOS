@@ -175,8 +175,16 @@ ORDER BY r.M_IDX, r.STAGE, r.SEQ;
             --nologo -v minimal --filter 'FullyQualifiedName~ValidationRuleParityLiveTests' `
             --artifacts-path $artifacts 2>&1
         $runtimeExit = $LASTEXITCODE
-        if ($runtimeExit -ne 0) {
-            $tail = @($output | Where-Object { $_ -match 'error|失败|Error Message|Assert' } | Select-Object -First 12)
+        # dotnet test 非零退出有两种含义，必须分开：测试用例真的失败了（口径确实不一致），
+        # 与测试压根没跑到（依赖漏洞审计、编译错误等把构建掐断）。后者报成"口径不一致"
+        # 会把排查方向带到配置与快照上去—— root cause 却根本不在那里。
+        $ranTests = @($output | Where-Object { $_ -match '总计|Passed!|Failed!|失败:' }).Count -gt 0
+        $tail = @($output | Where-Object { $_ -match 'error|失败|Error Message|Assert' } | Select-Object -First 12)
+        if ($runtimeExit -ne 0 -and -not $ranTests) {
+            $failures.Add("运行时口径未能核对（dotnet test 未执行到任何测试，属环境问题而非口径不一致）：$($tail -join ' | ')")
+            $runtimeNote = "BUILD_FAIL"
+        }
+        elseif ($runtimeExit -ne 0) {
             $failures.Add("运行时口径核对失败（dotnet test exit=$runtimeExit）：$($tail -join ' | ')")
             $runtimeNote = "FAIL"
         } else {
