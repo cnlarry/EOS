@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Query;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
@@ -456,7 +457,7 @@ public sealed class WorkbenchChooserService(
         pageSize=Math.Clamp(pageSize,10,100);
         var sql=$"SELECT COUNT_BIG(1) {countFrom}{where}; SELECT {select} {from}{where} ORDER BY {sortExpression} {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         command.CommandText=sql;
-        command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
+        command.Parameters.Add("@Offset",SqlDbType.Int).Value=PageWindow.ResolveOffset(page,pageSize);
         command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token);
         await reader.ReadAsync(token);

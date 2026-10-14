@@ -1,5 +1,6 @@
 using System.Data;
 using EOS.API.Data;
+using EOS.API.Data.Query;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -70,7 +71,7 @@ public sealed class AuditController(
             (object?)from?.UtcDateTime ?? DBNull.Value;
         command.Parameters.Add("@To", SqlDbType.DateTime2).Value =
             (object?)to?.UtcDateTime ?? DBNull.Value;
-        command.Parameters.Add("@Offset", SqlDbType.Int).Value = (page - 1) * pageSize;
+        command.Parameters.Add("@Offset", SqlDbType.Int).Value = PageWindow.ResolveOffset(page, pageSize);
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
         await using var reader = await command.ExecuteReaderAsync(token);
         await reader.ReadAsync(token);

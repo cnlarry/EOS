@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Query;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -122,7 +123,7 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
             SELECT {string.Join(',',selected.Select(column=>$"[{column}]"))} FROM dbo.[{definition.Table}] WITH (NOLOCK){where}
             ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
-        command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
+        command.Parameters.Add("@Offset",SqlDbType.Int).Value=PageWindow.ResolveOffset(page,pageSize);
         command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token);
         await reader.ReadAsync(token);

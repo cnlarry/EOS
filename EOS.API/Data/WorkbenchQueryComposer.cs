@@ -22,6 +22,15 @@ public sealed class WorkbenchQueryComposer(
     WorkbenchVirtualColumnResolver virtualColumns,
     ILogger<WorkbenchQueryComposer> logger)
 {
+    /// <summary>列表页每页行上限：列表只需要够一屏的量，翻页是正常路径。</summary>
+    private const int MaxMasterPageSize = 100;
+
+    /// <summary>
+    /// 子表（明细）行上限。明细一次性整页给出、没有翻页入口，
+    /// 上限即"这一屏能装下的最大单据"——取 500 是为了让偶尔出现的长单据也能一次看全。
+    /// </summary>
+    private const int MaxDetailPageSize = 500;
+
     public async Task<WorkbenchData> GetRowsAsync(
         WorkbenchDefinition definition,
         bool detail,
@@ -41,7 +50,7 @@ public sealed class WorkbenchQueryComposer(
         var table = detail ? definition.DetailTable : definition.MasterTable;
         var fields = detail ? definition.DetailFields : definition.MasterFields;
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 10, 100);
+        pageSize = Math.Clamp(pageSize, 10, detail ? MaxDetailPageSize : MaxMasterPageSize);
         if (table is null || fields.Count == 0)
         {
             return new([], 0, page, pageSize);
@@ -132,7 +141,7 @@ public sealed class WorkbenchQueryComposer(
         command.CommandText = selection.HasVirtual
             ? $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;"
             : $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
-        command.Parameters.Add("@Offset", SqlDbType.Int).Value = (page - 1) * pageSize;
+        command.Parameters.Add("@Offset", SqlDbType.Int).Value = PageWindow.ResolveOffset(page, pageSize);
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
         await using var reader = await command.ExecuteReaderAsync(token);
         await reader.ReadAsync(token);
@@ -383,14 +392,26 @@ public sealed class WorkbenchQueryComposer(
             }
             var dirs = (sortDirections ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             var parts = new List<string>();
+            // 同一列在 ORDER BY 里只能出现一次：SQL Server 报「在排序依据列表中多次指定了某一列」，
+            // 重复项按首次出现的那一次生效，之后重复的同名列直接跳过。
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < names.Length; i++)
             {
                 var field = fields.FirstOrDefault(item => !item.IsVirtual && item.Key.Equals(names[i], StringComparison.OrdinalIgnoreCase))
                     ?? throw new ArgumentException("排序字段无效。");
+                if (!seen.Add(field.Key))
+                {
+                    continue;
+                }
                 var desc = i < dirs.Length && dirs[i].Equals("desc", StringComparison.OrdinalIgnoreCase);
                 parts.Add($"[{field.Key}] {(desc ? "DESC" : "ASC")}");
             }
-            return string.Join(',', parts);
+            if (parts.Count > 0)
+            {
+                return string.Join(',', parts);
+            }
+            // 走到这里说明 sortFields 只有分隔符或全部落空（如 ",,"），
+            // 继续往下走默认排序分支，而不是拼出空的 ORDER BY。
         }
         if (!detail && !string.IsNullOrWhiteSpace(definition.DefaultSort))
         {

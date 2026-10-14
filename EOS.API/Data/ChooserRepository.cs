@@ -1,6 +1,7 @@
 using System.Data;
 using EOS.API.Data.Inventory;
 using EOS.API.Data.ModuleGroups;
+using EOS.API.Data.Query;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
@@ -1871,7 +1872,7 @@ public sealed class ChooserRepository(
     private static void AddCommonParameters(SqlCommand command, string keyword, int page, int pageSize)
     {
         command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 200).Value = keyword.Length > 0 ? "%" + keyword + "%" : string.Empty;
-        command.Parameters.Add("@Offset", SqlDbType.Int).Value = (page - 1) * pageSize;
+        command.Parameters.Add("@Offset", SqlDbType.Int).Value = PageWindow.ResolveOffset(page, pageSize);
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
     }
 
