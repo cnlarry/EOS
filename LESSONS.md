@@ -488,6 +488,10 @@
   路径已改用 `MarkDirtyForTableAsync`，字段维护路径本来就按表标脏；判定方法：拿一张被多个工作台
   模块共用的表保存一次，标脏集合应当等于"用这张表的模块全集"，只等于 1 个就是漏了。
   排查"某模块莫名落后"时按上面两条线索先查应用层写入，不要先怀疑迁移。
+- **现状（迁移 352）**：列宽改落个人层 `SYSQL_FIELDS.F_WIDTH`，不再写 `FIELDS`，这条路径已不存在；
+  宽度也不再参与定义内容比较（`WorkbenchDefinitionContentComparer` 摘掉字段的 `width`）——
+  它是读时叠加的个人偏好，留在比较里会让"谁调过列宽"报成静默落后。按表标脏仍是**默认列与
+  字段维护**两条写路径的要求。
 
 ### L84 守卫提示语要指一条"做得到"的路：解批是冲销留痕，删不掉就是删不掉
 - **触发／症状**：删除被拒，提示"单据已产生库存流水，禁止删除；请先解批回退库存"——使用者照做，
@@ -896,3 +900,30 @@
   改编号被拒 + 只改名称照常保存）、前端 `formEditorUtils.writableFields.test.ts`。
   教训泛化：**凡"按界面值定位既有记录"的地方都要问一句——界面值能不能被改成别的记录**；
   身份键（主键）是定位条件，不是可改字段。
+
+### L93 4xx 不带 error.code 时只在控制台：界面明明在报错，文件日志却一条都没有
+- **触发／症状**：用户报「数据加载失败 / 请求失败。」，按报障编号去 `EOS.API` 文件日志检索，
+  一条都没有，审计里也没有；界面确实在报错，服务端却像什么都没发生过。
+- **根因**：`RequestLoggingMiddleware` 的分级是「status≥500 或 errorCode 非空 → Error（落文件）」，
+  其余 `/api` 请求只记 Information（**不落文件**）。而控制器里裸写的 `return Forbid()` 返回的是
+  **空响应体的 403**：既没有 `error.code`（日志侧落不到文件），也没有 `message/detail/title`
+  （前端 `httpTransport` 三个字段全取不到，只能显示兜底文案「请求失败。」）。
+  "看得见的失败"与"查得到的日志"于是两头都断，排障只能靠猜。
+- **处置**：新增 `ForbiddenProblemFilter`（`IAlwaysRunResultFilter`）把 `ForbidResult` 统一换成
+  403 的 `ProblemDetails`（`code=FORBIDDEN` + 人话 `message`），再由既有的 `ProblemDetailsContextFilter`
+  附加 `correlationId` 并登记错误码——**一处覆盖全部 `Forbid()` 调用点**，新增端点自动生效，
+  无需逐个改。调用点要点名缺哪个权限位时用 `ForbidWithReason`。
+- **防线**：`ForbiddenProblemFilterTests` 钉住"裸 `Forbid()` 必被换成带 code/message 的 ProblemDetails"；
+  `scripts/check-forbidden-problem-filter.ps1` 守注册本身（缺失 / 顺序颠倒 / 裸 403 都报红）。
+  教训泛化：**界面在报错而文件日志干净时，先怀疑"这次失败没带 error.code"**，
+  而不是怀疑日志系统坏了；反过来，新增任何面向用户的失败出口都要问一句"它带错误码吗"。
+
+### L94 门禁正则把注释行当成有效代码：注销掉注册行，门禁照样 PASS
+- **触发／症状**：给新门禁做判别性验证时，把 `Program.cs` 里新增过滤器的注册行**注释掉**再跑，
+  门禁仍报 PASS——看起来在守，实际形同虚设。
+- **根因**：门禁用正则在文件里找注册语句，没有排除注释行；`// options.Filters.Add<X>();`
+  同样命中模式，于是"有没有注册"被判成"文件里有没有这串字"。
+- **处置**：匹配前跳过 `TrimStart().StartsWith('//')` 的行。
+- **防线**：门禁 `-SelfTest` 里补一条反例"注册被注释掉时必须判 FAIL"。
+  教训泛化：**文本类门禁写好之后，一定要亲手把合规代码改成不合规（注释 / 改名 / 挪位）跑一遍**——
+  只拿合规代码跑出来的 PASS 说明不了门禁有效。
