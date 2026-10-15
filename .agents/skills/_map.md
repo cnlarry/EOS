@@ -14,6 +14,7 @@
 | `eos-commit` | 自建 | 在用 |
 | `eos-db-objects` | 自建 | 在用 |
 | `eos-security-check` | 自建 | 在用 |
+| `eos-read-logs` | 自建 | 在用 |
 | `eos-release` | 自建 | **在用（唯一发布技能）**——判定版本号 → CHANGELOG 定稿 → 打标签 → 推送 → 建 GitHub Release；取代已删除的 `eos-publish` |
 | `tdd` | [mattpocock/skills](https://github.com/mattpocock/skills) @ `6654f6b` | 在用（第三方，MIT） |
 | `diagnosing-bugs` | 同上 | 在用（第三方） |
