@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -20,17 +21,21 @@ public sealed class RightsAdminController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
+    /// <summary>拒绝时点明缺的是哪个权限位：本控制器全部端点都要求 2306「用户权限设定」的设置权。</summary>
+    private const string CanSetupReason =
+        "无权执行该操作：需要「用户权限设定」(2306) 的设置权(CanSetup)。请联系管理员开通该权限位。";
+
     [HttpGet("users/{userId}/rights")]
     public async Task<IActionResult> UserRights(string userId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetUserModuleMatrixAsync(userContext.UserId, userId, token));
     }
 
     [HttpPut("users/{userId}/rights")]
     public async Task<IActionResult> SaveUserRights(string userId, SaveModuleRightsRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SaveUserModuleRightsAsync(
             userId, request.Items, userContext.UserId, userContext.EmployeeName, token);
         return NoContent();
@@ -44,14 +49,14 @@ public sealed class RightsAdminController(
     [HttpGet("users/{userId}/button-rights")]
     public async Task<IActionResult> UserButtonRights(string userId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetUserButtonRightsAsync(userContext.UserId, userId, token));
     }
 
     [HttpPut("users/{userId}/button-rights")]
     public async Task<IActionResult> SaveUserButtonRights(string userId, SaveDocumentActionRightsRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SaveUserButtonRightsAsync(userId, request.Items, userContext.EmployeeName, token);
         return NoContent();
     }
@@ -59,14 +64,14 @@ public sealed class RightsAdminController(
     [HttpGet("groups/{groupId}/button-rights")]
     public async Task<IActionResult> GroupButtonRights(string groupId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetGroupButtonRightsAsync(userContext.UserId, groupId, token));
     }
 
     [HttpPut("groups/{groupId}/button-rights")]
     public async Task<IActionResult> SaveGroupButtonRights(string groupId, SaveDocumentActionRightsRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SaveGroupButtonRightsAsync(groupId, request.Items, userContext.EmployeeName, token);
         return NoContent();
     }
@@ -74,14 +79,14 @@ public sealed class RightsAdminController(
     [HttpGet("users/{userId}/groups")]
     public async Task<IActionResult> UserGroups(string userId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetUserGroupsAsync(userId, token));
     }
 
     [HttpPut("users/{userId}/groups")]
     public async Task<IActionResult> SaveUserGroups(string userId, SaveMembersRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SaveUserGroupsAsync(userId, request.Ids, userContext.EmployeeName, token);
         return NoContent();
     }
@@ -89,14 +94,14 @@ public sealed class RightsAdminController(
     [HttpGet("groups")]
     public async Task<IActionResult> Groups(CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetGroupsAsync(token));
     }
 
     [HttpPost("groups")]
     public async Task<IActionResult> CreateGroup(CreateGroupRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.CreateGroupAsync(
             request.GroupId, request.GroupDescription, request.Remark, userContext.EmployeeName, token);
         return NoContent();
@@ -105,7 +110,7 @@ public sealed class RightsAdminController(
     [HttpPut("groups/{groupId}")]
     public async Task<IActionResult> UpdateGroup(string groupId, UpdateGroupRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.UpdateGroupAsync(
             groupId, request.GroupDescription, request.Remark, userContext.EmployeeName, token);
         return NoContent();
@@ -114,7 +119,7 @@ public sealed class RightsAdminController(
     [HttpDelete("groups/{groupId}")]
     public async Task<IActionResult> DeleteGroup(string groupId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.DeleteGroupAsync(groupId, userContext.EmployeeName, token);
         return NoContent();
     }
@@ -122,14 +127,14 @@ public sealed class RightsAdminController(
     [HttpGet("groups/{groupId}/rights")]
     public async Task<IActionResult> GroupRights(string groupId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetGroupModuleMatrixAsync(userContext.UserId, groupId, token));
     }
 
     [HttpPut("groups/{groupId}/rights")]
     public async Task<IActionResult> SaveGroupRights(string groupId, SaveModuleRightsRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SaveGroupModuleRightsAsync(
             groupId, request.Items, userContext.UserId, userContext.EmployeeName, token);
         return NoContent();
@@ -138,14 +143,14 @@ public sealed class RightsAdminController(
     [HttpGet("groups/{groupId}/members")]
     public async Task<IActionResult> GroupMembers(string groupId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         return Ok(await repository.GetGroupMembersAsync(groupId, token));
     }
 
     [HttpPut("groups/{groupId}/members")]
     public async Task<IActionResult> SaveGroupMembers(string groupId, SaveMembersRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SaveGroupMembersAsync(groupId, request.Ids, userContext.EmployeeName, token);
         return NoContent();
     }
@@ -153,7 +158,7 @@ public sealed class RightsAdminController(
     [HttpGet("rights/fields")]
     public async Task<IActionResult> ModuleFields([FromQuery] int moduleId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         var rights = await rightsRepository.GetAsync(userContext.UserId, PermissionModules.SystemManagement, token);
         var fields = await repository.GetModuleFieldsAsync(
             moduleId, rights.CanViewCost, rights.CanViewSecrecy, token);
@@ -163,7 +168,7 @@ public sealed class RightsAdminController(
     [HttpGet("users/{userId}/effective-rights")]
     public async Task<IActionResult> EffectiveRights(string userId, [FromQuery] int moduleId, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         var rights = await rightsRepository.GetAsync(userId, moduleId, token);
         var source = await repository.GetEffectiveSourceAsync(userId, moduleId, token);
         return Ok(new EffectiveRightsDetail(

@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +19,13 @@ public sealed class UserAdminController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
+    /// <summary>拒绝时点明缺的是哪个权限位：读要 2306 的浏览权，写要 2306 的设置权。</summary>
+    private const string CanBrowseReason =
+        "无权查看用户列表：需要「用户权限设定」(2306) 的浏览权(CanBrowse)。请联系管理员开通该权限位。";
+
+    private const string CanSetupReason =
+        "无权执行该操作：需要「用户权限设定」(2306) 的设置权(CanSetup)。请联系管理员开通该权限位。";
+
     [HttpGet]
     public async Task<IActionResult> Users(
         [FromQuery] string? keyword = null,
@@ -25,14 +33,14 @@ public sealed class UserAdminController(
         [FromQuery] int pageSize = 20,
         CancellationToken token = default)
     {
-        if (!await CanBrowse(token)) return Forbid();
+        if (!await CanBrowse(token)) return this.ForbidWithReason(CanBrowseReason);
         return Ok(await repository.GetUsersAsync(keyword, page, pageSize, token));
     }
 
     [HttpPut("{userId}/password")]
     public async Task<IActionResult> SetPassword(string userId, SetUserPasswordRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.SetPasswordAsync(userId, request.NewPassword, userContext.EmployeeName, token);
         return NoContent();
     }
@@ -41,7 +49,7 @@ public sealed class UserAdminController(
     [HttpPost]
     public async Task<IActionResult> CreateUser(CreateUserRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         await repository.CreateUserAsync(
             request.UserId, request.EmployeeId, request.Password, request.GroupIds,
             userContext.EmployeeName, token);
@@ -51,7 +59,7 @@ public sealed class UserAdminController(
     [HttpPut("{userId}/status")]
     public async Task<IActionResult> SetStatus(string userId, SetUserStatusRequest request, CancellationToken token)
     {
-        if (!await CanSetup(token)) return Forbid();
+        if (!await CanSetup(token)) return this.ForbidWithReason(CanSetupReason);
         if (!request.IsActive && userContext.UserId.Equals(userId.Trim(), StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("不能停用当前登录账号。");
         await repository.SetActiveAsync(userId, request.IsActive, userContext.EmployeeName, token);

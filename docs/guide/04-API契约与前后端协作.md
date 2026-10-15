@@ -64,6 +64,13 @@
   [`docs/decisions/ADR-025`](../decisions/ADR-025-关联键单一真源与日志脱敏接入.md)。
 - **诊断包是另一个入口**：`GET /api/v1/logs/bundle` 返回 zip（日志 + 环境元数据），
   需要模块 `2313`（日志管理）的 `CanSetup` 权限；读日志与诊断信息只需同一模块的 `CanBrowse`。
+- **权限拒绝走同一套契约，没有例外**：控制器写 `return Forbid();` 时框架默认返回**空响应体**，
+  于是前端取不到 `message` 只显示兜底文案、日志也因缺 `error.code` 而不落盘。统一出口
+  `EOS.API/Errors/ForbiddenProblemFilter.cs` 把所有 `Forbid()` 换成带 `code=FORBIDDEN`
+  与 `message` 的 ProblemDetails；调用点可用 `this.ForbidWithReason(...)` 点名缺的是哪个权限位。
+  因此**不要为"拒绝"手写裸 `StatusCode(403)`**——那会绕过统一出口，门禁
+  `scripts/check-forbidden-problem-filter.ps1` 会拦。详见
+  [31-运行日志与诊断](./31-运行日志与诊断.md) 第七节。
 
 稳定错误码（`EOS.API/Errors/ApiErrorCodes.cs`）：
 

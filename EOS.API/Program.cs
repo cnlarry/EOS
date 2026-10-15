@@ -55,6 +55,9 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
+        // 顺序有讲究：先把裸 ForbidResult 换成 ProblemDetails，再由 ProblemDetailsContextFilter
+        // 附加请求上下文并登记错误码（错误码非空才会被请求日志记为 Error 并落文件）。
+        options.Filters.Add<ForbiddenProblemFilter>();
         options.Filters.Add<ProblemDetailsContextFilter>();
     })
     .ConfigureApiBehaviorOptions(options =>
