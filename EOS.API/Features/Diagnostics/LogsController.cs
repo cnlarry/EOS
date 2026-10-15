@@ -60,8 +60,15 @@ public sealed class LogsController(
         CancellationToken token = default)
     {
         if (!(await permissions.GetAsync(userContext.UserId, LogModuleId, token)).CanBrowse) return Forbid();
-        var (entries, truncated) = reader.Read(new LogQuery(take, level, keyword, correlationId, @event, from));
-        return Ok(new { entries, count = entries.Count, truncated });
+        var result = reader.Read(new LogQuery(take, level, keyword, correlationId, @event, from));
+        // unavailable 是"想读但读不到"的文件：不带出去的话，读失败在界面上就等同于"没有日志"
+        return Ok(new
+        {
+            entries = result.Entries,
+            count = result.Entries.Count,
+            truncated = result.Truncated,
+            unavailable = result.UnavailableFiles,
+        });
     }
 
     /// <summary>系统诊断信息：版本/构建/进程/健康检查/迁移台账摘要（不含业务数据）。</summary>

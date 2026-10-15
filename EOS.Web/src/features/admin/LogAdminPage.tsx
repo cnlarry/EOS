@@ -41,6 +41,8 @@ interface LogQueryResponse {
   entries: LogEntryRow[]
   count: number
   truncated: boolean
+  /** 想读但读不到的文件：读失败不等于没有日志，必须让用户看得见 */
+  unavailable: string[]
 }
 
 interface Diagnostics {
@@ -215,8 +217,16 @@ export function LogAdminPage() {
           </span>
         )}
         header={(
-          <div className="px-3 pt-2 small text-secondary">
-            命中 {logs.data?.count ?? 0} 条{logs.data?.truncated ? '（已达条数上限，更早的记录未显示）' : ''}
+          <div className="px-3 pt-2 small">
+            <span className="text-secondary">
+              命中 {logs.data?.count ?? 0} 条{logs.data?.truncated ? '（已达条数上限，更早的记录未显示）' : ''}
+            </span>
+            {logs.data && logs.data.unavailable.length > 0 && (
+              <div className="text-danger mt-1">
+                有 {logs.data.unavailable.length} 个文件读取失败：{logs.data.unavailable.join('、')}
+                ——它们的内容未计入上表，不等于这些文件里没有日志。
+              </div>
+            )}
           </div>
         )}
       >

@@ -35,6 +35,16 @@ public sealed record LogQuery(
     DateTimeOffset? From);
 
 /// <summary>
+/// 一次读取的结果。<see cref="UnavailableFiles"/> 是"想读但读不到"的文件，
+/// 与"读了但没有命中"是两件事——后者是空的日志，前者是失败的读取，
+/// 混在一起会让界面把故障显示成"没有日志"。
+/// </summary>
+public sealed record LogReadResult(
+    IReadOnlyList<LogEntry> Entries,
+    bool Truncated,
+    IReadOnlyList<string> UnavailableFiles);
+
+/// <summary>
 /// 运行日志读取：文件枚举、按字段过滤、以及按白名单打包。
 /// **权限与脱敏的边界**：文件内容在写入时已过 `LogRedactor`（见 ADR-025/027），
 /// 本类只读不写、不做二次解析改写；目录与文件名一律来自日志 provider 的自身配置，
@@ -74,10 +84,11 @@ public sealed class LogFileReader(JsonFileLoggerProvider provider)
     /// 读取日志条目：最新文件优先、文件内自后向前，命中 take 即停。
     /// 单行读取失败（正在写入的半行）跳过而不使整个查询失败。
     /// </summary>
-    public (IReadOnlyList<LogEntry> Entries, bool Truncated) Read(LogQuery query)
+    public LogReadResult Read(LogQuery query)
     {
         var files = ListFiles();
         var results = new List<LogEntry>();
+        var unavailable = new List<string>();
         var take = Math.Clamp(query.Take, 1, 2000);
 
         for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
@@ -86,11 +97,12 @@ public sealed class LogFileReader(JsonFileLoggerProvider provider)
             string[] lines;
             try
             {
-                lines = File.ReadAllLines(file.FullName, Encoding.UTF8);
+                lines = ReadLinesSharingWithWriter(file.FullName);
             }
             catch (IOException)
             {
-                // 轮转窗口内文件可能瞬时不可用：跳过该文件，不让整次查询失败
+                // 轮转窗口内文件可能瞬时不可用：如实记下，不再让它看起来像"这个文件没有日志"
+                unavailable.Add(file.Name);
                 continue;
             }
 
@@ -102,10 +114,28 @@ public sealed class LogFileReader(JsonFileLoggerProvider provider)
                 if (results.Count < take) continue;
                 // 还有更旧的内容没读完 ⇒ 明确告知被截断，避免前端把"前 N 条"当成全量
                 var truncated = index > 0 || fileIndex < files.Count - 1;
-                return (results, truncated);
+                return new LogReadResult(results, truncated, unavailable);
             }
         }
-        return (results, false);
+        return new LogReadResult(results, false, unavailable);
+    }
+
+    /// <summary>
+    /// 与写入流共存地读取文件。
+    /// 写入方持有的是 <c>FileAccess.Write + FileShare.ReadWrite</c>（见 JsonFileLoggerProvider.OpenStream），
+    /// 因此读取必须用同样的 ReadWrite 共享模式：<c>File.ReadAllLines</c> 默认请求
+    /// <c>FileShare.Read</c>（意为"我可以读，但别人不许写"），在写流打开期间必然抛 IOException。
+    /// </summary>
+    private static string[] ReadLinesSharingWithWriter(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            lines.Add(line);
+        }
+        return lines.ToArray();
     }
 
     /// <summary>纯函数式的过滤/解析入口：给定文件内容与过滤器返回条目（供单测直接断言，不碰磁盘）。</summary>
