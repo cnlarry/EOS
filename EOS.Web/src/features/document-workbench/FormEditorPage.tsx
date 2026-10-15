@@ -1482,9 +1482,13 @@ export function FormEditorPage() {
                 const isFinished = master?.FINISHED_TAG === true
                 // A3：在途流程状态（WF_MONITOR.WF_STATE='0'）——流程审批中的单据禁止编辑/删除，批核改显示撤回
                 const flowInProgress = recordQuery.data?.flowState === 'InProgress'
+                // 单据状态只有记录返回后才知道：记录未就绪时不做"可编辑/可删除"假设，先禁用，
+                // 否则这两个按钮会先以可用态渲染一帧、记录到达后再变灰（批核/结案类按钮自带 master 判空，
+                // 未就绪时本就不渲染，不受此影响）。
+                const statusUnknown = Boolean(keyParam) && !recordQuery.isSuccess
                 // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用；在途流程：编辑/删除禁用（按钮禁用而非隐藏，  语义）
-                const editDisabled = isFinished || isConfirmed || flowInProgress
-                const deleteDisabled = isFinished || isConfirmed || flowInProgress
+                const editDisabled = statusUnknown || isFinished || isConfirmed || flowInProgress
+                const deleteDisabled = statusUnknown || isFinished || isConfirmed || flowInProgress
                 const capabilityItems = buildViewToolbarItems(form, { master, isConfirmed, isFinished, flowInProgress, keyParam }, {
                   openApprove: () => openApprove(),
                   deapprove: () => workflow.mutate({ action: 'deapprove' }),

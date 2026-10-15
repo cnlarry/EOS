@@ -534,7 +534,8 @@ describe('FormEditorPage', () => {
     const { unmount } = renderEditor('/workbench/1209/view/P1/A')
     const deleteButton = await screen.findByRole('button', { name: '删除' })
     expect(deleteButton).toHaveClass('btn-danger')
-    expect(deleteButton).not.toBeDisabled()
+    // 单据状态随记录返回，未就绪前按钮保持禁用
+    await waitFor(() => expect(deleteButton).not.toBeDisabled())
     const addNew = screen.getByRole('button', { name: '新增' })
     expect(addNew).toHaveClass('btn-primary')
     const toolbar = addNew.closest('[role="toolbar"]')!
@@ -579,12 +580,31 @@ describe('FormEditorPage', () => {
     unmountConfirmed()
     installApiMocks()
     const { unmount } = renderEditor('/workbench/1209/view/P1/A')
-    fireEvent.click(await screen.findByRole('button', { name: '删除' }))
+    const deleteButton = await screen.findByRole('button', { name: '删除' })
+    await waitFor(() => expect(deleteButton).not.toBeDisabled())
+    fireEvent.click(deleteButton)
     await waitFor(() => expect(apiClientMock.delete).toHaveBeenCalledWith(
       '/document-workbench/1209/record?key=%5B%22P1%22%2C%22A%22%5D',
       expect.objectContaining({ headers: expect.objectContaining({ 'X-Idempotency-Key': expect.any(String) }) }),
     ))
     unmount()
+  })
+
+  it('浏览模式记录返回前编辑/删除保持禁用（单据状态未知时不以可用态先渲染）', async () => {
+    let releaseRecord: ((value: unknown) => void) | undefined
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return formDefinition
+      if (p.includes('/record')) return new Promise(resolve => { releaseRecord = resolve })
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/view/P1/A')
+    const deleteButton = await screen.findByRole('button', { name: '删除' })
+    expect(deleteButton).toBeDisabled()
+    expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
+    releaseRecord?.(recordBundle)
+    await waitFor(() => expect(deleteButton).not.toBeDisabled())
+    expect(screen.getByRole('button', { name: '编辑' })).not.toBeDisabled()
   })
 
   it('新增模式应用服务端默认值（单别/单号/日期）', async () => {
