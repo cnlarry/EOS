@@ -176,7 +176,7 @@ public class WorkbenchPolicyEquivalenceTests
         AssertMatrixSound(mismatches, outcomes, "ALLOW", "NOT_FOUND", "FORBIDDEN");
     }
 
-    // ── #7 字段维护面（field-settings / column-widths，403 口径）──
+    // ── #7 字段维护面（field-settings，403 口径；列宽已改走个人层，不在此门内）──
 
     [Fact]
     public async Task Setup_access_matches_retired_predicates()

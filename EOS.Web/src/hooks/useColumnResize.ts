@@ -3,7 +3,7 @@ import { useEffect, type RefObject } from 'react'
 export interface ColumnResizeOptions {
   /**
    * 拖拽/双击自适应结束后是否持久化到 localStorage（storageKey 非空时默认 true）。
-   * 工作台列宽已写回服务端 FIELDS.DISPLAY_LENGTH，应传 false，避免本地旧宽度覆盖服务端数值。
+   * 工作台列宽写回服务端个人层（SYSQL_FIELDS.F_WIDTH），应传 false，避免本地旧宽度覆盖服务端数值。
    */
   persist?: boolean
   /** 拖拽结束或双击自适应时回调（列键 + 新宽度），用于写回服务端字段 */

@@ -30,8 +30,6 @@ interface DataResponse { rows:Record<string,unknown>[]; total:number; page:numbe
 interface NavigationGroupDef { groupId:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
-interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null; serialNo:number|null }
-interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string|null; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null; options:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
 /**
@@ -264,13 +262,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   // 多槽队列：自适应列宽一次入队多列，逐列串行写回；单槽会被同步循环覆盖导致只保存最后一列
   const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}[]>([])
   const widthSaveRunning=useRef(false)
-  const writeFieldWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
-    const definitionData=definition.data;if(!definitionData)return
-    const tableId=detailTable?definitionData.detailTable:definitionData.masterTable;if(!tableId)return
-    const meta=await apiClient.get<FieldMetadata>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}`,{query:{detail:String(detailTable)}})
-    const {key:_key,tableId:_tableId,isVirtual:_virtual,virtualExpression:_expression,isAutoIncrement:_auto,convertFunction:_convert,lastUpdatedBy:_by,lastUpdatedAt:_at,...input}=meta
-    await apiClient.put<void>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}?detail=${detailTable}`,{...input,width,original:{...input,key:meta.key,width:meta.width}})
-  },[definition.data,moduleId])
+  // 列宽是操作习惯：写个人层（SYSQL_FIELDS.F_WIDTH，与"选择列"同一批行），有模块浏览权即可；字段元数据里的宽度是所有人的
+  // 默认值，只在字段设置面改，不随拖拽变动。
   const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
     widthSaveQueue.current.push({detail:detailTable,fieldKey,width})
     if(widthSaveRunning.current)return
@@ -281,14 +274,12 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         // 列宽钳制 [40,300]：与后端 WorkbenchFieldMetaMapper.FilterColumnWidths 同源（双端各自收紧，改需同步）
         const normalized=Math.min(300,Math.max(40,Math.round(target.width)))
         try{
-          await writeFieldWidth(target.detail,target.fieldKey,normalized)
-        }catch{
-          // 并发/乐观锁冲突：重新拉取元数据重试一次
-          try{
-            await writeFieldWidth(target.detail,target.fieldKey,normalized)
-          }catch(error2){
-            window.alert(error2 instanceof Error?`保存列宽失败：${error2.message}`:'保存列宽失败。')
-          }
+          await apiClient.put<void>(`/document-workbench/${moduleId}/column-widths`,{
+            master:target.detail?{}:{[target.fieldKey]:normalized},
+            detail:target.detail?{[target.fieldKey]:normalized}:{},
+          })
+        }catch(error){
+          window.alert(error instanceof Error?`保存列宽失败：${error.message}`:'保存列宽失败。')
         }
       }
       // 全部写回完成后再刷新一次定义，避免逐列刷新把未保存完的列重置回旧宽度
@@ -296,7 +287,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     }finally{
       widthSaveRunning.current=false
     }
-  },[writeFieldWidth,queryClient,moduleId])
+  },[queryClient,moduleId])
   const saveMasterWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(false,columnKey,width)},[saveColumnWidth])
   const saveDetailWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(true,columnKey,width)},[saveColumnWidth])
   const handleColumnFilterChange=useCallback((columnId:string,condition:QueryCondition|null)=>{

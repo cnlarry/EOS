@@ -200,8 +200,10 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
 
 - **所有列表一律使用 `EOS.Web/src/components/common/ErpTable`（统一电子表格）**，禁止手写 `<table>`；
   首列选择控件、表头排序、列宽拖拽、Ctrl+C / 右键复制、键盘导航、吸顶表头是默认能力。
-- **列宽持久化仅限 DocumentWorkbench**（写回 `FIELDS.DISPLAY_LENGTH`，需 CanSetup 权限）；
+- **列宽是个人层，只在 DocumentWorkbench 落服务端**（挂在"选择列"那批行上，`SYSQL_FIELDS.F_WIDTH`；
+  没有个人值时回落 `FIELDS.DISPLAY_LENGTH`，那是**所有人的默认宽度**，只在字段设置面改、需 CanSetup）；
   其余列表列宽一律本地持久化（`localStorage`），不得新增写回服务端字段宽度的逻辑。
+  保存选择列按**差异**增删改序、不整表先删后插——否则每次保存列都会把列宽抹平。
 - **工具栏分两类**：
   - **工作台工具栏（列表）**：只放列表自身工具与「新增」入口（搜索/导出/刷新/选择列/列宽/新增），
     不放单据级动作（编辑/复制/删除/批核/解批/结案/未结案/打印）。

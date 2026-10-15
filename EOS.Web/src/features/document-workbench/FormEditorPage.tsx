@@ -676,7 +676,7 @@ export function FormEditorPage() {
   const [sortedIndices, setSortedIndices] = useState<number[] | null>(null)
   const [activeTab, setActiveTab] = useState(1)
   const [attachOpen, setAttachOpen] = useState(false)
-  // 明细列宽统一走服务端（FIELDS.DISPLAY_LENGTH，与工作台一致），拖拽后批量保存
+  // 明细列宽统一走服务端个人层（SYSQL_FIELDS.F_WIDTH，与工作台一致），拖拽后批量保存
   const widthBatch = useRef<Record<string, number>>({})
   const widthTimer = useRef<number | null>(null)
   // 稳定回调所需的最新值快照（渲染期同步，仅用于读）
@@ -1202,7 +1202,7 @@ export function FormEditorPage() {
     })
   }, [])
 
-  /** 明细列宽拖拽：防抖批量保存到服务端（FIELDS.DISPLAY_LENGTH，与工作台 column-widths 一致）。 */
+  /** 明细列宽拖拽：防抖批量保存到服务端个人层（SYSQL_FIELDS.F_WIDTH，与工作台 column-widths 同一份）。 */
   const saveDetailWidth = useCallback((fieldKey: string, width: number) => {
     if (!formDefRef.current) return
     widthBatch.current[fieldKey] = width

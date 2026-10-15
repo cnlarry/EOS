@@ -165,6 +165,27 @@ public class WorkbenchDefinitionContentComparerTests
     }
 
     [Fact]
+    public void 字段列宽不同判等价_列宽是个人层偏好不进定义事实()
+    {
+        // 列宽落在个人层（SYSQL_FIELDS.F_WIDTH），字段元数据的 DISPLAY_LENGTH 只是默认宽度的初值：
+        // 两者都不进发布事实，故快照比较不比 width——否则谁调一次列宽，该模块就报"静默落后"。
+        const string stored = """{"moduleId":1406,"masterFields":[{"key":"PRO_NO","label":"产品编号","width":120}],"detailFields":[{"key":"ITEM","label":"明细项","width":80}]}""";
+        const string rebuilt = """{"moduleId":1406,"masterFields":[{"key":"PRO_NO","label":"产品编号","width":56}],"detailFields":[{"key":"ITEM","label":"明细项","width":300}]}""";
+
+        Assert.NotEqual(stored, rebuilt);
+        Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent(stored, rebuilt));
+    }
+
+    [Fact]
+    public void 列宽之外的字段属性改变判不等价_摘掉的只有列宽()
+    {
+        const string stored = """{"moduleId":1406,"masterFields":[{"key":"PRO_NO","label":"产品编号","width":120}]}""";
+        const string relabeled = """{"moduleId":1406,"masterFields":[{"key":"PRO_NO","label":"产品代号","width":120}]}""";
+
+        Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(stored, relabeled));
+    }
+
+    [Fact]
     public void 无法解析的内容回退字节比较()
     {
         Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent("not json", "not json"));

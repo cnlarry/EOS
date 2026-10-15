@@ -24,6 +24,10 @@ namespace EOS.API.Data.Definitions;
 ///   change: republishing would bump the version and invalidate the evidence recorded against it,
 ///   for no gain.
 ///
+/// · the `width` of a field — column width is a per-user preference (SYSQL_FIELDS.F_WIDTH) resolved on every
+///   read, with the field metadata value acting only as the default, so it is not a fact about the
+///   published definition (see <see cref="NormalizeFieldWidths"/>).
+///
 /// Everything else is a real difference. Normalizing more than the runtime ignores would let a
 /// changed configuration reuse the old version: the evidence would still look fresh while it no
 /// longer describes what the configuration does, which is worse than the current over-strictness.
@@ -85,6 +89,7 @@ public static class WorkbenchDefinitionContentComparer
 
         NormalizeActions(definition);
         NormalizeValidationRules(definition);
+        NormalizeFieldWidths(definition);
         // `effectEngine` 段不再参与执行（ADR-035）：新发布的定义不再写出它，历史快照里可能还留着，
         // 两者的"内容"对运行期而言相同——故比较前直接摘掉，避免删段被当成配置变更而升版本。
         definition.Remove("effectEngine");
@@ -153,6 +158,24 @@ public static class WorkbenchDefinitionContentComparer
             && string.IsNullOrWhiteSpace(constant.GetValue<string>()))
         {
             op["sourceConstant"] = null;
+        }
+    }
+
+    /// <summary>
+    /// 列宽不参与内容比较：它现在是个人层（SYSQL_FIELDS.F_WIDTH）读时叠加的偏好，字段元数据的
+    /// DISPLAY_LENGTH 只是默认宽度的初值——两者都不进快照事实，运行期每次实时解析。
+    /// 落后检测按快照记录的发布者身份重建，把 width 留在比较里，等于让"谁调过列宽"触发
+    /// 全库静默落后告警（LESSONS L83 记的就是这个形状）。
+    /// </summary>
+    private static void NormalizeFieldWidths(JsonObject definition)
+    {
+        foreach(var section in new[]{"masterFields","detailFields"})
+        {
+            if(definition[section] is not JsonArray fields)continue;
+            foreach(var element in fields)
+            {
+                if(element is JsonObject field)field.Remove("width");
+            }
         }
     }
 

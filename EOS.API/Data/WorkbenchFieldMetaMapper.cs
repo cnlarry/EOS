@@ -6,14 +6,13 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// Maps workbench field metadata and column settings: field-maintenance summaries and details,
-/// field and column-width write-backs, and user (SYSQL_FIELDS) vs system default (SYSQL_DEFAULT)
+/// personal column widths (SYSQL_FIELDS.F_WIDTH), and user (SYSQL_FIELDS) vs system default (SYSQL_DEFAULT)
 /// column configuration. Field keys pass module-definition/registry whitelists, widths and counts
 /// are bounded, and values are parameterized.
 /// </summary>
 public sealed class WorkbenchFieldMetaMapper(
     DbConnectionFactory connections,
     FieldAdminRepository fieldAdmin,
-    WorkbenchDirtyMarker dirtyMarker,
     WorkbenchAuditWriter auditWriter,
     ILogger<WorkbenchFieldMetaMapper> logger)
 {
@@ -73,57 +72,6 @@ public sealed class WorkbenchFieldMetaMapper(
     }
 
     /// <summary>
-    /// Batch writes column widths (DISPLAY_LENGTH): keys are filtered by the module-definition
-    /// whitelist (case-insensitive), widths clamp to [40,300], and all updates commit in one
-    /// transaction to avoid per-column round trips and mid-save refreshes.
-    /// </summary>
-    public async Task UpdateColumnWidthsAsync(WorkbenchDefinition definition,UpdateColumnWidthsRequest request,string updatedBy,CancellationToken token)
-    {
-        var masterAllowed=definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var detailAllowed=definition.DetailFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var masterWidths=FilterColumnWidths(request.Master,masterAllowed);
-        var detailWidths=request.Detail is null?new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase):FilterColumnWidths(request.Detail,detailAllowed);
-        if(masterWidths.Count==0&&detailWidths.Count==0)return;
-
-        await using var connection=CreateConnection();
-        await connection.OpenAsync(token);
-        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
-        const string sql="""
-            UPDATE dbo.FIELDS SET DISPLAY_LENGTH=@Width,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
-            WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
-            """;
-        var groups=new List<(string? TableId,IReadOnlyDictionary<string,int> Widths)>
-        {
-            (definition.MasterTable,masterWidths),
-            (definition.DetailTable,detailWidths),
-        };
-        foreach(var (tableId,widths) in groups)
-        {
-            if(tableId is null)continue;
-            foreach(var (fieldKey,width) in widths)
-            {
-                await using var command=new SqlCommand(sql,connection,transaction);
-                command.Parameters.Add("@TableId",SqlDbType.NVarChar,100).Value=tableId;
-                command.Parameters.Add("@FieldId",SqlDbType.NVarChar,100).Value=fieldKey;
-                command.Parameters.Add("@Width",SqlDbType.Int).Value=width;
-                command.Parameters.Add("@UpdatedBy",SqlDbType.NVarChar,50).Value=updatedBy;
-                await command.ExecuteNonQueryAsync(token);
-            }
-        }
-        // 列宽写回的是按 T_ID 的 FIELDS.DISPLAY_LENGTH（表级）：主表或明细表等于这张表的**其它模块**，
-        // 其定义也会跟着变。所以按表标脏，而不是只标当前模块——只标本模块会把它们留成静默落后。
-        // 只在真的写过该表的宽度时才标它，避免平白给无关模块挂上待发布项。
-        if (masterWidths.Count > 0 && definition.MasterTable is { } masterTable)
-            await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, masterTable, updatedBy, token);
-        if (detailWidths.Count > 0 && definition.DetailTable is { } detailTable)
-            await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, detailTable, updatedBy, token);
-        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId,
-            $"column-widths:{definition.MasterTable}", "UPDATE", "更新列宽", updatedBy, "WORKBENCH_METADATA", result: 1, null, token);
-        await transaction.CommitAsync(token);
-        logger.LogInformation("批量保存列宽 module={ModuleId} master={MasterCount} detail={DetailCount}",definition.ModuleId,masterWidths.Count,detailWidths.Count);
-    }
-
-    /// <summary>
     /// Whitelist filter for batch column widths: keeps fields visible in the module definition and
     /// clamps widths to [40,300].
     /// </summary>
@@ -137,6 +85,70 @@ public sealed class WorkbenchFieldMetaMapper(
             result[field]=Math.Clamp(rawWidth,MinColumnWidth,MaxColumnWidth);
         }
         return result;
+    }
+
+    /// <summary>
+    /// 个人列宽写回：列宽是操作习惯，与"选择列"同属个人配置，故宽度挂在 SYSQL_FIELDS.F_WIDTH 上
+    /// （迁移 352）。它不写 FIELDS、不标脏、不审计——动的是个人偏好，不是共用元数据，也不需要重发布。
+    /// 字段元数据的 DISPLAY_LENGTH 是所有人的默认宽度，只在字段设置面改（设置权限）。
+    /// </summary>
+    public async Task SavePersonalColumnWidthsAsync(WorkbenchDefinition definition,string userId,UpdateColumnWidthsRequest request,CancellationToken token)
+    {
+        var masterAllowed=definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var detailAllowed=definition.DetailFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var masterWidths=FilterColumnWidths(request.Master,masterAllowed);
+        var detailWidths=request.Detail is null?new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase):FilterColumnWidths(request.Detail,detailAllowed);
+        await using var connection=CreateConnection();
+        await connection.OpenAsync(token);
+        // 当前生效列在**开事务之前**读：连接一旦挂上事务，不带事务的命令就执行不了。
+        // 它只用于"一行个人配置都没有"时物化（宽度挂在那些行上）。
+        var masterColumns=await ReadColumnSettings(connection,userId,definition.MasterTable,definition.MasterTable,token);
+        var detailColumns=definition.DetailTable is null?[]:await ReadColumnSettings(connection,userId,definition.MasterTable,definition.DetailTable,token);
+        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
+        var groups=new List<(string? TableId,IReadOnlyDictionary<string,int> Widths,IReadOnlyList<WorkbenchColumn> Columns)>
+        {
+            (definition.MasterTable,masterWidths,masterColumns),
+            (definition.DetailTable,detailWidths,detailColumns),
+        };
+        foreach(var (tableId,widths,columns) in groups)
+        {
+            if(tableId is null||widths.Count==0)continue;
+            // 宽度挂在"选择列"的那些行上；从没配过列的用户先按当前生效列物化一份，否则宽度无处可挂
+            // （也不能只插这一列——那会把显示列缩成这一列）。
+            await EnsureColumnRowsAsync(connection,transaction,userId,definition.MasterTable,tableId,columns,token);
+            foreach(var (fieldKey,width) in widths)
+                await UpdatePersonalWidthAsync(connection,transaction,userId,definition.MasterTable,tableId,fieldKey,width,token);
+        }
+        await transaction.CommitAsync(token);
+        logger.LogInformation("保存个人列宽 userId={UserId} module={ModuleId} master={MasterCount} detail={DetailCount}",userId,definition.ModuleId,masterWidths.Count,detailWidths.Count);
+    }
+
+    /// <summary>
+    /// 把当前生效列（有个人配置用配置、没有用系统默认列）物化成个人行，宽度留空（= 取字段元数据默认宽度）。
+    /// 只在"一行都没有"时做：已有配置的行由 <see cref="SaveColumns"/> 按差异维护。
+    /// </summary>
+    private static async Task EnsureColumnRowsAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,IReadOnlyList<WorkbenchColumn> columns,CancellationToken token)
+    {
+        await using(var probe=new SqlCommand("SELECT COUNT(*) FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction))
+        {
+            probe.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+            probe.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+            probe.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+            if((int)(await probe.ExecuteScalarAsync(token))!>0)return;
+        }
+        foreach(var column in columns.Where(column=>column.IsVisible))
+            await InsertColumnRowAsync(connection,transaction,userId,masterTable,targetTable,column.Key,column.Order,token);
+    }
+
+    private static async Task UpdatePersonalWidthAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,int width,CancellationToken token)
+    {
+        await using var command=new SqlCommand("UPDATE dbo.SYSQL_FIELDS SET F_WIDTH=@Width WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@FieldId",connection,transaction);
+        command.Parameters.Add("@Width",SqlDbType.Int).Value=width;
+        command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+        command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+        command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        command.Parameters.Add("@FieldId",SqlDbType.NVarChar,100).Value=fieldKey;
+        await command.ExecuteNonQueryAsync(token);
     }
 
     private static FieldAdminInput MapInput(UpdateWorkbenchFieldMetadata update)=>new(
@@ -185,10 +197,12 @@ public sealed class WorkbenchFieldMetaMapper(
             userId,definition.ModuleId,definition.MasterTable,settings.Master.Count,settings.Detail.Count);
     }
 
+    /// <summary>恢复系统默认：清掉该用户在这张主表（含其明细表）上的列配置；列宽挂在同一批行上（F_WIDTH），一并回到默认宽度。</summary>
     public async Task ResetColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
     {
-        await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable";
-        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=definition.MasterTable;await command.ExecuteNonQueryAsync(token);
+        await using var connection=CreateConnection();await connection.OpenAsync(token);
+        await using var command=new SqlCommand("DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable",connection);
+        command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=definition.MasterTable;await command.ExecuteNonQueryAsync(token);
         logger.LogInformation("重置列配置 userId={UserId} module={ModuleId} master={Master}", userId,definition.ModuleId,definition.MasterTable);
     }
 
@@ -263,12 +277,76 @@ public sealed class WorkbenchFieldMetaMapper(
         return columns.Where(column=>!dropped.Contains(column.Key)).ToList();
     }
 
+    /// <summary>
+    /// 按**差异**写入选择列：只删掉不再选中的行、只插入新选中的行、只改顺序变了的行的 F_IDX。
+    /// 早先是"整表先删后插"，而列宽也挂在这些行上（F_WIDTH）——那样每次保存列都会把列宽抹平，
+    /// 故改差异写入：列集合与列宽同属个人层，一次操作不该顺手清掉另一项。
+    /// </summary>
     private static async Task SaveColumns(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,IReadOnlyList<string> fields,CancellationToken token)
     {
         if(fields.Count>200||fields.Distinct(StringComparer.OrdinalIgnoreCase).Count()!=fields.Count)throw new ArgumentException("字段配置无效。");
         var allowed=await ReadAllowedFieldKeys(connection,transaction,targetTable,token);if(fields.Any(field=>!allowed.Contains(field)))throw new ArgumentException("字段配置包含无效字段。");
-        await using(var delete=new SqlCommand("DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction)){delete.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();delete.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;delete.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;await delete.ExecuteNonQueryAsync(token);}
-        for(var i=0;i<fields.Count;i++){await using var insert=new SqlCommand("INSERT INTO dbo.SYSQL_FIELDS (USER_ID,T_ID,T_ID_R,F_ID,F_IDX) VALUES (@UserId,@MasterTable,@TargetTable,@Field,@Index)",connection,transaction);insert.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();insert.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;insert.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;insert.Parameters.Add("@Field",SqlDbType.NVarChar,100).Value=fields[i];insert.Parameters.Add("@Index",SqlDbType.Int).Value=i+1;await insert.ExecuteNonQueryAsync(token);}
+        var submitted=fields.Select(field=>field.Trim()).ToList();
+        var existing=await ReadExistingColumnOrderAsync(connection,transaction,userId,masterTable,targetTable,token);
+        var kept=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for(var i=0;i<submitted.Count;i++)
+        {
+            var field=submitted[i];
+            kept.Add(field);
+            if(!existing.TryGetValue(field,out var currentOrder))
+            {
+                await InsertColumnRowAsync(connection,transaction,userId,masterTable,targetTable,field,i+1,token);
+                continue;
+            }
+            if(currentOrder!=i+1)
+                await UpdateColumnOrderAsync(connection,transaction,userId,masterTable,targetTable,field,i+1,token);
+        }
+        foreach(var stale in existing.Keys.Where(key=>!kept.Contains(key)))
+            await DeleteColumnRowAsync(connection,transaction,userId,masterTable,targetTable,stale,token);
+    }
+
+    private static async Task<Dictionary<string,int>> ReadExistingColumnOrderAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,CancellationToken token)
+    {
+        await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)),F_IDX FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction);
+        command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+        command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+        command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        var result=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(WorkbenchSql.Identifier.IsMatch(key))result[key]=reader.GetInt32(1);}
+        return result;
+    }
+
+    private static async Task InsertColumnRowAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,int order,CancellationToken token)
+    {
+        await using var insert=new SqlCommand("INSERT INTO dbo.SYSQL_FIELDS (USER_ID,T_ID,T_ID_R,F_ID,F_IDX) VALUES (@UserId,@MasterTable,@TargetTable,@Field,@Index)",connection,transaction);
+        insert.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+        insert.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+        insert.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        insert.Parameters.Add("@Field",SqlDbType.NVarChar,100).Value=fieldKey;
+        insert.Parameters.Add("@Index",SqlDbType.Int).Value=order;
+        await insert.ExecuteNonQueryAsync(token);
+    }
+
+    private static async Task UpdateColumnOrderAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,int order,CancellationToken token)
+    {
+        await using var update=new SqlCommand("UPDATE dbo.SYSQL_FIELDS SET F_IDX=@Index WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@Field",connection,transaction);
+        update.Parameters.Add("@Index",SqlDbType.Int).Value=order;
+        update.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+        update.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+        update.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        update.Parameters.Add("@Field",SqlDbType.NVarChar,100).Value=fieldKey;
+        await update.ExecuteNonQueryAsync(token);
+    }
+
+    private static async Task DeleteColumnRowAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,CancellationToken token)
+    {
+        await using var delete=new SqlCommand("DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@Field",connection,transaction);
+        delete.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+        delete.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+        delete.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        delete.Parameters.Add("@Field",SqlDbType.NVarChar,100).Value=fieldKey;
+        await delete.ExecuteNonQueryAsync(token);
     }
 
     private static async Task<HashSet<string>> ReadAllowedFieldKeys(SqlConnection connection,SqlTransaction transaction,string targetTable,CancellationToken token)

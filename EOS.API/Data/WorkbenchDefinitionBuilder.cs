@@ -804,6 +804,8 @@ public sealed class WorkbenchDefinitionBuilder(
     /// <summary>
     /// 读取用户可见列（显示列）：列集合与顺序完全由「选择列」配置决定——有用户配置（SYSQL_FIELDS）
     /// 时取其列与 F_IDX 顺序，否则取系统默认列（FIELDS.IS_DEFAULT_FIELDS）按 VERIFY_INDEX 排序。
+    /// 列宽同理按个人层：有个人值（SYSQL_FIELDS.F_WIDTH，与"选择列"同一批行）取其值，否则回落字段元数据的 DISPLAY_LENGTH
+    /// （后者是所有用户的默认值，由字段设置面维护）。
     /// 主键列不在此处补入：用户未勾选的主键列只用于行标识/子表关联，由查询层单独并入投影，
     /// 不参与渲染（行键与显示列元数据分离）。
     /// </summary>
@@ -811,11 +813,11 @@ public sealed class WorkbenchDefinitionBuilder(
     {
         const string sql="""
             WITH UserFields AS (
-              SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX FROM dbo.SYSQL_FIELDS WITH (NOLOCK)
+              SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX,F_WIDTH FROM dbo.SYSQL_FIELDS WITH (NOLOCK)
               WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable
             ), HasConfig AS (SELECT CASE WHEN EXISTS(SELECT 1 FROM UserFields) THEN 1 ELSE 0 END Value)
             SELECT f.F_ID,COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),COALESCE(f.F_TYPE,'nvarchar'),
-                   COALESCE(f.DISPLAY_LENGTH,100),NULLIF(LTRIM(RTRIM(f.ITEM_ALIGN)),''),CAST(CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX,CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),f.VIRTUAL_EXP,f.CONVERT_FUNCTION
+                   COALESCE(u.F_WIDTH,f.DISPLAY_LENGTH,100),NULLIF(LTRIM(RTRIM(f.ITEM_ALIGN)),''),CAST(CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX,CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),f.VIRTUAL_EXP,f.CONVERT_FUNCTION
             FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=f.F_ID
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1
               AND (COALESCE(f.IS_VIRTUAL,0)=1 OR EXISTS (SELECT 1 FROM sys.columns c

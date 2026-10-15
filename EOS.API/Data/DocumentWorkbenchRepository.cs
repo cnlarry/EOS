@@ -96,8 +96,10 @@ public sealed class DocumentWorkbenchRepository(
     public async Task UpdateFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,UpdateWorkbenchFieldMetadata update,string updatedBy,CancellationToken token)
         => await fieldMetaMapper.UpdateFieldMetadataAsync(definition, detail, fieldKey, update, updatedBy, token);
 
-    public async Task UpdateColumnWidthsAsync(WorkbenchDefinition definition,UpdateColumnWidthsRequest request,string updatedBy,CancellationToken token)
-        => await fieldMetaMapper.UpdateColumnWidthsAsync(definition, request, updatedBy, token);
+    public async Task SavePersonalColumnWidthsAsync(WorkbenchDefinition definition,string userId,UpdateColumnWidthsRequest request,CancellationToken token)
+        => await fieldMetaMapper.SavePersonalColumnWidthsAsync(definition, userId, request, token);
+
+
 
     public async Task<WorkbenchColumnSettings> GetDefaultColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
         => await fieldMetaMapper.GetDefaultColumnSettingsAsync(definition, userId, token);

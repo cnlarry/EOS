@@ -366,8 +366,11 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     [HttpPut("field-settings/{fieldKey}")]
     public async Task<IActionResult> UpdateFieldSettings(int moduleId,string fieldKey,[FromBody]UpdateWorkbenchFieldMetadata update,[FromQuery]bool detail=false,CancellationToken token=default){var decision=await policy.AuthorizeSetupAsync(UserId,moduleId,token);if(!decision.Allowed)return Forbid();await repository.UpdateFieldMetadataAsync(decision.Value!.Definition,detail,fieldKey,update,userContext.EmployeeName,token);return NoContent();}
 
+    // 列宽是操作习惯：写个人层（SYSQL_FIELDS.F_WIDTH，与"选择列"同一批行），有模块浏览权即可，不再要求设置权限。
+    // 字段元数据里的 DISPLAY_LENGTH 是所有人的默认值，只在字段设置面（设置权限）改。
     [HttpPut("column-widths")]
-    public async Task<IActionResult> UpdateColumnWidths(int moduleId,[FromBody]UpdateColumnWidthsRequest request,CancellationToken token=default){var decision=await policy.AuthorizeSetupAsync(UserId,moduleId,token);if(!decision.Allowed)return Forbid();await repository.UpdateColumnWidthsAsync(decision.Value!.Definition,request,userContext.EmployeeName,token);return NoContent();}
+    public async Task<IActionResult> UpdateColumnWidths(int moduleId,[FromBody]UpdateColumnWidthsRequest request,CancellationToken token=default){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return NotFound();await repository.SavePersonalColumnWidthsAsync(decision.Value!.Definition,UserId!,request,token);return NoContent();}
+
 
     private static byte[] BuildCsv(IReadOnlyList<WorkbenchField> fields,IReadOnlyList<Dictionary<string,object?>> rows)
     {
