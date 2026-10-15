@@ -124,4 +124,18 @@ describe('RightsMatrix', () => {
     const body = apiClientMock.put.mock.calls[0][1]
     expect(body.items[0]).toMatchObject({ moduleId: 2306, execTag: 'Z', addNew: true, fileDele: true })
   })
+
+  it('批量清空全部：一次提交所有已配置模块，而不只是当前选中项', async () => {
+    renderMatrix()
+    await waitFor(() => expect(screen.getAllByText('用户权限设定').length).toBeGreaterThan(0))
+    // 已配置的只有 1206（2306 无个人记录），按钮上的计数即影响范围
+    fireEvent.click(screen.getByRole('button', { name: /批量清空全部/ }))
+    await waitFor(() => expect(screen.getByText(/已把 1 个模块标记为/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
+    const [url, body] = apiClientMock.put.mock.calls[0]
+    expect(url).toBe('/admin/users/viewer/rights')
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0]).toMatchObject({ moduleId: 1206, addNew: false, execTag: null })
+  })
 })

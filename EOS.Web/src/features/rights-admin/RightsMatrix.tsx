@@ -1,4 +1,4 @@
-import { IconArrowLeft, IconChevronRight, IconCopy, IconFolder, IconSearch, IconTrash } from '@tabler/icons-react'
+import { IconArrowLeft, IconChevronRight, IconCopy, IconEraser, IconFolder, IconSearch, IconTrash } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { LoadingState } from '../../components/common/AsyncState'
@@ -141,6 +141,8 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
   const selectedRow = selected === null ? null : byId.get(selected) ?? null
   const selectedDraft = selected === null ? null : draft[selected] ?? (selectedRow ? rowToInput(selectedRow) : null)
   const configuredCount = rows.filter((row) => row.hasPersonal || row.effective.source !== 'none').length
+  // 批量清空只针对有个人/组记录的行：本就没有记录的行已经回退到继承，清它没有意义
+  const clearableRows = useMemo(() => rows.filter((row) => row.hasPersonal), [rows])
 
   const setDraftValue = <K extends keyof ModuleRightsInput>(moduleId: number, key: K, value: ModuleRightsInput[K]) => {
     setDraft((current) => ({
@@ -256,6 +258,33 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
     setDraft((current) => ({ ...current, [selected]: emptyModuleInput(selected) }))
     setDirty((current) => new Set(current).add(selected))
     setNotice(`已把「${title}」标记为「清空${label}权限」，点击「保存」生效。`)
+  }
+
+  // 权限矩阵只能逐个模块编辑，而一个账号动辄几百个模块，逐模块清空实际上做不到。
+  // 这里把"清空"提升为可作用于全部已配置模块的批量动作，复用同一个保存端点。
+  const clearAllConfiguredRights = () => {
+    if (clearableRows.length === 0) {
+      setNotice('当前没有已配置的模块权限，无需清空。')
+      return
+    }
+    const label = mode === 'user' ? '个人' : '组'
+    const fallback = mode === 'user' ? '用户组（若没有组权限则无权限）' : '组外（组内用户将失去对应模块权限）'
+    if (!window.confirm(
+      `确定清空全部 ${clearableRows.length} 个模块的${label}权限吗？\n` +
+      `保存后这些模块的${label}记录将被删除，权限回退到${fallback}。\n\n` +
+      `影响范围：${clearableRows.length} 个模块。此操作保存后立即生效。`,
+    )) return
+    setDraft((current) => {
+      const next = { ...current }
+      for (const row of clearableRows) next[row.moduleId] = emptyModuleInput(row.moduleId)
+      return next
+    })
+    setDirty((current) => {
+      const next = new Set(current)
+      for (const row of clearableRows) next.add(row.moduleId)
+      return next
+    })
+    setNotice(`已把 ${clearableRows.length} 个模块标记为「清空${label}权限」，点击「保存」生效。`)
   }
 
   const save = async () => {
@@ -448,6 +477,9 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
     <>
       <Button size="sm" variant="ghost" icon={<IconTrash size={15} />} onClick={clearSelectedRights} disabled={selected === null}>
         清空{mode === 'user' ? '个人' : '组'}权限
+      </Button>
+      <Button size="sm" variant="ghost" icon={<IconEraser size={15} />} onClick={clearAllConfiguredRights} disabled={clearableRows.length === 0}>
+        批量清空全部（{clearableRows.length}）
       </Button>
       <Button size="sm" variant="secondary" icon={<IconCopy size={15} />} onClick={() => setCopyOpen(true)} disabled={rows.length === 0}>
         复制权限
