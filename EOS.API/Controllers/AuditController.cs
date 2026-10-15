@@ -11,8 +11,9 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// Operation audit query over AUDIT_EVENT (v2, the only operation log store).
 /// SYSDF（旧操作日志表）已随迁移 325 整表退役，不再存在于库中。
-/// Permission gate: module 2313 (system management → table maintenance → log management,
-/// the module that presents the log) CanBrowse.
+/// Permission gate: module 2316 (system management → operation audit) CanBrowse.
+/// 2316 与 2313 日志管理是两层：那里读磁盘运行日志文件，这里读库表 AUDIT_EVENT，
+/// 故各自一个模块号——共号会把"能看日志 = 能看审计"焊死，审计无法单独授权。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/audit")]
 public sealed class AuditController(
@@ -20,7 +21,7 @@ public sealed class AuditController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int LogModuleId = 2313;
+    private const int AuditModuleId = 2316;
 
     [HttpGet]
     public async Task<IActionResult> Query(
@@ -34,7 +35,7 @@ public sealed class AuditController(
         [FromQuery] int pageSize = 20,
         CancellationToken token = default)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, LogModuleId, token)).CanBrowse)
+        if (!(await rightsRepository.GetAsync(userContext.UserId, AuditModuleId, token)).CanBrowse)
             return Forbid();
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 200);
