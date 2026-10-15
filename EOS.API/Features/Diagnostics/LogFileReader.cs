@@ -32,7 +32,9 @@ public sealed record LogQuery(
     string? Keyword,
     string? CorrelationId,
     string? Event,
-    DateTimeOffset? From);
+    DateTimeOffset? From,
+    /// <summary>只看某一个日志文件（按天切分后可切换）。只与文件名比对，不接受路径。</summary>
+    string? File = null);
 
 /// <summary>
 /// 一次读取的结果。<see cref="UnavailableFiles"/> 是"想读但读不到"的文件，
@@ -54,18 +56,20 @@ public sealed class LogFileReader(JsonFileLoggerProvider provider)
 {
     private static readonly string[] Levels = ["Trace", "Debug", "Information", "Warning", "Error", "Critical"];
 
-    /// <summary>当前写文件 + 轮转副本，按最后写入时间倒序（最新的排最前）。</summary>
+    /// <summary>
+    /// 全部按天切分的日志文件。按文件名降序即按日期降序（<c>api-20261015.log</c> 在
+    /// <c>api-20261014.log</c> 之前，同一天的序号文件排在主文件之前），
+    /// 因此"切到哪一天"直接用文件名即可，不依赖写入时间。
+    /// </summary>
     public IReadOnlyList<FileInfo> ListFiles()
     {
-        var path = provider.Path;
-        var directory = Path.GetDirectoryName(path) ?? ".";
-        var baseName = Path.GetFileName(path);
+        var directory = provider.LogDirectory;
         if (!Directory.Exists(directory)) return [];
 
-        return Directory.EnumerateFiles(directory, baseName + "*")
+        return Directory.EnumerateFiles(directory, provider.FilePattern)
             .Select(candidate => new FileInfo(candidate))
-            .Where(file => file.Exists && file.Length >= 0)
-            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Where(file => file.Exists)
+            .OrderByDescending(file => file.Name, StringComparer.Ordinal)
             .ToList();
     }
 
@@ -86,7 +90,11 @@ public sealed class LogFileReader(JsonFileLoggerProvider provider)
     /// </summary>
     public LogReadResult Read(LogQuery query)
     {
-        var files = ListFiles();
+        var all = ListFiles();
+        // 只与文件名比对，路径分隔符与上级目录引用永远匹配不上，等价于把入参钉在文件名域内
+        var files = string.IsNullOrEmpty(query.File)
+            ? all
+            : all.Where(file => string.Equals(file.Name, query.File, StringComparison.OrdinalIgnoreCase)).ToList();
         var results = new List<LogEntry>();
         var unavailable = new List<string>();
         var take = Math.Clamp(query.Take, 1, 2000);

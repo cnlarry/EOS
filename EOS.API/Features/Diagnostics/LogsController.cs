@@ -57,10 +57,12 @@ public sealed class LogsController(
         [FromQuery] string? correlationId = null,
         [FromQuery] string? @event = null,
         [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] string? file = null,
         CancellationToken token = default)
     {
         if (!(await permissions.GetAsync(userContext.UserId, LogModuleId, token)).CanBrowse) return Forbid();
-        var result = reader.Read(new LogQuery(take, level, keyword, correlationId, @event, from));
+        // file 是"切到哪一天"的开关：按天切分后每个文件就是一天（单日超上限时再带序号）
+        var result = reader.Read(new LogQuery(take, level, keyword, correlationId, @event, from, file));
         // unavailable 是"想读但读不到"的文件：不带出去的话，读失败在界面上就等同于"没有日志"
         return Ok(new
         {

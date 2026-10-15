@@ -67,6 +67,8 @@ export function LogAdminPage() {
   const [keyword, setKeyword] = useState('')
   const [level, setLevel] = useState('')
   const [take, setTake] = useState(200)
+  // 按天切分后一个文件就是一天：空表示跨全部文件按时间倒序读
+  const [file, setFile] = useState('')
   const [downloading, setDownloading] = useState(false)
 
   const files = useQuery({
@@ -80,9 +82,9 @@ export function LogAdminPage() {
   })
 
   const logs = useQuery({
-    queryKey: ['logs-query', keyword, level, take],
+    queryKey: ['logs-query', keyword, level, take, file],
     queryFn: () => apiClient.get<LogQueryResponse>('/logs', {
-      query: { take, keyword: keyword || undefined, level: level || undefined },
+      query: { take, keyword: keyword || undefined, level: level || undefined, file: file || undefined },
     }),
   })
 
@@ -201,6 +203,18 @@ export function LogAdminPage() {
         ariaLabel="运行日志查询"
         search={(
           <div className="d-flex gap-2 align-items-center">
+            <select
+              className="form-select form-select-sm"
+              style={{ width: '15rem' }}
+              value={file}
+              onChange={(event) => setFile(event.target.value)}
+              aria-label="日志文件"
+            >
+              <option value="">全部日期</option>
+              {(files.data?.files ?? []).map((item) => (
+                <option key={item.name} value={item.name}>{item.name}（{formatBytes(item.sizeBytes)}）</option>
+              ))}
+            </select>
             <ErpSearchBox value={keyword} onChange={setKeyword} placeholder="按消息/异常/类别关键字过滤…" />
             <select className="form-select form-select-sm" style={{ width: '9rem' }} value={level} onChange={(event) => setLevel(event.target.value)} aria-label="日志级别">
               <option value="">全部级别</option>

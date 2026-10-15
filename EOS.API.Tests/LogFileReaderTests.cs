@@ -17,13 +17,13 @@ public sealed class LogFileReaderTests
     [Fact]
     public void Read_WhenWriterHoldsTheFile_StillReturnsEntries()
     {
-        var path = CreateTempLog(
+        var (directory, path) = CreateTempLog(
             Line("Error", "first", "c1", 0),
             Line("Warning", "second", "c2", 1));
 
         // provider 构造即以 FileAccess.Write + FileShare.ReadWrite 打开写流并保持，
         // 与线上"日志 provider 正在写文件"完全一致——用 FileShare.Read 读取会在这里失败
-        var provider = new JsonFileLoggerProvider(path, maxBytes: 1024 * 1024, maxFiles: 3);
+        var provider = new JsonFileLoggerProvider(directory, maxBytes: 1024 * 1024, maxFiles: 3);
         var reader = new LogFileReader(provider);
 
         var result = reader.Read(new LogQuery(10, null, null, null, null, null));
@@ -38,16 +38,16 @@ public sealed class LogFileReaderTests
     [Fact]
     public void Read_WhenFileIsUnavailable_ReportsItInsteadOfPretendingEmpty()
     {
-        var path = CreateTempLog(Line("Error", "only", "c1", 0));
+        var (directory, path) = CreateTempLog(Line("Error", "only", "c1", 0));
         // 独占打开制造"读不到"：此时 Read 不得把它当成"没有日志"
         using var blocker = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-        var provider = new JsonFileLoggerProvider(path, maxBytes: 1024 * 1024, maxFiles: 3);
+        var provider = new JsonFileLoggerProvider(directory, maxBytes: 1024 * 1024, maxFiles: 3);
         var reader = new LogFileReader(provider);
 
         var result = reader.Read(new LogQuery(10, null, null, null, null, null));
 
         Assert.Empty(result.Entries);
-        Assert.Contains("api-json.log", result.UnavailableFiles);
+        Assert.Contains(Path.GetFileName(path), result.UnavailableFiles);
     }
 
     [Fact]
@@ -75,12 +75,13 @@ public sealed class LogFileReaderTests
         + ",\"ts\":\"2026-10-15T10:0" + minute + ":00+08:00\""
         + ",\"event\":\"http_request\"}";
 
-    private static string CreateTempLog(params string[] lines)
+    private static (string Directory, string Path) CreateTempLog(params string[] lines)
     {
         var directory = Path.Combine(Path.GetTempPath(), "eos-logreader-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "api-json.log");
+        // 按天切分后读取方只枚举 api-yyyyMMdd.log，预建文件必须同格式才被看到
+        var path = Path.Combine(directory, "api-" + DateTime.Now.ToString("yyyyMMdd") + ".log");
         File.WriteAllLines(path, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        return path;
+        return (directory, path);
     }
 }

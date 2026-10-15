@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -24,15 +25,24 @@ public sealed class JsonFileLoggerProvider : ILoggerProvider
     /// <summary>Retention default when the caller does not configure one.</summary>
     public const int DefaultRetentionDays = 14;
 
-    private readonly string _path;
+    /// <summary>日志文件名前缀：文件名形如 <c>api-20261015.log</c>。</summary>
+    public const string DefaultFilePrefix = "api";
+
+    private readonly string _directory;
+    private readonly string _prefix;
     private readonly long _maxBytes;
     private readonly int _maxFiles;
     private readonly int _retentionDays;
     private readonly LogLevel _minimumLevel;
+    /// <summary>时间源：切分与时间戳都走它，测试才能模拟跨天而不必真等一天。</summary>
+    private readonly Func<DateTime> _clock;
     private readonly object _gate = new();
     private readonly JsonSerializerOptions _jsonOptions = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private FileStream? _stream;
     private long _currentBytes;
+    private string _currentPath;
+    private DateTime _currentDate;
+    private int _currentPart;
 
     /// <summary>
     /// Directory unusable (read-only or inaccessible): the provider silently degrades to
@@ -41,30 +51,43 @@ public sealed class JsonFileLoggerProvider : ILoggerProvider
     /// </summary>
     public bool IsDisabled { get; private set; }
 
-    /// <summary>Path this provider writes to (for diagnostics/health reporting).</summary>
-    public string Path => _path;
+    /// <summary>当前正在写的日志文件完整路径（按天切分后会随之变化）。</summary>
+    public string Path => _currentPath;
 
+    /// <summary>日志目录。</summary>
+    public string LogDirectory => _directory;
+
+    /// <summary>
+    /// 枚举全部日志文件用的通配符（形如 <c>api-*.log</c>）。
+    /// 读取方一律按它枚举，不要拿 <see cref="Path"/> 的文件名去拼——那是"今天"这一份。
+    /// </summary>
+    public string FilePattern => $"{_prefix}-*.log";
+
+    /// <param name="directory">日志目录，文件名由本类按天生成。</param>
     public JsonFileLoggerProvider(
-        string path,
+        string directory,
         long maxBytes,
         int maxFiles,
         LogLevel minimumLevel = LogLevel.Warning,
-        int retentionDays = DefaultRetentionDays)
+        int retentionDays = DefaultRetentionDays,
+        string filePrefix = DefaultFilePrefix,
+        Func<DateTime>? clock = null)
     {
-        _path = path;
+        _clock = clock ?? (() => DateTime.Now);
+        _directory = directory;
+        _prefix = string.IsNullOrWhiteSpace(filePrefix) ? DefaultFilePrefix : filePrefix.Trim();
         _maxBytes = maxBytes > 0 ? maxBytes : 50L * 1024 * 1024;
         _maxFiles = Math.Max(1, maxFiles);
         _retentionDays = Math.Max(1, retentionDays);
         _minimumLevel = minimumLevel;
+        _currentDate = _clock().Date;
+        _currentPart = 1;
+        _currentPath = BuildPath(_currentDate, _currentPart);
         try
         {
-            var directory = System.IO.Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-            OpenStream();
-            DeleteExpiredRotatedFiles();
+            Directory.CreateDirectory(_directory);
+            OpenCurrent(_currentDate, _currentPart);
+            DeleteExpiredFiles();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -88,7 +111,7 @@ public sealed class JsonFileLoggerProvider : ILoggerProvider
             return;
         }
         var record = BuildRecord(categoryName, level, eventId, message, state, exception);
-        record["ts"] = DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm:ss.fffzzz");
+        record["ts"] = new DateTimeOffset(_clock()).ToString("yyyy-MM-ddTHH:mm:ss.fffzzz");
         record["event"] = record["fields"] is Dictionary<string, object?> fields
             ? fields.GetValueOrDefault("Event")
             : null;
@@ -158,36 +181,35 @@ public sealed class JsonFileLoggerProvider : ILoggerProvider
         };
     }
 
-    private void OpenStream()
+    /// <summary>文件名：<c>api-20261015.log</c>；同一天里再切则带序号 <c>api-20261015-2.log</c>。</summary>
+    internal string BuildPath(DateTime date, int part) =>
+        System.IO.Path.Combine(_directory, part <= 1
+            ? $"{_prefix}-{date:yyyyMMdd}.log"
+            : $"{_prefix}-{date:yyyyMMdd}-{part}.log");
+
+    private void OpenCurrent(DateTime date, int part)
     {
-        _stream = new FileStream(_path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        _currentPath = BuildPath(date, part);
+        _currentDate = date;
+        _currentPart = part;
+        _stream = new FileStream(_currentPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         _currentBytes = _stream.Length;
     }
 
+    /// <summary>
+    /// 换文件的两种时机：① 跨天——新的一天写进新文件；② 单日体量超阈值——
+    /// 异常刷屏时一天也能写满，故按当天序号继续切，不让单个文件无上限地涨。
+    /// </summary>
     private void RotateIfNeeded(int incomingBytes)
     {
-        if (_currentBytes + incomingBytes <= _maxBytes)
+        var today = _clock().Date;
+        if (today == _currentDate && _currentBytes + incomingBytes <= _maxBytes)
         {
             return;
         }
         _stream?.Dispose();
-        for (var i = _maxFiles - 1; i >= 1; i--)
-        {
-            var source = $"{_path}.{i - 1}";
-            var target = $"{_path}.{i}";
-            if (File.Exists(source))
-            {
-                File.Copy(source, target, overwrite: true);
-                File.Delete(source);
-            }
-        }
-        if (File.Exists(_path))
-        {
-            File.Copy(_path, $"{_path}.1", overwrite: true);
-            File.Delete(_path);
-        }
-        OpenStream();
-        DeleteExpiredRotatedFiles();
+        OpenCurrent(today, today == _currentDate ? _currentPart + 1 : 1);
+        DeleteExpiredFiles();
     }
 
     /// <summary>
@@ -195,28 +217,70 @@ public sealed class JsonFileLoggerProvider : ILoggerProvider
     /// rotation, so a quiet deployment that never reaches MaxBytes still stops retaining
     /// logs past the configured window.
     /// </summary>
-    private void DeleteExpiredRotatedFiles()
+    private void DeleteExpiredFiles()
     {
-        var cutoff = DateTime.Now.AddDays(-_retentionDays);
+        var cutoff = _clock().Date.AddDays(-_retentionDays);
         try
         {
-            // 轮转副本与"当前文件"分属两种命运：副本按年龄清，当前文件永不被本方法删除
-            // （否则会在没有任何新日志时把正在使用的文件删掉）。
-            foreach (var candidate in Directory.EnumerateFiles(
-                         System.IO.Path.GetDirectoryName(_path) ?? ".",
-                         System.IO.Path.GetFileName(_path) + ".*"))
+            var candidates = new List<(string Path, DateTime Date, int Part)>();
+            // 解析不出日期的文件（如按天切分之前的 api-json.log）：改按最后写入时间判定，
+            // 否则它们既看不出日期、又永远进不了清理名单，会一直占着磁盘。
+            var undated = new List<(string Path, DateTime Time)>();
+            foreach (var file in Directory.EnumerateFiles(_directory, FilePattern))
             {
-                if (File.GetLastWriteTime(candidate) >= cutoff)
+                // 当前文件分属另一种命运：它正在被写，永不清理
+                if (string.Equals(file, _currentPath, StringComparison.OrdinalIgnoreCase)) continue;
+                if (TryParseLogFileName(System.IO.Path.GetFileName(file), _prefix, out var date, out var part))
                 {
-                    continue;
+                    candidates.Add((file, date, part));
                 }
-                File.Delete(candidate);
+                else
+                {
+                    undated.Add((file, File.GetLastWriteTime(file)));
+                }
+            }
+
+            foreach (var expired in candidates.Where(item => item.Date < cutoff))
+            {
+                File.Delete(expired.Path);
+            }
+            foreach (var expired in undated.Where(item => item.Time < cutoff))
+            {
+                File.Delete(expired.Path);
+            }
+
+            var keep = candidates
+                .Where(item => item.Date >= cutoff)
+                .OrderByDescending(item => item.Date)
+                .ThenByDescending(item => item.Part)
+                .ToList();
+            // 当前文件不在候选里，独占一份额度
+            foreach (var excess in keep.Skip(Math.Max(0, _maxFiles - 1)))
+            {
+                File.Delete(excess.Path);
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // 清理失败不影响写入：下次轮转或下次启动再试。
         }
+    }
+
+    /// <summary>解析 <c>api-20261015.log</c> / <c>api-20261015-2.log</c> 的日期与当日序号，供排序与保留判定。</summary>
+    internal static bool TryParseLogFileName(string fileName, string prefix, out DateTime date, out int part)
+    {
+        date = default;
+        part = 1;
+        if (!fileName.StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase)) return false;
+        var core = fileName[(prefix.Length + 1)..^4];
+        var segments = core.Split('-');
+        if (!DateTime.TryParseExact(segments[0], "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+        {
+            return false;
+        }
+        if (segments.Length == 1) return true;
+        return segments.Length == 2 && int.TryParse(segments[1], NumberStyles.None, CultureInfo.InvariantCulture, out part);
     }
 
     private sealed class FileLogger(JsonFileLoggerProvider provider, string categoryName) : ILogger

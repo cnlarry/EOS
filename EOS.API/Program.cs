@@ -38,11 +38,12 @@ builder.Logging.AddJsonConsole(options =>
     options.UseUtcTimestamp = false;
     options.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
 });
-var logFilePath = ResolveLogFilePath(builder.Configuration);
+var logDirectory = ResolveLogDirectory(builder.Configuration);
 var logFileProvider = new JsonFileLoggerProvider(
-    logFilePath,
+    logDirectory,
     maxBytes: builder.Configuration.GetValue<long?>("Logging:File:MaxBytes") ?? 50L * 1024 * 1024,
-    maxFiles: builder.Configuration.GetValue<int?>("Logging:File:MaxFiles") ?? 3,
+    // 按天切分后"份数"≈天数，默认 3 会把保留窗口压到 3 天；与 RetentionDays 对齐给 30
+    maxFiles: builder.Configuration.GetValue<int?>("Logging:File:MaxFiles") ?? 30,
     minimumLevel: LogLevel.Warning,
     retentionDays: builder.Configuration.GetValue<int?>("Logging:File:RetentionDays")
         ?? JsonFileLoggerProvider.DefaultRetentionDays);
@@ -503,13 +504,13 @@ if (!app.Configuration.GetValue("Audit:FieldChangesEnabled", true))
 if (logFileProvider.IsDisabled)
 {
     app.Logger.LogError(
-        "文件日志不可用（{LogPath}）：目录不可创建或不可写，本次运行只向控制台输出。排障请改读控制台或修复目录权限。",
-        logFilePath);
+        "文件日志不可用（{LogDirectory}）：目录不可创建或不可写，本次运行只向控制台输出。排障请改读控制台或修复目录权限。",
+        logDirectory);
 }
 else
 {
-    app.Logger.LogInformation("文件日志已启用：{LogPath}（Warning+，按大小与 {RetentionDays} 天双门保留）。",
-        logFilePath, app.Configuration.GetValue<int?>("Logging:File:RetentionDays") ?? JsonFileLoggerProvider.DefaultRetentionDays);
+    app.Logger.LogInformation("文件日志已启用：{LogDirectory}（Warning+，按天切分 api-yyyyMMdd.log，单日超上限再切序号，保留 {RetentionDays} 天）。",
+        logDirectory, app.Configuration.GetValue<int?>("Logging:File:RetentionDays") ?? JsonFileLoggerProvider.DefaultRetentionDays);
 }
 
 app.UseMiddleware<RequestLoggingMiddleware>();
@@ -620,14 +621,17 @@ static void RegisterPdfFont()
 /// 不再依赖宿主工作目录——IIS/服务宿主的当前目录不受本仓库控制。
 /// 配置值可为相对路径（相对程序目录）、绝对路径或含环境变量的路径。
 /// </summary>
-static string ResolveLogFilePath(IConfiguration configuration)
+/// <summary>日志目录。文件名由 JsonFileLoggerProvider 按天生成，这里只定目录。</summary>
+static string ResolveLogDirectory(IConfiguration configuration)
 {
     var configured = configuration["Logging:File:Path"];
     if (string.IsNullOrWhiteSpace(configured))
     {
-        return Path.Combine(AppContext.BaseDirectory, "logs", "api-json.log");
+        return Path.Combine(AppContext.BaseDirectory, "logs");
     }
-    return Path.GetFullPath(configured.Trim(), AppContext.BaseDirectory);
+    var full = Path.GetFullPath(configured.Trim(), AppContext.BaseDirectory);
+    // 历史配置写的是完整文件路径（...\api-json.log）：取其目录，文件名改由 provider 决定
+    return Path.HasExtension(full) ? Path.GetDirectoryName(full) ?? full : full;
 }
 
 static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration)
