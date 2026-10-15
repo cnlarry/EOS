@@ -14,33 +14,40 @@ namespace EOS.API.Tests;
 /// </summary>
 public sealed class LogFileReaderBundleToleranceTests
 {
+    // 日志按天切分，文件名形如 api-20261015.log；固定时钟才能让"前一天"的副本可预期
+    private static readonly DateTime Today = new(2026, 10, 15);
+
     [Fact]
     public void 单个文件不可读时打包不抛异常_其余文件仍进包()
     {
         var dir = Path.Combine(Path.GetTempPath(), "eos-bundletest-" + Guid.NewGuid().ToString("N"));
-        var path = Path.Combine(dir, "api-json.log");
-        var provider = new JsonFileLoggerProvider(path, 1024 * 1024, 3, LogLevel.Warning);
+        var provider = new JsonFileLoggerProvider(dir, 1024 * 1024, 3, LogLevel.Warning, clock: () => Today);
         try
         {
-            // 两个文件：当前文件稍后被独占占用（不可读），轮转副本可读
+            // 两个文件：当前文件（api-20261015.log）稍后被独占占用，前一天的副本可读
             provider.CreateLogger("test").LogWarning("当前文件里的一条 Warning");
-            File.WriteAllText(path + ".1", "{\"level\":\"Warning\",\"message\":\"轮转副本\"}" + Environment.NewLine);
         }
         finally
         {
             provider.Dispose();
         }
 
+        var previousName = "api-20261014.log";
+        File.WriteAllText(
+            Path.Combine(dir, previousName),
+            "{\"level\":\"Warning\",\"message\":\"前一天的副本\"}" + Environment.NewLine);
+
         try
         {
             // 读取器自带的 provider 会持有写句柄；先释放，才能让下面的独占打开成功
-            var readerProvider = new JsonFileLoggerProvider(path, 1024 * 1024, 3, LogLevel.Warning);
+            var readerProvider = new JsonFileLoggerProvider(dir, 1024 * 1024, 3, LogLevel.Warning, clock: () => Today);
+            var currentName = Path.GetFileName(readerProvider.Path);
             readerProvider.Dispose();
             var reader = new LogFileReader(readerProvider);
             Assert.Equal(2, reader.ListFiles().Count);
 
             List<(string Name, long SizeBytes)> written;
-            using (var exclusive = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            using (var exclusive = new FileStream(readerProvider.Path, FileMode.Open, FileAccess.Read, FileShare.None))
             {
                 using var buffer = new MemoryStream();
                 using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
@@ -52,8 +59,8 @@ public sealed class LogFileReaderBundleToleranceTests
             }
 
             // 可读的副本进了包，不可读的当前文件被跳过
-            Assert.Contains(written, item => item.Name == "api-json.log.1");
-            Assert.DoesNotContain(written, item => item.Name == "api-json.log");
+            Assert.Contains(written, item => item.Name == previousName);
+            Assert.DoesNotContain(written, item => item.Name == currentName);
         }
         finally
         {
@@ -66,8 +73,7 @@ public sealed class LogFileReaderBundleToleranceTests
     {
         var dir = Path.Combine(Path.GetTempPath(), "eos-bundletest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, "api-json.log");
-        var reader = new LogFileReader(new JsonFileLoggerProvider(path, 1024 * 1024, 3, LogLevel.Warning));
+        var reader = new LogFileReader(new JsonFileLoggerProvider(dir, 1024 * 1024, 3, LogLevel.Warning, clock: () => Today));
         // 构造后立即删掉文件，模拟"打包时目录是空的"
         foreach (var file in reader.ListFiles()) File.Delete(file.FullName);
 
