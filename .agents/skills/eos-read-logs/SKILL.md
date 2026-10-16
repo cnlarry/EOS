@@ -33,9 +33,12 @@ Get-CimInstance Win32_Process -Filter "Name like '%EOS.API%'" | Select-Object Ex
 | 情况 | 级别 | 是否落文件 |
 |---|---|---|
 | 状态码 ≥ 500 | Error | ✅ |
-| 带结构化 `error.code`（如 4xx） | Error | ✅ |
+| 带结构化 `error.code`（含 4xx） | Warning | ✅ |
 | 慢成功（≥ 1s） | Warning | ✅ |
 | 其它请求 | Information | ❌ 只进控制台 |
+
+**`Error` 只留 5xx**：按 `Error` 过滤时可以假定"服务端有问题"——权限拒绝、参数不对这类
+客户端失败是 `Warning`。要查"谁被拒了"就按 `Warning` + `ErrorCode` 过滤。
 
 **推论（这是最常踩的坑）**：4xx 但没带 `error.code` 的请求**同样不落盘**。
 所以"界面明明在报错、文件日志却一条都没有"时，**先怀疑这次失败没带错误码**，
@@ -49,7 +52,7 @@ Get-CimInstance Win32_Process -Filter "Name like '%EOS.API%'" | Select-Object Ex
 每行一个 JSON 对象：
 
 ```json
-{"level":"Error","category":"...","message":"...","fields":{"CorrelationId":"...","ModuleId":2306,"ErrorCode":"FORBIDDEN"},"exception":null,"ts":"...","event":"http_request"}
+{"level":"Warning","category":"...","message":"...","fields":{"CorrelationId":"...","ModuleId":2306,"ErrorCode":"FORBIDDEN"},"exception":null,"ts":"...","event":"http_request"}
 ```
 
 - `fields.CorrelationId` —— 报障编号，前后端串链路靠它（前端每次请求都带 `X-Correlation-Id`，服务端采用它）

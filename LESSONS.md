@@ -907,8 +907,11 @@
 ### L93 4xx 不带 error.code 时只在控制台：界面明明在报错，文件日志却一条都没有
 - **触发／症状**：用户报「数据加载失败 / 请求失败。」，按报障编号去 `EOS.API` 文件日志检索，
   一条都没有，审计里也没有；界面确实在报错，服务端却像什么都没发生过。
-- **根因**：`RequestLoggingMiddleware` 的分级是「status≥500 或 errorCode 非空 → Error（落文件）」，
-  其余 `/api` 请求只记 Information（**不落文件**）。而控制器里裸写的 `return Forbid()` 返回的是
+- **根因**：`RequestLoggingMiddleware` 的分级是「status≥500 → Error；带 `error.code`（含 4xx）→ Warning；
+  慢成功 ≥1s → Warning」，三者都落文件；**其余 `/api` 请求只记 Information（不落文件）**。
+  （级别口径后来调整过一次——带错误码的请求由 `Error` 降为 `Warning`，见 ADR-028 §10 R1；
+  **"落盘 / 不落盘"的边界没变**，本条的坑与解法不受影响。）
+  而控制器里裸写的 `return Forbid()` 返回的是
   **空响应体的 403**：既没有 `error.code`（日志侧落不到文件），也没有 `message/detail/title`
   （前端 `httpTransport` 三个字段全取不到，只能显示兜底文案「请求失败。」）。
   "看得见的失败"与"查得到的日志"于是两头都断，排障只能靠猜。
