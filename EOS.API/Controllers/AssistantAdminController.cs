@@ -42,7 +42,8 @@ public sealed class AssistantAdminController(
     AssistantParameterScopeStore scopeStore,
     IAssistantSecretStore modelSecrets,
     AssistantRuntimeRegistry registry,
-    IAssistantUsageRepository usageRepository) : ControllerBase
+    IAssistantUsageRepository usageRepository,
+    WorkbenchAuditWriter auditWriter) : ControllerBase
 {
     /// <summary>
     /// 受支持的供应商 CODE。**真源是代码里的预设目录**（<see cref="AssistantProviderCatalog"/>），
@@ -55,6 +56,33 @@ public sealed class AssistantAdminController(
     /// </para>
     /// </summary>
     private static bool IsSupportedProvider(string? code) => AssistantProviderCatalog.IsSupported(code);
+
+    /// <summary>
+    /// 模型与供应商配置写的留痕。**best-effort、独立于业务事务**：这一层仓储是单例，
+    /// 捕获不了 Scoped 的审计写入器，而"当前模型被谁、在哪一步清掉的"必须可回答——
+    /// 丢掉一条留痕，好过整个配置面没有任何留痕。
+    ///
+    /// <para>
+    /// 失败路径同样记（<c>result = 0</c>）："切换失败、但同时把原有的当前模型清空了"这类事故
+    /// 只记成功的话，审计里恰好什么都看不到，而那正是要查的时刻。
+    /// </para>
+    /// </summary>
+    private Task AuditModelConfigAsync(
+        string action, string resourceKey, string summary, byte result, CancellationToken token)
+        => auditWriter.WriteBestEffortAsync(
+            EOS.API.Security.PermissionModules.AssistantAdmin.ModelUsage,
+            resourceKey,
+            action,
+            summary,
+            userContext.UserId,
+            "ASSISTANT_MODEL",
+            result,
+            fieldChanges: null,
+            token);
+
+    /// <summary>用途的中文说法：留痕是给人读的，不该把 CHAT / EMBEDDING 这样的枚举名写进去。</summary>
+    private static string DescribeKind(AssistantModelKind kind)
+        => kind == AssistantModelKind.Embedding ? "嵌入" : "对话";
 
     /// <summary>
     /// 能力面的边界。写在服务端而不是让前端硬编码：这些是"能力面上根本表达不出来"的东西，
@@ -774,6 +802,10 @@ public sealed class AssistantAdminController(
 
         if (!row.Enabled || !provider.Enabled)
         {
+            await AuditModelConfigAsync("MODEL_ACTIVATE_REJECTED", $"{modelId}",
+                $"未设为当前（{DescribeKind(row.Kind)}）：{row.ModelCode} 或它所属的供应商处于停用状态"
+                + $"（模型启用={row.Enabled}，供应商「{provider.DisplayName}」启用={provider.Enabled}）。",
+                0, token);
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "MODEL_DISABLED",
                 row.Enabled ? "该模型所属的供应商已停用，请先启用供应商。" : "已停用的模型不能设为当前，请先启用它。"));
@@ -785,6 +817,10 @@ public sealed class AssistantAdminController(
         if (!string.IsNullOrWhiteSpace(provider.ApiKeyEnvVar)
             && !modelSecrets.IsConfigured(provider.ApiKeyEnvVar))
         {
+            await AuditModelConfigAsync("MODEL_ACTIVATE_REJECTED", $"{modelId}",
+                $"未设为当前（{DescribeKind(row.Kind)}）：{row.ModelCode} 所用的环境变量"
+                + $" {provider.ApiKeyEnvVar} 还没有值。",
+                0, token);
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "MODEL_KEY_NOT_CONFIGURED",
                 $"环境变量 {provider.ApiKeyEnvVar}（供应商「{provider.DisplayName}」的密钥）还没有值。"
@@ -793,6 +829,10 @@ public sealed class AssistantAdminController(
 
         if (!await modelCatalog.ActivateModelAsync(modelId, row.Kind, userContext.UserId, token))
         {
+            await AuditModelConfigAsync("MODEL_ACTIVATE_FAILED", $"{modelId}",
+                $"切换失败（{DescribeKind(row.Kind)}）：{row.ModelCode} 或它所属的供应商在切换的那一刻已不可用；"
+                + "原有的当前模型未改动。",
+                0, token);
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "ACTIVATE_FAILED",
                 "切换失败：该模型或它所属的供应商在切换的那一刻已不可用（被停用或已删除）。"
@@ -800,6 +840,9 @@ public sealed class AssistantAdminController(
         }
 
         await registry.RefreshAsync(token);
+        await AuditModelConfigAsync("MODEL_ACTIVATE", $"{modelId}",
+            $"把 {row.ModelCode} 设为当前{DescribeKind(row.Kind)}模型（供应商「{provider.DisplayName}」）。",
+            1, token);
         return NoContent();
     }
 
@@ -823,8 +866,15 @@ public sealed class AssistantAdminController(
                 StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "用途只能是 CHAT 或 EMBEDDING。"));
         }
 
+        var before = await modelCatalog.GetActiveAsync(target.Value, token);
         await modelCatalog.ClearActiveModelAsync(target.Value, token);
         await registry.RefreshAsync(token);
+        await AuditModelConfigAsync("MODEL_ACTIVE_CLEAR", before is null ? "-" : $"{before.Model.ModelId}",
+            before is null
+                ? $"取消当前{DescribeKind(target.Value)}模型：本来就没有设置当前模型，本次无变化。"
+                : $"取消当前{DescribeKind(target.Value)}模型：{before.Model.ModelCode}"
+                  + $"（供应商「{before.Provider.DisplayName}」）不再是当前模型。",
+            1, token);
         return NoContent();
     }
 
@@ -841,11 +891,17 @@ public sealed class AssistantAdminController(
 
         if (row.IsActive)
         {
+            await AuditModelConfigAsync("MODEL_DELETE_REJECTED", $"{modelId}",
+                $"未删除{DescribeKind(row.Kind)}模型 {row.ModelCode}：它正被用作当前模型。",
+                0, token);
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "MODEL_IN_USE", "正在使用这个模型，不能删除；请先切换到别的模型或取消当前。"));
         }
 
         await modelCatalog.DeleteModelAsync(modelId, token);
+        await AuditModelConfigAsync("MODEL_DELETE", $"{modelId}",
+            $"删除{DescribeKind(row.Kind)}模型 {row.ModelCode}（供应商 {row.ProviderId}）。",
+            1, token);
         return NoContent();
     }
 
