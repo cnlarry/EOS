@@ -8,6 +8,7 @@ import { AuthProvider } from '../features/auth/AuthProvider'
 import { copyDiagnostics, currentAppInfo, reportIdOf } from '../lib/diagnostics'
 import { describeApiError } from '../lib/errors'
 import { ApiError } from '../types/api'
+import { shouldRetryQuery } from '../lib/queryRetry'
 import { router } from './router'
 
 /**
@@ -24,6 +25,8 @@ function AppShellProviders() {
       queries: {
         refetchOnWindowFocus: false,
         staleTime: 30_000,
+        // 4xx 不重试（见 queryRetry：确定性失败重试只会推迟报错、把日志刷成多条）
+        retry: shouldRetryQuery,
       },
     },
     mutationCache: new MutationCache({
