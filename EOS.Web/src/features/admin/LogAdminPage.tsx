@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ColumnDef } from '../../lib/tanstackTable'
+import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
@@ -10,6 +10,7 @@ import { useToast } from '../../components/ui/toastContext'
 import { apiClient } from '../../services/api'
 import { copyDiagnostics, currentAppInfo } from '../../lib/diagnostics'
 import { describeApiError } from '../../lib/errors'
+import { formatTimestamp } from './timestamp'
 
 interface LogFileRow {
   name: string
@@ -45,11 +46,22 @@ interface LogQueryResponse {
 }
 
 /**
+ * 一次读多少条：服务端按时间倒序读到这个条数就停（`LogFileReader` 上限 2000）。
+ * 不摆“最近 N 条”控件——它是**一次读取的窗口大小**，不是用户要做的决定；
+ * 读更多靠缩小条件（关键字 / 级别 / 某一天），而不是把这个数字调大。
+ */
+const TAKE = 500
+
+/**
  * 日志管理（定制页 /admin/logs）：读系统运行日志，一屏一张电子表格。
  *
  * 这里读的是**磁盘上的运行日志文件**（只留 Warning+），回答"这次请求为什么失败"；
- * "谁改的、改成什么"是另一层——操作审计（`/admin/audit`，库表 AUDIT_EVENT，模块 2316）。
+ * "谁改的、改成什么"是另一层——操作审计（库表 AUDIT_EVENT，模块 2316），它是统一工作台的
+ * 只读承载页（`/workbench/2316`），不在这个页面里。
  * 诊断信息（版本/构建/健康检查）不再占一张卡，改为「下载诊断包 / 复制诊断信息」两个动作随取。
+ *
+ * 列表与统一工作台同形制：首列复选框、列宽可拖（本地持久化）、行点击单选、表头本地排序
+ * （数据是一次读进来的单个快照，没有服务端翻页）。
  *
  * 权限由路由（模块 2313 的读权限）与服务端（同一模块 2313 的 CanBrowse / CanSetup）双重把关；
  * 打包下载额外要求设置权限，未授权时后端返回 403，页面提示原因而不是静默失败。
@@ -59,10 +71,11 @@ export function LogAdminPage() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
   const [level, setLevel] = useState('')
-  const [take, setTake] = useState(200)
   // 按天切分后一个文件就是一天：空表示跨全部文件按时间倒序读
   const [file, setFile] = useState('')
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [downloading, setDownloading] = useState(false)
+  const fitRef = useRef<(() => Record<string, number>) | null>(null)
 
   const files = useQuery({
     queryKey: ['logs-files'],
@@ -70,13 +83,14 @@ export function LogAdminPage() {
   })
 
   const logs = useQuery({
-    queryKey: ['logs-query', keyword, level, take, file],
+    queryKey: ['logs-query', keyword, level, file],
     queryFn: () => apiClient.get<LogQueryResponse>('/logs', {
-      query: { take, keyword: keyword || undefined, level: level || undefined, file: file || undefined },
+      query: { take: TAKE, keyword: keyword || undefined, level: level || undefined, file: file || undefined },
     }),
   })
 
   const refreshAll = () => {
+    setRowSelection({})
     void queryClient.invalidateQueries({ queryKey: ['logs-files'] })
     void queryClient.invalidateQueries({ queryKey: ['logs-query'] })
   }
@@ -102,16 +116,50 @@ export function LogAdminPage() {
   }
 
   const commands: ErpCommandItem[] = [
+    { action: 'fit', onClick: () => fitRef.current?.() },
     { action: 'refresh', onClick: refreshAll },
     { action: 'export', title: '下载诊断包', loading: downloading, onClick: () => void downloadBundle() },
     { action: 'copy', title: '复制诊断信息', onClick: () => copyDiagnostics(currentAppInfo(), undefined, '来自日志管理页') },
   ]
 
   const columns: ColumnDef<LogEntryRow, unknown>[] = [
-    { accessorKey: 'ts', header: '时间', cell: (info) => <span className="font-monospace small">{String(info.getValue() ?? '—')}</span> },
+    {
+      id: 'select',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-select-column', frozenLeft: true, resizable: false, truncate: false },
+      header: ({ table }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择当前页"
+          checked={table.getIsAllPageRowsSelected()}
+          ref={(input) => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择此行"
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+    },
+    {
+      accessorKey: 'ts',
+      header: '时间',
+      // 悬停提示走默认的原始值（写盘格式带毫秒与时区后缀）：显示到秒是为了扫读
+      meta: { className: 'text-nowrap' },
+      cell: (info) => formatTimestamp(info.getValue() as string | null),
+    },
     {
       accessorKey: 'level',
       header: '级别',
+      meta: { className: 'text-nowrap' },
       cell: (info) => {
         const value = String(info.getValue() ?? '')
         // 日志级别不是单据状态，用 Bootstrap 的 lt 底色直接标（error 红、warning 黄、其余中性）
@@ -120,9 +168,9 @@ export function LogAdminPage() {
       },
     },
     { accessorKey: 'event', header: '事件', cell: (info) => <span className="font-monospace small">{String(info.getValue() ?? '—')}</span> },
-    { accessorKey: 'message', header: '消息', cell: (info) => <span title={String(info.getValue() ?? '')}>{String(info.getValue() ?? '—')}</span> },
+    { accessorKey: 'message', header: '消息', cell: (info) => String(info.getValue() ?? '—') },
     { accessorKey: 'correlationId', header: '报障编号', cell: (info) => <span className="font-monospace small">{String(info.getValue() ?? '—')}</span> },
-    { accessorKey: 'moduleId', header: '模块', cell: (info) => String(info.getValue() ?? '—') },
+    { accessorKey: 'moduleId', header: '模块', meta: { className: 'text-end text-nowrap' }, cell: (info) => String(info.getValue() ?? '—') },
     { accessorKey: 'errorCode', header: '错误码', cell: (info) => <span className="font-monospace small">{String(info.getValue() ?? '—')}</span> },
   ]
 
@@ -139,7 +187,7 @@ export function LogAdminPage() {
               className="form-select form-select-sm"
               style={{ width: '15rem' }}
               value={file}
-              onChange={(event) => setFile(event.target.value)}
+              onChange={(event) => { setRowSelection({}); setFile(event.target.value) }}
               aria-label="日志文件"
             >
               <option value="">全部日期</option>
@@ -147,13 +195,16 @@ export function LogAdminPage() {
                 <option key={item.name} value={item.name}>{item.name}（{formatBytes(item.sizeBytes)}）</option>
               ))}
             </select>
-            <ErpSearchBox value={keyword} onChange={setKeyword} placeholder="按消息/异常/类别关键字过滤…" />
-            <select className="form-select form-select-sm" style={{ width: '9rem' }} value={level} onChange={(event) => setLevel(event.target.value)} aria-label="日志级别">
+            <ErpSearchBox value={keyword} onChange={(value) => { setRowSelection({}); setKeyword(value) }} debounceMs={300} placeholder="按消息/异常/类别关键字过滤…" />
+            <select
+              className="form-select form-select-sm"
+              style={{ width: '9rem' }}
+              value={level}
+              onChange={(event) => { setRowSelection({}); setLevel(event.target.value) }}
+              aria-label="日志级别"
+            >
               <option value="">全部级别</option>
               {(files.data?.levels ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-            <select className="form-select form-select-sm" style={{ width: '7rem' }} value={take} onChange={(event) => setTake(Number(event.target.value))} aria-label="条数">
-              {[100, 200, 500, 1000, 2000].map((item) => <option key={item} value={item}>最近 {item} 条</option>)}
             </select>
           </div>
         )}
@@ -164,7 +215,7 @@ export function LogAdminPage() {
               命中 {logs.data?.count ?? 0} 条 · {files.data?.files.length ?? 0} 个文件（{formatBytes(files.data?.totalBytes ?? 0)}）
             </span>
             {logs.data?.truncated && (
-              <span className="text-secondary small text-nowrap">已达条数上限，更早的记录未显示</span>
+              <span className="text-secondary small text-nowrap">已达 {TAKE} 条上限，更早的记录未显示——按关键字或日期缩小范围</span>
             )}
             {unavailable.length > 0 && (
               <span className="text-danger small" title={unavailable.join('、')}>
@@ -183,10 +234,15 @@ export function LogAdminPage() {
             columns={columns}
             data={logs.data?.entries ?? []}
             getRowId={(row: LogEntryRow) => `${row.file}:${row.ts}:${row.message ?? ''}:${row.correlationId ?? ''}`}
-            empty={<EmptyState title="没有命中日志" description="换个关键字或放宽级别再试；正常请求不落盘，属预期。" />}
+            rowSelection={rowSelection}
+            onRowSelectionChange={setRowSelection}
+            rowClickSingleSelect
             clientSideSorting
             virtualize
+            resizable
+            fitRef={fitRef}
             storageKey="log-admin-entries"
+            empty={<EmptyState title="没有命中日志" description="换个关键字或放宽级别再试；正常请求不落盘，属预期。" />}
           />
         )}
       </ErpListCard>
