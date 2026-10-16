@@ -79,6 +79,8 @@ public sealed class AuditController(
         var total = Convert.ToInt64(reader.GetInt64(0));
         await reader.NextResultAsync(token);
         var rows = await WorkbenchSql.ReadRowsAsync(reader, token);
-        return Ok(new { Rows = rows, Total = total, Page = page, PageSize = pageSize });
+        // 信封字段用小写驼峰：System.Text.Json 默认把 C# 属性名转 camelCase，
+        // 前端按大写读会静默拿到 undefined（页面显示 0 条）。行内键保持库列名大写。
+        return Ok(new { rows, total, page, pageSize });
     }
 }

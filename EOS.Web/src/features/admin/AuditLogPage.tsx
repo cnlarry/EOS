@@ -26,10 +26,11 @@ interface AuditRow {
 }
 
 interface AuditResponse {
-  Rows: AuditRow[]
-  Total: number
-  Page: number
-  PageSize: number
+  /** 信封字段是小写驼峰（服务端默认序列化），行内键才是库列名大写 */
+  rows: AuditRow[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 /**
@@ -69,8 +70,8 @@ export function AuditLogPage() {
     }),
   })
 
-  const rows = audit.data?.Rows ?? []
-  const total = audit.data?.Total ?? 0
+  const rows = audit.data?.rows ?? []
+  const total = audit.data?.total ?? 0
   const lastPage = Math.max(1, Math.ceil(total / pageSize))
 
   const columns: ColumnDef<AuditRow, unknown>[] = [

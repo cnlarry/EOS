@@ -7,7 +7,7 @@ import { AuditLogPage } from './AuditLogPage'
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const page = {
-  Rows: [
+  rows: [
     {
       EVENT_ID: 91,
       OCCURRED_AT: '2026-10-15 10:20:30.000',
@@ -37,9 +37,9 @@ const page = {
       SUMMARY: '修改用户组',
     },
   ],
-  Total: 2,
-  Page: 1,
-  PageSize: 20,
+  total: 2,
+  page: 1,
+  pageSize: 20,
 }
 
 function renderPage() {
