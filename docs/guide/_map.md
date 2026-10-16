@@ -23,11 +23,11 @@
 | 20-认证与会话.md | 已完成 | EOS.API/Security, EOS.API/Controllers/AuthenticationController.cs, EOS.API/Data/AuthenticationRepository.cs, EOS.Web/src/features/auth |
 | 21-授权模型.md | 已完成 | EOS.API/Security/PermissionService.cs, EOS.API/Security/IPermissionService.cs, EOS.API/Security/CurrentUserContext.cs, EOS.API/Security/PermissionAction.cs, EOS.API/Security/ModuleIds.cs |
 | 22-权限配置后台.md | 已完成 | EOS.API/Controllers/RightsAdminController.cs, EOS.API/Controllers/UserAdminController.cs, EOS.API/Controllers/MenuAdminController.cs, EOS.API/Data/RightsAdminRepository.cs, EOS.API/Data/UserAdminRepository.cs, EOS.Web/src/features/rights-admin, EOS.Web/src/features/user-admin |
-| 30-审计日志.md | 已完成 | EOS.API/Controllers/AuditController.cs, EOS.API/Data/WorkbenchAuditWriter.cs, EOS.API/Features/Diagnostics/LogsController.cs |
+| 30-审计日志.md | 已完成 | EOS.API/Data/WorkbenchAuditWriter.cs, EOS.API/Features/Diagnostics/LogsController.cs, EOS.API/Data/Migrations/354_audit_workbench_module.sql, EOS.API.Tests/AuditModuleGovernanceLiveTests.cs |
 | 31-运行日志与诊断.md | 已完成 | EOS.API/Logging, EOS.API/Telemetry, EOS.API/Middleware, EOS.API/Health, EOS.API/Errors, EOS.API/Features/Diagnostics |
 | 40-统一工作台.md | 已完成 | EOS.API/Controllers/DocumentWorkbenchController.cs, EOS.API/Data/Workbench, EOS.API/Data/DocumentWorkbenchRepository.cs, EOS.Web/src/features/document-workbench |
 | 41-定义快照与发布.md | 已完成 | EOS.API/Data/WorkbenchDefinitionProvider.cs, EOS.API/Data/WorkbenchDefinitionSnapshotService.cs, EOS.API/Data/WorkbenchDirtyMarker.cs, EOS.API/Controllers/WorkbenchDefinitionController.cs |
-| 42-统一表单.md | 已完成 | EOS.API/Data/Forms, EOS.API/Data/FormDefaultRules.cs, EOS.API/Data/FormFieldSelector.cs, EOS.API/Controllers/FormLayoutController.cs |
+| 42-统一表单.md | 已完成 | EOS.API/Data/Forms, EOS.API/Data/FormDefaultRules.cs, EOS.API/Data/FormFieldSelector.cs, EOS.API/Data/Workbench/UnifiedFormCapability.cs, EOS.API/Controllers/FormLayoutController.cs |
 | 43-表单版式设计.md | 已完成 | EOS.API/Controllers/LayoutDesignerController.cs, EOS.API/Data/LayoutExceptions.cs, EOS.Web/src/features/layout-designer, EOS.Web/src/features/form-designer |
 | 44-受控查询与条件模板.md | 已完成 | EOS.API/Data/Query, EOS.API/Data/ConditionTemplateParser.cs, EOS.API/Data/ChooserFilterCompiler.cs, EOS.Web/src/components/common/ErpQueryBuilder.tsx, EOS.Web/src/components/common/queryCondition.ts |
 | 45-受限表达式与虚拟字段.md | 已完成 | EOS.API/Data/RestrictedExpressionService.cs, EOS.API/Data/VirtualColumnResolver.cs, EOS.API/Data/DataFilterParser.cs, EOS.API/Data/GroupExpressionParser.cs, EOS.API/Data/VirtualArithmeticParser.cs, EOS.API/Data/ConvertFunctionResolver.cs |

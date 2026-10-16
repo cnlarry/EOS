@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 9cb11b1408d471ae -->
+<!-- code-map-fingerprint: ea39115e4aed16b3 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 42 个、方法级路由属性 284 处、解析出 284 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 41 个、方法级路由属性 283 处、解析出 283 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -170,7 +170,6 @@
 | PUT | `api/v1/assistant/sessions/{sessionId:long}/rename` | RenameSession | `AssistantController.cs` |
 | GET | `api/v1/assistant/situation` | GetSituation | `AssistantController.cs` |
 | GET | `api/v1/assistant/usage` | MyUsage | `AssistantController.cs` |
-| GET | `api/v1/audit` | Query | `AuditController.cs` |
 | POST | `api/v1/auth/login` | Login | `AuthenticationController.cs` |
 | POST | `api/v1/auth/logout` | Logout | `AuthenticationController.cs` |
 | PUT | `api/v1/auth/password` | ChangePassword | `AuthenticationController.cs` |
@@ -302,7 +301,7 @@
 
 ## 二、前端页面路由
 
-- 源文件 `path:` 51 处、解析出 51 条（两者必须相等）。权限模块号来自包住该路由的
+- 源文件 `path:` 50 处、解析出 50 条（两者必须相等）。权限模块号来自包住该路由的
   `RequirePermission permission={moduleReadPermission(N)}`；空表示该页面不需要模块读权限（如登录后即可见的助手页）。
 
 | 路径 | 页面 | 权限模块 |
@@ -313,7 +312,6 @@
 | `/admin/assistant/models` | `ModelAdminPage` | 3102 |
 | `/admin/assistant/sessions` | `AdminSessionsPage` | 3101 |
 | `/admin/assistant/settings` | `AssistantSettingsPage` | 3105 |
-| `/admin/audit` | `AuditLogPage` | 2316 |
 | `/admin/business-flow` | `BusinessFlowPage` | 2314 |
 | `/admin/depot-stock-policy` | `DepotStockPolicyPage` | 110310 |
 | `/admin/field-audit` | `FieldAuditPage` | 2303 |

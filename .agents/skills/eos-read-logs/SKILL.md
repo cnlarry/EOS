@@ -91,8 +91,16 @@ Get-Content <日志文件> -Encoding utf8 |
 ## 五、操作审计不在日志里
 
 "谁在什么时候对什么做了什么"在库表 `AUDIT_EVENT`（字段级变更在 `AUDIT_FIELD_CHANGE`），
-**不在文件日志里**。查它有两个入口：连库直查，或 `GET /api/v1/audit`
-（支持 `moduleId` / `action` / `actor` / `result` / `from` / `to` 分页，权限同为 `2313`）。
+**不在文件日志里**。查它有两个入口：连库直查，或走统一工作台的通用读端点（权限门是**另一个模块
+`2316`**，不是本页的 `2313`；它不是定制页，是工作台的**只读承载页**，没有专属接口）：
+
+```powershell
+# 关键字检索（字符列 + 时间列，落在 WHERE 里，搜的是全库；默认最新在前）
+Invoke-RestMethod 'http://localhost:5261/api/v1/document-workbench/2316/records?keyword=<报障编号或对象键>&page=1&pageSize=50'
+```
+
+按模块号 / 结果 / 时间范围这类条件筛，用 `POST /api/v1/document-workbench/2316/query`
+（body 里给字段级 conditions）；口径见 `docs/guide/30-审计日志.md` 第六节。
 
 排障时两层要分开看：**运行日志回答"这次请求为什么失败"，审计回答"谁改的、改成什么"**。
 

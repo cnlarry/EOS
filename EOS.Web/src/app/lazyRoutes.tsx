@@ -7,7 +7,6 @@ export const TableAdminPage = lazy(() => import('../features/field-admin/TableAd
 export const FieldEditorRoute = lazy(() => import('../features/field-admin/FieldEditorPage').then((module) => ({ default: module.FieldEditorRoute })))
 export const FieldAuditPage = lazy(() => import('../features/admin/FieldAuditPage').then((module) => ({ default: module.FieldAuditPage })))
 export const LogAdminPage = lazy(() => import('../features/admin/LogAdminPage').then((module) => ({ default: module.LogAdminPage })))
-export const AuditLogPage = lazy(() => import('../features/admin/AuditLogPage').then((module) => ({ default: module.AuditLogPage })))
 export const BusinessFlowPage = lazy(() => import('../features/business-flow/BusinessFlowPage').then((module) => ({ default: module.BusinessFlowPage })))
 export const DepotStockPolicyPage = lazy(() => import('../features/admin/DepotStockPolicyPage').then((module) => ({ default: module.DepotStockPolicyPage })))
 export const UserAdminPage = lazy(() => import('../features/user-admin/UserAdminPage').then((module) => ({ default: module.UserAdminPage })))

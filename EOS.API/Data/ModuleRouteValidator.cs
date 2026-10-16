@@ -15,7 +15,8 @@ namespace EOS.API.Data;
 /// 取代各处私有前缀判断——它同时是工作台定义、列表、浏览解析与快照重建的共同入口。
 ///
 /// 曾经的 NEW_URL / MODI_URL（新增/修改路由）与 HELP_URL（帮助页）已物理删除：能不能新增/编辑
-/// 由统一表单名单（<see cref="EOS.API.Models.UnifiedFormEditorSettings"/>）与权限裁决，
+/// 由**模块声明**（`MODULES.UNIFIED_FORM_ENABLED` / `UNIFIED_FORM_EDIT_ENABLED`，见
+/// <see cref="EOS.API.Data.Workbench.IUnifiedFormCapabilitySource"/>）与权限位裁决，
 /// **不再由路由字段表达**——这正是本次收敛要消掉的那层"同一件事两个真源"。
 /// </summary>
 /// <summary>
@@ -71,7 +72,7 @@ internal static class ModuleRouteValidator
     [
         "/dashboard",
         "/admin/menus", "/admin/tables", "/admin/field-audit", "/admin/users",
-        "/admin/fields", "/admin/depot-stock-policy", "/admin/logs", "/admin/audit", "/admin/business-flow",
+        "/admin/fields", "/admin/depot-stock-policy", "/admin/logs", "/admin/business-flow",
         "/admin/assistant/sessions", "/admin/assistant/mechanism", "/admin/assistant/kb", "/admin/assistant/models",
         "/admin/assistant/settings",
         "/admin/groups", "/admin/report-setup", "/admin/module-groups", "/admin/module-buttons",

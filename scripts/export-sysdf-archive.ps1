@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     SYSDF 是旧系统的操作流水（2007-11-14 ~ 2026-09-05，11134 行），AUDIT_EVENT v2 上线后
-    WorkbenchAuditWriter 已明文停写、AuditController 也不再查它。用户 2026-10-06 拍板：
+    WorkbenchAuditWriter 已明文停写；审计的读路径也已改由统一工作台承载（专属控制器不再存在）。
+    用户 2026-10-06 拍板：
     **导出 CSV 备查后整表退役**（见 Migrations/325_retire_dead_modules_and_tables.sql）。
 
     导出必须发生在 325 落地**之前**（脚本本身只读，不会改任何数据）。

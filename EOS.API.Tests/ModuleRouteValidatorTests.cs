@@ -23,7 +23,6 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/report-setup", 2201)]
     [InlineData("/admin/groups", 2305)]
     [InlineData("/admin/logs", 2313)]
-    [InlineData("/admin/audit", 2316)]
     [InlineData("/settings/system", 110111)]
     [InlineData("/my-tasks", 2102)]
     [InlineData("/workflow/design", 2101)]
@@ -42,7 +41,6 @@ public class ModuleRouteValidatorTests
     /// </summary>
     [Theory]
     [InlineData("/admin/logs", 2313)]
-    [InlineData("/admin/audit", 2316)]
     [InlineData("/admin/field-audit", 2303)]
     [InlineData("/admin/depot-stock-policy", 110310)]
     [InlineData("/admin/business-flow", 2314)]

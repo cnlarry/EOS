@@ -12,7 +12,6 @@ import {
   JobPage,
   FallbackModulePage,
   LogAdminPage,
-  AuditLogPage,
   BusinessFlowPage,
   MyTasksPage,
   FlowDesignPage,
@@ -87,9 +86,9 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 日志管理（模块 2313，根 23 系统管理本级）：读磁盘上的运行日志文件；
   // 打包下载由服务端另行要求设置权限
   { element: <RequirePermission permission={moduleReadPermission(2313)} />, children: [{ path: 'admin/logs', element: withSuspense(<LogAdminPage />) }] },
-  // 操作审计（模块 2316，根 23 系统管理本级）：查库表 AUDIT_EVENT，是另一层——
-  // 与日志管理各有一个模块号，故权限可分别授予
-  { element: <RequirePermission permission={moduleReadPermission(2316)} />, children: [{ path: 'admin/audit', element: withSuspense(<AuditLogPage />) }] },
+  // 操作审计（模块 2316，根 23 系统管理本级）**没有前端页面**：它是统一工作台的只读承载页
+  // （`M_URL=/workbench`，见迁移 354），列表与浏览态由 `/workbench/2316` 提供；
+  // 与日志管理 2313 各有一个模块号，故权限仍可分别授予。
   // 业务流程图（模块 2314，根 23 系统管理 / 父 2311 数据表维护）：按字段数据来源反推表间引用，只读
   { element: <RequirePermission permission={moduleReadPermission(2314)} />, children: [
     { path: 'admin/business-flow', element: withSuspense(<BusinessFlowPage />) },
