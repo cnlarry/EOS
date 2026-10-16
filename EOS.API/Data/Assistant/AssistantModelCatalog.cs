@@ -426,8 +426,14 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     public async Task<bool> ActivateModelAsync(
         int modelId, AssistantModelKind kind, string actor, CancellationToken token)
     {
-        // 一个事务里"先清后置"：中途失败不会留下两条同一用途的当前模型。
-        // 清空按 KIND 收窄——清全表会顺手抹掉另一用途的当前模型（换对话模型会让嵌入模型下线）
+        // "先清后置"两步同事务，且**置不上就整体回滚**——回滚是关键：
+        // 事务只保证"不会留下两条当前模型"，保证不了"至少留一条"。置的那一步带 ENABLED 条件
+        // （模型或供应商停用即命中 0 行），若照常提交，清空就已经落库且没有替代，
+        // 助手在无人察觉的情况下变成"未配置"——IsConfigured 只看当前模型是否存在，
+        // 症状是"尚未配置模型"，看不出是切换失败造成的。
+        // 顺序也不能反过来先置后清：该表上有按用途的筛选唯一索引，置的时候旧的仍是 1，
+        // 语句级就会撞索引（不必等事务提交）。
+        // 清空按 KIND 收窄——清全表会顺手抹掉另一用途的当前模型（换对话模型会让嵌入模型下线）。
         await using var conn = connections.Create();
         await conn.OpenAsync(token);
         await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(token);
@@ -454,8 +460,14 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
             affected = await set.ExecuteNonQueryAsync(token);
         }
 
+        if (affected == 0)
+        {
+            await tx.RollbackAsync(token);
+            return false;
+        }
+
         await tx.CommitAsync(token);
-        return affected > 0;
+        return true;
     }
 
     /// <inheritdoc />

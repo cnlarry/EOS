@@ -36,6 +36,15 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
     private readonly List<int> _modelIds = [];
     private readonly List<long> _sessionIds = [];
 
+    /// <summary>
+    /// 测试开始前开发环境已设的"当前模型"（按用途各一条），结束时还原。
+    /// 用例会调用 <c>ActivateModelAsync</c>，而那一步清的是**同用途的全部行**、不限于本测试造的行，
+    /// 所以不还原就等于每跑一次真库测试就丢一次已设的当前模型——表现成"助手突然未配置"，
+    /// 而 `Dispose` 里原有的"先清当前、再删行"只保证不留脏行，恢复不了被别人清掉的那一条。
+    /// </summary>
+    private readonly int? _activeChatBefore;
+    private readonly int? _activeEmbeddingBefore;
+
     public AssistantModelCatalogIntegrationTests()
     {
         EnsureSchema();
@@ -49,6 +58,7 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
         _catalog = new AssistantModelCatalog(connections);
         _sessions = new AssistantRepository(connections);
         _usage = new AssistantUsageRepository(connections);
+        (_activeChatBefore, _activeEmbeddingBefore) = SnapshotActiveModels();
     }
 
     private static void EnsureSchema()
@@ -256,6 +266,35 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
     }
 
     /// <summary>
+    /// 激活失败必须**零副作用**：不能把已有的当前模型清掉。
+    ///
+    /// <para>
+    /// 「先清后置」那版实现里，清空与设置在同一事务却无条件提交——置的那一步因模型停用
+    /// （或供应商停用、并发下被删）命中 0 行时，清空已经落库且没有替代，助手在无人察觉的情况下
+    /// 变成"未配置"：<c>IsConfigured</c> 只看当前模型是否存在，症状是"尚未配置模型"，
+    /// 看不出是"切换失败"造成的。所以这里断言的不只是返回值，还有**失败前后当前模型是同一个**。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Activate_Failure_Keeps_The_Existing_Active_Model()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+
+        var providerId = await NewProviderAsync(token);
+        var chat = await NewModelAsync(providerId, "deepseek-chat", token);
+        var disabled = await NewModelAsync(providerId, "deepseek-retired", token, enabled: false);
+
+        Assert.True(await _catalog.ActivateModelAsync(chat, AssistantModelKind.Chat, "eosdev-test", token));
+        Assert.Equal(chat, (await _catalog.GetActiveAsync(AssistantModelKind.Chat, token))!.Model.ModelId);
+
+        // 切一个已停用的模型：返回 false，且原来的当前模型必须原样还在
+        Assert.False(await _catalog.ActivateModelAsync(disabled, AssistantModelKind.Chat, "eosdev-test", token));
+        Assert.Equal(chat, (await _catalog.GetActiveAsync(AssistantModelKind.Chat, token))!.Model.ModelId);
+        Assert.True((await _catalog.GetModelAsync(chat, token))!.IsActive);
+    }
+
+    /// <summary>
     /// 对话与嵌入**各有各的"当前"**（迁移 307 把筛选唯一索引改成按用途各一条）。
     ///
     /// <para>
@@ -420,6 +459,66 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
                 "DELETE FROM dbo.ASSISTANT_MESSAGE WHERE SESSION_ID = @Id; DELETE FROM dbo.ASSISTANT_SESSION WHERE ID = @Id;",
                 conn);
             cmd.Parameters.AddWithValue("@Id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        // 所有"清当前 / 删行"都做完之后再还原，否则会被随后的清理再清一遍
+        RestoreActiveModels();
+    }
+
+    /// <summary>
+    /// 读开发环境此刻的"当前模型"（按用途各一条）。没有连接串时按"没有"处理——
+    /// 真库用例本来就靠 <c>MSSQL_ERP_CONN</c> 判断环境是否存在。
+    /// </summary>
+    private (int? Chat, int? Embedding) SnapshotActiveModels()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return (null, null);
+        }
+
+        using var conn = new SqlConnection(ConnectionString.Value);
+        conn.Open();
+        using var cmd = new SqlCommand(
+            "SELECT KIND, MODEL_ID FROM dbo.ASSISTANT_MODEL WHERE IS_ACTIVE = 1;", conn);
+        using var reader = cmd.ExecuteReader();
+        int? chat = null;
+        int? embedding = null;
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(0), "CHAT", StringComparison.OrdinalIgnoreCase))
+            {
+                chat = reader.GetInt32(1);
+            }
+            else if (string.Equals(reader.GetString(0), "EMBEDDING", StringComparison.OrdinalIgnoreCase))
+            {
+                embedding = reader.GetInt32(1);
+            }
+        }
+
+        return (chat, embedding);
+    }
+
+    /// <summary>把测试开始前的"当前模型"放回去；那行还在才放（测试不删开发环境已有的行）。</summary>
+    private void RestoreActiveModels()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        using var conn = new SqlConnection(ConnectionString.Value);
+        conn.Open();
+        foreach (var modelId in new[] { _activeChatBefore, _activeEmbeddingBefore })
+        {
+            if (modelId is null)
+            {
+                continue;
+            }
+
+            using var cmd = new SqlCommand(
+                "UPDATE dbo.ASSISTANT_MODEL SET IS_ACTIVE = 1 WHERE MODEL_ID = @Id;", conn);
+            cmd.Parameters.AddWithValue("@Id", modelId.Value);
             cmd.ExecuteNonQuery();
         }
     }

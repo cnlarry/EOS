@@ -793,7 +793,10 @@ public sealed class AssistantAdminController(
 
         if (!await modelCatalog.ActivateModelAsync(modelId, row.Kind, userContext.UserId, token))
         {
-            return Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "ACTIVATE_FAILED", "切换失败，请刷新后重试。"));
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "ACTIVATE_FAILED",
+                "切换失败：该模型或它所属的供应商在切换的那一刻已不可用（被停用或已删除）。"
+                + "请刷新后确认两者都已启用，再试一次——本次切换**没有**改动原有的当前模型。"));
         }
 
         await registry.RefreshAsync(token);
