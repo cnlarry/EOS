@@ -95,7 +95,9 @@ public sealed class AssistantSituationBudget(
     {
         if (items is null || items.Count == 0) return [];
         if (items.Count <= max) return items;
-        logger.LogWarning("助手处境上报超出上限，已截断 section={Section} limit={Limit} actual={Actual}",
+        // 预算截断是设计内的降级路径（每次装配情境都可能发生），按 Debug 记：
+        // 记 Warning 会让每个助手请求都往运行日志里落几条，把真正的异常淹掉。
+        logger.LogDebug("助手处境上报超出上限，已截断 section={Section} limit={Limit} actual={Actual}",
             section, max, items.Count);
         return [.. items.Take(max)];
     }
@@ -105,7 +107,7 @@ public sealed class AssistantSituationBudget(
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
         if (text.Length <= tokenLimit) return text;
-        logger.LogWarning("助手处境文本超出预算，已硬截断 section={Section} limit={Limit} actual={Actual}",
+        logger.LogDebug("助手处境文本超出预算，已硬截断 section={Section} limit={Limit} actual={Actual}",
             section, tokenLimit, text.Length);
         return text[..tokenLimit];
     }
@@ -126,7 +128,7 @@ public sealed class AssistantSituationBudget(
 
         if (kept.Count < lines.Count)
         {
-            logger.LogWarning("助手处境文本超出预算，已丢弃尾部内容 section={Section} limit={Limit} kept={Kept} total={Total}",
+            logger.LogDebug("助手处境文本超出预算，已丢弃尾部内容 section={Section} limit={Limit} kept={Kept} total={Total}",
                 section, tokenLimit, kept.Count, lines.Count);
         }
 

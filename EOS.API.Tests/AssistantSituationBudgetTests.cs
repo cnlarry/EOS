@@ -8,12 +8,16 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 常驻处境预算：默认值可配、超限硬截断、截断可观测（不静默丢内容）。
 /// 代码内不写死阈值，故这里也断言"默认值来自选项对象"。
+///
+/// 截断是**设计内的降级路径**（每次装配情境都可能发生），所以按 `Debug` 记——
+/// 记 Warning 会让每个助手请求都往运行日志里落几条，把真正的异常淹掉
+/// （判据见 `docs/guide/31-运行日志与诊断.md`「什么样的情形才配落 Warning」）。
 /// </summary>
 public sealed class AssistantSituationBudgetTests
 {
     private sealed class RecordingLogger : ILogger<AssistantSituationBudget>
     {
-        public List<string> Warnings { get; } = [];
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -22,9 +26,7 @@ public sealed class AssistantSituationBudgetTests
         public void Log<TState>(
             LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Warning) Warnings.Add(formatter(state, exception));
-        }
+            => Entries.Add((logLevel, formatter(state, exception)));
     }
 
     [Fact]
@@ -50,7 +52,7 @@ public sealed class AssistantSituationBudgetTests
     }
 
     [Fact]
-    public void 超出条数上限时截断并记警告()
+    public void 超出条数上限时截断并记降级日志()
     {
         var logger = new RecordingLogger();
         var budget = new AssistantSituationBudget(
@@ -60,12 +62,13 @@ public sealed class AssistantSituationBudgetTests
         var kept = budget.Take("filters", new[] { 1, 2, 3, 4, 5 }, budget.Limits.MaxFilters);
 
         Assert.Equal(3, kept.Count);
-        Assert.Single(logger.Warnings);
-        Assert.Contains("filters", logger.Warnings[0]);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Debug, entry.Level);
+        Assert.Contains("filters", entry.Message);
     }
 
     [Fact]
-    public void 超出token预算时硬截断并记警告()
+    public void 超出token预算时硬截断并记降级日志()
     {
         var logger = new RecordingLogger();
         var budget = new AssistantSituationBudget(
@@ -74,7 +77,7 @@ public sealed class AssistantSituationBudgetTests
         var truncated = budget.Truncate("resident", new string('字', 500), 100);
 
         Assert.Equal(100, truncated.Length);
-        Assert.Single(logger.Warnings);
+        Assert.Equal(LogLevel.Debug, Assert.Single(logger.Entries).Level);
     }
 
     [Fact]
@@ -89,7 +92,7 @@ public sealed class AssistantSituationBudgetTests
         Assert.Contains("第一行", text);
         Assert.Contains("第二行很长很长很长", text); // 整行放得下就整行保留
         Assert.DoesNotContain("第三行", text);       // 放不下的整行丢弃，不切半行
-        Assert.Single(logger.Warnings);
+        Assert.Equal(LogLevel.Debug, Assert.Single(logger.Entries).Level);
     }
 
     [Fact]
