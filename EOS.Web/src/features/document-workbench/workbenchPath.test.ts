@@ -36,6 +36,19 @@ describe('workbenchPath（/workbench 前缀 + 主键路径段）', () => {
     expect(parseWorkbenchKey(undefined)).toBeNull()
   })
 
+  it('末位主键值为空：空段要保留而不是丢掉', () => {
+    // 主键列的值可以为空（如 INV_PRO_DEPOT.BATCH_NO 存空字符串）。丢掉空段会让段数少于
+    // 主键列数，服务端按列数校验会直接拒绝整条记录——料件库存资料的全部记录都打不开。
+    expect(parseWorkbenchKey('E2EAIV161942PRO001/BF/-/')).toEqual(['E2EAIV161942PRO001', 'BF', '-', ''])
+  })
+
+  it('构造与解析对称：空值主键列往返不丢段', () => {
+    const key = ['E2EAIV161942PRO001', 'BF', '-', '']
+    const url = workbenchView(1303, key)
+    expect(url).toBe('/workbench/1303/view/E2EAIV161942PRO001/BF/-/')
+    expect(parseWorkbenchKey(url.replace('/workbench/1303/view/', ''))).toEqual(key)
+  })
+
   it('动作与模块提取', () => {
     expect(workbenchAction('/workbench/1405')).toBeNull()
     expect(workbenchAction('/workbench/1405/new')).toBe('new')

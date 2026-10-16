@@ -42,12 +42,17 @@ function buildRecordPath(action: 'view' | 'edit', moduleId: string | number, key
   return `/workbench/${moduleId}/${action}${segments ? `/${segments}` : ''}`
 }
 
-/** 从路由 splat（useParams()['*']）解析主键值数组；无段（或空）返回 null。 */
+/**
+ * 从路由 splat（useParams()['*']）解析主键值数组；无段（或空）返回 null。
+ *
+ * **不能过滤空段**：主键列的值可以为空（如 `INV_PRO_DEPOT.BATCH_NO` 存空字符串），
+ * 构造端（`buildRecordPath`）对空值保留空段，所以空段是"该列值为空"的表达而非噪声。
+ * 过滤掉它会让解析出的段数少于主键列数，服务端按 `pkColumns.Count != keyValues.Count`
+ * 校验后拒绝整条记录——整个模块的记录都会打不开。
+ */
 export function parseWorkbenchKey(splat?: string): string[] | null {
-  if (!splat) return null
-  const parts = splat.split('/').filter(part => part !== '')
-  if (parts.length === 0) return null
-  return parts.map(part => {
+  if (splat === undefined || splat === '') return null
+  return splat.split('/').map(part => {
     try {
       return decodeURIComponent(part)
     } catch {
