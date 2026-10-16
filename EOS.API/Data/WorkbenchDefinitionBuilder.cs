@@ -183,9 +183,21 @@ public sealed class WorkbenchDefinitionBuilder(
         // 分组表达式在 MODULES 之外（MODULE_GROUPS），与主表元数据同一次装配实时读取
         var groupExpressions = await ReadGroupExpressionsAsync(connection, moduleId, token);
         // 工作台模块判定：承载页是 /workbench，或没声明承载页但有主表（默认落统一工作台，见迁移 321）。
-        if (!ModuleRouteValidator.IsWorkbenchModule(url, master) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
+        // 两类"装配不出来"要分开记：定制承载页与目录模块**本来就不装配工作台定义**，这是日常事实
+        // （定义装配会对每个可见模块问一次），按 Debug 记；只有"声明了工作台承载页却给不出可用的
+        // 表标识符"才是元数据配置错误，按 Warning 记——否则每次打开一个定制页都会往运行日志里
+        // 落一条 Warning，把真正的异常淹掉。
+        var nodeKind = ModuleRouteValidator.ResolveKind(url, master);
+        if (nodeKind != ModuleNodeKind.Workbench)
         {
-            logger.LogWarning("模块 {ModuleId} 未通过工作台校验 url={Url} master={Master} detail={Detail}", moduleId, url, master, detail);
+            logger.LogDebug("模块 {ModuleId} 不装配工作台定义 kind={Kind} url={Url} master={Master}",
+                moduleId, nodeKind, url, master);
+            return null;
+        }
+        if (!WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
+        {
+            logger.LogWarning("模块 {ModuleId} 声明为工作台承载页但表标识符非法 url={Url} master={Master} detail={Detail}",
+                moduleId, url, master, detail);
             return null;
         }
         // 新增/编辑能力**不在定义里推导**：它由统一表单名单（UnifiedFormEditorSettings）在
