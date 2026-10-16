@@ -13,8 +13,9 @@ namespace EOS.API.Tests;
 /// 但它们的界面入口并非不存在：承载页（`MODULES.M_URL`）是统一工作台，且挂着一批
 /// 用户点击触发的自定义按钮（改人工字段 / 冻结 / 解冻 / 预留 / 释放）。三者必须同时成立，
 /// 缺任何一件，"有入口"或"没有入口"就只是说法：
-///   ① 配置侧——模块在 `UnifiedFormEditor.ReadOnlyModuleIds` 内、且**不在** `EnabledModuleIds` 内
-///      （在只读名单 = 浏览态可进；不在写名单 = 新增/修改/删除端点仍 404）；
+///   ① 能力侧——模块声明"统一表单可用但**不可写**"（`MODULES.UNIFIED_FORM_ENABLED = 1` 且
+///      `UNIFIED_FORM_EDIT_ENABLED = 0`，迁移 355 起能力进库、现读）：表单能打开（浏览态可进），
+///      新增/修改/删除端点仍 404；
 ///   ② 路由侧——`M_URL` 指向统一工作台（否则列表双击没有目的地）；
 ///   ③ 动作侧——模块上仍有 `MANUAL` 动作行（自定义按钮的宿主，只有浏览态工具栏渲染它们）。
 /// </summary>
@@ -36,15 +37,20 @@ public sealed class InventoryReadOnlyFormEntryLiveTests
 
     [Theory]
     [MemberData(nameof(ReadOnlyFormModules))]
-    public void 只读名单放行浏览_写名单仍然关闭(int moduleId, string _)
+    public async Task 统一表单仅浏览_写路径仍然关闭(int moduleId, string _)
     {
-        using var document = ReadAppSettings();
-        var section = document.RootElement.GetProperty("UnifiedFormEditor");
-        var readOnly = section.GetProperty("ReadOnlyModuleIds").EnumerateArray().Select(item => item.GetInt32()).ToArray();
-        var enabled = section.GetProperty("EnabledModuleIds").EnumerateArray().Select(item => item.GetInt32()).ToArray();
-
-        Assert.Contains(moduleId, readOnly);
-        Assert.DoesNotContain(moduleId, enabled);
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT ISNULL(UNIFIED_FORM_ENABLED, 0), ISNULL(UNIFIED_FORM_EDIT_ENABLED, 0)
+            FROM dbo.MODULES WHERE M_IDX = @Id;
+            """, connection);
+        command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync(), $"模块 {moduleId} 应存在。");
+        // 表单要能打开（浏览态可进、自定义按钮可点），写入必须封死（通用表单写入会绕过移动引擎）
+        Assert.True(reader.GetBoolean(0), $"模块 {moduleId} 应声明统一表单可用，否则双击进不去浏览态。");
+        Assert.False(reader.GetBoolean(1), $"模块 {moduleId} 不该允许通用表单写入：主表由移动引擎维护。");
     }
 
     [Theory]
@@ -78,11 +84,4 @@ public sealed class InventoryReadOnlyFormEntryLiveTests
         }
     }
 
-    /// <summary>读 EOS.API 的 appsettings.json（它随项目引用复制到测试输出目录）。</summary>
-    private static JsonDocument ReadAppSettings()
-    {
-        var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-        Assert.True(File.Exists(path), $"测试输出目录应带 EOS.API 的 appsettings.json：{path}");
-        return JsonDocument.Parse(File.ReadAllText(path));
-    }
 }

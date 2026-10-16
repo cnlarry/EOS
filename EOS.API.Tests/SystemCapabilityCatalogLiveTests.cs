@@ -44,7 +44,7 @@ public sealed class SystemCapabilityCatalogLiveTests
             NullLogger<FieldAdminRepository>.Instance);
         var catalog = new SystemCapabilityCatalog(
             new AssistantSchemaGateway(fieldAdmin, connections),
-            Options.Create(new UnifiedFormEditorSettings()));
+            TestFormCapability.None);
         return (catalog, fieldAdmin);
     }
 

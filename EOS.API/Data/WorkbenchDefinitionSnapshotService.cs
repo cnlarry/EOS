@@ -18,20 +18,16 @@ public sealed class WorkbenchDefinitionSnapshotService(
     WorkbenchDefinitionValidator validator,
     WorkbenchDefinitionProvider definitionProvider,
     WorkbenchAuditWriter auditWriter,
-    IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionSnapshotService> logger)
 {
-    /// <summary>运行期有统一表单的模块（写名单 + 只读名单）：只读模块同样需要快照与发布管理。</summary>
-    private HashSet<int> EnabledOrReadOnly()
-        => formSettings.Value.EnabledModuleIds.Concat(formSettings.Value.ReadOnlyModuleIds).ToHashSet();
-
     public async Task<IReadOnlyList<WorkbenchModuleSnapshotStatus>> GetStatusAsync(CancellationToken token)
     {
-        var whitelist = string.Join(",", formSettings.Value.EnabledModuleIds);
         const string sql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.M_URL,''))),
                    ISNULL(d.DIRTY_TAG,0), d.LAST_MODIFIED_BY, d.LAST_MODIFIED_AT,
-                   s.VERSION, s.PUBLISHED_AT, s.PUBLISHED_BY, s.VALIDATION_STATUS
+                   s.VERSION, s.PUBLISHED_AT, s.PUBLISHED_BY, s.VALIDATION_STATUS,
+                   -- 「启用」= 运行期有统一表单（可写与仅浏览都算）：取模块声明，现读
+                   ISNULL(m.UNIFIED_FORM_ENABLED, 0)
             FROM dbo.MODULES m WITH (NOLOCK)
             INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=m.M_IDX
@@ -46,8 +42,6 @@ public sealed class WorkbenchDefinitionSnapshotService(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);
-        // 「启用」= 运行期有统一表单（写名单可编辑，只读名单只能浏览）
-        var enabled = EnabledOrReadOnly();
         var result = new List<WorkbenchModuleSnapshotStatus>();
         while (await reader.ReadAsync(token))
         {
@@ -56,7 +50,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
             result.Add(new WorkbenchModuleSnapshotStatus(
                 moduleId,
                 reader.GetString(1),
-                enabled.Contains(moduleId),
+                reader.GetBoolean(10),
                 reader.GetBoolean(3),
                 reader.IsDBNull(4) ? null : reader.GetString(4),
                 reader.IsDBNull(5) ? null : reader.GetDateTime(5),
@@ -91,14 +85,16 @@ public sealed class WorkbenchDefinitionSnapshotService(
     {
         var snapshotSql = """
             SELECT s.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), ISNULL(d.DIRTY_TAG,0), s.VERSION, s.DEFINITION_JSON,
-                   LTRIM(RTRIM(ISNULL(s.PUBLISHED_BY,'')))
+                   LTRIM(RTRIM(ISNULL(s.PUBLISHED_BY,''))),
+                   -- "运行期有统一表单"取模块声明（现读；不进快照，故不能从 DEFINITION_JSON 里读）
+                   ISNULL(m.UNIFIED_FORM_ENABLED, 0)
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
             JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = s.M_IDX
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX = s.M_IDX
             WHERE s.IS_CURRENT = 1
             ORDER BY s.M_IDX;
             """;
-        var rows = new List<(int ModuleId, string Title, bool Dirty, int Version, string StoredJson, string PublishedBy)>();
+        var rows = new List<(int ModuleId, string Title, bool Dirty, int Version, string StoredJson, string PublishedBy, bool FormEnabled)>();
         await using (var connection = connections.Create())
         {
             await connection.OpenAsync(token);
@@ -107,11 +103,10 @@ public sealed class WorkbenchDefinitionSnapshotService(
             while (await reader.ReadAsync(token))
             {
                 rows.Add((reader.GetInt32(0), reader.GetString(1), reader.GetBoolean(2), reader.GetInt32(3),
-                    reader.GetString(4), reader.GetString(5)));
+                    reader.GetString(4), reader.GetString(5), reader.GetBoolean(6)));
             }
         }
 
-        var enabled = EnabledOrReadOnly();
         var result = new List<WorkbenchSnapshotStaleness>(rows.Count);
         foreach (var row in rows)
         {
@@ -134,7 +129,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
             var stale = reason is not null
                 || !WorkbenchDefinitionContentComparer.AreEquivalent(row.StoredJson, rebuilt);
             result.Add(new WorkbenchSnapshotStaleness(
-                row.ModuleId, row.Title, enabled.Contains(row.ModuleId), row.Version, row.Dirty, stale, reason,
+                row.ModuleId, row.Title, row.FormEnabled, row.Version, row.Dirty, stale, reason,
                 row.StoredJson.Length, rebuilt?.Length ?? 0,
                 stale ? DescribeFirstDifference(row.StoredJson, rebuilt) : null));
         }

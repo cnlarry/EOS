@@ -69,21 +69,21 @@ public sealed class DiagnosticsConfigDigestTests
         Assert.All(digest.Values, value => Assert.IsType<bool>(value));
     }
 
-    /// <summary>数组型配置折叠成一项并报项数：`EnabledModuleIds` 有 200+ 下标，逐项列出只会把包撑大。</summary>
+    /// <summary>数组型配置折叠成一项并报项数：`NavigationIcons` 这类逐项列出只会把诊断包撑大。</summary>
     [Fact]
     public void 数组型配置折叠为一项并给出项数()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["UnifiedFormEditor:EnabledModuleIds:0"] = "1201",
-                ["UnifiedFormEditor:EnabledModuleIds:1"] = "1401",
-                ["UnifiedFormEditor:EnabledModuleIds:2"] = "1406",
+                ["NavigationIcons:0"] = "dashboard",
+                ["NavigationIcons:1"] = "sales",
+                ["NavigationIcons:2"] = "purchase",
             })
             .Build();
-        var digest = LogsController.BuildConfigDigest(configuration, ["UnifiedFormEditor"]);
+        var digest = LogsController.BuildConfigDigest(configuration, ["NavigationIcons"]);
         var key = Assert.Single(digest.Keys);
-        Assert.Equal("UnifiedFormEditor:EnabledModuleIds（共 3 项）", key);
+        Assert.Equal("NavigationIcons（共 3 项）", key);
         Assert.True(digest[key]);
     }
 }

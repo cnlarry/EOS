@@ -1,6 +1,5 @@
 using EOS.API.Models;
 using EOS.API.Security;
-using Microsoft.Extensions.Options;
 
 namespace EOS.API.Data.Workbench;
 
@@ -62,16 +61,18 @@ public static class WorkbenchDenialCodes
 }
 
 /// <summary>
-/// 统一工作台的授权策略入口：模块可见性、统一表单名单、动作权限位、行级数据范围与写路径幂等键
+/// 统一工作台的授权策略入口：模块可见性、统一表单能力、动作权限位、行级数据范围与写路径幂等键
 /// 的判定全部收敛在这里，控制器只消费判定结果。
 /// 判定结果是结构化的（允许/拒绝 + 稳定原因码 + 载荷），AI 侧门禁复用同一入口产出
 /// 「哪些单可做、哪些不可做及原因」，不另写一套口径。
 /// 权限真源仍是 <see cref="IPermissionService"/>；本类不做第二套权限读取或缓存。
+/// **能不能写**的真源是模块声明 <see cref="IUnifiedFormCapabilitySource"/>
+/// （`MODULES.UNIFIED_FORM_ENABLED` / `UNIFIED_FORM_EDIT_ENABLED`，现读、不进快照）。
 /// </summary>
 public sealed class WorkbenchAccessPolicy(
     IWorkbenchDefinitionSource definitions,
     IPermissionService permissions,
-    IOptions<UnifiedFormEditorSettings> formSettings)
+    IUnifiedFormCapabilitySource formCapability)
 {
     /// <summary>字段维护（数据表/字段设置）模块 ID：表单标签右键进入字段设置页的权限门。</summary>
     public const int FieldAdminModuleId = 2302;
@@ -82,18 +83,21 @@ public sealed class WorkbenchAccessPolicy(
     /// <summary>表单模式非法时的文案（与既有 form-definition 逐字相同）。</summary>
     public const string InvalidFormModeMessage = "mode 仅支持 new、edit 或 view。";
 
-    /// <summary>模块在统一表单<b>写</b>名单内（可新增/修改/删除）。</summary>
-    public bool IsFormWritable(int moduleId) => formSettings.Value.EnabledModuleIds.Contains(moduleId);
-
-    /// <summary>模块在统一表单<b>只读</b>名单内（可浏览，写路径仍封）。</summary>
-    public bool IsFormReadOnly(int moduleId) => formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
+    /// <summary>
+    /// 模块的统一表单能力（`UNIFIED_FORM_ENABLED` / `UNIFIED_FORM_EDIT_ENABLED`，现读、不进快照）。
+    /// 这是本类唯一的"能不能开表单、能不能写"输入——读库那一层在
+    /// <see cref="IUnifiedFormCapabilitySource"/>，判定只在这里。
+    /// </summary>
+    public Task<UnifiedFormCapability> GetFormCapabilityAsync(int moduleId, CancellationToken token)
+        => formCapability.GetAsync(moduleId, token);
 
     /// <summary>
-    /// 模块是否有<b>可写</b>的页面入口：**统一表单写名单**（迁移 321 之后这是唯一真源）。
-    /// 批核/解批/结案/取消结案与新增/修改/删除共用这条判据——只读名单只放浏览，不放任何写动作；
+    /// 模块是否有<b>可写</b>的页面入口：模块声明"统一表单可写"。
+    /// 批核/解批/结案/取消结案与新增/修改/删除共用这条判据——"仅浏览"的模块只放浏览、不放任何写动作；
     /// 自定义承载页（M_URL 是精确路径）不装配工作台定义，动作入口由页面自己负责。
     /// </summary>
-    public bool HasWritablePage(int moduleId) => IsFormWritable(moduleId);
+    public async Task<bool> HasWritablePageAsync(int moduleId, CancellationToken token)
+        => (await formCapability.GetAsync(moduleId, token)).EditEnabled;
 
     /// <summary>写路径幂等键判定：空、全空白或超 128 字符即不合法（trim 后计长）。</summary>
     public static WorkbenchDenial? CheckIdempotencyKey(string? idempotencyKey)
@@ -103,7 +107,7 @@ public sealed class WorkbenchAccessPolicy(
 
     /// <summary>
     /// 列表/读路径的定义装配：要求登录、模块可浏览，并把"能不能新增/编辑"折叠进
-    /// <c>HasAdd</c>/<c>HasEdit</c>（真源是统一表单名单，见 <see cref="FoldRoutes"/>）。
+    /// <c>HasAdd</c>/<c>HasEdit</c>（真源是模块声明的统一表单能力，见 <see cref="FoldRoutes"/>）。
     /// </summary>
     public async Task<WorkbenchDecision<WorkbenchDefinitionAccess>> AuthorizeDefinitionAsync(
         string? userId, int moduleId, CancellationToken token)
@@ -114,12 +118,13 @@ public sealed class WorkbenchAccessPolicy(
         var definition = await definitions.GetDefinitionAsync(moduleId, userId, rights.ExecuteTag,
             rights.CanViewCost, rights.CanViewSecrecy, rights.DeniedMasterFields, rights.DeniedDetailFields, token);
         if (definition is null) return DenyDefinition(WorkbenchDenialCodes.DefinitionUnavailable);
+        var capability = await formCapability.GetAsync(moduleId, token);
         return WorkbenchDecision<WorkbenchDefinitionAccess>.Allow(
-            new WorkbenchDefinitionAccess(FoldRoutes(definition, moduleId, rights), rights));
+            new WorkbenchDefinitionAccess(FoldRoutes(definition, capability, rights), rights));
     }
 
     /// <summary>
-    /// 统一表单访问：名单（写/只读按模式）+ 动作权限位 + 定义的能力位，任一条不满足即拒绝。
+    /// 统一表单访问：模块声明的表单能力 + 动作权限位 + 定义的能力位，任一条不满足即拒绝。
     /// 拒绝一律按防探测口径（404），调用方不得改口为 403。
     /// </summary>
     public async Task<WorkbenchDecision<WorkbenchFormAccess>> AuthorizeFormAsync(
@@ -128,10 +133,11 @@ public sealed class WorkbenchAccessPolicy(
         var definition = await AuthorizeDefinitionAsync(userId, moduleId, token);
         if (definition.Denial is { } denied) return WorkbenchDecision<WorkbenchFormAccess>.Deny(denied);
         var access = definition.Value!;
-        var formEnabled = IsFormWritable(moduleId);
-        // 浏览走写名单或只读名单；新增/修改/删除只认写名单（只读名单不开写路径）。
-        if (mode == "view" ? !(formEnabled || IsFormReadOnly(moduleId)) : !formEnabled)
-            return DenyForm(WorkbenchDenialCodes.FormNotEnabled);
+        var capability = await formCapability.GetAsync(moduleId, token);
+        // 没启用统一表单：连浏览都没有（模块只有列表）；
+        // 启用了但不可写：浏览放行，新增/修改/删除一律 404——表由系统/引擎维护。
+        var canOpen = capability.FormEnabled && (mode == "view" || capability.EditEnabled);
+        if (!canOpen) return DenyForm(WorkbenchDenialCodes.FormNotEnabled);
         var rights = access.Rights;
         if (mode == "new" && !rights.CanAddNew) return DenyForm(WorkbenchDenialCodes.ModeNotPermitted);
         if (mode == "edit" && !rights.CanEdit) return DenyForm(WorkbenchDenialCodes.ModeNotPermitted);
@@ -141,7 +147,7 @@ public sealed class WorkbenchAccessPolicy(
         var form = await BuildFormAsync(access.Definition, userId!, mode, rights, canSetup: false, token);
         if (form is null) return DenyForm(WorkbenchDenialCodes.FormUnavailable);
         return WorkbenchDecision<WorkbenchFormAccess>.Allow(
-            new WorkbenchFormAccess(access.Definition, formEnabled ? form : WithoutWriteActions(form), rights));
+            new WorkbenchFormAccess(access.Definition, capability.EditEnabled ? form : WithoutWriteActions(form), rights));
     }
 
     /// <summary>
@@ -179,7 +185,7 @@ public sealed class WorkbenchAccessPolicy(
     {
         var definition = await AuthorizeDefinitionAsync(userId, moduleId, token);
         if (definition.Denial is not null) return definition;
-        if (!HasWritablePage(moduleId)) return DenyDefinition(WorkbenchDenialCodes.NoWritablePage);
+        if (!await HasWritablePageAsync(moduleId, token)) return DenyDefinition(WorkbenchDenialCodes.NoWritablePage);
         await RequireAsync(userId!, moduleId, action, token);
         return definition;
     }
@@ -238,14 +244,14 @@ public sealed class WorkbenchAccessPolicy(
         var definition = await AuthorizeDefinitionAsync(userId, moduleId, token);
         if (definition.Denial is { } denied) return WorkbenchDecision<WorkbenchFormAccess>.Deny(denied);
         var access = definition.Value!;
-        var formEnabled = IsFormWritable(moduleId);
-        if (!formEnabled && !IsFormReadOnly(moduleId)) return DenyForm(WorkbenchDenialCodes.FormNotEnabled);
+        var capability = await formCapability.GetAsync(moduleId, token);
+        if (!capability.FormEnabled) return DenyForm(WorkbenchDenialCodes.FormNotEnabled);
         var normalized = mode.Trim().ToLowerInvariant();
         if (normalized is not ("new" or "edit" or "view"))
             return new WorkbenchDecision<WorkbenchFormAccess>(default,
                 new WorkbenchDenial(WorkbenchDenialKind.InvalidRequest, WorkbenchDenialCodes.InvalidFormMode, InvalidFormModeMessage));
-        // 只读名单只放行浏览：新增/修改仍以写名单为唯一入口
-        if (normalized != "view" && !formEnabled) return DenyForm(WorkbenchDenialCodes.FormNotEnabled);
+        // "仅浏览"的模块只放行浏览：新增/修改的入口是模块声明里的可写位
+        if (normalized != "view" && !capability.EditEnabled) return DenyForm(WorkbenchDenialCodes.FormNotEnabled);
         var rights = access.Rights;
         if (normalized == "new" && !rights.CanAddNew) return ForbidForm(WorkbenchDenialCodes.ModeNotPermitted);
         if (normalized == "edit" && !rights.CanEdit) return ForbidForm(WorkbenchDenialCodes.ModeNotPermitted);
@@ -257,7 +263,7 @@ public sealed class WorkbenchAccessPolicy(
         var form = await BuildFormAsync(access.Definition, userId!, normalized, rights, canSetup, token);
         if (form is null) return DenyForm(WorkbenchDenialCodes.FormUnavailable);
         return WorkbenchDecision<WorkbenchFormAccess>.Allow(
-            new WorkbenchFormAccess(access.Definition, formEnabled ? form : WithoutWriteActions(form), rights));
+            new WorkbenchFormAccess(access.Definition, capability.EditEnabled ? form : WithoutWriteActions(form), rights));
     }
 
     /// <summary>动作位授权：原样走 <see cref="IPermissionService.RequireAsync"/>，不满足即抛。</summary>
@@ -265,22 +271,21 @@ public sealed class WorkbenchAccessPolicy(
         => permissions.RequireAsync(userId, moduleId, action, token);
 
     /// <summary>
-    /// 能力位折叠：**新增/编辑只看统一表单名单**——写名单 = 可新增可编辑，只读名单 = 只能浏览。
+    /// 能力位折叠：**新增/编辑只看模块声明的统一表单能力**——
+    /// `UNIFIED_FORM_EDIT_ENABLED = 1` 才可新增可编辑，"仅浏览"与"无表单"都不可写。
     /// 迁移 321 删掉了 NEW_URL / MODI_URL，原先"自定义页路由也算有入口"那两条分支随之退场：
     /// 自定义承载页（M_URL 是精确路径）本就不装配工作台定义，动作入口由页面自己负责。
     /// </summary>
-    private WorkbenchDefinition FoldRoutes(WorkbenchDefinition definition, int moduleId, ModuleRights rights)
-    {
-        var formEnabled = IsFormWritable(moduleId);
-        return definition with
+    private static WorkbenchDefinition FoldRoutes(
+        WorkbenchDefinition definition, UnifiedFormCapability capability, ModuleRights rights)
+        => definition with
         {
-            HasAdd = formEnabled,
-            // HasEdit 表达"本模块有可打开的表单界面"（写名单可编辑、只读名单只浏览）；
-            // 是否真能进编辑态由写名单与下发的表单定义分别把关。
-            HasEdit = formEnabled || IsFormReadOnly(moduleId),
+            HasAdd = capability.EditEnabled,
+            // HasEdit 表达"本模块有可打开的表单界面"（可写与仅浏览都算）；是否真能进编辑态，
+            // 由可写位与下发的表单定义分别把关。
+            HasEdit = capability.FormEnabled,
             CanDelete = rights.CanDelete,
         };
-    }
 
     private async Task<FormDefinition?> BuildFormAsync(
         WorkbenchDefinition definition, string userId, string mode, ModuleRights rights, bool canSetup, CancellationToken token)
@@ -305,8 +310,10 @@ public sealed class WorkbenchAccessPolicy(
         => WorkbenchDecision<WorkbenchFormAccess>.Deny(new WorkbenchDenial(WorkbenchDenialKind.Forbidden, code));
 
     /// <summary>
-    /// 只读模块下发的表单：保留浏览与自定义按钮，关掉全部写动作。
-    /// 只读模块的新增/修改/删除端点本就 404（写名单之外），写动作留着只会开出一次失败。
+    /// "仅浏览"模块下发的表单：保留浏览与自定义按钮，关掉全部写动作。
+    /// 这类模块的新增/修改/删除端点本就 404（模块声明不可写），写动作留着只会开出一次失败。
+    /// 自定义按钮保留是有意的：只读名单的既有语义就是"看得见、按得动配置好的按钮"，
+    /// 故审计这类模块的治理办法是不给它配按钮（见 30 篇与 `AuditModuleGovernanceLiveTests`）。
     /// </summary>
     private static FormDefinition WithoutWriteActions(FormDefinition form) => form with
     {

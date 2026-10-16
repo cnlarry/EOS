@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: a7cc1668c61b2def -->
+<!-- inventory-fingerprint: 62e9640613e0b2c6 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -63,12 +63,12 @@
 | `check-button-remarks.ps1` | 自定义按钮备注巡检：MANUAL 行的 REMARK 必须是人话，不得为空、不得是写给开发者的编号。 | 连库 | 2 |
 | `check-docs.ps1` | 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链。 | git | 8 |
 | `check-field-labels.ps1` | 字段元数据巡检：FIELDS 的字段中文名不得是占位文本，批核/结案状态位不得进入复合格。 | 连库 | 2 |
-| `check-forbidden-problem-filter.ps1` | 拒绝出口门禁：保证 403 权限拒绝始终带结构化错误体。 | 仅静态 | 1 |
+| `check-forbidden-problem-filter.ps1` | 拒绝出口门禁：保证 403 权限拒绝始终带结构化错误体。 | 仅静态 | 3 |
 | `check-form-layout.ps1` | 模块级表单版式巡检：版式行不得悬空、越界或把不该藏的字段藏起来。 | 连库 | 5 |
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
 | `check-live-fixture-hygiene.ps1` | 真库用例夹具卫生门禁：写入只能落在用例**自己造**的键上。 | 仅静态 | 4 |
 | `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 5 |
-| `check-module-filter-columns.ps1` | 写名单模块的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
+| `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 8 |
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
 | `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 10 |
@@ -102,10 +102,10 @@
 | 脚本 | 作用 | 依赖 | 引用 |
 |---|---|---|---|
 | `audit-retention.ps1` | 统一审计留存与归档（ADR-005 §8）：DETAIL_JSON 30 天截断、AUDIT_FIELD_CHANGE 90 天归档、 AUDIT_EVENT 180 天归档（导出 JSONL 后清理）。 | 连库 | 2 |
-| `auto-enable-batch.ps1` | 统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写 appsettings.json）→ 重启 API → 真实数据 CRUD 回路（尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。 全绿则保留启用并出报告… | 需 API 在线 | 5 |
-| `dev-services.ps1` | EOS 本地开发服务管理：EOS.API 一键启动、停止、重启、状态与日志。 | 需 API 在线、工具链 | 5 |
+| `auto-enable-batch.ps1` | 统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写模块声明）→ 真实数据 CRUD 回路 （尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。 全绿则保留启用并出报告；任一失败则整批回滚并出差异报告（不静默修… | 需 API 在线 | 5 |
+| `dev-services.ps1` | EOS 本地开发服务管理：EOS.API 一键启动、停止、重启、状态与日志。 | 需 API 在线、工具链 | 4 |
 | `eos-sql-selftest.ps1` | eos-sql.ps1 托管回退路径的结果集回归自检。 | 连库 | 1 |
-| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 36 |
+| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 37 |
 | `export-bootstrap-baseline.ps1` | 重建迁移基线登记 `db/bootstrap/40_journal_baseline.sql`。 | 连库 | 2 |
 | `export-bootstrap-metadata.ps1` | 从当前库重建元数据种子 `db/bootstrap/20_metadata.sql`。 | 连库 | 1 |
 | `export-bootstrap-schema.ps1` | 从当前库重建结构种子 `db/bootstrap/10_schema.sql`。 | 连库 | 2 |
@@ -123,7 +123,7 @@
 | `report-form-meta.ps1` | 统一表单切片模块字段矩阵报告：按模块输出主/明细表字段的 必填 / 默认值 / FORM_OPTIONS / 选择器 / 隐藏必填 / 只读联动 清单，供实施顾问逐表确认。 | 需 API 在线 | 1 |
 | `report-inventory-imbalance-keys.ps1` | 逐键定性库存不平键（余额对流水累计），并回答「是否仍在扩大」。 | 连库 | 1 |
 | `republish-all-whitelist.ps1` | 全量白名单模块重发布 + 快照差异清单（发布即重派生的验收工具）。 | 连库、需 API 在线 | 4 |
-| `review-whitelist-candidates.ps1` | 统一表单白名单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 + 当前 EnabledModuleIds，逐模块给出 建议（可放量 / 需确认 / 阻塞 / 已启用）。 | 连库 | 3 |
+| `review-whitelist-candidates.ps1` | 统一表单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 + 当前可写模块（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED）， 逐模块… | 连库 | 3 |
 | `seed-business-actions.ps1` | 业务动作/校验配置一次性导入器（幂等，可重复执行）：按清单生成幂等 T-SQL 并单次执行，只写种子表。 | 连库 | 2 |
 | `seed-dev-data.ps1` | EOS 开发/测试语义化测试数据种子（用户拍板 2026-08-23，决策清单 §17）。 | 需 API 在线 | 2 |
 | `set-eos-env.ps1` | 把应用需要的凭据设成 User 级环境变量（配置里 ${VAR} 引用的真值来源）。 | 连库 | 3 |

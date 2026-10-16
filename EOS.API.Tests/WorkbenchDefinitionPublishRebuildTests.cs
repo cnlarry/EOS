@@ -63,7 +63,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
 
     private static WorkbenchDefinitionBuilder Builder(DbConnectionFactory connections, WorkbenchDefinitionProvider provider)
         => new(connections, provider,
-            Options.Create(new UnifiedFormEditorSettings()),
+            TestFormCapability.None,
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
 
     /// <summary>

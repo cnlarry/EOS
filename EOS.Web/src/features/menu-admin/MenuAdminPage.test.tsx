@@ -17,6 +17,8 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   M_ICON: null,
   Icon: null,
   APPROVE_ENABLED: false,
+  UNIFIED_FORM_ENABLED: false,
+  UNIFIED_FORM_EDIT_ENABLED: false,
   REMARK: null,
 })
 
@@ -931,6 +933,41 @@ describe('MenuAdminPage', () => {
     expect(screen.queryByRole('checkbox', { name: '自动批核' })).toBeNull()
     // 但通用查询留着：搜索中心是独立于承载页的可达面
     expect(screen.getByRole('checkbox', { name: '通用查询（主表）' })).toBeEnabled()
+  })
+
+  it('统一表单两开关：写入位依赖「统一表单」，取消时一并清掉', async () => {
+    mockPageGetValue({
+      total: 2,
+      modules: [
+        moduleNode(11, '基本参数', null),
+        {
+          ...moduleNode(2316, '操作审计', null),
+          NODE_KIND: 'WORKBENCH',
+          M_URL: '/workbench',
+          MASTER_TABLE: 'AUDIT_EVENT',
+        },
+      ],
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /操作审计/ }))
+    await waitFor(() => expect(screen.getByLabelText('页面链接（承载页）')).toHaveValue('/workbench'))
+
+    enterEdit()
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    const formSwitch = screen.getByRole('checkbox', { name: '统一表单（浏览、新增、编辑）' })
+    const writeSwitch = screen.getByRole('checkbox', { name: '允许写入（新增、修改、删除）' })
+    // 未启用表单 ⇒ 写入位不可勾（与库约束 CK_MODULES_UNIFIED_FORM_EDIT 同口径）
+    expect(writeSwitch).toBeDisabled()
+    fireEvent.click(formSwitch)
+    expect(writeSwitch).toBeEnabled()
+    // 勾「允许写入」自动带上「统一表单」；取消「统一表单」则写入位一并清掉
+    fireEvent.click(writeSwitch)
+    expect(formSwitch).toBeChecked()
+    expect(writeSwitch).toBeChecked()
+    fireEvent.click(formSwitch)
+    expect(writeSwitch).not.toBeChecked()
+    expect(writeSwitch).toBeDisabled()
   })
 
   it('过滤条件构建器：未选择字段时给出错误并禁止保存', async () => {

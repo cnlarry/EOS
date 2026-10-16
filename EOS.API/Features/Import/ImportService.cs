@@ -36,11 +36,10 @@ public sealed class ImportService(
     DocumentWorkbenchRepository workbench,
     WorkbenchAuditWriter auditWriter,
     ImportMappingStore mappings,
-    IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<ImportService> logger)
 {
     /// <summary>
-    /// 可导入的目标模块 = 统一表单写名单 ∩ 统一工作台模块（有主表且按工作台承载）。
+    /// 可导入的目标模块 = 模块声明"统一表单可写" ∩ 统一工作台模块（有主表且按工作台承载）。
     ///
     /// <para>
     /// 判据只此两处，没有第三处"允许导入"的人工标记：能写就能导——导入与手工录入是同一个
@@ -53,26 +52,18 @@ public sealed class ImportService(
     /// </summary>
     public async Task<IReadOnlyList<ImportTarget>> GetTargetsAsync(CancellationToken token)
     {
-        var writeList = formSettings.Value.EnabledModuleIds;
-        if (writeList.Length == 0)
-        {
-            return [];
-        }
-        var placeholders = writeList.Select((_, index) => $"@m{index}").ToArray();
-        var sql = $"""
+        // 可写位随模块声明走（现读）：不做"先取集合再拼 IN"的两段式，让它与写路径同源。
+        const string sql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))
             FROM dbo.MODULES m WITH (NOLOCK)
             INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX
-            WHERE n.NODE_KIND=N'WORKBENCH' AND m.M_IDX IN ({string.Join(',', placeholders)})
+            WHERE n.NODE_KIND=N'WORKBENCH'
+              AND m.UNIFIED_FORM_ENABLED = 1 AND m.UNIFIED_FORM_EDIT_ENABLED = 1
             ORDER BY LTRIM(RTRIM(ISNULL(m.M_DESC,''))), m.M_IDX;
             """;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);
-        for (var index = 0; index < writeList.Length; index++)
-        {
-            command.Parameters.Add($"@m{index}", SqlDbType.Int).Value = writeList[index];
-        }
         await using var reader = await command.ExecuteReaderAsync(token);
         var targets = new List<ImportTarget>();
         while (await reader.ReadAsync(token))

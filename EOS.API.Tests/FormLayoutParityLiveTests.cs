@@ -81,7 +81,7 @@ public sealed class FormLayoutParityLiveTests
         var connections = Connections();
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            Options.Create(new UnifiedFormEditorSettings()), NullLogger<WorkbenchDefinitionBuilder>.Instance);
+            TestFormCapability.None, NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var empty = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         using var baseline = JsonDocument.Parse(File.ReadAllBytes(baselinePath));
@@ -176,7 +176,7 @@ public sealed class FormLayoutParityLiveTests
         var connections = Connections();
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            Options.Create(new UnifiedFormEditorSettings()), NullLogger<WorkbenchDefinitionBuilder>.Instance);
+            TestFormCapability.None, NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var empty = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var definition = await builder.GetDefinitionAsync(1405, "admin", "Z", true, true,

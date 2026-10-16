@@ -1,16 +1,17 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-统一表单白名单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 +
-当前 EnabledModuleIds，逐模块给出 建议（可放量 / 需确认 / 阻塞 / 已启用）。
+统一表单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 +
+当前可写模块（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED），
+逐模块给出 建议（可放量 / 需确认 / 阻塞 / 已启用）。
 .DESCRIPTION
-放量真源 = EOS.API/appsettings.json 的 UnifiedFormEditor.EnabledModuleIds（写名单）/
-ReadOnlyModuleIds（只读名单）。路由三列（NEW_URL / MODI_URL / HELP_URL）已随迁移 321 物理删除，
+放量真源 = `dbo.MODULES` 的两列（迁移 355 起能力进库、现读，不再是 appsettings 名单）。
+路由三列（NEW_URL / MODI_URL / HELP_URL）已随迁移 321 物理删除，
 不再参与判定；候选资格（工作台模块）= M_URL 为 '/workbench'，或 M_URL 留空但有主表
 （默认落统一工作台，与 ModuleRouteValidator.IsWorkbenchModule 同口径）。
 默认值与单号登记、主子表评审等事项不在本脚本范围内，按 docs/guide/ 的对应篇目处理。
-本脚本只读，不改任何配置；结论供实施顾问逐条确认后写入
-UnifiedFormEditor:EnabledModuleIds。
+本脚本只读，不改任何配置；结论供实施顾问逐条确认后由 `auto-enable-batch.ps1` 落库
+（或直接 UPDATE 那两列）。
 .EXAMPLE
 .\scripts\review-whitelist-candidates.ps1
 #>
@@ -30,8 +31,10 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 $candidates = @(Import-Csv -LiteralPath (Join-Path $root $CandidatesCsv))
 $inventory = @(Import-Csv -LiteralPath (Join-Path $root $InventoryCsv))
-$app = Get-Content -Raw -LiteralPath (Join-Path $root 'EOS.API\appsettings.json') | ConvertFrom-Json
-$enabled = @($app.UnifiedFormEditor.EnabledModuleIds | ForEach-Object { [string]$_ })
+. (Join-Path $root 'scripts\dev\eos-sql.ps1')
+# 已可写模块（迁移 355 起是模块声明 MODULES 两列，现读；不再是 appsettings 名单）
+$enabled = @(Invoke-EosSqlQuery 'SET NOCOUNT ON; SELECT CONVERT(nvarchar(20), M_IDX) FROM dbo.MODULES WHERE UNIFIED_FORM_ENABLED = 1 AND UNIFIED_FORM_EDIT_ENABLED = 1 ORDER BY M_IDX;' |
+    ForEach-Object { [string]($_ -replace '\D', '') } | Where-Object { $_ -ne '' })
 
 # 领域 E2E 覆盖映射（与 AcceptanceCommon.ps1 同源）
 $coverageMap = @{

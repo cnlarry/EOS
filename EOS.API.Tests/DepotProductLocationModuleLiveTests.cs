@@ -103,26 +103,15 @@ public sealed class DepotProductLocationModuleLiveTests
         // 漏了它就发布出一份字段数 0 的定义（这是本段实测踩到的坑，见迁移 239 头注）。
         Assert.Equal(5, definition.MasterFields.Count);
 
-        // 统一表单的启用清单：没有它，任何模块的 /form-definition 都直接 404
-        var appsettings = FindRepositoryFile(Path.Combine("EOS.API", "appsettings.json"));
-        Assert.NotNull(appsettings);
-        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(appsettings!));
-        var enabled = document.RootElement
-            .GetProperty("UnifiedFormEditor").GetProperty("EnabledModuleIds")
-            .EnumerateArray().Select(item => item.GetInt32()).ToArray();
-        Assert.Contains(ModuleId, enabled);
-    }
-
-    /// <summary>从测试输出目录往上找仓库文件（测试的工作目录是 bin 下的输出目录）。</summary>
-    private static string? FindRepositoryFile(string relativePath)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, relativePath);
-            if (File.Exists(candidate)) return candidate;
-            directory = directory.Parent;
-        }
-        return null;
+        // 统一表单能力是模块声明（迁移 355 起进库）：没有它，任何模块的 /form-definition 都直接 404。
+        // 这里断的是**库列**——读它即刻生效，与 appsettings 名单时代不同（那时还得重启）。
+        await using var capabilityCommand = new SqlCommand(
+            "SELECT ISNULL(UNIFIED_FORM_ENABLED,0), ISNULL(UNIFIED_FORM_EDIT_ENABLED,0) FROM dbo.MODULES WHERE M_IDX = @Id;",
+            connection);
+        capabilityCommand.Parameters.Add("@Id", SqlDbType.Int).Value = ModuleId;
+        await using var capabilityReader = await capabilityCommand.ExecuteReaderAsync();
+        Assert.True(await capabilityReader.ReadAsync(), $"模块 {ModuleId} 应存在。");
+        Assert.True(capabilityReader.GetBoolean(0), $"模块 {ModuleId} 应启用统一表单，否则 /form-definition 直接 404。");
+        Assert.True(capabilityReader.GetBoolean(1), $"模块 {ModuleId} 应允许写入：它是可维护的主档。");
     }
 }

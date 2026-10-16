@@ -90,6 +90,17 @@ export interface MenuAdminModule {
   /** 模块声明「启用批核」（库列 `MODULES.APPROVE_ENABLED`，ADR-035）：这个模块要有批核入口。 */
   APPROVE_ENABLED: boolean
   /**
+   * 模块声明「统一表单」（库列 `MODULES.UNIFIED_FORM_ENABLED`，迁移 355）：浏览、新增、编辑的入口
+   * 都在统一表单里，关掉就只有列表（汇总/查询类模块双击不进表单）。与 `APPROVE_ENABLED` 一样
+   * 现读、不进定义快照，保存即生效。
+   */
+  UNIFIED_FORM_ENABLED: boolean
+  /**
+   * 模块声明「统一表单允许写入」（库列 `MODULES.UNIFIED_FORM_EDIT_ENABLED`）：0 = 表单只能浏览——
+   * 表由系统/引擎维护（审计、库存账）。不变量：未勾「统一表单」时该位必须为假（服务端与库约束同口径）。
+   */
+  UNIFIED_FORM_EDIT_ENABLED: boolean
+  /**
    * 模块备注：写"这个模块是干什么的"等附加信息，给后来接手的人看。
    * 「基础」页签可编辑（2026-10-06 起）；库列 `MODULES.REMARK`（nvarchar(1000)，迁移 324
    * 把它从那批旧系统遗产里单独留下），保存时空串落成 NULL。
@@ -178,6 +189,8 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   M_ICON: null,
   Icon: null,
   APPROVE_ENABLED: false,
+  UNIFIED_FORM_ENABLED: false,
+  UNIFIED_FORM_EDIT_ENABLED: false,
   REMARK: null,
 })
 
@@ -1239,6 +1252,14 @@ export function MenuAdminPage() {
                               <Checkbox label="自动批核" disabled={!editing} checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked, APPROVE_ENABLED: checked ? true : d.APPROVE_ENABLED }))} />
                               <Checkbox label="可以复制" disabled={!editing} checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
                               <Checkbox label="异常记录不可保存" disabled={!editing} checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
+                            </div>
+                            {/* 统一表单两开关（与批核两开关同位置、同一套联动纪律）：
+                                「统一表单」（浏览 / 新增 / 编辑的入口都在它里面）是主声明；「允许写入」是它下面的一位——
+                                勾「允许写入」⇒「统一表单」自动选中；取消「统一表单」⇒ 写入位一并取消。
+                                取消「允许写入」即"表单只能浏览"（审计、库存账这类由系统/引擎维护的表）。 */}
+                            <div className="d-flex flex-wrap gap-3 mt-2">
+                              <Checkbox label="统一表单（浏览、新增、编辑）" disabled={!editing} checked={draft.UNIFIED_FORM_ENABLED} onChange={(checked) => patch((d) => ({ ...d, UNIFIED_FORM_ENABLED: checked, UNIFIED_FORM_EDIT_ENABLED: checked ? d.UNIFIED_FORM_EDIT_ENABLED : false }))} />
+                              <Checkbox label="允许写入（新增、修改、删除）" disabled={!editing || !draft.UNIFIED_FORM_ENABLED} checked={draft.UNIFIED_FORM_EDIT_ENABLED} onChange={(checked) => patch((d) => ({ ...d, UNIFIED_FORM_EDIT_ENABLED: checked, UNIFIED_FORM_ENABLED: checked ? true : d.UNIFIED_FORM_ENABLED }))} />
                             </div>
                             <div className="text-secondary small mt-1">
                                            </div>

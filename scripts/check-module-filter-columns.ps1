@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    写名单模块的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。
+    声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。
 
 .DESCRIPTION
     背景（2026-10-04 实测）：`14997 应收未收(明细)` 在统一表单**写名单**里，而它的模块 FILTER 是
@@ -46,15 +46,18 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$appSettingsPath = Join-Path $repoRoot 'EOS.API/appsettings.json'
 $defaultRulesPath = Join-Path $repoRoot 'EOS.API/Data/FormDefaultRules.cs'
 
 $stateBits = @('CONFIRM_TAG', 'FINISHED_TAG')
 
 function Get-WriteList {
-    param([string] $Path)
-    $app = Get-Content -Raw -LiteralPath $Path -Encoding utf8 | ConvertFrom-Json
-    return @($app.UnifiedFormEditor.EnabledModuleIds | ForEach-Object { [string]$_ })
+    <# 写名单 = 模块声明「统一表单可写」（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED，
+       迁移 355 起进库、现读）：只有这些模块承诺"可新增"，其模块过滤条件必须能被新记录满足。 #>
+    return @(Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
+SELECT CONVERT(nvarchar(20), M_IDX) FROM dbo.MODULES
+ WHERE UNIFIED_FORM_ENABLED = 1 AND UNIFIED_FORM_EDIT_ENABLED = 1
+ ORDER BY M_IDX;
+'@ | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
 }
 
 # 页面代码默认值规则：模块 → 列集合。唯一真源是 FormDefaultRules.cs，这里只解析、不复写映射。
@@ -122,7 +125,7 @@ function Get-FilterViolations {
 try {
     . (Join-Path $PSScriptRoot 'dev/eos-sql.ps1')
 
-    $writeList = Get-WriteList -Path $appSettingsPath
+    $writeList = Get-WriteList
     $codeDefaults = Get-CodeDefaults -Path $defaultRulesPath
     # 解析守卫：源文件格式变了会让规则静默失效、门禁假绿——必须显式失败
     if ($codeDefaults.Count -eq 0 -or ($codeDefaults['1407'] -notcontains 'SEND_TAG')) {

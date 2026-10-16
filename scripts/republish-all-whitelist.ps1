@@ -69,17 +69,17 @@ function Read-CurrentSnapshotJson([int]$moduleId) {
     return ($lines -join '')
 }
 
-# 待发布模块：显式 -ModuleIds 优先；否则取「统一表单写名单」∪「库内所有带当前快照的模块」。
-# 两个覆盖面并不相等——只读名单模块有快照却不在写名单里，只按写名单枚举会漏掉它们。
+# 待发布模块：显式 -ModuleIds 优先；否则取「声明启用统一表单的模块」∪「库内所有带当前快照的模块」。
+# 两个覆盖面并不相等——只浏览的模块有快照却不可写，只按可写枚举会漏掉它们。
 $ids = @()
 if ($ModuleIds) {
     $ids = $ModuleIds.Split(',', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { [int]$_.Trim() }
 } else {
-    $appSettings = Get-Content (Join-Path $root 'EOS.API\appsettings.json') -Raw | ConvertFrom-Json
-    $ids = @($appSettings.UnifiedFormEditor.EnabledModuleIds | ForEach-Object { [int]$_ })
+    $formEnabled = @(Invoke-EosSqlQuery 'SET NOCOUNT ON; SELECT M_IDX FROM dbo.MODULES WHERE UNIFIED_FORM_ENABLED = 1' |
+        ForEach-Object { [int]($_ -replace '\D', '') })
     $snapshotIds = @(Invoke-EosSqlQuery 'SET NOCOUNT ON; SELECT M_IDX FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE IS_CURRENT=1' |
         ForEach-Object { [int]($_ -replace '\D', '') })
-    $ids = @($ids + $snapshotIds | Sort-Object -Unique)
+    $ids = @($formEnabled + $snapshotIds | Sort-Object -Unique)
 }
 if ($ids.Count -eq 0) { throw '未取得待发布模块。' }
 Write-Output "待发布模块数：$($ids.Count)"

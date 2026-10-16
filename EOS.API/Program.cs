@@ -269,6 +269,9 @@ builder.Services.AddScoped<WorkbenchDefinitionBuilder>();
 builder.Services.AddScoped<WorkbenchFieldMetaMapper>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<EOS.API.Data.Workbench.IWorkbenchDefinitionSource>(serviceProvider => serviceProvider.GetRequiredService<DocumentWorkbenchRepository>());
+// 统一表单能力（UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED）的唯一读取点：
+// 写路径判定、浏览目标、发布管理与发布门、导入候选、助手能力目录都走它，避免各写一份 SQL。
+builder.Services.AddScoped<EOS.API.Data.Workbench.IUnifiedFormCapabilitySource, EOS.API.Data.Workbench.UnifiedFormCapabilitySource>();
 builder.Services.AddScoped<EOS.API.Data.Workbench.WorkbenchAccessPolicy>();
 builder.Services.AddScoped<EOS.API.Data.Workbench.AgentWriteContext>();
 builder.Services.AddScoped<ReportRepository>();
@@ -483,7 +486,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.AttachmentListTool>(),
         ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
-builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
+
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
 builder.Services.Configure<ReportInboxSettings>(builder.Configuration.GetSection("ReportInbox"));
 builder.Services.Configure<ReportFormatsSettings>(builder.Configuration.GetSection(ReportFormatsSettings.SectionName));

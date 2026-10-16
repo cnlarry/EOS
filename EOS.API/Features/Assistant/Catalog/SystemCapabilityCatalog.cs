@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using EOS.API.Data;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Workbench;
 using EOS.API.Data.ValidationRules;
 using EOS.API.Features.Assistant.Tools;
 using EOS.API.Models;
@@ -52,7 +53,7 @@ public sealed record CapabilityExplanation(
 /// </summary>
 public sealed class SystemCapabilityCatalog(
     IAssistantSchemaGateway schema,
-    IOptions<UnifiedFormEditorSettings> formSettings)
+    IUnifiedFormCapabilitySource formCapability)
 {
     /// <summary>解释里逐条列出的标识上限（超限如实说明，不静默截断）。</summary>
     private const int MaxListedFacts = 60;
@@ -100,7 +101,7 @@ public sealed class SystemCapabilityCatalog(
     public async Task<CapabilityExplanation> DescribeAsync(CapabilityTopic topic, CancellationToken token) => topic switch
     {
         CapabilityTopic.Workbench => BuildWorkbench(),
-        CapabilityTopic.Form => BuildForm(),
+        CapabilityTopic.Form => await BuildFormAsync(token),
         CapabilityTopic.Fields => await BuildFieldsAsync(token),
         CapabilityTopic.Chooser => BuildChooser(),
         CapabilityTopic.Report => BuildReport(),
@@ -124,21 +125,23 @@ public sealed class SystemCapabilityCatalog(
         return new(CapabilityTopic.Workbench, sb.ToString(), []);
     }
 
-    private CapabilityExplanation BuildForm()
+    private async Task<CapabilityExplanation> BuildFormAsync(CancellationToken token)
     {
-        var settings = formSettings.Value;
-        var writable = settings.EnabledModuleIds ?? [];
-        var readOnly = settings.ReadOnlyModuleIds ?? [];
+        // 真值来自模块声明（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED，现读）：
+        // 启用统一表单的模块里，"可写"与"仅浏览"用哪一位区分见 30 篇与 42 篇。
+        var formEnabledIds = await formCapability.GetFormEnabledIdsAsync(token);
+        var writable = await formCapability.GetWritableIdsAsync(token);
+        var readOnly = formEnabledIds.Where(id => !writable.Contains(id)).OrderBy(id => id).ToList();
         var sb = new StringBuilder();
-        sb.AppendLine("统一表单（单据）：模块是否可写由服务端名单决定，名单外模块只能浏览。");
-        sb.AppendLine($"- 写名单（可新增/修改/删除）：{writable.Length} 个模块；只读名单：{readOnly.Length} 个模块。");
+        sb.AppendLine("统一表单（单据）：模块声明决定它有没有表单面、表单里能不能写；未声明启用表单的模块只有列表。");
+        sb.AppendLine($"- 启用统一表单：{formEnabledIds.Count} 个模块，其中可新增/修改/删除的 {writable.Count} 个、只能浏览的 {readOnly.Count} 个。");
         sb.AppendLine("- 字段面与可写性来自表单定义（mode=new/edit/view），与保存路径同一份口径；主键与引擎维护列不作输入。");
         sb.AppendLine("- 单据级动作全部在统一表单工具栏（浏览态：返回、上下条、新增、复制、编辑、删除、批核|解批、审批历史、结案|取消结案、附件、打印、帮助；编辑态：保存/取消），顺序固定，配置只决定动作有无。");
         sb.AppendLine("- 新增/修改/删除经既有写管线：校验规则、效果链、状态翻转、审计都在其中，不存在第二条写路径。");
         sb.AppendLine("- 删除等破坏性操作必须先在浏览态看到单据细节再执行，列表页不提供“选复选框即删”。");
-        sb.Append("真值来源：EOS.API/Models/UnifiedFormEditorSettings.cs、EOS.API/Data/Forms、EOS.Web/src/components/common/commandActions.tsx。");
+        sb.Append("真值来源：dbo.MODULES（UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED）、EOS.API/Data/Forms、EOS.Web/src/components/common/commandActions.tsx。");
         var facts = new List<CapabilityFact>();
-        facts.AddRange(writable.Select(id => new CapabilityFact(CapabilityFactKind.Module, id.ToString())));
+        facts.AddRange(writable.OrderBy(id => id).Select(id => new CapabilityFact(CapabilityFactKind.Module, id.ToString())));
         facts.AddRange(readOnly.Select(id => new CapabilityFact(CapabilityFactKind.Module, id.ToString())));
         return new(CapabilityTopic.Form, sb.ToString(), facts);
     }

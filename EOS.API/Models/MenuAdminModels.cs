@@ -51,6 +51,19 @@ public sealed record MenuAdminModule(
     /// （服务端钉不变量：未启用批核 ⇒ 自动批核必须为假）。
     /// </summary>
     [property: JsonPropertyName("APPROVE_ENABLED")] bool ApproveEnabled = false,
+    /// <summary>
+    /// 模块声明「统一表单可用」（库列 `MODULES.UNIFIED_FORM_ENABLED`，迁移 355）：浏览、新增、编辑的
+    /// 入口都在统一表单里；关掉就只有列表（汇总/查询类模块双击不进表单）。与 <see cref="ApproveEnabled"/>
+    /// 同口径：**现读、不进定义快照**，保存即生效，不需要标脏/重发布。
+    /// </summary>
+    [property: JsonPropertyName("UNIFIED_FORM_ENABLED")] bool UnifiedFormEnabled = false,
+    /// <summary>
+    /// 模块声明「统一表单允许写入」（库列 `MODULES.UNIFIED_FORM_EDIT_ENABLED`）：0 = 表单只能浏览——
+    /// 表由系统/引擎维护（审计 `AUDIT_EVENT`、库存账 `INV_PRO_DEPOT` / `INV_BATCH_M`），
+    /// 通用表单写入会绕过真正的写入者。不变量：未启用统一表单 ⇒ 该位必须为假
+    /// （与库约束 `CK_MODULES_UNIFIED_FORM_EDIT` 同口径）。
+    /// </summary>
+    [property: JsonPropertyName("UNIFIED_FORM_EDIT_ENABLED")] bool UnifiedFormEditEnabled = false,
     /// <summary>只读展示字段：操作主表描述（TABLES.T_DESC，服务端解析，保存时忽略）。</summary>
     [property: JsonPropertyName("MASTER_TABLE_DESC")] string? MasterTableDesc = null,
     /// <summary>只读展示字段：操作副表描述（TABLES.T_DESC，服务端解析，保存时忽略）。</summary>

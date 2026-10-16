@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit;
 
@@ -194,6 +195,54 @@ public sealed class StaticArchitectureGuardTests
         {
             if (Directory.Exists(probe)) { Directory.Delete(probe, recursive: true); }
         }
+    }
+
+    /// <summary>
+    /// 统一表单能力（`UNIFIED_FORM_ENABLED` / `UNIFIED_FORM_EDIT_ENABLED`）是**一处真源**：
+    /// 模块行上的两列 + 一个读取点（`Data/Workbench/UnifiedFormCapability.cs`）。
+    ///
+    /// 迁移 355 之前这件事由 `appsettings.json` 的两个名单回答，读法散在六个消费点里，
+    /// 改一次要重启、库里查不到、审计里看不见。现在**离线可断**的就是这两条：
+    /// ① 列名只许出现在读取点、发布枚举与导入候选的两条 SQL、菜单管理的读写与模型契约里；
+    /// ② 名单段不得回到 appsettings（留着就是一处没人读的配置——改它的人会以为放量了）。
+    ///
+    /// 模块号与主表的对应关系（"审计模块停在仅浏览"这类）在库里，由真库用例
+    /// `AuditModuleGovernanceLiveTests` 与 `InventoryConfigFaceLiveTests` 守。
+    /// </summary>
+    [Fact]
+    public void 统一表单能力只有一处真源()
+    {
+        var repoRoot = FindRepoRoot();
+        var apiRoot = Path.Combine(repoRoot, "EOS.API");
+        var capabilitySource = Path.Combine(apiRoot, "Data", "Workbench", "UnifiedFormCapability.cs");
+        Assert.True(File.Exists(capabilitySource),
+            "找不到统一表单能力的读取点——判据的「唯一允许者」不存在时，这条断言失去意义");
+
+        var allowed = new[]
+        {
+            Path.Combine("Data", "Workbench", "UnifiedFormCapability.cs"),   // 读取点（单行 + 两个集合查询）
+            Path.Combine("Data", "WorkbenchDefinitionSnapshotService.cs"),   // 发布管理/落后检测的状态列
+            Path.Combine("Features", "Import", "ImportService.cs"),          // 导入候选集按可写位过滤
+            Path.Combine("Data", "MenuAdminRepository.cs"),                  // 2301 的读与写
+            Path.Combine("Models", "MenuAdminModels.cs"),                    // JSON 契约属性名（前端按它提交）
+            // 助手能力目录里那句"真值来源：dbo.MODULES（…）"的说明文案：只是文本，不做判定
+            Path.Combine("Features", "Assistant", "Catalog", "SystemCapabilityCatalog.cs"),
+        };
+        var hits = ScanTableReferences(apiRoot, ["UNIFIED_FORM_ENABLED", "UNIFIED_FORM_EDIT_ENABLED"]);
+        var actual = hits.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        var unregistered = actual.Except(allowed, StringComparer.OrdinalIgnoreCase).ToList();
+        var stale = allowed.Except(actual, StringComparer.OrdinalIgnoreCase).ToList();
+
+        Assert.True(unregistered.Count == 0,
+            $"统一表单能力在以下文件里被直接引用（判定只该走 IUnifiedFormCapabilitySource）：{string.Join("、", unregistered)}");
+        Assert.True(stale.Count == 0,
+            $"白名单条目已不再引用这两位，应当移除：{string.Join("、", stale)}");
+
+        var settingsPath = Path.Combine(apiRoot, "appsettings.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(document.RootElement.TryGetProperty("UnifiedFormEditor", out _),
+            "appsettings 里不该再出现 UnifiedFormEditor 名单段：统一表单能力已经搬进 MODULES 的两列，"
+            + "名单留在这里就是一处没人读的配置。");
     }
 
     // ===== 扫描原语 =====

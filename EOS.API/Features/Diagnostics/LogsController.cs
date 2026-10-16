@@ -268,8 +268,8 @@ public sealed class LogsController(
     /// </summary>
     private static readonly string[] ObservableSectionList =
     [
-        "Logging", "EffectEngine", "Audit", "Workflow", "UnifiedFormEditor",
-        "Security", "Attachment", "ReportFormats", "AllowedHosts",
+        "Logging", "EffectEngine", "Audit", "Workflow", "Security",
+        "Attachment", "ReportFormats", "AllowedHosts",
     ];
 
     /// <summary>可观测的配置节白名单（单测直接引用同一份，避免"测试用一套、生产用另一套"）。</summary>
@@ -292,7 +292,7 @@ public sealed class LogsController(
 
     /// <summary>
     /// 递归登记"键 → 是否已设置"；不读取、不返回值本身（`section.Value` 只用于判空）。
-    /// **数组型配置折叠为下标**：`EnabledModuleIds` 之类有 200+ 项，逐项列出既没信息量又把诊断包撑大，
+    /// **数组型配置折叠为下标**：`NavigationIcons` 这类逐项列出既没信息量又把诊断包撑大（几十上百项），
     /// 只报"有哪些下标/共几项"即可（数量本身仍能看出配置规模）。
     /// </summary>
     private static void WriteDigest(IConfigurationSection section, string path, SortedDictionary<string, bool> digest)

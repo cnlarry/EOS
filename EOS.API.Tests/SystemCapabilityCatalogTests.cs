@@ -56,11 +56,9 @@ public sealed class SystemCapabilityCatalogTests
         [new(1201, "产品"), new(2302, "实施配置"), new(2306, "运维配置")];
 
     private static SystemCapabilityCatalog Catalog(IReadOnlyList<FieldAdminModule>? modules = null) =>
-        new(new FakeSchema(modules ?? Modules), Options.Create(new UnifiedFormEditorSettings
-        {
-            EnabledModuleIds = [1201],
-            ReadOnlyModuleIds = [2302, 2306],
-        }));
+        // 1201 可写；2302 / 2306 启用表单但只能浏览（与"仅浏览"模块同形）
+        new(new FakeSchema(modules ?? Modules),
+            TestFormCapability.For([1201, 2302, 2306], writable: [1201]));
 
     private static DescribeMechanismTool Tool(bool canSetup) => new(Catalog(), new FakePermissions(canSetup));
 

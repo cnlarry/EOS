@@ -54,7 +54,7 @@ public class WorkbenchPolicyEquivalenceTests
         {
             var policy = BuildPolicy(cell);
             var actual = Describe(await policy.AuthorizeDefinitionAsync("u1", ModuleId, default));
-            var expected = Retired.AuthorizedDefinition("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId);
+            var expected = Retired.AuthorizedDefinition("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId);
             Compare(mismatches, cell, "GET definition/records/query/details/export/columns (#1)", expected, actual);
             outcomes.Add(actual.Outcome);
         }
@@ -76,7 +76,7 @@ public class WorkbenchPolicyEquivalenceTests
             foreach (var mode in new[] { "view", "new", "edit" })
             {
                 var actual = Describe(await policy.AuthorizeFormAsync("u1", ModuleId, mode, default));
-                var expected = Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, mode, cell.Form, cell.FormAvailable);
+                var expected = Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, mode, cell.Form, cell.FormAvailable);
                 Compare(mismatches, cell, $"FormAccess mode={mode} (#2)", expected, actual);
                 outcomes.Add(actual.Outcome);
             }
@@ -97,7 +97,7 @@ public class WorkbenchPolicyEquivalenceTests
         {
             var policy = BuildPolicy(cell);
             var actual = await PolicyDelete(policy);
-            var expected = Retired.DeleteAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, cell.Form, cell.FormAvailable);
+            var expected = Retired.DeleteAccess("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, cell.Form, cell.FormAvailable);
             Compare(mismatches, cell, "DELETE record (#2 + Delete 动作位)", expected, actual);
             outcomes.Add(actual.Outcome);
         }
@@ -119,7 +119,7 @@ public class WorkbenchPolicyEquivalenceTests
             foreach (var mode in new[] { "new", "edit", "view", "NEW", "bogus" })
             {
                 var actual = Describe(await policy.AuthorizeFormDefinitionAsync("u1", ModuleId, mode, default));
-                var expected = Retired.FormDefinition("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, mode, cell.Form, cell.FormAvailable);
+                var expected = Retired.FormDefinition("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, mode, cell.Form, cell.FormAvailable);
                 Compare(mismatches, cell, $"FormDefinition mode={mode} (#10)", expected, actual);
                 outcomes.Add(actual.Outcome);
             }
@@ -140,12 +140,12 @@ public class WorkbenchPolicyEquivalenceTests
         {
             var policy = BuildPolicy(cell);
             var actual = Describe(await policy.AuthorizeActionAsync("u1", ModuleId, default));
-            var expected = Retired.ActionAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, cell.Form, cell.FormAvailable);
+            var expected = Retired.ActionAccess("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, cell.Form, cell.FormAvailable);
             Compare(mismatches, cell, "POST action/{actionKey} (#3)", expected, actual);
             outcomes.Add(actual.Outcome);
 
             var actionsActual = Describe(await policy.AuthorizeUserActionsAsync("u1", ModuleId, default));
-            var actionsExpected = Retired.UserActions("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId);
+            var actionsExpected = Retired.UserActions("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId);
             Compare(mismatches, cell, "GET actions (#1 + 能力位)", actionsExpected, actionsActual);
             outcomes.Add(actionsActual.Outcome);
         }
@@ -167,7 +167,7 @@ public class WorkbenchPolicyEquivalenceTests
             {
                 var policy = BuildPolicy(cell);
                 var actual = await PolicyWorkflow(policy, action);
-                var expected = Retired.Workflow("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, action);
+                var expected = Retired.Workflow("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, action);
                 Compare(mismatches, cell, $"POST {action.ToString().ToLowerInvariant()} (#4)", expected, actual);
                 outcomes.Add(actual.Outcome);
             }
@@ -298,11 +298,11 @@ public class WorkbenchPolicyEquivalenceTests
             foreach (var (kind, server) in new (AssistantRecordActionKind Kind, Decision Decision)[]
             {
                 (AssistantRecordActionKind.Insert,
-                    Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, "new", cell.Form, cell.FormAvailable)),
+                    Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, "new", cell.Form, cell.FormAvailable)),
                 (AssistantRecordActionKind.Update,
-                    Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, "edit", cell.Form, cell.FormAvailable)),
+                    Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, "edit", cell.Form, cell.FormAvailable)),
                 (AssistantRecordActionKind.Delete,
-                    Retired.DeleteAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, cell.Form, cell.FormAvailable)),
+                    Retired.DeleteAccess("u1", cell.Rights, cell.Definition, cell.LegacyWritable, cell.LegacyReadOnly, ModuleId, cell.Form, cell.FormAvailable)),
             })
             {
                 var actual = OutcomeOf(await gate.EvaluateAsync("u1", ModuleId, kind, default));
@@ -397,11 +397,13 @@ public class WorkbenchPolicyEquivalenceTests
 
     private static IEnumerable<Cell> Cells()
     {
+        // 能力只有三档合法组合：无表单 / 仅浏览 / 表单可用且可写。
+        // 第四种"未启用表单却可写"由库约束 CK_MODULES_UNIFIED_FORM_EDIT 排除——那是迁移的收口断言，
+        // 不是策略的输入面（策略对未知模块按 fail-closed 处理，另有覆盖）。
         foreach (var formAvailable in new[] { true, false })
-            foreach (var writable in new[] { true, false })
-                foreach (var readOnly in new[] { true, false })
-                    foreach (var profile in Profiles)
-                        yield return new Cell(formAvailable, writable, readOnly, profile, RawDefinition(), RawForm(), RightsFor(profile));
+            foreach (var (formEnabled, editEnabled) in new[] { (false, false), (true, false), (true, true) })
+                foreach (var profile in Profiles)
+                    yield return new Cell(formAvailable, formEnabled, editEnabled, profile, RawDefinition(), RawForm(), RightsFor(profile));
     }
 
     // 定义里的路由字段已随迁移 321 删掉：基准与现行策略都只看"名单 + 权限"。
@@ -446,11 +448,12 @@ public class WorkbenchPolicyEquivalenceTests
 
     private static (WorkbenchAccessPolicy Policy, FakeDefinitionSource Source) Build(Cell cell, bool canSetupOnFieldAdmin = true)
     {
-        var settings = new UnifiedFormEditorSettings
-        {
-            EnabledModuleIds = cell.FormEnabled ? [ModuleId] : [],
-            ReadOnlyModuleIds = cell.FormReadOnly ? [ModuleId] : [],
-        };
+        // 能力替身按格给（生产实现读 MODULES 两列，这里只把同一判定喂进去）
+        IReadOnlySet<int> formEnabledIds = cell.FormEnabled ? new HashSet<int> { ModuleId } : new HashSet<int>();
+        IReadOnlySet<int> writableIds = cell.FormEnabled && cell.EditEnabled
+            ? new HashSet<int> { ModuleId }
+            : new HashSet<int>();
+        var capability = new FakeUnifiedFormCapabilitySource(formEnabledIds, writableIds);
         var source = new FakeDefinitionSource
         {
             Definition = cell.Definition,
@@ -458,14 +461,14 @@ public class WorkbenchPolicyEquivalenceTests
             FormAvailable = cell.FormAvailable,
         };
         var fieldAdminRights = RightsFor(new Profile("field-admin", false, false, false, false, canSetupOnFieldAdmin, false, false, false, false));
-        return (new WorkbenchAccessPolicy(source, new FakePermissions(cell.Rights, fieldAdminRights), Options.Create(settings)), source);
+        return (new WorkbenchAccessPolicy(source, new FakePermissions(cell.Rights, fieldAdminRights), capability), source);
     }
 
     /// <summary>写名单内、全权限的一格：三条表单装配调用点都可达。</summary>
     private static Cell AllAllowedCell()
     {
         var profile = Profiles[^1];
-        return new Cell(true, true, false, profile, RawDefinition(), RawForm(), RightsFor(profile));
+        return new Cell(true, true, true, profile, RawDefinition(), RawForm(), RightsFor(profile));
     }
 
     private static FormCall ExpectedFormCall(Cell cell, string mode, bool canSetup) => new(
@@ -514,11 +517,21 @@ public class WorkbenchPolicyEquivalenceTests
     }
 
     private sealed record Cell(
-        bool FormAvailable, bool FormEnabled, bool FormReadOnly,
+        bool FormAvailable, bool FormEnabled, bool EditEnabled,
         Profile RightsProfile, WorkbenchDefinition Definition, FormDefinition Form, ModuleRights Rights)
     {
+        /// <summary>
+        /// 退役基准用的旧口径投影：写名单 = 表单可写；只读名单 = 表单可用但不可写。
+        /// 基准保留的是迁移 355 之前那套"两个名单"的判据原文，故这里把新的两位映射回旧的两个布尔，
+        /// 逐格比较才有意义（基准不动、映射在一处）。
+        /// </summary>
+        public bool LegacyWritable => FormEnabled && EditEnabled;
+
+        /// <summary>同上：表单可用但不可写（原只读名单档）。</summary>
+        public bool LegacyReadOnly => FormEnabled && !EditEnabled;
+
         public override string ToString()
-            => $"formAvailable={FormAvailable} writable={FormEnabled} readOnly={FormReadOnly} profile={RightsProfile.Name}";
+            => $"formAvailable={FormAvailable} formEnabled={FormEnabled} editEnabled={EditEnabled} profile={RightsProfile.Name}";
     }
 
     private sealed class FakeDefinitionSource : IWorkbenchDefinitionSource

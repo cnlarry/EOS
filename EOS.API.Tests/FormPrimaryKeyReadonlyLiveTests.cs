@@ -142,7 +142,7 @@ public sealed class FormPrimaryKeyReadonlyLiveTests : IAsyncLifetime
     private WorkbenchDefinitionBuilder Builder() =>
         new(_connections,
             new WorkbenchDefinitionProvider(_connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
-            Options.Create(new UnifiedFormEditorSettings { EnabledModuleIds = [ModuleId] }),
+            TestFormCapability.Single(ModuleId, editEnabled: true),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
 
     private static IReadOnlySet<string> Empty => new HashSet<string>(StringComparer.OrdinalIgnoreCase);

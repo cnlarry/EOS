@@ -47,7 +47,7 @@ public sealed class MenuAdminRepository(
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
                    ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT,
-                   REMARK,APPROVE_ENABLED
+                   REMARK,APPROVE_ENABLED,UNIFIED_FORM_ENABLED,UNIFIED_FORM_EDIT_ENABLED
                    FROM dbo.MODULES WITH (NOLOCK)
                    LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
                    LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
@@ -248,7 +248,7 @@ public sealed class MenuAdminRepository(
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
                    ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT,
-                   REMARK,APPROVE_ENABLED
+                   REMARK,APPROVE_ENABLED,UNIFIED_FORM_ENABLED,UNIFIED_FORM_EDIT_ENABLED
                    FROM dbo.MODULES WITH (NOLOCK)
                    LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
                    LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
@@ -488,6 +488,7 @@ public sealed class MenuAdminRepository(
             await EnsureTablesExistAsync(connection, transaction, input, token);
             await EnsureShapeInvariantsAsync(connection, transaction, oldId, input, kind, token);
             await EnsureApproveColumnsAsync(connection, transaction, input, token);
+            EnsureUnifiedFormRequirements(input);
             var rootIdx = await ResolveRootAsync(connection, transaction, input.M_P_IDX, input.M_IDX, token);
             if (oldId is { } currentId)
             {
@@ -717,7 +718,7 @@ public sealed class MenuAdminRepository(
     /// - <c>SEARCH_1/2</c>：搜索中心是独立于承载页的可达面（`/search-center`），只要有主表就能用；
     ///   没有主表则必须清掉——搜索中心的模块清单直接读 `MASTER_TABLE`，为 NULL 会整页 500。
     /// </summary>
-    private static MenuAdminModule NormalizeForKind(MenuAdminModule input)
+    internal static MenuAdminModule NormalizeForKind(MenuAdminModule input)
     {
         // 批核两开关的不变量（ADR-035 §6）：**未启用批核 ⇒ 自动批核必须为假**。
         // 上行联动（勾「自动批核」时自动勾上「启用批核」）由前端负责——它知道用户刚点了哪个
@@ -725,6 +726,11 @@ public sealed class MenuAdminRepository(
         // 「启用批核」是主声明，没有它就没有批核入口，自动翻转状态位也就无从谈起。
         if (!input.ApproveEnabled && input.AUTO_APPROVE)
             input = input with { AUTO_APPROVE = false };
+        // 统一表单能力两位的不变量（与库约束 CK_MODULES_UNIFIED_FORM_EDIT 同口径）：
+        // **未启用统一表单 ⇒ 不允许写入**。勾选顺序由前端负责上行联动（勾"允许写入"时自动勾上
+        // "表单可用"），服务端只钉这条不变量——"表单可用"是主声明，没有表单面就谈不上写。
+        if (!input.UnifiedFormEnabled && input.UnifiedFormEditEnabled)
+            input = input with { UnifiedFormEditEnabled = false };
         if (ModuleRouteValidator.ResolveKind(input.M_URL, input.MASTER_TABLE) == ModuleNodeKind.Workbench)
             return input;
         var hasMaster = !string.IsNullOrWhiteSpace(input.MASTER_TABLE);
@@ -740,6 +746,9 @@ public sealed class MenuAdminRepository(
             DETAIL_NO_SAVE = false,
             // 非统一工作台模块（报表 / 搜索中心 / 自定义页 / 目录）没有单据面，也就没有批核入口
             ApproveEnabled = false,
+            // 同理没有表单面：统一表单能力两位一律落回默认（这条正是"点进去空壳页"的防呆）
+            UnifiedFormEnabled = false,
+            UnifiedFormEditEnabled = false,
             FILTER = hasMaster ? input.FILTER : null,
             SEARCH_1 = hasMaster ? input.SEARCH_1 : false,
             SEARCH_2 = hasMaster ? input.SEARCH_2 : false,
@@ -753,6 +762,19 @@ public sealed class MenuAdminRepository(
     /// 缺列要走迁移补列（不设一键补列）。查 `sys.columns` 不带 NOLOCK——目录视图是元数据读，
     /// 没有脏读窗口，也不进 NOLOCK 白名单的豁免清单。
     /// </summary>
+    private static void EnsureUnifiedFormRequirements(MenuAdminModule m)
+    {
+        // 形态不变量已把非工作台节点上的两位抹平（见 NormalizeForKind），这里只挡"工作台形态但没有主表"：
+        // `/workbench` 承载页 + 无主表照样是工作台形态，但装配不出定义——用户点进去只会看到
+        // "无法加载单据定义"。宁可保存时拒绝并说清原因。
+        if (!m.UnifiedFormEnabled)
+            return;
+        if (!string.IsNullOrWhiteSpace(m.MASTER_TABLE))
+            return;
+        throw new ArgumentException(
+            "启用统一表单的模块必须有操作主表：没有主表就装配不出表单，用户点进去只会打不开。");
+    }
+
     private static async Task EnsureApproveColumnsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -881,6 +903,9 @@ public sealed class MenuAdminRepository(
         REMARK: GetString(reader, 30),
         // APPROVE_ENABLED 继续往后追加（下标 31，ADR-035）：同样不动既有下标
         ApproveEnabled: GetBool(reader, 31),
+        // 统一表单能力两位再往后追加（下标 32/33，迁移 355）：能力页签的读写口径与 APPROVE_ENABLED 同源
+        UnifiedFormEnabled: GetBool(reader, 32),
+        UnifiedFormEditEnabled: GetBool(reader, 33),
         // 形态由承载页（下标 3）与主表（下标 15）算出，不落库：库里只有一个事实来源，
         // 投影只是它的读法（见 ModuleNodeKind）。
         NODE_KIND: ModuleRouteValidator.WireName(
@@ -1109,12 +1134,12 @@ public sealed class MenuAdminRepository(
              (M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
               MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-              M_ICON,REMARK,APPROVE_ENABLED)
-              VALUES
+              M_ICON,REMARK,APPROVE_ENABLED,UNIFIED_FORM_ENABLED,UNIFIED_FORM_EDIT_ENABLED)
+               VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
-              @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
-              @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,@LAST_UPDATE_BY,GETDATE(),
-              @M_ICON,@REMARK,@APPROVE_ENABLED);
+               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
+               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,@LAST_UPDATE_BY,GETDATE(),
+               @M_ICON,@REMARK,@APPROVE_ENABLED,@UNIFIED_FORM_ENABLED,@UNIFIED_FORM_EDIT_ENABLED);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         await command.ExecuteNonQueryAsync(token);
@@ -1133,7 +1158,9 @@ public sealed class MenuAdminRepository(
               LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
               M_ICON=@M_ICON,
               REMARK=@REMARK,
-              APPROVE_ENABLED=@APPROVE_ENABLED
+              APPROVE_ENABLED=@APPROVE_ENABLED,
+              UNIFIED_FORM_ENABLED=@UNIFIED_FORM_ENABLED,
+              UNIFIED_FORM_EDIT_ENABLED=@UNIFIED_FORM_EDIT_ENABLED
               WHERE M_IDX=@OLD_IDX;
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
@@ -1169,6 +1196,9 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
         // 批核入口声明（ADR-035）：勾选时校验主表批核三列，见 EnsureApproveColumnsAsync
         command.Parameters.Add("@APPROVE_ENABLED", SqlDbType.Bit).Value = m.ApproveEnabled;
+        // 统一表单能力两位（迁移 355）：勾"表单可用"时校验有主表，见 EnsureUnifiedFormRequirementsAsync
+        command.Parameters.Add("@UNIFIED_FORM_ENABLED", SqlDbType.Bit).Value = m.UnifiedFormEnabled;
+        command.Parameters.Add("@UNIFIED_FORM_EDIT_ENABLED", SqlDbType.Bit).Value = m.UnifiedFormEditEnabled;
         // 模块备注：写"这个模块是干什么的"（230101「基础」页签可编辑）。空串归一成 NULL，
         // 免得列表/详情在两处显示口径上出现"空串 vs NULL"的假差异。
         command.Parameters.AddWithValue("@REMARK", string.IsNullOrWhiteSpace(m.REMARK) ? DBNull.Value : m.REMARK.Trim());

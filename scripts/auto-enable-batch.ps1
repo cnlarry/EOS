@@ -1,8 +1,8 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写 appsettings.json）→ 重启 API →
-真实数据 CRUD 回路（尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。
+统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写模块声明）→ 真实数据 CRUD 回路
+（尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。
 全绿则保留启用并出报告；任一失败则整批回滚并出差异报告（不静默修正）。
 .DESCRIPTION
 数据策略（用户指示 2026-08-19）：
@@ -10,16 +10,19 @@
   DFT_VALUE 默认值生效、文本按标签生成中文语义值、数值按标签推断合理值、日期取业务日期；
 - 数据尽量完整：填所有可见可编辑字段，不只填必填；输出每模块完整度百分比与未解析字段清单。
 决策边界：任何无法自动构造/与旧系统语义不一致的字段或模块 → 进 exceptions 报告，不自动修正。
-放量 = 写入 UnifiedFormEditor.EnabledModuleIds（开发/测试环境）+ 回归全绿；生产部署另行走部署流程。
+放量 = 把模块声明改成「统一表单可用且可写」（`dbo.MODULES.UNIFIED_FORM_ENABLED` /
+`UNIFIED_FORM_EDIT_ENABLED`，开发/测试环境）+ 回归全绿；生产部署另行走部署流程。
+**这两个位是现读的**（与 `APPROVE_ENABLED` 同口径、不进定义快照），所以放量是一次 UPDATE、
+免重启；回滚就是把本批模块恢复原位（脚本开跑前先记下原位）。
 .EXAMPLE
 .\scripts\auto-enable-batch.ps1
 .\scripts\auto-enable-batch.ps1 -ModuleIds 2701,2702,3301
-.\scripts\auto-enable-batch.ps1 -SkipRestart -SkipRegression   # 联调用
+.\scripts\auto-enable-batch.ps1 -SkipRegression   # 联调用
 #>
 param(
     [int[]]$ModuleIds = @(),
     [string]$ApiUrl = 'http://localhost:5261',
-    [switch]$SkipRestart,
+    [switch]$SkipRestart,      # 保留参数：能力现读、放量不再需要重启（进了参数就提示一句）
     [switch]$SkipRegression,
     [string]$OutDir = ''
 )
@@ -35,8 +38,6 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $runDir = Join-Path $OutDir $stamp
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 
-$appSettingsPath = Join-Path $root 'EOS.API\appsettings.json'
-$backupPath = Join-Path $runDir 'appsettings.json.bak'
 $reportLines = [System.Collections.Generic.List[string]]::new()
 $exceptions = [System.Collections.Generic.List[string]]::new()
 $results = [System.Collections.Generic.List[object]]::new()
@@ -101,18 +102,8 @@ ORDER BY CAST(M_IDX AS INT);
     return $result
 }
 
-function Get-EosJson {
-    $app = Get-Content -Raw -LiteralPath $appSettingsPath | ConvertFrom-Json
-    return $app
-}
-
-function Set-EosJson {
-    param($App)
-    $json = $App | ConvertTo-Json -Depth 12
-    # pwsh 7 ConvertTo-Json 为紧凑输出；补 2 空格缩进便于人读/审
-    $indented = $json | ConvertFrom-Json | ConvertTo-Json -Depth 12
-    [System.IO.File]::WriteAllText($appSettingsPath, $indented, [System.Text.UTF8Encoding]::new($false))
-}
+# Get-EosJson / Set-EosJson（读写 appsettings 的 UnifiedFormEditor 名单）已随迁移 355 退役：
+# 能力位进了 dbo.MODULES，放量与回滚都是 SQL（见 Set-UnifiedFormAbility / Restore-UnifiedFormAbility）。
 
 function Invoke-ApiJson {
     param([string]$Method, [string]$Path, $Body = $null)
@@ -495,11 +486,31 @@ $physType = Get-BatchPhysTypes -Modules $modules
 $script:Session = New-EosSession -ApiUrl $ApiUrl
 $prefix = 'E2EA' + (Get-Date -Format 'MMddHHmmss')
 
-# ---- 启用（写配置 + 备份） ----
-Copy-Item -LiteralPath $appSettingsPath -Destination $backupPath -Force
-$app = Get-EosJson
-$existing = @($app.UnifiedFormEditor.EnabledModuleIds | ForEach-Object { [string]$_ })
+# ---- 启用（写模块声明；先记下本批的原位供回滚） ----
+$existing = @(Get-EosWhitelist)                                          # 已可写的模块（声明口径）
 $newIds = @($modules | ForEach-Object { [string]$_.ModuleId } | Where-Object { $_ -notin $existing })
+# 原位快照：回滚要把本批恢复成"开跑前的样子"——里面可能有"仅浏览"的模块，
+# 一律置 0 会把它们的表单面也关掉（那不是回滚，是另一种破坏）。
+$beforeState = @()
+if ($newIds.Count -gt 0) {
+    $newIdList = '(' + (($newIds | ForEach-Object { [int]$_ }) -join ',') + ')'
+    $beforeState = @(Invoke-EosSqlQuery -Query "SET NOCOUNT ON; SELECT CONVERT(nvarchar(20), M_IDX) + '|' + CONVERT(nvarchar(1), ISNULL(UNIFIED_FORM_ENABLED,0)) + CONVERT(nvarchar(1), ISNULL(UNIFIED_FORM_EDIT_ENABLED,0)) FROM dbo.MODULES WHERE M_IDX IN $newIdList;" |
+        Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() })
+}
+
+function Set-UnifiedFormAbility {
+    param([string]$IdList, [int]$FormEnabled, [int]$EditEnabled)
+    Invoke-EosSqlNonQuery -Query "SET NOCOUNT ON; UPDATE dbo.MODULES SET UNIFIED_FORM_ENABLED = $FormEnabled, UNIFIED_FORM_EDIT_ENABLED = $EditEnabled, LAST_UPDATE_BY = 'auto-enable-batch', LAST_UPDATE_DATE = SYSDATETIME() WHERE M_IDX IN $IdList;" | Out-Null
+}
+
+function Restore-UnifiedFormAbility {
+    <# 把本批模块恢复成开跑前的能力位（原位快照为空说明本批没有新模块）。 #>
+    foreach ($line in $beforeState) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 3) { continue }
+        Invoke-EosSqlNonQuery -Query "SET NOCOUNT ON; UPDATE dbo.MODULES SET UNIFIED_FORM_ENABLED = $([int]$parts[1]), UNIFIED_FORM_EDIT_ENABLED = $([int]$parts[2]), LAST_UPDATE_BY = 'auto-enable-batch', LAST_UPDATE_DATE = SYSDATETIME() WHERE M_IDX = $([int]$parts[0]);" | Out-Null
+    }
+}
 
 # ---- ADR-005 阶段 2：发布前校验器共用同一道闸（启用前先服务端预检） ----
 Add-ReportLine "## 2. 发布前校验（ADR-005 阶段 2：与快照发布共用同一校验器）"
@@ -528,23 +539,13 @@ if ($newIds.Count -eq 0) {
     throw '本批模块全部未通过发布前校验（ADR-005 阶段 2），停止放量。'
 }
 
-$app.UnifiedFormEditor.EnabledModuleIds = @($existing + $newIds | ForEach-Object { [int]$_ } | Sort-Object)
-Set-EosJson -App $app
-Add-ReportLine "## 3. 启用：新增 $($newIds.Count) 个模块（$($newIds -join '、')），白名单合计 $($app.UnifiedFormEditor.EnabledModuleIds.Count)"
+Set-UnifiedFormAbility -IdList ('(' + (($newIds | ForEach-Object { [int]$_ }) -join ',') + ')') -FormEnabled 1 -EditEnabled 1
+$enabledNow = @(Get-EosWhitelist)
+Add-ReportLine "## 3. 启用：新增 $($newIds.Count) 个模块（$($newIds -join '、')），可写模块合计 $($enabledNow.Count)"
 Add-ReportLine ''
-
-if (-not $SkipRestart) {
-    Add-ReportLine '重启 EOS.API 使白名单生效…'
-    & (Join-Path $root 'scripts\dev-services.ps1') restart api | Out-Host
-    Start-Sleep -Seconds 2
-    $deadline = (Get-Date).AddSeconds(90)
-    $ready = $false
-    while ((Get-Date) -lt $deadline) {
-        if ($null -ne (Get-NetTCPConnection -LocalPort 5261 -State Listen -ErrorAction SilentlyContinue)) { $ready = $true; break }
-        Start-Sleep -Seconds 2
-    }
-    if (-not $ready) { throw 'EOS.API 重启后 90 秒未就绪，请检查 logs/api.err.log' }
-    $script:Session = New-EosSession -ApiUrl $ApiUrl
+if ($SkipRestart) {
+    Add-ReportLine '提示：能力位是现读的（MODULES 两列），放量不再需要重启；-SkipRestart 现在只是空开关。'
+    Add-ReportLine ''
 }
 
 # ---- 预检 + CRUD 回路（启用后） ----
@@ -615,19 +616,14 @@ if ($passed.Count -gt 0 -and -not $SkipRegression) {
 if ($allPass -and $blocked.Count -eq 0) {
     Add-ReportLine '## 结论'
     Add-ReportLine ''
-    Add-ReportLine "**放量成功**：$($newIds.Count) 个模块已启用并保留（白名单 $($app.UnifiedFormEditor.EnabledModuleIds.Count)）。差异项见 exceptions.md，供人工复核。"
-    Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
+    Add-ReportLine "**放量成功**：$($newIds.Count) 个模块已声明可写并保留（可写模块 $((@(Get-EosWhitelist)).Count) 个）。差异项见 exceptions.md，供人工复核。"
 } elseif ($allPass -and $passed.Count -gt 0) {
-    # 部分放量：回滚到备份后，只重启用通过的模块；阻塞模块进异常清单供人工审核
-    Copy-Item -LiteralPath $backupPath -Destination $appSettingsPath -Force
-    $app2 = Get-EosJson
-    $existing2 = @($app2.UnifiedFormEditor.EnabledModuleIds | ForEach-Object { [string]$_ })
+    # 部分放量：先把本批恢复原位，再只启用通过的那些；阻塞模块进异常清单供人工审核
+    Restore-UnifiedFormAbility
     $passedIds = @($passed | ForEach-Object { [string]$_.ModuleId })
-    $newPassed = @($passedIds | Where-Object { $_ -notin $existing2 })
-    $app2.UnifiedFormEditor.EnabledModuleIds = @($existing2 + $newPassed | ForEach-Object { [int]$_ } | Sort-Object)
-    Set-EosJson -App $app2
-    if (-not $SkipRestart) {
-        & (Join-Path $root 'scripts\dev-services.ps1') restart api | Out-Host
+    $newPassed = @($passedIds | Where-Object { $_ -notin $existing })
+    if ($newPassed.Count -gt 0) {
+        Set-UnifiedFormAbility -IdList ('(' + (($newPassed | ForEach-Object { [int]$_ }) -join ',') + ')') -FormEnabled 1 -EditEnabled 1
     }
     $descById = @{}
     foreach ($mm in $modules) { $descById[[string]$mm.ModuleId] = $mm.Desc }
@@ -636,26 +632,20 @@ if ($allPass -and $blocked.Count -eq 0) {
     }
     Add-ReportLine '## 结论'
     Add-ReportLine ''
-    Add-ReportLine "**部分放量**：启用 $($newPassed.Count) 个通过模块（白名单 $($app2.UnifiedFormEditor.EnabledModuleIds.Count)）；阻塞 $($blocked.Count) 个（$($blocked.ModuleId -join '、')）已列入异常清单，供人工审核。"
+    Add-ReportLine "**部分放量**：启用 $($newPassed.Count) 个通过模块（可写模块 $((@(Get-EosWhitelist)).Count) 个）；阻塞 $($blocked.Count) 个（$($blocked.ModuleId -join '、')）已列入异常清单，供人工审核。"
 } else {
-    Copy-Item -LiteralPath $backupPath -Destination $appSettingsPath -Force
-    if (-not $SkipRestart) {
-        & (Join-Path $root 'scripts\dev-services.ps1') restart api | Out-Host
-    }
+    Restore-UnifiedFormAbility
     Add-ReportLine '## 结论'
     Add-ReportLine ''
-    Add-ReportLine "**放量失败并回滚**：appsettings.json 已恢复备份，API 已重启，白名单未保留本批模块。详见 exceptions.md。"
+    Add-ReportLine '**放量失败并回滚**：本批模块的统一表单能力位已恢复开跑前的值（原位快照见上报正文），未保留本批放量。详见 exceptions.md。'
 }
 } catch {
     $allPass = $false
     Add-Exception "流水线异常（已回滚）：$($_.Exception.Message)"
     try {
-        Copy-Item -LiteralPath $backupPath -Destination $appSettingsPath -Force
-        if (-not $SkipRestart) {
-            & (Join-Path $root 'scripts\dev-services.ps1') restart api | Out-Host
-        }
+        Restore-UnifiedFormAbility
     } catch {
-        Add-Exception "回滚过程中出错：$($_.Exception.Message)（请手工恢复 $backupPath）"
+        Add-Exception "回滚过程中出错：$($_.Exception.Message)（请按原位快照手工恢复本批模块的能力位：$($beforeState -join ' ; ')）"
     }
     Add-ReportLine '## 结论'
     Add-ReportLine ''

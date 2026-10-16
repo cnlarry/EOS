@@ -25,7 +25,7 @@ public sealed class WorkbenchDefinitionValidator(
     ModuleBusinessConfigRepository configRepository,
     DocumentActionRegistry documentActions,
     DocumentActionAuthorization documentActionAuthorization,
-    IOptions<UnifiedFormEditorSettings> formSettings,
+    IUnifiedFormCapabilitySource formCapability,
     ILogger<WorkbenchDefinitionValidator> logger)
 {
 
@@ -46,19 +46,19 @@ public sealed class WorkbenchDefinitionValidator(
         }
         checks.Add(new("module_exists", true, $"模块 {moduleId} {module.Title} 存在。"));
 
-        // 写名单与只读名单都表示"运行期有统一表单"，区别只在能不能写
-        var enabled = formSettings.Value.EnabledModuleIds.Contains(moduleId)
-            || formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
+        // "运行期有统一表单" = 模块声明 UNIFIED_FORM_ENABLED（可写与仅浏览都算），
+        // 或承载页本身就是统一工作台（M_URL=/workbench，或留空但有主表）
+        var formEnabled = (await formCapability.GetAsync(moduleId, token)).FormEnabled;
         var workbenchModule = ModuleRouteValidator.IsWorkbenchModule(module.MUrl, module.MasterTable);
-        if (!workbenchModule && !enabled)
+        if (!workbenchModule && !formEnabled)
         {
             checks.Add(new("runtime_whitelist", false,
-                "模块既不在统一表单名单内，承载页也不是统一工作台（M_URL 不是 /workbench，也不是\"留空 + 有主表\"），无法进入运行时。"));
+                "模块既没声明启用统一表单，承载页也不是统一工作台（M_URL 不是 /workbench，也不是\"留空 + 有主表\"），无法进入运行时。"));
         }
         else
         {
             checks.Add(new("runtime_whitelist", true,
-                workbenchModule ? "承载页是统一工作台（M_URL=/workbench，或留空但有主表）。" : "模块在统一表单名单内。"));
+                workbenchModule ? "承载页是统一工作台（M_URL=/workbench，或留空但有主表）。" : "模块声明启用了统一表单。"));
         }
 
         // 路由契约：只剩 M_URL 一个字段（NEW_URL / MODI_URL / HELP_URL 随迁移 321 物理删除）。
@@ -189,7 +189,7 @@ public sealed class WorkbenchDefinitionValidator(
             : new("convert_functions_controlled", false, $"CONVERT_FUNCTION 不在白名单：{string.Join(",", convertErrors)}。"));
 
         WorkbenchDefinition? definition = null;
-        if (workbenchModule || enabled)
+        if (workbenchModule || formEnabled)
         {
             // 发布路径的"可构建"校验必须以"元数据重建"后的定义为准（与写入快照的定义一致）：
             // 走 forPublish=true 会忽略已发布基线，让校验反映当前代码+元数据，而不是旧快照。
@@ -207,7 +207,7 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("definition_build", false, "模块不在运行白名单，跳过定义构建。"));
         }
 
-        if (enabled || workbenchModule)
+        if (formEnabled || workbenchModule)
         {
             if (definition is not null)
             {

@@ -42,6 +42,8 @@ const moduleWithTables = (id: number, desc: string): MenuAdminModule => ({
   M_ICON: null,
   Icon: null,
   APPROVE_ENABLED: false,
+  UNIFIED_FORM_ENABLED: false,
+  UNIFIED_FORM_EDIT_ENABLED: false,
   REMARK: null,
 })
 

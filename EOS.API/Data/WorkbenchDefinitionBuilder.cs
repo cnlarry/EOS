@@ -1,8 +1,8 @@
 using EOS.API.Data.Forms;
+using EOS.API.Data.Workbench;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 using System.Data;
 using System.Globalization;
 using System.Text.Json;
@@ -19,13 +19,10 @@ namespace EOS.API.Data;
 public sealed class WorkbenchDefinitionBuilder(
     DbConnectionFactory connections,
     WorkbenchDefinitionProvider definitionProvider,
-    IOptions<UnifiedFormEditorSettings> formSettings,
+    IUnifiedFormCapabilitySource formCapability,
     ILogger<WorkbenchDefinitionBuilder> logger)
 {
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
-    /// <summary>能打开统一表单的模块（写名单 + 只读名单）：跨模块浏览链接只指向这些目标。</summary>
-    private readonly IReadOnlySet<int> formOpenableModules =
-        formSettings.Value.EnabledModuleIds.Concat(formSettings.Value.ReadOnlyModuleIds).ToHashSet();
 
     /// <summary>
     /// 过账引擎可能要求、因此必须出现在明细表单里的维度列（与"必填"同款处理）：
@@ -110,6 +107,10 @@ public sealed class WorkbenchDefinitionBuilder(
     {
         var master = baseline.MasterTable;
         var detail = baseline.DetailTable;
+        // 能打开统一表单的模块（跨模块浏览链接只指向这些目标）：**每次装配现读**——
+        // 它随模块声明 `UNIFIED_FORM_ENABLED` 变，不进快照（与 `APPROVE_ENABLED` 同口径），
+        // 放在构造函数里缓存会让改完声明后链接目标仍停在进程启动时的那一份。
+        var formOpenableModules = await formCapability.GetFormEnabledIdsAsync(token);
         var masterFields = await WorkbenchBrowseResolver.ResolveAsync(connection,
             await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
             master, formOpenableModules, token);
@@ -200,8 +201,10 @@ public sealed class WorkbenchDefinitionBuilder(
                 moduleId, url, master, detail);
             return null;
         }
-        // 新增/编辑能力**不在定义里推导**：它由统一表单名单（UnifiedFormEditorSettings）在
-        // WorkbenchAccessPolicy.FoldRoutes 里按请求折叠（迁移 321 删掉了那三个路由列）。
+        // 新增/编辑能力**不在定义里推导**：它由模块声明（UNIFIED_FORM_ENABLED /
+        // UNIFIED_FORM_EDIT_ENABLED）在 WorkbenchAccessPolicy.FoldRoutes 里按请求折叠
+        // （迁移 321 删掉了那三个路由列；迁移 355 把能力从 appsettings 名单搬进 MODULES）。
+        var formOpenableModules = await formCapability.GetFormEnabledIdsAsync(token);
         var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
             await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formOpenableModules,token);
         var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
@@ -236,8 +239,8 @@ public sealed class WorkbenchDefinitionBuilder(
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await WorkbenchBrowseResolver.ResolveAsync(connection,
                 await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formOpenableModules,token),NormalizeSort(defaultSort,master,masterFields),
-            // HasAdd/HasEdit 在这里恒为 false：它由统一表单名单在请求期折叠（见 WorkbenchAccessPolicy.FoldRoutes）。
-            // 写成推导值会让"能不能写"多出一处可能与名单不一致的真源——迁移 321 之后只剩名单一处。
+            // HasAdd/HasEdit 在这里恒为 false：它由模块声明在请求期折叠（见 WorkbenchAccessPolicy.FoldRoutes）。
+            // 写成推导值会让"能不能写"多出一处可能与声明不一致的真源——迁移 355 之后只剩 MODULES 两列一处。
             false,false,detailNoSave,
             masterPkOrder,detailNoFields,
             await WorkflowEngine.HasFlowAsync(connection,moduleId,token),

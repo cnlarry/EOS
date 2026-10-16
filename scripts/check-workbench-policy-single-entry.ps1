@@ -39,9 +39,10 @@ $decisionTokens = @(
     'rights.CanEdit',
     'rights.CanDelete',
     'rights.CanSetup',
-    'FormWritable(',
-    'FormReadOnly(',
-    'HasWritablePage(',
+    # 统一表单能力（迁移 355 起是 MODULES 两列）：判定只走策略入口，控制器不得自读
+    'HasWritablePageAsync(',
+    'GetFormCapabilityAsync(',
+    'UNIFIED_FORM_ENABLED',
     'IsUnifiedFormRoute(',
     'WithoutWriteActions(',
     'FormAccess(',

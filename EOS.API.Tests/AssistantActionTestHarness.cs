@@ -76,10 +76,7 @@ internal static class AssistantActionTestHarness
 
     public static WorkbenchAccessPolicy Policy(
         IWorkbenchDefinitionSource definitions, IPermissionService permissions, params int[] writableModules)
-        => new(definitions, permissions, Options.Create(new UnifiedFormEditorSettings
-        {
-            EnabledModuleIds = writableModules.Length == 0 ? [] : [.. writableModules],
-        }));
+        => new(definitions, permissions, TestFormCapability.For(writableModules));
 
     /// <summary>固定定义来源：无论请求什么权限上下文都返回同一份定义与表单。</summary>
     public sealed class FixedDefinitionSource(WorkbenchDefinition? definition, FormDefinition? form)

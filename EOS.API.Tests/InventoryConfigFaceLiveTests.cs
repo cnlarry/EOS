@@ -128,24 +128,27 @@ public sealed class InventoryConfigFaceLiveTests
     }
 
     [Fact]
-    public async Task 库存表当主表或明细表的模块不得进统一表单写名单()
+    public async Task 库存表当主表或明细表的模块不得允许通用表单写入()
     {
-        var enabled = ReadEnabledModuleIds();
-        Assert.True(enabled.Count > 0, "UnifiedFormEditor.EnabledModuleIds 为空——写名单没读到，这条断言会恒真");
-
         await using var connection = await OpenAsync();
-        var inventoryHosts = (await RowsAsync(connection, """
+        // 哨兵：库里总得有模块"可写"，否则下面的断言对任何配置都会通过（判据恒真）
+        var writableCount = await ScalarAsync<int>(connection, """
             SET NOCOUNT ON;
-            SELECT DISTINCT CONVERT(nvarchar(20), M_IDX) FROM dbo.MODULES
-             WHERE MASTER_TABLE IN ('INV_PRO_DEPOT','INV_DEPOT_LOG','INV_BATCH_M')
-                OR DETAIL_TABLE IN ('INV_PRO_DEPOT','INV_DEPOT_LOG','INV_BATCH_M');
-            """)).Select(int.Parse).ToHashSet();
-        Assert.True(inventoryHosts.Count > 0,
-            "库里没有以库存表为主表 / 明细表的模块——判据的样本不存在时这条断言会恒真");
+            SELECT COUNT(*) FROM dbo.MODULES
+             WHERE UNIFIED_FORM_ENABLED = 1 AND UNIFIED_FORM_EDIT_ENABLED = 1;
+            """);
+        Assert.True(writableCount > 0, "库里没有一个可写的统一表单模块——能力位根本没读到，这条断言会恒真");
 
-        var leaked = inventoryHosts.Intersect(enabled).OrderBy(id => id).ToList();
+        var leaked = (await RowsAsync(connection, """
+            SET NOCOUNT ON;
+            SELECT CONVERT(nvarchar(20), M_IDX) + N':' + LTRIM(RTRIM(M_DESC)) FROM dbo.MODULES
+             WHERE (MASTER_TABLE IN ('INV_PRO_DEPOT','INV_DEPOT_LOG','INV_BATCH_M')
+                 OR DETAIL_TABLE IN ('INV_PRO_DEPOT','INV_DEPOT_LOG','INV_BATCH_M'))
+               AND UNIFIED_FORM_EDIT_ENABLED = 1
+             ORDER BY M_IDX;
+            """)).ToList();
         Assert.True(leaked.Count == 0,
-            $"主表 / 明细表是库存表的模块出现在统一表单**写**名单里（通用表单会绕过移动引擎直接改账）：{string.Join("、", leaked)}");
+            $"主表 / 明细表是库存表的模块声明了「统一表单可写」（通用表单会绕过移动引擎直接改账）：{string.Join("、", leaked)}");
     }
 
     [Fact]
@@ -257,19 +260,6 @@ public sealed class InventoryConfigFaceLiveTests
     }
 
     // ===== 装配 =====
-
-    /// <summary>读统一表单写名单（`EOS.API/appsettings.json` 的 `UnifiedFormEditor.EnabledModuleIds`）。</summary>
-    private static HashSet<int> ReadEnabledModuleIds()
-    {
-        var path = Path.Combine(FindRepoRoot(), "EOS.API", "appsettings.json");
-        using var document = JsonDocument.Parse(File.ReadAllText(path));
-        return document.RootElement
-            .GetProperty("UnifiedFormEditor")
-            .GetProperty("EnabledModuleIds")
-            .EnumerateArray()
-            .Select(element => element.GetInt32())
-            .ToHashSet();
-    }
 
     private static async Task<SqlConnection> OpenAsync()
     {

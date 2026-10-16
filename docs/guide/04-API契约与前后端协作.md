@@ -156,7 +156,8 @@
 
 ## 收口（迁移 319~329）：模块级契约的三处变化
 
-- **"能不能写"改由写名单判定**：`MODULES` 的 `NEW_URL` / `MODI_URL` / `HELP_URL` 三个路由列已删除，
+- **"能不能写"改由模块声明判定**（迁移 355 起是 `MODULES.UNIFIED_FORM_ENABLED` /
+  `UNIFIED_FORM_EDIT_ENABLED`）：`MODULES` 的 `NEW_URL` / `MODI_URL` / `HELP_URL` 三个路由列已删除，
   `M_URL` 只表示**承载页**（空 = 目录节点或未声明，单据模块默认落统一工作台）。外部若按旧列判权限需跟着改。
 - **呈现配置随 `/form-definition` 下发**：`openMode`（`TAB` 本页签 / `NEWTAB` 新页签 / `DIALOG` 弹窗）、
   `dialogWidth`、`dialogHeight` 与 `tabs[].columns`（一行几列，**页签级**）。定义里**没有**模块级的 `columns`
@@ -205,8 +206,8 @@
 - 分组的**配置面**是 230102「模块分组」的定制页 `/admin/module-groups`（`ModuleGroupAdminController`，
   `api/v1/admin/module-groups`，读 `CanBrowse` / 写 `CanSetup`）：`POST/PUT/DELETE` 的校验失败一律
   400 `INVALID_ARGUMENT`，消息指名到列（如"列 X 不在主表 Y 的分组可用字段里"），便于界面直接显示。
-  230102 是**自定义承载页**，不在统一表单写名单里——那份名单是写路径的门，只收工作台模块
-  （见 [70-后台配置面总览](./70-后台配置面总览.md) 第二节）。
+  230102 是**自定义承载页**，不在统一表单能力面里（`UNIFIED_FORM_ENABLED = 0`）——只有工作台模块
+  才装配表单，配置面由页面自己负责（见 [70-后台配置面总览](./70-后台配置面总览.md) 第二节）。
 
 ## 收口（ADR-033）：配置面拆开后的三条契约变化
 

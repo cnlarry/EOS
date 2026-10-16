@@ -13,10 +13,9 @@
     并清掉了非工作台节点上**没有消费方**的工作台配置残留。本脚本守住那次收口的成果：
 
       ① 判据存在且取值封闭：`dbo.V_MODULE_NODE` 必须在，NODE_KIND 只允许三个取值；
-      ② 能力面一致：统一表单名单（`EOS.API/appsettings.json` 的 UnifiedFormEditor，
-         写名单 + 只读名单）里的模块必须全是 WORKBENCH。一旦名单里混进自定义承载页，
-         菜单管理按形态隐藏主表 / 默认列 / 版式入口就会误伤一个真能开统一表单的模块；
-         名单里出现库里不存在的编号也会让"名单"与库漂移。
+      ② 能力面一致：声明启用统一表单的模块（`MODULES.UNIFIED_FORM_ENABLED`，迁移 355 起能力进库、
+         现读）必须全是 WORKBENCH 且有操作主表。一旦自定义承载页上开了表单位，菜单管理按形态隐藏
+         主表 / 默认列 / 版式入口就会误伤一个"有表单却装配不出来"的模块；没有主表则用户点进去必 404。
       ③ 形态外无残留：非工作台节点上不得有排序字段 / 不可解批 / 自动批核 / 可复制 /
          异常不可保存 / 明细必需字段 / 无明细不可保存 / 效果引擎开关 /
          表单打开方式。它们只有工作台定义与效果引擎会消费。
@@ -53,32 +52,28 @@ WHERE n.NODE_KIND NOT IN (N'WORKBENCH', N'CUSTOMPAGE', N'DIRECTORY')
 GROUP BY n.NODE_KIND;
 '@
 
-    # ② 统一表单名单必须全落在 WORKBENCH 上（名单是"运行期有统一表单"的准入面）
-    $settingsPath = Join-Path $PSScriptRoot '..\EOS.API\appsettings.json'
-    if (-not (Test-Path -LiteralPath $settingsPath)) {
-        Write-Output "FAIL module node kind probe error: 找不到 $settingsPath"
+    # ② 统一表单能力（MODULES.UNIFIED_FORM_ENABLED）必须全落在 WORKBENCH 且带主表上：
+    #    能力位就是"运行期有统一表单"的准入面（迁移 355 之前是 appsettings 名单）。
+    $formEnabledCount = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
+SELECT CONVERT(nvarchar(20), COUNT(*)) FROM dbo.MODULES WHERE ISNULL(UNIFIED_FORM_ENABLED, 0) = 1;
+'@
+    $formEnabledCount = @($formEnabledCount | Where-Object { $_ -and $_.Trim() -ne '' })
+    if ($formEnabledCount.Count -eq 0 -or [int]($formEnabledCount[0].Trim()) -eq 0) {
+        Write-Output 'FAIL module node kind probe error: 没有任何模块声明启用统一表单，无法核对形态一致性（判据恒真）。'
         exit 2
     }
-    $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding utf8 | ConvertFrom-Json
-    $whitelist = @($settings.UnifiedFormEditor.EnabledModuleIds) + @($settings.UnifiedFormEditor.ReadOnlyModuleIds) |
-        Where-Object { $_ -ne $null } | Sort-Object -Unique
-    if ($whitelist.Count -eq 0) {
-        Write-Output 'FAIL module node kind probe error: UnifiedFormEditor 名单为空，无法核对形态一致性。'
-        exit 2
-    }
-    $values = ($whitelist | ForEach-Object { '(' + [int]$_ + ')' }) -join ','
 
-    $whitelistDrift = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @"
+    $whitelistDrift = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
 SELECT N'NOT_WORKBENCH | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
        + N' 形态=' + n.NODE_KIND
 FROM dbo.MODULES m
 INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX
-WHERE m.M_IDX IN ($values) AND n.NODE_KIND <> N'WORKBENCH'
+WHERE ISNULL(m.UNIFIED_FORM_ENABLED, 0) = 1 AND n.NODE_KIND <> N'WORKBENCH'
 UNION ALL
-SELECT N'MISSING_MODULE | ' + CONVERT(nvarchar(20), v.M_IDX)
-FROM (VALUES $values) AS v(M_IDX)
-WHERE NOT EXISTS (SELECT 1 FROM dbo.MODULES m WHERE m.M_IDX = v.M_IDX);
-"@
+SELECT N'NO_MASTER_TABLE | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
+FROM dbo.MODULES m
+WHERE ISNULL(m.UNIFIED_FORM_ENABLED, 0) = 1 AND LTRIM(RTRIM(ISNULL(m.MASTER_TABLE, N''))) = N'';
+'@
 
     # ③ 形态外残留：判据用与保存路径相同的归一化口径（空白串按"没填"）
     $residue = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
@@ -141,7 +136,7 @@ if ($unknownKind.Count -gt 0) {
 }
 
 if ($whitelistDrift.Count -gt 0) {
-    Write-Output 'FAIL unified-form whitelist and node shape disagree (a whitelisted module must be a WORKBENCH node; the whitelist is the only source of "has a unified form at runtime"):'
+    Write-Output 'FAIL modules declaring a unified form must be WORKBENCH nodes with a master table (UNIFIED_FORM_ENABLED is the only source of "has a unified form at runtime"):'
     $whitelistDrift | ForEach-Object { Write-Output "  $_" }
     exit 1
 }
@@ -159,5 +154,5 @@ if ($dirtyDrift.Count -gt 0) {
 }
 
 $shapeText = ($shape | ForEach-Object { $_.Trim() -replace '^SHAPE \| ', '' }) -join ', '
-Write-Output "PASS module node kind is judged in one place (dbo.V_MODULE_NODE) and the configuration surface follows it ($($whitelist.Count) whitelisted modules checked; shapes: $shapeText)."
+Write-Output "PASS module node kind is judged in one place (dbo.V_MODULE_NODE) and the configuration surface follows it ($($formEnabledCount[0].Trim()) form-enabled modules checked; shapes: $shapeText)."
 exit 0

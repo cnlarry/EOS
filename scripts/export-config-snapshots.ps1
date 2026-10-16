@@ -24,10 +24,11 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $root 'EOS.API.Tests\AcceptanceCommon.ps1')
 
-$settings = Get-Content -Raw -LiteralPath (Join-Path $root 'EOS.API\appsettings.json') | ConvertFrom-Json
-$enabled = @($settings.UnifiedFormEditor.EnabledModuleIds)
-if ($enabled.Count -eq 0) { throw 'appsettings.json UnifiedFormEditor.EnabledModuleIds 为空，无法导出快照。' }
-$idList = "(" + (($enabled | ForEach-Object { [int]$_ }) -join ',') + ")"
+# 有统一表单的模块（迁移 355 起能力进库、现读）：可写与仅浏览都要导，缺一个就漏一份快照
+$enabled = @(Invoke-EosSqlQuery 'SET NOCOUNT ON; SELECT CONVERT(nvarchar(20), M_IDX) FROM dbo.MODULES WHERE UNIFIED_FORM_ENABLED = 1 ORDER BY M_IDX;' |
+    ForEach-Object { [int]($_ -replace '\D', '') })
+if ($enabled.Count -eq 0) { throw '没有任何模块声明启用统一表单（MODULES.UNIFIED_FORM_ENABLED），无法导出快照。' }
+$idList = "(" + (($enabled) -join ',') + ")"
 $logs = Join-Path $root 'logs'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 
