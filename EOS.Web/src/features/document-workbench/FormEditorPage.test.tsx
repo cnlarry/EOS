@@ -896,6 +896,40 @@ describe('FormEditorPage', () => {
     await waitFor(() => expect(screen.getByText('请先填写主表字段：PRO_NO，再新增明细。')).toBeInTheDocument())
   })
 
+  it('门禁字段不在主表录入面上时跳过该键（明细行仍可新增）', async () => {
+    // DETAIL_NO_FIELDS 是随模块一起维护的历史元数据，里面可能留着本模块录入面没有的键
+    // （字段被标为不显示，或本就不属于这张表）。这类键在界面上永远给不出值，
+    // 逐键检查会把门禁变成死结——模块 3203（会计日记帐）就是这样加不出明细行的。
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, detailNoFields: 'GHOST_FIELD' }
+      if (p.includes('/record')) return recordBundle
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
+    const detailInputs = () => Array.from(container.querySelectorAll<HTMLInputElement>(
+      '.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control'))
+    await waitFor(() => expect(detailInputs().length).toBeGreaterThan(0))
+  })
+
+  it('门禁提示只点名录入面上真实存在的字段', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, detailNoFields: 'PRO_NO;GHOST_FIELD' }
+      if (p.includes('/record')) return recordBundle
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
+    // 只点名 PRO_NO：GHOST_FIELD 界面上没有输入处，提它等于让用户去填一个不存在的格子
+    await waitFor(() => expect(screen.getByText('请先填写主表字段：PRO_NO，再新增明细。')).toBeInTheDocument())
+  })
+
   it('新增与删除明细行', async () => {
     const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
