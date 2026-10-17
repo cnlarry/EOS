@@ -35,6 +35,12 @@ $ErrorActionPreference = 'Stop'
 $dataDir = Join-Path $Root 'EOS.API/Data'
 
 # 棘轮基线：2026-09-24 现状。只允许从中删除，不允许未经说明地追加。
+#
+# 追加记录（每一条都要写清"为什么它必须留在根目录"）：
+#   · CurrencyPrecision.cs —— ADR-037 的币别/单位精度读取，金额、数量、单价三类校验与显示共用；
+#     它不属于任何一个域，迁进 Data/<域>/ 会造成"精度口径按域各存一份"。
+#   · NumericDisplay.cs —— 数值显示格式化（金额/数量/百分比/汇率），前后端契约的一部分，
+#     被工作台渲染、打印与导出共用，同上无单一归属域。
 $allowed = @'
 AmountCalculator.cs
 AssistantQueryBuilder.cs
@@ -55,6 +61,7 @@ ChooserModels.cs
 ChooserRepository.cs
 ConditionTemplateParser.cs
 ConvertFunctionResolver.cs
+CurrencyPrecision.cs
 DataFilterParser.cs
 DbConnectionFactory.cs
 DepotStockPolicyService.cs
@@ -82,6 +89,7 @@ ModuleRouteValidator.cs
 MrpRecalcService.cs
 NavigationGroupsRepository.cs
 NavigationRepository.cs
+NumericDisplay.cs
 PdfLayout.cs
 PrintService.cs
 PrintSettingsRepository.cs
