@@ -266,4 +266,33 @@ public sealed class ChooserFilterCompilerTests
         Assert.NotNull(result);
         Assert.Equal("([HR_EMPLOYEE].[DIMISSION_DATE] IS NULL)", result!.Predicate);
     }
+
+    [Fact]
+    public void Compile_ColumnReferenceWrittenAsValue_FailsClosed()
+    {
+        // 存量里有 37 条把「列对列比较」写成了 value（如 FINISHED_QTY LT "MOU_ACCEPT_M.QTY"）：
+        // 参数化后 SQL 会拿 'MOU_ACCEPT_M.QTY' 去比数值列 → 运行期类型转换失败 → 选择器 500。
+        // 编译期必须 fail-closed（返回 null，调用方给空集并告警），而不是让它漏到 SQL。
+        var filter = new ChooserFilterStruct("AND",
+        [
+            new ChooserFilterItem("FINISHED_QTY", "LT", "MOU_ACCEPT_M.QTY"),
+        ]);
+
+        Assert.Null(ChooserFilterCompiler.Compile(filter, "MOU_ACCEPT_M", null, null));
+    }
+
+    [Fact]
+    public void Compile_ValueThatOnlyLooksLikeAnUnknownTable_StillCompiles()
+    {
+        // 守卫只认「源表或已 JOIN 表.列」这种窄形状：不相干的字面量（含点的单号、编号）照常放行，
+        // 宁可少拦，也不要把合法字面量误判成列引用——误判会让选择器变成永远空集。
+        var filter = new ChooserFilterStruct("AND",
+        [
+            new ChooserFilterItem("CLIENT_ID", "EQ", "C001.DISCOUNT"),
+        ]);
+        var result = ChooserFilterCompiler.Compile(filter, "ORDER_M", Joins, null);
+
+        Assert.NotNull(result);
+        Assert.Equal("C001.DISCOUNT", Assert.Single(result!.Parameters).RawValue);
+    }
 }

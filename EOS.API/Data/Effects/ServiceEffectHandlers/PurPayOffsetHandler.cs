@@ -33,13 +33,15 @@ internal static class PrepayOffsetRunner
         var scope = "m." + Q(config.Master.TypeField) + "=@type AND m." + Q(config.Master.NoField) + "=@no";
 
         // ① 冲抵汇总（既有实现先写后校验，顺序保持一致）
-        var offset = "UPDATE m SET m." + Q(config.Master.OffsetSumField) + "=(SELECT SUM(o."
-            + Q(config.Offset.AmountField) + ") FROM dbo." + Q(config.Offset.Table) + " o WHERE o."
-            + Q(config.Offset.TypeField) + "=@type AND o." + Q(config.Offset.NoField) + "=@no), m."
-            + Q(config.Master.SettleSumField) + "=m." + Q(config.Master.AmountTaxField) + "-m."
-            + Q(config.Master.RebateSumField) + "-(SELECT SUM(o." + Q(config.Offset.AmountField) + ") FROM dbo."
+        // 三个操作数都必须 ISNULL 兜底：价税合计/折扣合计/冲抵合计**任一为 NULL**，
+        // 整条算术的结果就是 NULL —— 结算列会被覆盖成空，用户填的实收/实付金额凭空消失。
+        // 折扣、冲抵"没有行"时应按 0 计，而不是把结算额算没了。
+        var offsetSelect = "(SELECT SUM(o." + Q(config.Offset.AmountField) + ") FROM dbo."
             + Q(config.Offset.Table) + " o WHERE o." + Q(config.Offset.TypeField) + "=@type AND o."
-            + Q(config.Offset.NoField) + "=@no), m." + Q(config.Master.LastUpdateField)
+            + Q(config.Offset.NoField) + "=@no)";
+        var offset = "UPDATE m SET m." + Q(config.Master.OffsetSumField) + "=ISNULL(" + offsetSelect + ",0), m."
+            + Q(config.Master.SettleSumField) + "=ISNULL(m." + Q(config.Master.AmountTaxField) + ",0)-ISNULL(m."
+            + Q(config.Master.RebateSumField) + ",0)-ISNULL(" + offsetSelect + ",0), m." + Q(config.Master.LastUpdateField)
             + "=GETDATE() FROM dbo." + Q(context.Plan.MasterTable) + " m WHERE " + scope + ";";
         var affected = await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, offset,
             [new EffectSqlParameter("@type", type), new EffectSqlParameter("@no", no)], token);

@@ -343,6 +343,30 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
+    public void OutOfRangeScale_IsClampedInsteadOfThrowing()
+    {
+        // T-SQL 允许 decimal(38,38)：scale 落在 decimal.Round 的 0–28 区间之外。
+        // 校验器必须夹取后继续判，而不是抛 ArgumentOutOfRangeException ——
+        // 那会让"值不合精度"变成 400 + .NET 异常文案，看起来像服务端崩了。
+        var field = Field("AMT", dataType: "decimal", precision: 38, scale: 38);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["AMT"] = "1.5" });
+        // decimal(38,38) 的整数位是 0 位：|值| ≥ 1 必然超出
+        Assert.Equal("PRECISION_EXCEEDED", Assert.Single(result.Errors).Code);
+    }
+
+    [Fact]
+    public void WideIntegerDigits_DoNotOverflowTheLimit()
+    {
+        // 整数位数 > 28 时 (decimal)Math.Pow(10, precision - scale) 会溢出；
+        // 这类列（如 decimal(38,0)）应按"无整数位约束"处理，而不是抛异常。
+        var field = Field("CNT", dataType: "decimal", precision: 38, scale: 0);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["CNT"] = "12345678901234567890" });
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
     public void FloatAndMoney_NotSubjectToScaleCheck()
     {
         // float 无精度语义、money 固定 scale=4：均不启用超精度校验

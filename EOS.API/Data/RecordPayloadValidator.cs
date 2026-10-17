@@ -106,15 +106,25 @@ internal static class RecordPayloadValidator
         {
             scale = quantityScale;
         }
-        var rounded = decimal.Round(number, scale, MidpointRounding.AwayFromZero);
+        // scale 有两个来源，两处都可能越界：列的 sys.columns.scale（T-SQL 允许 decimal(38,38)），
+        // 业务精度（CURR.DECIMAL_PLACES / 单位精度，tinyint 可达 255）。
+        // 而 decimal.Round 的 decimals 只接受 0–28，越界会抛 ArgumentOutOfRangeException——
+        // 那是**校验器自己炸掉**（对外表现为 400 带 .NET 异常文案），不是用户输入的问题。
+        // 只在"用于舍入"处夹取：整数位仍按**声明值**算，否则 decimal(38,38) 被夹成 28 位后
+        // 会凭空多出 10 位整数位，把"整数部分只有 0 位"的列误判成能放 10 位数。
+        var roundScale = Math.Clamp(scale, 0, 28);
+        var rounded = decimal.Round(number, roundScale, MidpointRounding.AwayFromZero);
         if (rounded != number)
         {
-            return new FieldError(field.Key, $"小数位超出精度（最多 {scale} 位）。", "SCALE_EXCEEDED");
+            return new FieldError(field.Key, $"小数位超出精度（最多 {roundScale} 位）。", "SCALE_EXCEEDED");
         }
-        var integerLimit = (decimal)Math.Pow(10, precision - scale);
-        if (Math.Abs(number) >= integerLimit)
+        // 整数位同理：precision - scale 可能大于 28，Math.Pow(10, n) 强转 decimal 会溢出。
+        // 取到 decimal 上限即等同于"无整数位约束"（decimal 本身也超不过它）。
+        var integerDigits = Math.Max(0, precision - scale);
+        var integerLimit = integerDigits >= 28 ? decimal.MaxValue : (decimal)Math.Pow(10, integerDigits);
+        if (integerLimit != decimal.MaxValue && Math.Abs(number) >= integerLimit)
         {
-            return new FieldError(field.Key, $"数值超出精度范围（整数部分最多 {Math.Max(0, precision - scale)} 位）。", "PRECISION_EXCEEDED");
+            return new FieldError(field.Key, $"数值超出精度范围（整数部分最多 {integerDigits} 位）。", "PRECISION_EXCEEDED");
         }
         return null;
     }

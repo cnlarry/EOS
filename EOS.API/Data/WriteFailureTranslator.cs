@@ -13,8 +13,16 @@ namespace EOS.API.Data;
 /// </summary>
 internal static class WriteFailureTranslator
 {
-    /// <summary>可翻译的 SQL 错误号：唯一键/主键冲突、NOT NULL 违例、字符串截断、外键约束。</summary>
-    internal static bool IsExpectedWriteFailure(SqlException ex) => ex.Number is 2601 or 2627 or 515 or 8152 or 547;
+    /// <summary>
+    /// 可翻译的 SQL 错误号：唯一键/主键冲突、NOT NULL 违例、字符串截断、外键约束，
+    /// 以及**类型转换失败**（245 / 8114）。
+    ///
+    /// 245/8114 是"元数据说这个字段是文本、物理列却是数值/日期"的直接后果：前端把用户敲的字
+    /// 原样发上来，一路到 SQL 才转换失败。不翻译它的话，用户看到的是 500「服务器内部错误」，
+    /// 而这明明是"这一格填错了"。兜住它，类型不一致就永远只是可读的 400 而不再是一次事故。
+    /// </summary>
+    internal static bool IsExpectedWriteFailure(SqlException ex)
+        => ex.Number is 2601 or 2627 or 515 or 8152 or 547 or 245 or 8114;
 
     /// <summary>
     /// 翻译成字段级错误。能定位到列时把错误挂在那一列上（前端据此高亮该格）；
@@ -44,6 +52,15 @@ internal static class WriteFailureTranslator
                 column ?? string.Empty,
                 $"该记录已存在（{DescribeConflict(ex.Message, table)}），请检查编号/唯一字段后重试。",
                 "DUPLICATE_RECORD_KEY",
+                rowIndex),
+            // 245/8114：值转不成列的类型。列名可能拿不到（SQL Server 的 245 消息里引号内是
+            // **值**不是列名），但这种失败在界面上必然是"某一格填错了"，给一句可操作的话即可。
+            245 or 8114 => new FieldError(
+                column ?? string.Empty,
+                string.IsNullOrWhiteSpace(column)
+                    ? "该字段的值类型不正确：这一列要求数字或日期，请检查后重试。"
+                    : "该字段的值类型不正确：请填数字或日期。",
+                "VALUE_TYPE_MISMATCH",
                 rowIndex),
             _ => new FieldError(string.Empty, "数据写入失败，请检查输入后重试。", "WRITE_FAILED", rowIndex),
         };

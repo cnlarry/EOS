@@ -174,6 +174,16 @@ public static class ChooserFilterCompiler
             return column is null ? null : $"{column} {(op == "IS_NULL" ? "IS NULL" : "IS NOT NULL")}";
         }
 
+        // 契约：value 是字面量或运行时模板，编译期一律参数化绑定。若它长得像「本表/已JOIN表.列」，
+        // 说明配置时把"列对列比较"写进了 value —— 参数化后 SQL 会拿 'T.C' 去比那个数值列，
+        // 运行期抛 SqlException（对外 500，选择器直接不可用）。此处 fail-closed：不编译，
+        // 调用方返回空集并告警；正确写法是 left/right 的 kind:"column" 表达式。
+        if (item.Left is null && item.Right is null
+            && LooksLikeSelfColumnReference(item.Value, sourceTable, joinAliases))
+        {
+            return null;
+        }
+
         var left = CompileExpression(
             item.Left ?? new ChooserFilterExpression("column", Table: null, Column: item.Field),
             sourceTable, joinAliases, parameters, joins, foreignColumns);
@@ -275,6 +285,28 @@ public static class ChooserFilterCompiler
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// value 是否形如「源表或已 JOIN 表.列」。只认这种**窄**形状：
+    /// 出现模板花括号、空格、算术符号或非标识符字符的，一律当正常字面量放行——
+    /// 宁可少拦，也不要把合法字面量误判成列引用（误判会让选择器变成永远空集）。
+    /// </summary>
+    internal static bool LooksLikeSelfColumnReference(string? value, string sourceTable, IReadOnlySet<string> joinAliases)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var text = value.Trim();
+        if (text.Contains('{') || text.Contains(' ') || text.Contains('+') || text.Contains('*')
+            || text.Contains('/') || text.Contains('\'') || text.Contains('%'))
+        {
+            return false;
+        }
+        var dot = text.IndexOf('.');
+        if (dot <= 0 || dot != text.LastIndexOf('.')) return false;
+        var table = text[..dot];
+        var column = text[(dot + 1)..];
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !WorkbenchSql.Identifier.IsMatch(column)) return false;
+        return table.Equals(sourceTable, StringComparison.OrdinalIgnoreCase) || joinAliases.Contains(table);
     }
 
     private static string? CompileSubquery(

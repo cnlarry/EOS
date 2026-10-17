@@ -327,6 +327,10 @@ public sealed class WorkbenchCommandHandler(
             return DetailFailure(detailSave.Errors);
         }
         await WriteChooserSourceMemoAsync(connection, transaction, definition, form, keyValues, detailSave.RowKeys, request, employeeName, token);
+        // 必须在 SAVE 效果链**之前**补主表价税合计：收款/付款单的冲抵效果按
+        // "实收/实付 = 价税合计 − 折扣 − 冲抵合计"重算结算列，而 AMOUNT_TAX 只有在这里补上，
+        // 否则效果里 NULL 参与算术、结算列被覆盖成 NULL（用户填的实收金额凭空消失）。
+        await FillMasterAmountTaxFromDetailAsync(connection, transaction, definition, token);
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
         // 无论该模块走效果动作还是遗留钩子，都必须先过这道闸。
@@ -461,27 +465,20 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
         }
 
-        if (request.Original is not null)
+        // 并发校验：快路径先给出**字段级**错误（用户知道是哪一格过期了），
+        // 真正的原子性由下面 UPDATE 的 CAS 谓词兜底（见 L104）。
+        var comparableOriginals = request.Original is null || request.Original.Count == 0
+            ? []
+            : await ReadComparableOriginalsAsync(connection, transaction, definition, form, request.Original, current, keyValues, token);
+        foreach (var (key, expected, _, display) in comparableOriginals)
         {
-            var writable = form.MasterFields.Where(field => !field.IsReadonly && !field.IsVirtual && !field.ServerFilled).ToList();
-            string? conflictingField = null;
-            foreach (var (key, raw) in request.Original)
+            // 预检比的是"客户端看到的那个视图"（Display，可能经过展示解析），否则 1418 那类单据永远存不了
+            if (ValuesEqual(expected, display))
             {
-                var field = writable.FirstOrDefault(item => item.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
-                if (field is null || !RecordPayloadValidator.TryConvert(field.DataType, raw, out var expected))
-                {
-                    continue;
-                }
-                if (!ValuesEqual(expected, current.GetValueOrDefault(field.Key)))
-                {
-                    logger.LogDebug("并发冲突诊断 field={Field} expected={Expected} current={Current}", field.Key, expected, current.GetValueOrDefault(field.Key));
-                    conflictingField ??= field.Key;
-                }
+                continue;
             }
-            if (conflictingField is not null)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ConcurrentModified, "CONCURRENT_MODIFIED", "字段内容已被他人修改，请刷新后重试！", [new FieldError(conflictingField, "字段内容已被他人修改，请刷新后重试！", "CONCURRENT_MODIFIED")]);
-            }
+            logger.LogDebug("并发冲突诊断 field={Field} expected={Expected} current={Current}", key, expected, display);
+            return RecordSaveResult.Failed(RecordAccessStatus.ConcurrentModified, "CONCURRENT_MODIFIED", "字段内容已被他人修改，请刷新后重试！", [new FieldError(key, "字段内容已被他人修改，请刷新后重试！", "CONCURRENT_MODIFIED")]);
         }
 
         var (updateAmountDecimals, _) = await CurrencyPrecision.ReadAsync(
@@ -552,10 +549,26 @@ public sealed class WorkbenchCommandHandler(
         {
             var setSql = string.Join(',', sets.Select((item, index) => $"[{item.Column}]=@s{index}"));
             var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
-            await using var command = new SqlCommand($"UPDATE dbo.[{definition.MasterTable}] SET {setSql} WHERE {where};", connection, transaction);
+            // CAS：把 original 的期望值下推成 WHERE 谓词，消除「检查 → 写入」之间的窗口（L104）。
+            // 语义：这一行**仍是客户端看到的那一版**才允许写；否则 0 行受影响，回 CONCURRENT_MODIFIED。
+            // 只下推"展示解析没有改写"的列（Expected 与物理值一致）——被改写的列拿物理值比展示值会假冲突。
+            // 只保护**本次真正要写的列**：`original` 里其它列这次没动，写不写它们与本次并发无关，
+            // 无谓地下推会把"别人改了别的字段"也判成本次冲突。
+            var writtenColumns = sets.Select(item => item.Column).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var cas = BuildCasPredicate(
+                comparableOriginals
+                    .Where(item => writtenColumns.Contains(item.Key))
+                    .Select(item => (item.Key, item.Expected, item.Physical))
+                    .ToList(),
+                pkColumns);
+            await using var command = new SqlCommand($"UPDATE dbo.[{definition.MasterTable}] SET {setSql} WHERE {where}{cas.Sql};", connection, transaction);
             for (var i = 0; i < sets.Count; i++)
             {
                 command.Parameters.AddWithValue($"@s{i}", WorkbenchSql.NormalizeDbValue(sets[i].Value));
+            }
+            foreach (var (name, value) in cas.Parameters)
+            {
+                command.Parameters.AddWithValue(name, value);
             }
             WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
             int affected;
@@ -573,7 +586,30 @@ public sealed class WorkbenchCommandHandler(
             }
             if (affected == 0)
             {
-                return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
+                // 0 行有两种可能：记录被删了，或这期间有人改了 CAS 谓词里的某一列。
+                // 不区分的话，"别人先保存了"会被报成"记录不存在"——用户按提示去刷新，越刷越糊涂。
+                var stillThere = await WorkbenchSql.ReadRowAsync(
+                    connection, transaction, definition.MasterTable, pkColumns, keyValues, pkColumns, token);
+                if (stillThere is null)
+                {
+                    return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
+                }
+                var conflicted = string.Empty;
+                if (cas.Keys.Count > 0)
+                {
+                    var fresh = await WorkbenchSql.ReadRowAsync(
+                        connection, transaction, definition.MasterTable, pkColumns, keyValues, cas.Keys, token);
+                    conflicted = (fresh is null
+                        ? null
+                        : comparableOriginals.FirstOrDefault(item =>
+                            cas.Keys.Contains(item.Key, StringComparer.OrdinalIgnoreCase)
+                            && !ValuesEqual(item.Expected, fresh.GetValueOrDefault(item.Key))).Key)
+                        ?? cas.Keys[0];
+                }
+                logger.LogDebug("并发冲突（CAS 未命中） module={ModuleId} field={Field}", definition.ModuleId, conflicted);
+                return RecordSaveResult.Failed(RecordAccessStatus.ConcurrentModified, "CONCURRENT_MODIFIED",
+                    "字段内容已被他人修改，请刷新后重试！",
+                    [new FieldError(conflicted, "字段内容已被他人修改，请刷新后重试！", "CONCURRENT_MODIFIED")]);
             }
         }
 
@@ -587,6 +623,8 @@ public sealed class WorkbenchCommandHandler(
         }
         await WriteChooserSourceMemoAsync(connection, transaction, definition, form, keyValues, detailSave.RowKeys, request, employeeName, token);
         var businessRule = definition.BusinessRule;
+        // 与新增路径同一落点与同一理由：价税合计必须在 SAVE 效果链之前补齐。
+        await FillMasterAmountTaxFromDetailAsync(connection, transaction, definition, token);
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
         // 无论该模块走效果动作还是遗留钩子，都必须先过这道闸。
@@ -898,7 +936,16 @@ public sealed class WorkbenchCommandHandler(
         // 这些列前端不会提交，但"有明细就必须有值"的语义不变，确实没有值的仍在这里拒绝。
         if (!string.IsNullOrWhiteSpace(definition.DetailNoFields))
         {
+            // 只校验**主表录入面上真实存在的字段**。DETAIL_NO_FIELDS 是随模块一起维护的历史元数据，
+            // 里面可能留着本模块录入面根本没有的键——典型是会计日记帐（3203）的 ACCOUNT_ID：
+            // 建库基线与参考系统表头都没有科目列，科目只在明细行上。这类键用户无从满足，
+            // 逐键校验会把"加明细"变成死结。前端 addDetailRow 已按同一口径取交集（LESSONS L98），
+            // 服务端必须同源——否则界面放行了、保存仍被拒。
+            var entryKeys = new HashSet<string>(
+                form.MasterFields.Where(field => field.IsVisible).Select(field => field.Key),
+                StringComparer.OrdinalIgnoreCase);
             var missing = definition.DetailNoFields.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Where(entryKeys.Contains)
                 .Where(field => !masterValues.TryGetValue(field, out var value) || value is null || value is string text && string.IsNullOrWhiteSpace(text))
                 .ToList();
             if (missing.Count > 0)
@@ -1199,6 +1246,141 @@ public sealed class WorkbenchCommandHandler(
             _ => decimal.TryParse(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
                 System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : null,
         };
+    }
+
+    /// <summary>
+    /// 把客户端回传的 `original` 换算成"可与库内值比较的期望值"，并同时带出**物理值**。
+    ///
+    /// 为什么要两份：读路径（`GetRecordAsync`）末尾会对"选择器同组展示列"（companion）做展示值解析，
+    /// 客户端拿到的是解析后的值，而 `ReadRowAsync` 读的是物理列。比较必须用同一视图（L102），
+    /// 否则用户什么都没改也会被判 `CONCURRENT_MODIFIED`，刷新也没用。
+    ///
+    /// 返回值三列：`Key` 字段名、`Expected` 客户端看到并期望的值、`Physical` 库内物理值。
+    /// 调用方用 `Expected == Physical` 判断该列能不能下推成 CAS 谓词——被展示解析改写过的列
+    /// 不能下推（拿物理值比展示值会制造假冲突），它们由快路径的字段级检查负责。
+    /// </summary>
+    private async Task<List<(string Key, object? Expected, object? Physical, object? Display)>> ReadComparableOriginalsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        WorkbenchDefinition definition,
+        FormDefinition form,
+        IReadOnlyDictionary<string, string?> original,
+        IReadOnlyDictionary<string, object?> current,
+        IReadOnlyList<string> keyValues,
+        CancellationToken token)
+    {
+        var comparable = new Dictionary<string, object?>(current, StringComparer.OrdinalIgnoreCase);
+        await ResolveChooserDisplaysAsync(
+            connection, transaction, definition.ModuleId, definition.MasterTable, form.MasterFields, comparable, keyValues, token);
+        // 注意这里**不排除只读列**：只读但带选择器的字段（如由选择器回填的 DEPT_ID/汇率）
+        // 是允许提交的（ValidateSubmitted 只拒绝"只读且无选择器"），写入侧也会真的落库。
+        // 早先按 `!IsReadonly` 过滤，等于把"能被改的列"排除在并发保护之外——
+        // 2908/130105 的丢失更新正是这么漏掉的。虚拟列与服务端持有列仍然排除：
+        // 它们的值不由客户端决定，比较没有意义。
+        var writable = form.MasterFields
+            .Where(field => !field.IsVirtual && !field.ServerFilled && !field.DisplayOnly)
+            .ToList();
+        var result = new List<(string Key, object? Expected, object? Physical, object? Display)>(original.Count);
+        foreach (var (key, raw) in original)
+        {
+            var field = writable.FirstOrDefault(item => item.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+            if (field is null || !RecordPayloadValidator.TryConvert(field.DataType, raw, out var expected))
+            {
+                continue;
+            }
+            // Physical 必须是**列里的真实值**（current 未经展示解析），Display 才是客户端看到的那个。
+            // 混用会出两种错：拿展示值当物理值下推 → CAS 永远不匹配（1418 的 ORDER_NO 就栽在这）；
+            // 拿物理值当展示值预检 → 用户什么都没改也被判并发冲突。
+            result.Add((field.Key, expected, current.GetValueOrDefault(field.Key), comparable.GetValueOrDefault(field.Key)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// CAS 谓词：把客户端回传的期望值下推成 UPDATE 的 WHERE 条件。
+    ///
+    /// 这是关闭"检查 → 写入"窗口的关键——预检通过不等于写入时还有效，
+    /// 只有让 UPDATE 自己带上"这一行仍是客户端看到的那一版"的条件，才是原子的（L104）。
+    ///
+    /// 三条排除规则，缺一条就会误伤：
+    ///   ① 主键列跳过——键条件已在 WHERE 里；
+    ///   ② 被展示解析改写过的列跳过（`Expected != Physical`）——拿物理值比展示值会制造假冲突，
+    ///      这类列由快路径的字段级检查负责；
+    ///   ③ 值为 null 时用 `IS NULL`，不能拼 `= NULL`（恒为 UNKNOWN，永远不匹配）。
+    /// </summary>
+    internal static CasPredicate BuildCasPredicate(
+        IReadOnlyList<(string Key, object? Expected, object? Physical)> originals,
+        IReadOnlyList<string> pkColumns)
+    {
+        var sql = new System.Text.StringBuilder();
+        var parameters = new List<(string Name, object Value)>();
+        var keys = new List<string>();
+        foreach (var (key, expected, physical) in originals)
+        {
+            if (pkColumns.Contains(key, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (!ValuesEqual(expected, physical))
+            {
+                continue;
+            }
+            keys.Add(key);
+            if (expected is null)
+            {
+                sql.Append($" AND [{key}] IS NULL");
+                continue;
+            }
+            var name = $"@c{parameters.Count}";
+            sql.Append($" AND [{key}]={name}");
+            parameters.Add((name, expected));
+        }
+        return new CasPredicate(sql.ToString(), parameters, keys);
+    }
+
+    /// <summary>CAS 谓词的三段产物：SQL 片段、参数、参与下推的列名（供 0 行时定位冲突字段）。</summary>
+    internal sealed record CasPredicate(
+        string Sql,
+        IReadOnlyList<(string Name, object Value)> Parameters,
+        IReadOnlyList<string> Keys);
+
+    /// <summary>
+    /// 无税维度单据的价税合计：主表有 `AMOUNT_TAX`、明细只有 `AMOUNT`（既无 `AMOUNT_TAX`
+    /// 也无 `TAX_SUM`，典型是收款单/付款单）时，价税合计就是金额合计。
+    ///
+    /// 这一步必须落在 **SAVE 效果链之前**：收款/付款单的冲抵效果用
+    /// "实收/实付 = 价税合计 − 折扣 − 冲抵合计"重算结算列，NULL 参与算术结果恒为 NULL，
+    /// 会把用户填的实收/实付金额覆盖成空（而前端又把主表价税合计锁成只读，谁都填不上）。
+    /// </summary>
+    private static async Task FillMasterAmountTaxFromDetailAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        CancellationToken token)
+    {
+        if (definition.DetailTable is null || definition.MasterPkOrder.Count < 2)
+        {
+            return;
+        }
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "AMOUNT_TAX", token)
+            || !await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.DetailTable, "AMOUNT", token)
+            || await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.DetailTable, "AMOUNT_TAX", token)
+            || await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.DetailTable, "TAX_SUM", token))
+        {
+            return;
+        }
+        var typeColumn = definition.MasterPkOrder[0];
+        var noColumn = definition.MasterPkOrder[1];
+        await using var command = new SqlCommand(
+            $"""
+            UPDATE m SET m.[AMOUNT_TAX]=d.[AMOUNT]
+            FROM dbo.[{definition.MasterTable}] m
+            INNER JOIN (SELECT [{typeColumn}],[{noColumn}],SUM([AMOUNT]) AS [AMOUNT]
+                        FROM dbo.[{definition.DetailTable}]
+                        GROUP BY [{typeColumn}],[{noColumn}]) d
+              ON m.[{typeColumn}]=d.[{typeColumn}] AND m.[{noColumn}]=d.[{noColumn}];
+            """, connection, transaction);
+        await command.ExecuteNonQueryAsync(token);
     }
 
     /// <summary>

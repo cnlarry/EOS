@@ -223,6 +223,15 @@ public static class ChooserFilterValidator
             sourceTable, joinAliases, columnTypes, errors);
         ValidateExpression(item.Right ?? new ChooserFilterExpression("literal", Value: item.Value ?? ""),
             sourceTable, joinAliases, columnTypes, errors);
+        // 保存期就拦住「把列对列比较写成 value」：编译期它会被参数化，运行期 SQL 拿 'T.C'
+        // 去比那个列 → 类型转换失败 → 选择器 500。存量里已有 37 条这样配的（迁移 404 已修），
+        // 这条守卫保证新配的不会再写进去。
+        if (item.Left is null && item.Right is null
+            && ChooserFilterCompiler.LooksLikeSelfColumnReference(item.Value, sourceTable, joinAliases))
+        {
+            errors.Add($"value「{item.Value}」形如「表.列」引用，但 value 只能是字面量或运行时模板"
+                + "（编译期一律参数化绑定）。列对列比较请改用 left/right 的 column 表达式。");
+        }
 
         var nullSafe = string.IsNullOrWhiteSpace(item.NullSafe) ? null : item.NullSafe.Trim().ToUpperInvariant();
         if (nullSafe is not null && nullSafe is not ("ZERO" or "EMPTY"))

@@ -626,7 +626,13 @@ public sealed class WorkbenchDefinitionBuilder(
                        FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
-            LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,CAST(t.precision AS int) AS TYPE_PRECISION,CAST(t.scale AS int) AS TYPE_SCALE,
+            /* 精度/小数位必须取 c.precision / c.scale（**列**的实际声明），
+               不能取 t.precision / t.scale —— sys.types 里那个是**类型自身**的上限：
+               内置 decimal 恒为 (38,38)，取它就等于告诉前端"每一列都是 decimal(38,38)"，
+               于是 RecordPayloadValidator 的 decimal.Round(value, 38) 直接抛
+               ArgumentOutOfRangeException（只接受 0–28），所有金额/数量字段一保存就 400。
+               t 只用来判字符类长度语义（user_type_id）。 */
+            LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,CAST(c.precision AS int) AS TYPE_PRECISION,CAST(c.scale AS int) AS TYPE_SCALE,
                         CASE WHEN t.user_type_id IN (231,239) THEN 2
                              WHEN t.user_type_id IN (167,175,35,99) THEN 1
                              ELSE 0 END AS CHARACTER_LENGTH_FLAG
