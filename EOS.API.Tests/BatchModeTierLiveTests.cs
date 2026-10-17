@@ -184,7 +184,7 @@ public sealed class BatchModeTierLiveTests
             await using var reader = await command.ExecuteReaderAsync();
             await reader.ReadAsync();
             masterCount = reader.GetInt32(0);
-            masterOutSum = reader.GetDouble(1);
+            masterOutSum = Convert.ToDouble(reader.GetValue(1));
         }
 
         var detailCount = 0;
@@ -198,7 +198,7 @@ public sealed class BatchModeTierLiveTests
             await using var reader = await command.ExecuteReaderAsync();
             await reader.ReadAsync();
             detailCount = reader.GetInt32(0);
-            detailQty = reader.GetDouble(1);
+            detailQty = Convert.ToDouble(reader.GetValue(1));
         }
 
         return new Observed(balanceBatch, masterCount, masterOutSum, detailCount, detailQty);

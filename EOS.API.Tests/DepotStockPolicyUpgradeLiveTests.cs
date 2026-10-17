@@ -224,7 +224,7 @@ public sealed class DepotStockPolicyUpgradeLiveTests
         var rows = new List<(string, string, string, double, double)>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            rows.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetDouble(3), reader.GetDouble(4)));
+            rows.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), Convert.ToDouble(reader.GetValue(3)), Convert.ToDouble(reader.GetValue(4))));
         return rows;
     }
 

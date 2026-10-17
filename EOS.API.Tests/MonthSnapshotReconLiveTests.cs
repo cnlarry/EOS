@@ -201,7 +201,7 @@ public sealed class MonthSnapshotReconLiveTests
             + "WHERE QTY >= 2 ORDER BY PRO_NO;", connection, transaction);
         await using var reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync(), "夹具需要一个余额 >= 2 的键来完成维度拆行。");
-        return (reader.GetString(0), reader.GetString(1), reader.GetDouble(2));
+        return (reader.GetString(0), reader.GetString(1), Convert.ToDouble(reader.GetValue(2)));
     }
 
     /// <summary>

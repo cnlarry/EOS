@@ -248,9 +248,9 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
             await using var currentReader = await currentCommand.ExecuteReaderAsync(token);
             if (!await currentReader.ReadAsync(token))
                 throw new EffectConfigException("balance-adjust net-replace 读不到原单主表行。");
-            newForeign = (currentReader.IsDBNull(0) ? 0d : currentReader.GetDouble(0))
-                * (currentReader.IsDBNull(1) ? 1d : currentReader.GetDouble(1));
-            newRate = currentReader.IsDBNull(1) ? 1d : currentReader.GetDouble(1);
+            newForeign = (currentReader.IsDBNull(0) ? 0d : Convert.ToDouble(currentReader.GetValue(0)))
+                * (currentReader.IsDBNull(1) ? 1d : Convert.ToDouble(currentReader.GetValue(1)));
+            newRate = currentReader.IsDBNull(1) ? 1d : Convert.ToDouble(currentReader.GetValue(1));
         }
 
         var oldSql = $"SELECT ROUND(SUM(ROUND(CASE T.TAX_TYPE WHEN 'O' "

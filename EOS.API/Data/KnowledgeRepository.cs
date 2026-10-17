@@ -367,7 +367,7 @@ public sealed class KnowledgeRepository(DbConnectionFactory connections) : IKnow
         {
             hits.Add(new(reader.GetInt64(0), reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2),
-                reader.GetInt32(3), reader.GetString(4), reader.GetDouble(5)));
+                reader.GetInt32(3), reader.GetString(4), Convert.ToDouble(reader.GetValue(5))));
         }
 
         return hits;

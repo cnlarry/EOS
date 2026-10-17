@@ -123,8 +123,8 @@ public sealed class MonthCloseSnapshotHalfStockLiveTests : IAsyncLifetime
             await using var reader = await command.ExecuteReaderAsync();
             Assert.True(await reader.ReadAsync());
             Assert.Equal(Procedure, reader.GetString(0));
-            Assert.Equal(HalfQty, reader.GetDouble(1));
-            Assert.Equal(HalfCost, reader.GetDouble(2));      // 单价 = 成本价（期末量 = 结存、本期入库 0）
+            Assert.Equal(HalfQty, Convert.ToDouble(reader.GetValue(1)));
+            Assert.Equal(HalfCost, Convert.ToDouble(reader.GetValue(2)));      // 单价 = 成本价（期末量 = 结存、本期入库 0）
             Assert.Equal("-", reader.GetString(3));           // 位置对半成品账没有意义 ⇒ 哨兵
             Assert.Equal(string.Empty, reader.GetString(4));  // 批次同理
             Assert.False(await reader.ReadAsync());           // 这个料号在本期只有这一行

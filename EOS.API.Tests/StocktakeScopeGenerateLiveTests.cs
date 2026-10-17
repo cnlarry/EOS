@@ -266,7 +266,7 @@ public sealed class StocktakeScopeGenerateLiveTests
                 {
                     rows.Add(new DetailRow(
                         ReadText(reader, 0), ReadText(reader, 1), ReadText(reader, 2),
-                        reader.GetDouble(3), reader.GetDouble(4)));
+                        Convert.ToDouble(reader.GetValue(3)), Convert.ToDouble(reader.GetValue(4))));
                 }
             }
             return new Outcome(generated, rows);

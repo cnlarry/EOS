@@ -240,7 +240,7 @@ public sealed class BatchExpiryLiveTests
             await reader.ReadAsync();
             masterCount = reader.GetInt32(0);
             masterEffect = reader.IsDBNull(1) ? null : reader.GetDateTime(1);
-            masterInSum = reader.GetDouble(2);
+            masterInSum = Convert.ToDouble(reader.GetValue(2));
         }
 
         var balance = 0d;

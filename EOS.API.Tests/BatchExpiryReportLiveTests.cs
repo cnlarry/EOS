@@ -200,7 +200,7 @@ public sealed class BatchExpiryReportLiveTests
         {
             rows.Add(new DirectRow(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), reader.GetDouble(4), reader.GetString(5)));
+                reader.GetInt32(3), Convert.ToDouble(reader.GetValue(4)), reader.GetString(5)));
         }
         return rows;
     }

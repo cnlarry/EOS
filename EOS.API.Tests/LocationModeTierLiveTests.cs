@@ -157,7 +157,7 @@ public sealed class LocationModeTierLiveTests
             if (await reader.ReadAsync())
             {
                 location = reader.GetString(0);
-                qty = reader.GetDouble(1);
+                qty = Convert.ToDouble(reader.GetValue(1));
             }
         }
 

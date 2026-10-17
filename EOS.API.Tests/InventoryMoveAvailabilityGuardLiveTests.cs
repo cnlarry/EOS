@@ -183,7 +183,7 @@ public sealed class InventoryMoveAvailabilityGuardLiveTests : IAsyncLifetime
         command.Parameters.AddWithValue("@batch", Batch);
         await using var reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync(), "余额行不见了");
-        return (reader.GetDouble(0), reader.GetDouble(1));
+        return (Convert.ToDouble(reader.GetValue(0)), Convert.ToDouble(reader.GetValue(1)));
     }
 
     /// <summary>按模块 130108 的真实配置构造移动上下文（参数直接取自配置行的形状，不手写一套）。</summary>

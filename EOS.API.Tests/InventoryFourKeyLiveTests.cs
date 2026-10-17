@@ -156,7 +156,7 @@ public sealed class InventoryFourKeyLiveTests
         command.Parameters.AddWithValue("@Pro", Product);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            rows.Add(new BalanceRow(reader.GetString(0), reader.GetDouble(1), reader.GetDouble(2), reader.GetDouble(3)));
+            rows.Add(new BalanceRow(reader.GetString(0), Convert.ToDouble(reader.GetValue(1)), Convert.ToDouble(reader.GetValue(2)), Convert.ToDouble(reader.GetValue(3))));
         return rows;
     }
 

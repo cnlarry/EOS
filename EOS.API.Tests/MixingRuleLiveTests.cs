@@ -252,7 +252,7 @@ public sealed class MixingRuleLiveTests
         command.Parameters.AddWithValue("@Depot", Depot);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            rows.Add(new Detail(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetDouble(3)));
+            rows.Add(new Detail(reader.GetString(0), reader.GetString(1), reader.GetString(2), Convert.ToDouble(reader.GetValue(3))));
         return rows;
     }
 

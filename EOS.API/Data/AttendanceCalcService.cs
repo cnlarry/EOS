@@ -457,8 +457,8 @@ public sealed class AttendanceCalcService(
             {
                 inTime[slot] = reader.GetString(1 + idxBase + idx);
                 outTime[slot] = reader.GetString(2 + idxBase + idx);
-                workHours[slot] = reader.GetDouble(3 + idxBase + idx);
-                addHours[slot] = reader.GetDouble(4 + idxBase + idx);
+                workHours[slot] = Convert.ToDouble(reader.GetValue(3 + idxBase + idx));
+                addHours[slot] = Convert.ToDouble(reader.GetValue(4 + idxBase + idx));
                 inMoreDay[slot] = reader.GetInt32(5 + idxBase + idx) == 1;
                 outMoreDay[slot] = reader.GetInt32(6 + idxBase + idx) == 1;
                 inLate[slot] = reader.GetInt32(7 + idxBase + idx);
@@ -510,8 +510,8 @@ public sealed class AttendanceCalcService(
             {
                 inTime[slot] = reader.IsDBNull(2 + slot * 4) ? null : reader.GetString(2 + slot * 4);
                 outTime[slot] = reader.IsDBNull(3 + slot * 4) ? null : reader.GetString(3 + slot * 4);
-                workHours[slot] = reader.IsDBNull(4 + slot * 4) ? (double?)null : reader.GetDouble(4 + slot * 4);
-                addHours[slot] = reader.IsDBNull(5 + slot * 4) ? (double?)null : reader.GetDouble(5 + slot * 4);
+                workHours[slot] = reader.IsDBNull(4 + slot * 4) ? (double?)null : Convert.ToDouble(reader.GetValue(4 + slot * 4));
+                addHours[slot] = reader.IsDBNull(5 + slot * 4) ? (double?)null : Convert.ToDouble(reader.GetValue(5 + slot * 4));
             }
             result.Add(new PlanAdjustRow(reader.GetString(0), reader.GetString(1), inTime, outTime, workHours, addHours));
         }
@@ -654,7 +654,7 @@ public sealed class AttendanceCalcService(
         await using var reader = await command.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token))
             result.Add(new ApplyRow(reader.GetString(0), reader.GetString(1),
-                reader.GetDouble(2), reader.GetDouble(3), reader.GetDouble(4), reader.GetDouble(5)));
+                Convert.ToDouble(reader.GetValue(2)), Convert.ToDouble(reader.GetValue(3)), Convert.ToDouble(reader.GetValue(4)), Convert.ToDouble(reader.GetValue(5))));
         return result;
     }
 

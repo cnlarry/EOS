@@ -99,7 +99,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             """, connection);
         await using var reader = await command.ExecuteReaderAsync();
         return await reader.ReadAsync()
-            ? new StockRow(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetDouble(4))
+            ? new StockRow(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), Convert.ToDouble(reader.GetValue(4)))
             : throw new InvalidOperationException($"{StockTable} 没有可用的库存行，无法验证重算账面数。");
     }
 
@@ -270,8 +270,8 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         {
             rows.Add(new DetailRow(
                 reader.GetInt16(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                reader.IsDBNull(5) ? null : reader.GetDouble(5)));
+                reader.IsDBNull(4) ? null : Convert.ToDouble(reader.GetValue(4)),
+                reader.IsDBNull(5) ? null : Convert.ToDouble(reader.GetValue(5))));
         }
         return rows;
     }

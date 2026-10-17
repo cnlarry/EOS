@@ -222,7 +222,7 @@ public sealed class DepotStockPolicyDowngradeLiveTests
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             rows.Add(new BalanceRow(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetDouble(3), reader.GetDouble(4), reader.GetDouble(5), reader.GetDouble(6)));
+                Convert.ToDouble(reader.GetValue(3)), Convert.ToDouble(reader.GetValue(4)), Convert.ToDouble(reader.GetValue(5)), Convert.ToDouble(reader.GetValue(6))));
         return rows;
     }
 
