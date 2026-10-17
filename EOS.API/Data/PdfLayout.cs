@@ -66,8 +66,8 @@ internal static class PdfLayout
         if (value is null || value is DBNull) return string.Empty;
         if (value is DateTime dateTime) return dateTime.ToString("yyyy-MM-dd");
         if (value is bool boolean) return boolean ? "是" : "否";
-        if (value is decimal or double or float)
-            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+        // 数值走与屏幕同源的推导器（ADR-037 批 3），不再裸输出 1234.5
+        if (NumericDisplay.IsNumeric(value)) return NumericDisplay.Format(value, null);
         return Convert.ToString(value)?.Trim() ?? string.Empty;
     }
 

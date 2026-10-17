@@ -84,7 +84,8 @@ internal static class RecordPayloadValidator
     /// 仅 decimal/numeric 启用——float 无精度语义、money 固定 scale=4，均不适用。
     /// 校验为拒绝式（不做静默舍入），与服务端 decimal away-from-zero 语义一致。
     /// </summary>
-    private static FieldError? CheckNumericScale(FormFieldDefinition field, object? value)
+    private static FieldError? CheckNumericScale(
+        FormFieldDefinition field, object? value, int? amountDecimals, int? quantityDecimals)
     {
         if (value is not decimal number || field.Precision is not int precision || field.Scale is not int scale)
         {
@@ -94,6 +95,16 @@ internal static class RecordPayloadValidator
         if (!type.Contains("decimal") && !type.Contains("numeric"))
         {
             return null;
+        }
+        // 业务精度优先于存储精度（ADR-037）：存储是 decimal(18,4) 能放 4 位，但日元只该收 0 位；
+        // 数量按单位精度（"个" 0 位、千克 3 位）。单价/汇率不在此列——它们的精度必须高于金额。
+        if (amountDecimals is int amountScale && IsAmountField(field))
+        {
+            scale = amountScale;
+        }
+        else if (quantityDecimals is int quantityScale && IsQuantityField(field))
+        {
+            scale = quantityScale;
         }
         var rounded = decimal.Round(number, scale, MidpointRounding.AwayFromZero);
         if (rounded != number)
@@ -112,9 +123,25 @@ internal static class RecordPayloadValidator
         IReadOnlyList<FieldError> Errors,
         IReadOnlyDictionary<string, object?> Converted);
 
+    /// <summary>
+    /// 金额类字段：优先看语义登记（ADR-038），未登记时回退列名。
+    /// 金额的小数位跟货币走，而不是跟存储的 scale 走。
+    /// </summary>
+    private static bool IsAmountField(FormFieldDefinition field) =>
+        string.Equals(field.NumericRole, "AMOUNT", StringComparison.OrdinalIgnoreCase)
+        || field.Key.Contains("AMOUNT", StringComparison.OrdinalIgnoreCase)
+        || field.Key.Contains("TAX_SUM", StringComparison.OrdinalIgnoreCase)
+        || field.Key.EndsWith("_SUM", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>数量类字段：只看语义登记，不回退列名——数量列名太杂，猜错会把单价当成数量。</summary>
+    private static bool IsQuantityField(FormFieldDefinition field) =>
+        string.Equals(field.NumericRole, "QTY", StringComparison.OrdinalIgnoreCase);
+
     public static ValidationResult ValidateSubmitted(
         IReadOnlyList<FormFieldDefinition> fields,
-        IReadOnlyDictionary<string, string?> values)
+        IReadOnlyDictionary<string, string?> values,
+        int? amountDecimals = null,
+        int? quantityDecimals = null)
     {
         var map = fields.ToDictionary(field => field.Key, StringComparer.OrdinalIgnoreCase);
         var errors = new List<FieldError>();
@@ -157,7 +184,7 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "数值格式不正确。", "INVALID_VALUE"));
                 continue;
             }
-            var scaleError = CheckNumericScale(field, value);
+            var scaleError = CheckNumericScale(field, value, amountDecimals, quantityDecimals);
             if (scaleError is not null)
             {
                 errors.Add(scaleError);

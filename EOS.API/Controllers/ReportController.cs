@@ -182,7 +182,9 @@ public sealed class ReportController(
         writer.Write('\uFEFF');
         writer.WriteLine(string.Join(',', definition.Columns.Select(column => Escape(column.Label))));
         foreach (var row in result.Rows)
-            writer.WriteLine(string.Join(',', definition.Columns.Select(column => Escape(Convert.ToString(row.GetValueOrDefault(column.Key)) ?? ""))));
+            // 数值用不变文化（点号小数、无千分位），否则德语服务器会导出 "1234,5" 被 Excel 拆列
+            writer.WriteLine(string.Join(',', definition.Columns.Select(column =>
+                Escape(Convert.ToString(row.GetValueOrDefault(column.Key), System.Globalization.CultureInfo.InvariantCulture) ?? ""))));
         await auditWriter.WriteBestEffortAsync(moduleId, report.ReportId, "EXPORT", $"报表导出 {definition.Title}", userId, "REPORT_EXPORT", result: 1, null, token);
         return File(System.Text.Encoding.UTF8.GetBytes(writer.ToString()), "text/csv; charset=utf-8", "report.csv");
     }

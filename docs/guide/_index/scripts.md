@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: 62e9640613e0b2c6 -->
+<!-- inventory-fingerprint: cad9ce8c9b751781 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,11 +21,11 @@
 
 ## 一、总览
 
-- 入库脚本 **76** 个：门禁（CI） 14 · 门禁（本地按需） 16 · 一次性批次 16 · 工具 30
+- 入库脚本 **82** 个：门禁（CI） 15 · 门禁（本地按需） 17 · 一次性批次 20 · 工具 30
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**12** 个，见第七节
-- `scripts/oneshot/` 待清理的一次性脚本：**0** 个，见第二节
+- `scripts/oneshot/` 待清理的一次性脚本：**4** 个，见第二节
 - 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **66** 个——被 `.git/info/exclude` 排除，
   别人的克隆里没有它们，故不参与上面的引用统计。
 
@@ -34,7 +34,12 @@
 这里的一次性脚本随时可以整目录清空，不影响任何门禁。**锚点**说明它随哪件收口完成而失效；
 锚点指向的迁移/收口一旦完成，脚本就该删掉（正文在 git 历史里，不必留在工作区）。
 
-（无）
+| 脚本 | 锚点 | 作用 |
+|---|---|---|
+| `gen-numeric-batch-migration.ps1` | ADR-038（各批 | 一次性脚本：为指定业务域生成分片的类型迁移 SQL。 |
+| `numeric-batch-prescan.ps1` | ADR-038（各批类型迁移前的溢出预扫描） | 一次性脚本：指定业务域的 float 列溢出预扫描，只读不写。 |
+| `numeric-role-registry.ps1` | ADR-038 | 一次性脚本：推断 float 列的语义族并生成迁移 357（随 ADR-038 收口失效） |
+| `sync-bootstrap-numeric-types.ps1` | ADR-038 | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 |
 
 ## 三、门禁（CI 自动跑，不需要你动手）
 
@@ -47,8 +52,9 @@
 | `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 5 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
 | `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 11 |
+| `check-numeric-column-types.ps1` | 静态门禁：迁移脚本不得新增 float 列。 | 仅静态 | 4 |
 | `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 5 |
-| `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 9 |
+| `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 8 |
 | `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 2 |
 | `check-workbench-policy-single-entry.ps1` | 统一工作台策略层单入口门禁：授权/名单/幂等判定不得回到控制器，且策略服务必须是共享入口。 | 仅静态 | 5 |
 | `gen-adr-index.ps1` | 决策记录索引：把 docs/decisions/ADR-*.md 抽成一张表（编号 / 标题 / 状态 / 日期 / 决策者 / 交叉引用），并守住它与决策目录一致。 | 仅静态 | 7 |
@@ -66,10 +72,11 @@
 | `check-forbidden-problem-filter.ps1` | 拒绝出口门禁：保证 403 权限拒绝始终带结构化错误体。 | 仅静态 | 3 |
 | `check-form-layout.ps1` | 模块级表单版式巡检：版式行不得悬空、越界或把不该藏的字段藏起来。 | 连库 | 5 |
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
-| `check-live-fixture-hygiene.ps1` | 真库用例夹具卫生门禁：写入只能落在用例**自己造**的键上。 | 仅静态 | 4 |
+| `check-live-fixture-hygiene.ps1` | 真库用例夹具卫生门禁：写入只能落在用例**自己造**的键上。 | 仅静态 | 5 |
 | `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 5 |
 | `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 8 |
+| `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 2 |
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
 | `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 10 |
 | `check-system-params.ps1` | 系统参数门禁：参数定义完整性 + 引用键存在性 + 归属模块合法性。 | 连库 | 4 |
@@ -85,16 +92,20 @@
 | `analyze-button-coverage.ps1` | Inventory of legacy Web Forms page buttons that are candidates for the user-triggered custom-button mechanism described… | 仅静态 | 独立工具 |
 | `backfill-chooser.ps1` | 选择器缺口回填（第一层业务复核推进）：对 AcceptanceSemantics.ps1 输出的 MISSING 选择器候选， 按同名列众数样例复制 CHOOSE_* 配置，生成幂等 SQL（update.sql EOS-13 节）。 | 仅静态 | 独立工具 |
 | `batch-validate-form-rework.ps1` | ADR-006 步骤 5：存量统一表单白名单模块批量 validate，产出机器可读报告 + 豁免清单。 | 需 API 在线 | 独立工具 |
-| `clean-e2e-fixture-residue.ps1` | 清理开发库 EOS.ERP 里的 E2E 夹具残留（按键删除，不按时间范围 + 表名裸删）。 | 连库 | 2 |
+| `clean-e2e-fixture-residue.ps1` | 清理开发库 EOS.ERP 里的 E2E 夹具残留（按键删除，不按时间范围 + 表名裸删）。 | 连库 | 1 |
 | `clean-placeholder-formula-rows.ps1` | 删除服务型效果下遗留的全空占位公式行，删除前把每一行**逐列**备份成可回退的数据文件。 | 连库 | 1 |
 | `compare-form-layout-parity.ps1` | 模块级表单版式改造的「观感零变化」对拍：改造前抓基线，改造后逐模块比对。 | 连库、需 API 在线、工具链 | 1 |
 | `compare-report-rowset-parity.ps1` | 报表归属迁移的「取数结果零变化」对拍：改造前抓基线，改造后逐张比对。 | 连库、需 API 在线 | 独立工具 |
+| `gen-numeric-batch-migration.ps1` | 一次性脚本：为指定业务域生成分片的类型迁移 SQL。 | 连库 | 1 |
 | `materialize-form-layouts.ps1` | 把「推导默认版式」落成真实的版式行（模块级版式退役字段级配置的前置数据搬运；服务端设计态读法生成，本脚本只做"读出来 → 原样回写"）。 | 需 API 在线 | 独立工具 |
 | `metadata-disposition.ps1` | 阶段 1 元数据异常清单处置：生成逐条处置记录（disposition.csv）并对机械性 TYPE_MISMATCH 直接修复（F_TYPE 对齐物理列类型族）。 | 仅静态 | 独立工具 |
 | `migrate-menu-filters.ps1` | 存量菜单过滤规则语法归一：把 MODULES.FILTER 中的旧系统写法更新为现代写法， 使前端构建器可识别、后端解析语义不变。 | 连库 | 独立工具 |
+| `numeric-batch-prescan.ps1` | 一次性脚本：指定业务域的 float 列溢出预扫描，只读不写。 | 连库 | 1 |
+| `numeric-role-registry.ps1` | 一次性脚本：推断 float 列的语义族并生成迁移 357（随 ADR-038 收口失效） | 仅静态 | 1 |
 | `restore-legacy-groundtruth-sprocs.ps1` | 还原"旧过程基准"过程：CompareAfterSave.ps1 用来做特征化的遗留保存后钩子。 | 连库 | 2 |
 | `restore-placeholder-formula-rows.ps1` | 按清理脚本留下的备份文件，把占位公式行**逐列按原值**插回。 | 连库 | 1 |
 | `rollback-report-attribution.ps1` | 回滚报表归属列（REPORT.M_IDX）的落库：删列 + 卸约束 + 撤销迁移台账行。 | 连库 | 独立工具 |
+| `sync-bootstrap-numeric-types.ps1` | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 | 仅静态 | 1 |
 | `verify-adr024-remainder.ps1` | ADR-024 收尾批的落库与运行态复验（重启 EOS.API 之后跑）。 | 连库、需 API 在线 | 独立工具 |
 
 ## 六、工具（可重复使用）
@@ -105,14 +116,14 @@
 | `auto-enable-batch.ps1` | 统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写模块声明）→ 真实数据 CRUD 回路 （尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。 全绿则保留启用并出报告；任一失败则整批回滚并出差异报告（不静默修… | 需 API 在线 | 5 |
 | `dev-services.ps1` | EOS 本地开发服务管理：EOS.API 一键启动、停止、重启、状态与日志。 | 需 API 在线、工具链 | 4 |
 | `eos-sql-selftest.ps1` | eos-sql.ps1 托管回退路径的结果集回归自检。 | 连库 | 1 |
-| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 37 |
+| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 40 |
 | `export-bootstrap-baseline.ps1` | 重建迁移基线登记 `db/bootstrap/40_journal_baseline.sql`。 | 连库 | 2 |
 | `export-bootstrap-metadata.ps1` | 从当前库重建元数据种子 `db/bootstrap/20_metadata.sql`。 | 连库 | 1 |
 | `export-bootstrap-schema.ps1` | 从当前库重建结构种子 `db/bootstrap/10_schema.sql`。 | 连库 | 2 |
 | `export-business-actions.ps1` | Exports the effect-engine configuration currently stored in EOS.ERP into the seed manifest. | 连库 | 2 |
 | `export-config-snapshots.ps1` | 统一表单配置快照导出（D6 固化）：用固定 SQL 口径重新生成 logs/module-list.tsv / fields-config.tsv / modules-config.tsv / columns-config.tsv， 消除… | 连库 | 独立工具 |
 | `export-diagnosis-golden-candidates.ps1` | Export diagnosis golden-set candidates from MODULE_VALIDATION_RULE (read-only). | 连库 | 1 |
-| `export-sysdf-archive.ps1` | 把 dbo.SYSDF（旧操作日志表）整表导出为 CSV，供迁移 325 删表后考古备查。 | 连库 | 4 |
+| `export-sysdf-archive.ps1` | 把 dbo.SYSDF（旧操作日志表）整表导出为 CSV，供迁移 325 删表后考古备查。 | 连库 | 3 |
 | `impact.ps1` | 改动影响面报告：给定本次改动文件，列出命中哪些手册篇目、必须同批跟改哪些登记面、该跑哪些验证。 | git、工具链 | 5 |
 | `init-im-db.ps1` | EOS.IM local dev database initializer (dev-only helper): reads the ERP connection string from the local Codex config, s… | 连库 | 独立工具 |
 | `probe-env.ps1` | 开工前环境预检：库可达性、API 端口与构建一致性、bin 产物是否落后于 HEAD。 | 连库、需 API 在线、git | 2 |
@@ -130,7 +141,7 @@
 | `set-mssql-mcp-env.ps1` | 为 MCP 的 SQL Server 服务器维护 User 级环境变量（连接串走 SQL 认证，密码不进仓库）。 | 连库 | 3 |
 | `sync-agent-skills.ps1` | Sync agent skills: create Cursor mirror junctions from the canonical .agents/skills/ (idempotent). | 仅静态 | 1 |
 | `sync-guide-to-kb.ps1` | 开发手册与决策记录 → 知识库同步（按内容三分推送）。 | 连库、需 API 在线 | 9 |
-| `test-migration-dryrun.ps1` | DbUp 迁移干跑：把迁移脚本放进一层事务里执行再整体回滚，验证语法与命中行数。 | 连库 | 6 |
+| `test-migration-dryrun.ps1` | DbUp 迁移干跑：把迁移脚本放进一层事务里执行再整体回滚，验证语法与命中行数。 | 连库 | 5 |
 
 ## 七、无人引用的脚本（每条的白名单理由）
 

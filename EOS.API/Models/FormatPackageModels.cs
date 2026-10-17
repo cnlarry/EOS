@@ -174,7 +174,13 @@ public sealed record LayoutElementStyle(
 public sealed record LayoutRenderContext(
     string? PrintPerson = null,
     bool ShowRemark = true,
-    ReportListPayload? Report = null);
+    ReportListPayload? Report = null,
+    /// <summary>
+    /// 本单金额的小数位（来自 <c>CURR.DECIMAL_PLACES</c>，ADR-037 批 3）。
+    /// 日元 0 位、第纳尔 3 位——打印不能一律按 2 位。
+    /// 由调用方按单据币别解析后传入，解释层不查库。
+    /// </summary>
+    int AmountDecimals = 2);
 
 /// <summary>
 /// 报表清单渲染数据（`{{REPORT.*}}` 与 `dataSource=report` 的取值来源）。

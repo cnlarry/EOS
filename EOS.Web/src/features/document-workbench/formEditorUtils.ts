@@ -131,15 +131,55 @@ export function detailControlMinWidth(field: FormFieldDefinition): number {
  * 全角数字/句点转半角、去除千分位逗号，可解析时输出不变文化的普通数字串；
  * 不可解析（含货币符号等）原样返回，交由校验报错。
  */
+/**
+ * 数值输入规范化（ADR-037 决定八）。
+ *
+ * 目标：同一串输入在任何 locale 下都得到**唯一**解释，不按当前 locale 猜。
+ *
+ * 规则（确定性，与 locale 无关）：
+ * 1. 同时出现 `.` 和 `,` → 最后出现的那个是小数点，另一个是千分位；
+ * 2. 只有 `,`：多次出现或后跟 3 位 → 千分位；否则（1~2 位）当小数点，`1,5` → `1.5`；
+ * 3. 只有 `.`：多次出现 → 千分位（德语 `1.234.567`）；单次 → 小数点。
+ *
+ * 第 3 条对 `1.234` 是有歧义的（英语 1.234、德语 1234），统一按小数点解释——
+ * 与接口、数据库、后端 `InvariantCulture` 的口径一致。按 locale 猜会让同一串
+ * 输入在不同人的机器上存成不同值，那比"德语区用户要改用点号"更糟。
+ */
 export function canonicalizeDecimalValue(raw: string): string {
   let text = (raw ?? '').trim()
   if (!text) return ''
   text = text
     .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
-    .replace('．', '.')
+    .replace(/．/g, '.')
     .replace(/，/g, ',')
+    // 全角/长音变体减号归一到 ASCII，否则负号会被当成普通字符丢掉
+    .replace(/[－﹣−ー]/g, '-')
   if (/^%/.test(text) || text.endsWith('%')) return text
-  const numeric = Number(text.replace(/,/g, ''))
+
+  const negative = text.startsWith('-')
+  const body = negative ? text.slice(1) : text.replace(/^\+/, '')
+  const dot = body.lastIndexOf('.')
+  const comma = body.lastIndexOf(',')
+
+  let decimalMark = ''
+  if (dot >= 0 && comma >= 0) {
+    decimalMark = dot > comma ? '.' : ','
+  } else if (comma >= 0) {
+    const parts = body.split(',')
+    const groupLike = parts.length > 2 || (parts.length === 2 && parts[1].length === 3)
+    decimalMark = groupLike ? '' : ','
+  } else if (dot >= 0) {
+    decimalMark = body.split('.').length > 2 ? '' : '.'
+  }
+
+  const normalized = decimalMark === ','
+    ? body.replace(/\./g, '').replace(',', '.')
+    : decimalMark === '.'
+      // 点是小数点：只去掉千分位逗号，保留点
+      ? body.replace(/,/g, '')
+      : body.replace(/[.,]/g, '')
+
+  const numeric = Number((negative ? '-' : '') + normalized)
   return Number.isFinite(numeric) ? String(numeric) : text
 }
 

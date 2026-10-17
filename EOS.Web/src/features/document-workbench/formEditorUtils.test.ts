@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DETAIL_CHOOSER_SOURCE_KEY, parseReturnItems, readDetailChooserSources, withDetailChooserSource } from './formEditorUtils'
+import { DETAIL_CHOOSER_SOURCE_KEY, canonicalizeDecimalValue, parseReturnItems, readDetailChooserSources, withDetailChooserSource } from './formEditorUtils'
 
 /**
  * 明细行「选过的来源」随行携带：行对象是明细编辑的唯一载体，来源跟着行走，
@@ -72,5 +72,38 @@ describe('选择器回填映射解析', () => {
     expect(parseReturnItems('{oops')).toEqual([])
     expect(parseReturnItems('')).toEqual([])
     expect(parseReturnItems(null)).toEqual([])
+  })
+})
+
+/**
+ * 输入解析的歧义处置（ADR-037 决定八）：同一串输入在任何 locale 下都必须有唯一解释。
+ * 按 locale 猜会让同一串在不同机器上存成不同值，那比"德语区用户要改用点号"更糟。
+ */
+describe('canonicalizeDecimalValue 歧义处置', () => {
+  it('同时有点和逗号时，最后出现的那个是小数点', () => {
+    expect(canonicalizeDecimalValue('1,234.56')).toBe('1234.56')
+    expect(canonicalizeDecimalValue('1.234,56')).toBe('1234.56')
+    expect(canonicalizeDecimalValue('1.234.567,89')).toBe('1234567.89')
+  })
+
+  it('单个逗号后跟 1~2 位按小数点，后跟 3 位或多段按千分位', () => {
+    expect(canonicalizeDecimalValue('1,5')).toBe('1.5')
+    expect(canonicalizeDecimalValue('1,234')).toBe('1234')
+    expect(canonicalizeDecimalValue('1,234,567')).toBe('1234567')
+  })
+
+  it('单个点按小数点、多个点按千分位', () => {
+    expect(canonicalizeDecimalValue('1.234')).toBe('1.234')
+    expect(canonicalizeDecimalValue('1.234.567')).toBe('1234567')
+  })
+
+  it('全角数字与全角负号归一', () => {
+    expect(canonicalizeDecimalValue('－１２３４．５')).toBe('-1234.5')
+    expect(canonicalizeDecimalValue('１２，３４５')).toBe('12345')
+  })
+
+  it('无法解析的输入原样返回，交给校验器报错', () => {
+    expect(canonicalizeDecimalValue('ABC')).toBe('ABC')
+    expect(canonicalizeDecimalValue('')).toBe('')
   })
 })

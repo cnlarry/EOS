@@ -6,11 +6,12 @@ using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, DbConnectionFactory connections, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     /// <summary>当前请求的用户号（授权判定与数据装配的主体）。</summary>
     private string? UserId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -61,6 +62,61 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     {
         var decision=await policy.AuthorizeFormDefinitionAsync(UserId,moduleId,mode,token);
         return decision.Allowed?Ok(decision.Value!.Form):Denied(decision.Denial!);
+    }
+
+    /// <summary>
+    /// 数值精度上下文（ADR-037）：金额精度跟币别、数量精度跟单位、字段语义族。
+    ///
+    /// 单独开端点而不塞进 form-definition：后者是定义快照的一部分，加字段会让全部存量快照被判为落后。
+    /// 前端据此做输入预检——超出业务精度的值在输入框旁就报错，不必等提交后由后端拒绝。
+    /// </summary>
+    [HttpGet("numeric-context")]
+    public async Task<IActionResult> NumericContext(int moduleId,CancellationToken token)
+    {
+        var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);
+        if(!decision.Allowed)return Denied(decision.Denial!);
+        var definition=decision.Value!.Definition;
+
+        var currencyDecimals=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+        var currencyRounding=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        var unitDecimals=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+        var fieldRoles=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+
+        await using(var command=new SqlCommand("SELECT LTRIM(RTRIM(CURR_ID)),DECIMAL_PLACES,ROUNDING_METHOD FROM dbo.CURR",connection))
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            while(await reader.ReadAsync(token))
+            {
+                var id=reader.GetString(0).Trim();
+                currencyDecimals[id]=reader.IsDBNull(1)?2:Convert.ToInt32(reader.GetValue(1));
+                currencyRounding[id]=reader.IsDBNull(2)?"AwayFromZero":Convert.ToString(reader.GetValue(2))??"AwayFromZero";
+            }
+        }
+
+        await using(var command=new SqlCommand("SELECT LTRIM(RTRIM(UNIT_ID)),DECIMAL_PLACES FROM dbo.UNIT",connection))
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            while(await reader.ReadAsync(token))
+            {
+                unitDecimals[reader.GetString(0).Trim()]=reader.IsDBNull(1)?3:Convert.ToInt32(reader.GetValue(1));
+            }
+        }
+
+        var tables=definition.DetailTable is null
+            ?new[]{definition.MasterTable}
+            :new[]{definition.MasterTable,definition.DetailTable};
+        var placeholders=string.Join(",",tables.Select((_,index)=>$"@t{index}"));
+        await using(var command=new SqlCommand($"SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(NUMERIC_ROLE,''))) FROM dbo.FIELDS WHERE T_ID IN ({placeholders}) AND ISNULL(NUMERIC_ROLE,'')<>''",connection))
+        {
+            for(var index=0;index<tables.Length;index++)command.Parameters.AddWithValue($"@t{index}",tables[index]);
+            await using var reader=await command.ExecuteReaderAsync(token);
+            while(await reader.ReadAsync(token))fieldRoles[reader.GetString(0).Trim()]=reader.GetString(1).Trim();
+        }
+
+        return Ok(new{currencyDecimals,currencyRounding,unitDecimals,fieldRoles});
     }
 
     [HttpGet("record")]
@@ -425,8 +481,9 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
                 var value=row.GetValueOrDefault(field.Key);
                 var text=FormatCsvValue(value,field.DataType);
                 var numeric=value is not null && value is not DBNull && IsNumericValue(value);
+                // 数值已由 FormatCsvValue 按不变文化输出（无千分位），此处不再清洗逗号
                 builder.Append("<Cell><Data ss:Type=\"").Append(numeric?"Number":"String").Append("\">")
-                    .Append(XmlEncode(numeric&&text.Length>0?text.Replace(",",""):text)).Append("</Data></Cell>");
+                    .Append(XmlEncode(text)).Append("</Data></Cell>");
             }
             builder.Append("</Row>");
         }
@@ -448,12 +505,19 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         return value.IndexOfAny([',','"','\r','\n'])>=0?"\""+value.Replace("\"","\"\"")+"\"":value;
     }
 
+    /// <summary>
+    /// 导出单元格取值。数值一律用不变文化（点号小数、无千分位）——ADR-037 决定七。
+    ///
+    /// 用当前区域会出错：德语服务器会把 1234.5 输出成 "1234,5"，Excel 打开时被逗号拆成两列；
+    /// 而 <see cref="BuildExcel"/> 里"去掉千分位逗号"的清洗也会把小数逗号一并删掉，变成 12345。
+    /// </summary>
     private static string FormatCsvValue(object? value,string dataType)
     {
         if(value is null)return "";
         if(value is bool flag)return flag?"是":"否";
-        if(value is DateTime date)return date.ToString("yyyy-MM-dd HH:mm:ss");
-        if(value is DateTimeOffset offset)return offset.ToString("yyyy-MM-dd HH:mm:ss");
-        return value.ToString()??"";
+        if(value is DateTime date)return date.ToString("yyyy-MM-dd HH:mm:ss",System.Globalization.CultureInfo.InvariantCulture);
+        if(value is DateTimeOffset offset)return offset.ToString("yyyy-MM-dd HH:mm:ss",System.Globalization.CultureInfo.InvariantCulture);
+        if(NumericDisplay.IsNumeric(value))return Convert.ToString(value,System.Globalization.CultureInfo.InvariantCulture)??"";
+        return Convert.ToString(value)?.Trim()??"";
     }
 }

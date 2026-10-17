@@ -177,7 +177,13 @@ public sealed class WorkbenchCommandHandler(
         }
         var masterIdentity = await WorkbenchSql.GetIdentityColumnsAsync(connection, transaction, definition.MasterTable, token);
 
-        var validation = RecordPayloadValidator.ValidateSubmitted(form.MasterFields, request.Values);
+        // 主表金额校验按单据币别精度（ADR-037）：日元单据不接受 2 位小数
+        var (masterAmountDecimals, _) = await CurrencyPrecision.ReadAsync(
+            connection,
+            transaction,
+            request.Values.TryGetValue("CURR_ID", out var newDocCurr) ? newDocCurr : null,
+            token);
+        var validation = RecordPayloadValidator.ValidateSubmitted(form.MasterFields, request.Values, masterAmountDecimals);
         if (validation.Errors.Count > 0)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "数据校验未通过。", validation.Errors);
@@ -478,7 +484,12 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        var validation = RecordPayloadValidator.ValidateSubmitted(form.MasterFields, request.Values);
+        var (updateAmountDecimals, _) = await CurrencyPrecision.ReadAsync(
+            connection,
+            transaction,
+            request.Values.TryGetValue("CURR_ID", out var updatedDocCurr) ? updatedDocCurr : null,
+            token);
+        var validation = RecordPayloadValidator.ValidateSubmitted(form.MasterFields, request.Values, updateAmountDecimals);
         if (validation.Errors.Count > 0)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "数据校验未通过。", validation.Errors);
@@ -901,9 +912,22 @@ public sealed class WorkbenchCommandHandler(
         var dfFields = dfVerify?.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
         var errors = new List<FieldError>();
         var rows = new List<Dictionary<string, object?>>();
+        // 金额精度跟单据币别走（ADR-037）：整单取一次，明细行沿用主表币别
+        var (amountDecimals, amountRounding) = await CurrencyPrecision.ReadAsync(
+            connection,
+            transaction,
+            masterValues.TryGetValue("CURR_ID", out var documentCurr) ? Convert.ToString(documentCurr) : null,
+            token);
+        // 数量精度跟计量单位走（ADR-037）：整表 27 行，一次载入比逐行查库划算
+        var unitPrecisions = await LoadUnitPrecisionsAsync(connection, transaction, token);
         for (var rowIndex = 0; rowIndex < details.Count; rowIndex++)
         {
-            var validation = RecordPayloadValidator.ValidateSubmitted(form.DetailFields, details[rowIndex]);
+            var rowUnitId = details[rowIndex].TryGetValue("UNIT_ID", out var unitValue) ? unitValue?.Trim() : null;
+            var quantityDecimals = rowUnitId is not null && unitPrecisions.TryGetValue(rowUnitId, out var unitDp)
+                ? unitDp
+                : (int?)null;
+            var validation = RecordPayloadValidator.ValidateSubmitted(
+                form.DetailFields, details[rowIndex], amountDecimals, quantityDecimals);
             // Detail row errors carry the row index so the front end can locate the exact row
             errors.AddRange(validation.Errors.Select(error => error with { RowIndex = rowIndex }));
             var row = new Dictionary<string, object?>(validation.Converted, StringComparer.OrdinalIgnoreCase);
@@ -934,7 +958,7 @@ public sealed class WorkbenchCommandHandler(
                 }
             }
             // 服务端复算明细行金额（金额以服务端为权威）
-            RecalculateDetailAmounts(form.DetailFields, row, masterValues);
+            RecalculateDetailAmounts(form.DetailFields, row, masterValues, amountDecimals, amountRounding);
             rows.Add(row);
         }
         // 回传的既有项次必须互不相同：同一行身份被用两次会让第二行撞主键（库层拒绝外，先给可读的 400）
@@ -965,7 +989,7 @@ public sealed class WorkbenchCommandHandler(
         }
         foreach (var row in rows)
         {
-            RecalculateDetailAmounts(form.DetailFields, row, masterValues);
+            RecalculateDetailAmounts(form.DetailFields, row, masterValues, amountDecimals, amountRounding);
         }
         // 应收货款单（170101）等引用单据的明细：金额/数量从送货（退货）单明细带出
         await FillReferencedAmountsAsync(connection, transaction, form.DetailFields, rows, token);
@@ -1089,11 +1113,32 @@ public sealed class WorkbenchCommandHandler(
         }
     }
 
+    /// <summary>载入计量单位的小数位，供数量校验使用（ADR-037）。表很小，整表读一次。</summary>
+    private static async Task<Dictionary<string, int>> LoadUnitPrecisionsAsync(
+        SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
+    {
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        await using var command = new SqlCommand(
+            "SELECT UNIT_ID, DECIMAL_PLACES FROM dbo.UNIT", connection, transaction);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            if (reader.IsDBNull(0) || reader.IsDBNull(1))
+            {
+                continue;
+            }
+            map[reader.GetString(0).Trim()] = Convert.ToInt32(reader.GetValue(1));
+        }
+        return map;
+    }
+
     /// <summary>服务端复算明细行金额（AMOUNT/TAX_SUM/AMOUNT_TAX），覆盖客户端提交值。</summary>
     private static void RecalculateDetailAmounts(
         IReadOnlyList<FormFieldDefinition> fields,
         IDictionary<string, object?> row,
-        IReadOnlyDictionary<string, object?> masterValues)
+        IReadOnlyDictionary<string, object?> masterValues,
+        int amountDecimals,
+        MidpointRounding amountRounding)
     {
         var hasAmount = fields.Any(field => field.Key.Equals("AMOUNT", StringComparison.OrdinalIgnoreCase));
         var hasAmountTax = fields.Any(field => field.Key.Equals("AMOUNT_TAX", StringComparison.OrdinalIgnoreCase));
@@ -1116,7 +1161,9 @@ public sealed class WorkbenchCommandHandler(
             row.TryGetValue("TAX_TYPE", out var taxType)
                 ? Convert.ToString(taxType)
                 : masterValues.TryGetValue("TAX_TYPE", out var masterTaxType) ? Convert.ToString(masterTaxType) : null,
-            GetDecimal(row, "REBATE") ?? 100m);
+            GetDecimal(row, "REBATE") ?? 100m,
+            amountDecimals,
+            amountRounding);
         if (hasAmount)
         {
             row["AMOUNT"] = result.Amount;

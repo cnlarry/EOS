@@ -1,0 +1,26 @@
+-- 399：币别与计量单位的计算精度列（ADR-037 批 1）
+-- 金额的小数位跟货币、数量的小数位跟单位——SAP(TCURX/T006)、D365、金蝶、Odoo 的一致做法。
+-- ISO 4217 中 JPY/VND 为 0 位、KWD/BHD/OMR 为 3 位、CLF 为 4 位；
+-- 全局常数 2 位在这些币种下会产生无意义的"分"。数量同理："个"应 0 位、"千克/米"通常 3 位。
+-- 幂等：列已存在则跳过。
+
+IF COL_LENGTH(N'dbo.CURR', N'DECIMAL_PLACES') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[CURR] ADD [DECIMAL_PLACES] [tinyint] NOT NULL
+        CONSTRAINT [DF_CURR_DECIMAL_PLACES] DEFAULT (2);
+END
+GO
+
+IF COL_LENGTH(N'dbo.CURR', N'ROUNDING_METHOD') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[CURR] ADD [ROUNDING_METHOD] [varchar](16) NOT NULL
+        CONSTRAINT [DF_CURR_ROUNDING_METHOD] DEFAULT ('AwayFromZero');
+END
+GO
+
+IF COL_LENGTH(N'dbo.UNIT', N'DECIMAL_PLACES') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[UNIT] ADD [DECIMAL_PLACES] [tinyint] NOT NULL
+        CONSTRAINT [DF_UNIT_DECIMAL_PLACES] DEFAULT (3);
+END
+GO

@@ -28,7 +28,20 @@ describe('formatFieldValue', () => {
 
   it('数字支持千分位与小数位格式', () => {
     expect(formatFieldValue(1234.5, 'float', '#,##0.00')).toBe('1,234.50')
-    expect(formatFieldValue(1234.5, 'float', null)).toBe('1234.5')
+    // 未配置格式时补类型默认（ADR-037 批 2）：小数最多 6 位、带千分位，不再裸输出
+    expect(formatFieldValue(1234.5, 'float', null, { locale: 'en-US' })).toBe('1,234.5')
+    expect(formatFieldValue(1234, 'int', null, { locale: 'en-US' })).toBe('1,234')
+  })
+
+  it('locale 决定分组符与小数点，不再硬编码 zh-CN', () => {
+    expect(formatFieldValue(1234.5, 'float', null, { locale: 'de-DE' })).toBe('1.234,5')
+    expect(formatFieldValue(1234.5, 'float', 'N2', { locale: 'de-DE' })).toBe('1.234,50')
+    expect(formatFieldValue(1234.5, 'float', '#,##0.00', { locale: 'de-DE' })).toBe('1.234,50')
+  })
+
+  it('货币符号取单据币别，不再硬编码 CNY', () => {
+    expect(formatFieldValue(1234.5, 'decimal', 'C', { locale: 'en-US', currency: 'USD' })).toBe('$1,234.50')
+    expect(formatFieldValue(1234.5, 'decimal', 'C', { locale: 'en-US', currency: 'JPY' })).toBe('¥1,235')
   })
 
   it('系统自定义数字格式（0.## 等库内实际格式）', () => {
@@ -47,6 +60,14 @@ describe('formatFieldValue', () => {
   it('支持 .NET 标准数字格式（N/F）', () => {
     expect(formatFieldValue(1234.5, 'float', 'N2')).toBe('1,234.50')
     expect(formatFieldValue(1.25, 'float', 'F1')).toBe('1.3')
+  })
+
+  it('负数会计括号：分号第二段决定负数写法', () => {
+    // 与 .NET 的 ToString("#,##0.00;(#,##0.00)") 一致，打印侧同源
+    expect(formatFieldValue(-1234.5, 'decimal', '#,##0.00;(#,##0.00)')).toBe('(1,234.50)')
+    expect(formatFieldValue(1234.5, 'decimal', '#,##0.00;(#,##0.00)')).toBe('1,234.50')
+    // 未写负号段时仍用负号
+    expect(formatFieldValue(-1234.5, 'decimal', '#,##0.00')).toBe('-1,234.50')
   })
 
   it('文本类型字段也可按格式特征格式化（库内 nvarchar 的 0.##/yyyy-MM-dd）', () => {

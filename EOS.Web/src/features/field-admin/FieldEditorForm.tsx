@@ -27,6 +27,23 @@ import {
   type TableRelations,
 } from './expressionBuilder'
 
+/**
+ * 显示格式预设：按数据类型给常用项。
+ * 配合 `<input list>` 使用——既能从下拉选，也能自由输入，不需要额外的"自定义"开关。
+ */
+const FORMAT_PRESETS = {
+  number: ['#,##0.00', '#,##0.######', '0.00', '0.0000', '0.##', '0'],
+  date: ['yyyy-MM-dd', 'yyyy-MM-dd HH:mm', 'yyyy-MM-dd HH:mm:ss', 'HH:mm:ss'],
+  text: [],
+} as const
+
+function formatPresetsFor(dataType: string): readonly string[] {
+  const type = (dataType ?? '').toLowerCase()
+  if (type.includes('date') || type.includes('time')) return FORMAT_PRESETS.date
+  if (/int|decimal|numeric|float|money|real/.test(type)) return FORMAT_PRESETS.number
+  return FORMAT_PRESETS.text
+}
+
 export interface ChooserSource {
   active: boolean
   table: string | null
@@ -608,8 +625,21 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                         </select>
                       </div>
                       <div className="col-12">
-                        <label className="form-label">显示格式</label>
-                        <input className="form-control" value={draft.format ?? ''} onChange={event => setDraft({ ...draft, format: event.target.value })} />
+                        <label className="form-label" htmlFor="field-display-format">显示格式</label>
+                        <input
+                          id="field-display-format"
+                          className="form-control"
+                          list="field-format-presets"
+                          value={draft.format ?? ''}
+                          onChange={event => setDraft({ ...draft, format: event.target.value })}
+                          placeholder={(draft.dataType ?? '').includes('date') ? 'yyyy-MM-dd' : '#,##0.00'}
+                        />
+                        <datalist id="field-format-presets">
+                          {formatPresetsFor(draft.dataType ?? '').map(preset => <option key={preset} value={preset} />)}
+                        </datalist>
+                        <div className="form-hint">
+                          从下拉选常用格式，或直接输入。留空按类型默认：整数无小数、小数最多 6 位去尾零并带千分位；渲染时仍会做格式合法性校验。
+                        </div>
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">

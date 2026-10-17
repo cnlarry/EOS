@@ -97,4 +97,27 @@ describe('formValidation', () => {
     const errors = validateDetailRows(fields, [{ qty: '' }])
     expect(errors[0].qty).toBeDefined()
   })
+
+  it('业务精度优先于存储精度（ADR-037）：日元 0 位、个 0 位', () => {
+    // 存储是 decimal(18,4)/decimal(18,6)，能放 4/6 位；业务精度由币别与单位决定
+    const amount = field({ key: 'AMOUNT', dataType: 'decimal', precision: 18, scale: 4 })
+    const qty = field({ key: 'QTY', dataType: 'decimal', precision: 18, scale: 6 })
+    const context = {
+      currencyDecimals: { JPY: 0, RMB: 2 },
+      currencyRounding: { JPY: 'AwayFromZero', RMB: 'AwayFromZero' },
+      unitDecimals: { PCS: 0, KG: 3 },
+      fieldRoles: { AMOUNT: 'AMOUNT', QTY: 'QTY' },
+    }
+
+    // 日元 0 位：2 位小数必须拒绝
+    expect(validateField(amount, '1234.56', { context, amountDecimals: 0 })).toContain('小数位')
+    // 人民币 2 位：放行
+    expect(validateField(amount, '1234.56', { context, amountDecimals: 2 })).toBeNull()
+    // 未提供金额精度时回落到存储 scale(4)，不做拒绝
+    expect(validateField(amount, '1234.56', { context })).toBeNull()
+
+    // 单位"个"0 位：1.5 拒绝；"千克"3 位：1.5 放行
+    expect(validateDetailRows([qty], [{ QTY: '1.5', UNIT_ID: 'PCS' }], '', { context })[0].QTY).toBeDefined()
+    expect(validateDetailRows([qty], [{ QTY: '1.5', UNIT_ID: 'KG' }], '', { context })[0].QTY).toBeUndefined()
+  })
 })

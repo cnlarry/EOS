@@ -39,6 +39,40 @@ export interface FieldVerdict {
 const DECIMAL_VARIANT_TYPES = /decimal|numeric/
 
 /**
+ * 数值精度上下文（`GET /document-workbench/{moduleId}/numeric-context`，ADR-037）。
+ *
+ * 金额的小数位跟**币别**、数量的小数位跟**单位**，而不是跟存储类型的 scale。
+ * 这份数据单独下发而不塞进 form-definition，是为了不惊动定义快照。
+ */
+export interface NumericContext {
+  currencyDecimals: Record<string, number>
+  currencyRounding: Record<string, string>
+  unitDecimals: Record<string, number>
+  /** 本模块主子表的字段语义族：F_ID → AMOUNT/QTY/PRICE/RATE/PERCENT */
+  fieldRoles: Record<string, string>
+}
+
+/** 单次判定的业务精度：金额取单据币别，数量取该行单位。 */
+interface NumericLimit {
+  role: string
+  decimals: number
+}
+
+function resolveLimit(
+  field: FormFieldDefinition,
+  context: NumericContext | undefined,
+  amountDecimals: number | undefined,
+  quantityDecimals: number | undefined,
+): NumericLimit | null {
+  if (!context) return null
+  const role = context.fieldRoles[field.key.toUpperCase()]
+  if (!role) return null
+  if (role === 'AMOUNT' && amountDecimals != null) return { role, decimals: amountDecimals }
+  if (role === 'QTY' && quantityDecimals != null) return { role, decimals: quantityDecimals }
+  return null
+}
+
+/**
  * 单字段判定（纯函数）：镜像服务端 ValidateSubmitted + CheckRequiredAndRegex 管线。
  * - trim 契约：校验与产出值均基于 trim 后文本；
  * - 空串等价 null：跳过长度/正则，必填报 REQUIRED_FIELD_MISSING；
@@ -46,7 +80,11 @@ const DECIMAL_VARIANT_TYPES = /decimal|numeric/
  * - date/datetime 变体：必须可解析为 yyyy-MM-dd[THH:mm[:ss]]；
  * - bit：任意值合法（true/1/是 → '1'，否则 '0'），无必填语义。
  */
-export function evaluateField(field: FormFieldDefinition, rawInput: string | undefined): FieldVerdict {
+export function evaluateField(
+  field: FormFieldDefinition,
+  rawInput: string | undefined,
+  limit?: NumericLimit | null,
+): FieldVerdict {
   const raw = rawInput ?? ''
   const trimmed = raw.trim()
   const isBoolean = fieldVariant(field) === 'checkbox'
@@ -72,14 +110,16 @@ export function evaluateField(field: FormFieldDefinition, rawInput: string | und
         return { code: 'INVALID_VALUE', value: trimmed }
       }
     }
-    // precision/scale 仅 decimal/numeric 启用（float/money 不适用），拒绝式不做静默舍入
-    if (DECIMAL_VARIANT_TYPES.test(field.dataType.toLowerCase()) && field.scale != null) {
+    // precision/scale 仅 decimal/numeric 启用（float/money 不适用），拒绝式不做静默舍入。
+    // 业务精度优先（ADR-037）：金额按币别、数量按单位，拿不到上下文时才回落到存储 scale。
+    const effectiveScale = limit?.decimals ?? field.scale
+    if (DECIMAL_VARIANT_TYPES.test(field.dataType.toLowerCase()) && effectiveScale != null) {
       const [, fraction = ''] = value.split('.')
-      if (fraction.length > field.scale) return { code: 'SCALE_EXCEEDED', value: trimmed, messageArgs: { scale: field.scale } }
+      if (fraction.length > effectiveScale) return { code: 'SCALE_EXCEEDED', value: trimmed, messageArgs: { scale: effectiveScale } }
       if (field.precision != null) {
-        const integerLimit = Math.pow(10, field.precision - field.scale)
+        const integerLimit = Math.pow(10, field.precision - effectiveScale)
         if (Math.abs(Number(value)) >= integerLimit) {
-          return { code: 'PRECISION_EXCEEDED', value: trimmed, messageArgs: { integerDigits: Math.max(0, field.precision - field.scale) } }
+          return { code: 'PRECISION_EXCEEDED', value: trimmed, messageArgs: { integerDigits: Math.max(0, field.precision - effectiveScale) } }
         }
       }
     }
@@ -105,34 +145,61 @@ function verdictMessage(verdict: FieldVerdict): string {
   return template
 }
 
-function buildFieldSchema(field: FormFieldDefinition) {
-  return (rawInput: string | undefined) => {
-    const verdict = evaluateField(field, rawInput)
-    return verdict.code === 'ok' ? null : verdictMessage(verdict)
-  }
+/** 校验作用域：数值精度上下文 + 本单金额精度（按单据币别解出）。 */
+export interface ValidationScope {
+  context?: NumericContext
+  amountDecimals?: number
 }
 
-function validateFields(fields: FormFieldDefinition[], values: Record<string, string>): FieldErrors {
+function validateFields(
+  fields: FormFieldDefinition[],
+  values: Record<string, string>,
+  scope?: ValidationScope,
+  quantityDecimals?: number,
+): FieldErrors {
   const errors: FieldErrors = {}
   for (const field of fields) {
     if (!field.isVisible || field.isReadonly || field.serverFilled) continue
-    const error = buildFieldSchema(field)(values[field.key])
-    if (error) errors[field.key] = error
+    const limit = resolveLimit(field, scope?.context, scope?.amountDecimals, quantityDecimals)
+    const verdict = evaluateField(field, values[field.key], limit)
+    if (verdict.code !== 'ok') errors[field.key] = verdictMessage(verdict)
   }
   return errors
 }
 
-export function validateField(field: FormFieldDefinition, value: string): string | null {
+export function validateField(
+  field: FormFieldDefinition,
+  value: string,
+  scope?: ValidationScope,
+  quantityDecimals?: number,
+): string | null {
   if (field.isReadonly || field.serverFilled) return null
-  return validateFields([field], { [field.key]: value })[field.key] ?? null
+  return validateFields([field], { [field.key]: value }, scope, quantityDecimals)[field.key] ?? null
 }
 
-export function validateMasterFields(fields: FormFieldDefinition[], values: Record<string, string>): FieldErrors {
-  return validateFields(fields, values)
+export function validateMasterFields(
+  fields: FormFieldDefinition[],
+  values: Record<string, string>,
+  scope?: ValidationScope,
+): FieldErrors {
+  return validateFields(fields, values, scope)
 }
 
-export function validateDetailRows(fields: FormFieldDefinition[], rows: Record<string, string>[], dfVerify = ''): FieldErrors[] {
-  const result = rows.map(row => validateFields(fields, row))
+/**
+ * 明细行校验：数量精度逐行按 `UNIT_ID` 取——同一张单里"个"和"千克"可以并存，
+ * 用同一个常数会把其中一种判错。
+ */
+export function validateDetailRows(
+  fields: FormFieldDefinition[],
+  rows: Record<string, string>[],
+  dfVerify = '',
+  scope?: ValidationScope,
+): FieldErrors[] {
+  const result = rows.map((row) => {
+    const unitId = (row.UNIT_ID ?? row.unit_id ?? '').trim().toUpperCase()
+    const quantityDecimals = scope?.context && unitId ? scope.context.unitDecimals[unitId] : undefined
+    return validateFields(fields, row, scope, quantityDecimals)
+  })
   if (dfVerify) {
     const keys = dfVerify.split(';').map(key => key.trim()).filter(Boolean)
     if (keys.length > 0) {

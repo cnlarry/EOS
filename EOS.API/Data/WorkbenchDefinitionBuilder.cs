@@ -382,7 +382,7 @@ public sealed class WorkbenchDefinitionBuilder(
                     Choosers: [], IsPrimaryKey: true, IsAutoIncrement: pkRow.IsAutoIncrement, IsVirtual: pkRow.IsVirtual,
                     IsCost: pkRow.IsCost, IsSecrecy: pkRow.IsSecrecy, ServerFilled: true, pkRow.MaxLength,
                     Options: FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false,
-                    Precision: pkRow.TypePrecision, Scale: pkRow.TypeScale));
+                    Precision: pkRow.TypePrecision, Scale: pkRow.TypeScale, NumericRole: pkRow.NumericRole));
             }
             if (missingPk.Count > 0) detailFields = detailFields.Concat(missingPk).ToList();
             detailDfVerify=(await WorkbenchSql.GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
@@ -619,6 +619,7 @@ public sealed class WorkbenchDefinitionBuilder(
                          ELSE col.MAX_LENGTH END AS MAX_LENGTH,
                    f.FORM_OPTIONS AS FORM_OPTIONS,
                    col.TYPE_PRECISION AS TYPE_PRECISION,col.TYPE_SCALE AS TYPE_SCALE,
+                   LTRIM(RTRIM(ISNULL(f.NUMERIC_ROLE,''))) AS NUMERIC_ROLE,
                    CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
             FROM dbo.FIELDS f WITH (NOLOCK)
             LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
@@ -692,7 +693,8 @@ public sealed class WorkbenchDefinitionBuilder(
             reader.GetNullableString("FORM_OPTIONS"),
             reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")),
             reader.GetNullableInt32("TYPE_PRECISION"),
-            reader.GetNullableInt32("TYPE_SCALE"));
+            reader.GetNullableInt32("TYPE_SCALE"),
+            reader.GetNullableString("NUMERIC_ROLE"));
 
     /// <summary>Reads chooser data sources for all fields of the target table (FIELD_DATASOURCE, ordered by SERIAL_NO).</summary>
     private static async Task<Dictionary<string, IReadOnlyList<FormChooserRow>>> ReadChoosersByFieldAsync(

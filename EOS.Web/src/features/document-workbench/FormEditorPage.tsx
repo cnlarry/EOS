@@ -34,7 +34,7 @@ import { alignClass, formatFieldValue } from './fieldFormat'
 import { packFormSections, resolveTabColumns } from './formLayout'
 import { normalizeFormOpenMode, readDialogShellHint, resolveDialogSize } from './formOpenMode'
 import { fieldVariant } from './formFieldKind'
-import { validateDetailRows, validateField, validateMasterFields, type FieldErrors } from './formValidation'
+import { validateDetailRows, validateField, validateMasterFields, type FieldErrors, type NumericContext } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
 import { useDocumentActionRunner } from './documentActionRunner'
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
@@ -1028,10 +1028,23 @@ export function FormEditorPage() {
     },
   })
 
+  // 数值精度上下文（ADR-037）：金额精度跟单据币别、数量精度跟行单位。
+  // 单独端点下发而不进 form-definition，避免惊动定义快照；5 分钟内复用，避免每次校验都请求。
+  const numericContextQuery = useQuery({
+    queryKey: ['workbench', moduleId, 'numeric-context'],
+    queryFn: () => apiClient.get<NumericContext>(`/document-workbench/${moduleId}/numeric-context`),
+    enabled: Boolean(moduleId),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const validateClient = (): boolean => {
     if (!formQuery.data) return false
-    const master = validateMasterFields(formQuery.data.masterFields, masterValues)
-    const details = validateDetailRows(formQuery.data.detailFields, detailRows, formQuery.data.detailDfVerify)
+    const context = numericContextQuery.data
+    const currId = (masterValues.CURR_ID ?? '').trim().toUpperCase()
+    const amountDecimals = context && currId ? context.currencyDecimals[currId] : undefined
+    const scope = context ? { context, amountDecimals } : undefined
+    const master = validateMasterFields(formQuery.data.masterFields, masterValues, scope)
+    const details = validateDetailRows(formQuery.data.detailFields, detailRows, formQuery.data.detailDfVerify, scope)
     setFieldErrors(master)
     setDetailErrors(details)
     const hasErrors = Object.keys(master).length > 0 || details.some(row => Object.keys(row).length > 0)
@@ -1217,10 +1230,18 @@ export function FormEditorPage() {
   const addDetailRow = useCallback(() => {
     const def = formDefRef.current
     if (!def) return
+    // 只检查「主表录入面上真实存在的字段」。DETAIL_NO_FIELDS 是随模块一起维护的历史元数据，
+    // 里面可能留着本模块录入面根本没有的键（字段被标为不显示、或本就不属于这张表）——
+    // 那些键在界面上永远给不出值，逐键检查会让门禁成为死结：用户无论怎么填都加不出明细行。
+    // 取不到录入项的键直接跳过，检查落在真正需要用户先填的那些字段上。
+    const entryKeys = new Map(def.masterFields.filter(field => field.isVisible).map(field => [field.key.toUpperCase(), field.key]))
     const missing = def.detailNoFields
       .split(';')
       .map(field => field.trim())
-      .filter(field => field && !(masterValuesRef.current[field] ?? '').trim())
+      .filter(field => {
+        const key = entryKeys.get(field.toUpperCase())
+        return key !== undefined && !(masterValuesRef.current[key] ?? '').trim()
+      })
     if (missing.length > 0) {
       setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
       return

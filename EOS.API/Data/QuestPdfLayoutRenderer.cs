@@ -814,8 +814,8 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                 for (var i = 0; i < columnCount; i++)
                 {
                     var value = autoColumns
-                        ? PdfLayout.FormatValue(row.GetValueOrDefault(fields[i].Field), fields[i].Format)
-                        : ResolveTableCell(fields[i], row, index);
+                        ? FormatDetailCell(row.GetValueOrDefault(fields[i].Field), fields[i], context)
+                        : ResolveTableCell(fields[i], row, index, context);
                     var align = fields[i].Align ?? "left";
                     var cell = t.Cell()
                         .BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2)
@@ -834,15 +834,22 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
             // 价税合计行（profile 表）：标签跨列 + 主表金额
             if (!string.IsNullOrWhiteSpace(table.TotalsLabel) && !string.IsNullOrWhiteSpace(table.TotalsField))
             {
-                var amount = PrintColumnFormats.Format(
-                    ResolveMasterValue(table.TotalsField, data), PrintColumnFormats.Amount);
+                // 合计跟随该列配置的 format；没配时按金额族默认（ADR-037 批 3 的同源回落）
+                var totalsSpec = fields.FirstOrDefault(
+                    field => string.Equals(field.Field, table.TotalsField, StringComparison.OrdinalIgnoreCase));
+                var amount = NumericDisplay.Format(
+                    ResolveMasterValue(table.TotalsField, data), totalsSpec?.Format, "AMOUNT",
+                    amountDecimals: context.AmountDecimals);
                 if (columnCount > 1)
                     t.Cell().ColumnSpan((uint)(columnCount - 1))
                         .BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2)
                         .Padding(3).AlignRight().Text(table.TotalsLabel).FontSize(8).SemiBold();
                 t.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2)
                     .Padding(3).AlignRight()
-                    .Text(amount.Length == 0 ? "0.00" : amount).FontSize(8).SemiBold();
+                    .Text(amount.Length == 0
+                        ? NumericDisplay.Format(0m, totalsSpec?.Format, "AMOUNT", amountDecimals: context.AmountDecimals)
+                        : amount)
+                    .FontSize(8).SemiBold();
             }
             else if (table.ShowTotals ?? false)
             {
@@ -861,8 +868,12 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                             Convert.ToString(raw, CultureInfo.InvariantCulture),
                             NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed) ? 0m : parsed;
                     });
+                    // 列合计按该列 format 渲染；金额按单据币别精度、其它最多 6 位去尾零
                     t.Cell().Padding(3).AlignRight()
-                        .Text(total.ToString("0.00", CultureInfo.InvariantCulture)).FontSize(8).SemiBold();
+                        .Text(NumericDisplay.Format(
+                            total, fields[i].Format, isAmount ? "AMOUNT" : "QTY",
+                            amountDecimals: context.AmountDecimals))
+                        .FontSize(8).SemiBold();
                 }
             }
         });
@@ -890,7 +901,8 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         });
     }
 
-    private static string ResolveTableCell(TableColumnSpec column, IReadOnlyDictionary<string, object?> row, int index)
+    private static string ResolveTableCell(
+        TableColumnSpec column, IReadOnlyDictionary<string, object?> row, int index, LayoutRenderContext context)
     {
         var reference = column.Field;
         if (string.Equals(reference, "DETAILS.ROW_INDEX", StringComparison.OrdinalIgnoreCase))
@@ -905,18 +917,35 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         }
         if (reference.StartsWith("DETAILS.", StringComparison.OrdinalIgnoreCase))
         {
-            var value = PdfLayout.FormatValue(
-                row.GetValueOrDefault(reference["DETAILS.".Length..]), column.Format);
+            var value = FormatDetailCell(
+                row.GetValueOrDefault(reference["DETAILS.".Length..]), column, context);
             return AppendSuffix(value, column.Suffix);
         }
         if (reference.StartsWith("MASTER.", StringComparison.OrdinalIgnoreCase))
-            return PdfLayout.FormatValue(ResolveMasterValue(reference, null), column.Format);
+            return FormatDetailCell(ResolveMasterValue(reference, null), column, context);
         return string.Empty; // fail-closed：未知字段引用渲染为空
     }
 
     private sealed record TableColumnSpec(
         string Field, string Label, double? Width, string? Align, string? Format,
         string? Suffix, bool? IsAmount, bool? NegativeRed);
+
+    /// <summary>
+    /// 明细单元格格式化：数值走三级回落，金额按单据币别精度（ADR-037 批 3）。
+    /// 非数值仍走 <see cref="PdfLayout.FormatValue(object?)"/>。
+    /// </summary>
+    private static string FormatDetailCell(object? raw, TableColumnSpec column, LayoutRenderContext context)
+    {
+        if (raw is null or DBNull) return string.Empty;
+        var isAmount = column.IsAmount ?? PdfLayout.IsAmountColumn(column.Field);
+        if (NumericDisplay.IsNumeric(raw))
+        {
+            return NumericDisplay.Format(
+                raw, column.Format, isAmount ? "AMOUNT" : null,
+                amountDecimals: context.AmountDecimals);
+        }
+        return PdfLayout.FormatValue(raw, column.Format);
+    }
 
     private static string AppendSuffix(string value, string? suffix)
         => string.IsNullOrEmpty(value) || string.IsNullOrWhiteSpace(suffix) ? value : value + suffix;

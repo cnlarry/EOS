@@ -117,6 +117,8 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
         // 探路与执行走同一事务：逐行取价 + 逐行重算金额都在调用方事务里，
         // 框架"执行后回滚"即可兜住探路，处理器不必自行分支。
         var priced = 0;
+        // 金额精度跟单据币别走（ADR-037）：整单取一次，逐行重算与主表汇总共用同一口径
+        var (amountDecimals, amountRounding) = await ReadDocumentPrecisionAsync(context, no, token);
         foreach (var row in rows)
         {
             var current = await FetchPriceAsync(context, supplier, row, token);
@@ -124,9 +126,9 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             {
                 priced++;
             }
-            await RecomputeRowAsync(context, type, no, current, token);
+            await RecomputeRowAsync(context, type, no, current, amountDecimals, amountRounding, token);
         }
-        await RollupMasterAsync(context, type, no, masterRate.Value, token);
+        await RollupMasterAsync(context, type, no, masterRate.Value, amountDecimals, token);
 
         var unpriced = rows.Count - priced;
         return new DocumentActionResult(DocumentActionOutcome.Refreshed,
@@ -258,7 +260,8 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
     /// 单独算出来的，可能让「未税额 + 税额 ≠ 价税额」差一分。
     /// </summary>
     private static async Task RecomputeRowAsync(
-        DocumentActionContext context, string type, string no, DetailRow row, CancellationToken token)
+        DocumentActionContext context, string type, string no, DetailRow row,
+        int amountDecimals, MidpointRounding amountRounding, CancellationToken token)
     {
         var q = ServiceEffectSql.Q;
         var result = AmountCalculator.Calculate(
@@ -266,7 +269,9 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             (decimal)row.Price,
             (decimal)row.TaxRate,
             row.TaxType,
-            (decimal)row.Rebate);
+            (decimal)row.Rebate,
+            amountDecimals,
+            amountRounding);
 
         await using var command = new SqlCommand(
             $"UPDATE dbo.{q(DetailTable)} SET {q(AmountField)}=@amount, {q(AmountTaxField)}=@amountTax, "
@@ -289,14 +294,15 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
 
     /// <summary>主表金额＝明细按汇率折算求和÷主表汇率（与旧过程一致；主表汇率为 0 已在入口拦下）。</summary>
     private static async Task RollupMasterAsync(
-        DocumentActionContext context, string type, string no, double masterRate, CancellationToken token)
+        DocumentActionContext context, string type, string no, double masterRate,
+        int amountDecimals, CancellationToken token)
     {
         var q = ServiceEffectSql.Q;
         var rate = masterRate.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
         await using var command = new SqlCommand(
-            $"UPDATE dbo.{q(MasterTable)} SET {q(AmountField)}=ROUND(d.{q(AmountField)}/{rate}, 2), "
-            + $"{q(AmountTaxField)}=ROUND(d.{q(AmountTaxField)}/{rate}, 2), "
-            + $"{q(TaxSumField)}=ROUND(d.{q(TaxSumField)}/{rate}, 2), "
+            $"UPDATE dbo.{q(MasterTable)} SET {q(AmountField)}=ROUND(d.{q(AmountField)}/{rate}, @decimals), "
+            + $"{q(AmountTaxField)}=ROUND(d.{q(AmountTaxField)}/{rate}, @decimals), "
+            + $"{q(TaxSumField)}=ROUND(d.{q(TaxSumField)}/{rate}, @decimals), "
             + $"{q("LAST_UPDATE_DATE")}=SYSDATETIME() "
             + $"FROM (SELECT SUM(ISNULL({q(AmountField)}, 0)*ISNULL({q(CurrRateField)}, 0)) AS {q(AmountField)}, "
             + $"SUM(ISNULL({q(AmountTaxField)}, 0)*ISNULL({q(CurrRateField)}, 0)) AS {q(AmountTaxField)}, "
@@ -306,6 +312,20 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             context.Connection, context.Transaction);
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
         command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
+        command.Parameters.Add("@decimals", SqlDbType.Int).Value = amountDecimals;
         await command.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>读单据币别的金额精度；查不到时回落到 2 位、远离零舍入（与改造前一致）。</summary>
+    private static async Task<(int Decimals, MidpointRounding Rounding)> ReadDocumentPrecisionAsync(
+        DocumentActionContext context, string no, CancellationToken token)
+    {
+        var q = ServiceEffectSql.Q;
+        await using var command = new SqlCommand(
+            $"SELECT {q("CURR_ID")} FROM dbo.{q(MasterTable)} WHERE {q(NoField)} = @no",
+            context.Connection, context.Transaction);
+        command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
+        var currId = Convert.ToString(await command.ExecuteScalarAsync(token));
+        return await CurrencyPrecision.ReadAsync(context.Connection, context.Transaction, currId, token);
     }
 }

@@ -50,17 +50,21 @@ internal static class DocumentLayoutProfiles
         };
 }
 
-/// <summary>打印版式固定列的展示格式（渲染层约定，不随字段元数据漂移）。</summary>
+/// <summary>
+/// 打印版式固定列的默认格式。
+/// 口径集中在 <see cref="NumericDisplay"/>（与屏幕 fieldFormat.ts 同源，ADR-037 批 3），
+/// 这里只做别名，避免两处各写一套格式串。
+/// </summary>
 internal static class PrintColumnFormats
 {
     /// <summary>数量：最多 6 位小数、去尾零、千分位。</summary>
-    public const string Quantity = "#,##0.######";
+    public static string Quantity => NumericDisplay.QuantityFormat;
 
     /// <summary>单价：最多 6 位小数、去尾零（兼容电子元件类 6 位精度单价）。</summary>
-    public const string Price = "#,##0.######";
+    public static string Price => NumericDisplay.QuantityFormat;
 
-    /// <summary>金额：固定两位小数 + 千分位。</summary>
-    public const string Amount = "#,##0.00";
+    /// <summary>金额：默认两位小数 + 千分位（币别精度接入后按币别取位）。</summary>
+    public static string Amount => NumericDisplay.AmountFormat(NumericDisplay.DefaultAmountDecimals);
 
     public static string Format(object? value, string format)
     {
@@ -348,7 +352,8 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
                             Convert.ToString(raw, CultureInfo.InvariantCulture),
                             NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed) ? 0m : parsed;
                     });
-                    table.Cell().Padding(3).AlignRight().Text(total.ToString("0.00", CultureInfo.InvariantCulture)).FontSize(8).SemiBold();
+                    table.Cell().Padding(3).AlignRight()
+                        .Text(NumericDisplay.Format(total, null, "AMOUNT")).FontSize(8).SemiBold();
                 }
         });
     }

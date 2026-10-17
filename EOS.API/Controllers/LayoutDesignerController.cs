@@ -28,6 +28,7 @@ public sealed class LayoutDesignerController(
     PrintSettingsRepository printSettings,
     ModuleRightsRepository rightsRepository,
     PrintService printService,
+    DbConnectionFactory connections,
     IPermissionService permissions,
     ILogger<LayoutDesignerController> logger) : ControllerBase
 {
@@ -110,7 +111,20 @@ public sealed class LayoutDesignerController(
                 request.Rows, request.Variant);
         }
         if (data is null) return NotFound();
-        var pdf = renderer.Render(data, request.LayoutJson, new LayoutRenderContext(userId));
+
+        // 预览也要按单据币别渲染金额（ADR-037 批 3）：否则设计器里看到的是 2 位，
+        // 实际打印日元单变成 0 位，版式效果对不上。
+        var currId = data.Master.TryGetValue("CURR_ID", out var currValue) ? Convert.ToString(currValue) : null;
+        var amountDecimals = CurrencyPrecision.DefaultDecimals;
+        if (!string.IsNullOrWhiteSpace(currId))
+        {
+            await using var connection = connections.Create();
+            await connection.OpenAsync(token);
+            (amountDecimals, _) = await CurrencyPrecision.ReadAsync(connection, null, currId, token);
+        }
+
+        var pdf = renderer.Render(
+            data, request.LayoutJson, new LayoutRenderContext(userId, AmountDecimals: amountDecimals));
         return File(pdf, "application/pdf", "preview.pdf");
     }
 

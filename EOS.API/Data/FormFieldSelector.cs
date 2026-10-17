@@ -32,7 +32,9 @@ internal sealed record FormFieldRow(
     string? Options = null,
     bool IsPhysical = true,
     int? TypePrecision = null,
-    int? TypeScale = null);
+    int? TypeScale = null,
+    /// <summary>数值语义族（ADR-038）：AMOUNT/QTY/PRICE/RATE/PERCENT/NON_NUMERIC，未登记为 null。</summary>
+    string? NumericRole = null);
 
 internal sealed record FormChooserRow(
     bool Active,
@@ -205,7 +207,8 @@ internal static class FormFieldSelector
                 DisplayOnly: false,
                 CanCopy: row.CanCopy,
                 Precision: row.TypePrecision,
-                Scale: row.TypeScale));
+                Scale: row.TypeScale,
+                NumericRole: row.NumericRole));
         }
         return result;
     }

@@ -131,7 +131,14 @@ public sealed record FormDefinition(int ModuleId, string Title, string MasterTab
     // 打开方式（`FormOpenModes` 的取值）与弹窗尺寸（px）：只有 dialog 方式带尺寸，其余为 null。
     string OpenMode = FormOpenModes.Tab, int? DialogWidth = null, int? DialogHeight = null);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
-    int? Precision = null, int? Scale = null, int RowSpan = 1, string? SectionId = null);
+    int? Precision = null, int? Scale = null, int RowSpan = 1, string? SectionId = null,
+    /// <summary>
+    /// 数值语义族（ADR-038）：AMOUNT/QTY/PRICE/RATE/PERCENT/NON_NUMERIC，未登记为 null。
+    /// 只供服务端校验使用，**不进定义快照也不下发给前端**——序列化进去会让所有存量快照被判为落后。
+    /// 前端需要时再单独开一个轻量端点下发，不动这个结构。
+    /// </summary>
+    [property: JsonIgnore]
+    string? NumericRole = null);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);

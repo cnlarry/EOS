@@ -91,6 +91,8 @@ jobs:
         run: ./scripts/check-data-layer-boundary.ps1
       - name: 已退役库对象
         run: ./scripts/check-retired-db-objects.ps1
+      - name: 迁移脚本数值列类型
+        run: ./scripts/check-numeric-column-types.ps1
       - name: 助手可代理动作注册表
         run: ./scripts/check-assistant-action-registry.ps1
       - name: 助手动作阈值与红线

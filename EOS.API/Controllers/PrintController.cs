@@ -18,6 +18,7 @@ public sealed class PrintController(
     DocumentWorkbenchRepository workbench,
     WorkbenchAuditWriter auditWriter,
     ReportFormatRepository reportFormats,
+    DbConnectionFactory connections,
     ILayoutRenderer layoutRenderer) : ControllerBase
 {
     /// <summary>
@@ -71,8 +72,18 @@ public sealed class PrintController(
         var package = (string.IsNullOrWhiteSpace(report.FormatId) ? null : reportFormats.GetPackage(report.FormatId))
             ?? reportFormats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
+        // 金额精度跟单据币别走（ADR-037 批 3）：日元 0 位、第纳尔 3 位，不能一律按 2 位打印
+        var currId = data.Master.TryGetValue("CURR_ID", out var currValue) ? Convert.ToString(currValue) : null;
+        var amountDecimals = CurrencyPrecision.DefaultDecimals;
+        if (!string.IsNullOrWhiteSpace(currId))
+        {
+            await using var connection = connections.Create();
+            await connection.OpenAsync(token);
+            (amountDecimals, _) = await CurrencyPrecision.ReadAsync(connection, null, currId, token);
+        }
         var pdf = layoutRenderer.Render(
-            data, package.RawLayoutJson, new LayoutRenderContext(userId, request.ShowRemark));
+            data, package.RawLayoutJson,
+            new LayoutRenderContext(userId, request.ShowRemark, null, amountDecimals));
         await auditWriter.WriteBestEffortAsync(moduleId, string.Join(',', request.Key), "PRINT", $"打印 {data.Title}", userId, "PRINT", result: 1, null, token);
         return File(pdf, "application/pdf", $"{data.Title}.pdf");
     }
