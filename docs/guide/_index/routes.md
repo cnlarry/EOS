@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: ea39115e4aed16b3 -->
+<!-- code-map-fingerprint: e3016951ce38c296 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 41 个、方法级路由属性 283 处、解析出 283 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 40 个、方法级路由属性 283 处、解析出 283 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -173,7 +173,6 @@
 | POST | `api/v1/auth/login` | Login | `AuthenticationController.cs` |
 | POST | `api/v1/auth/logout` | Logout | `AuthenticationController.cs` |
 | PUT | `api/v1/auth/password` | ChangePassword | `AuthenticationController.cs` |
-| GET | `api/v1/bom/expand` | Expand | `BomExpandController.cs` |
 | GET | `api/v1/car-summary` | Query | `CarSummaryController.cs` |
 | POST | `api/v1/chooser/query` | Query | `ChooserController.cs` |
 | POST | `api/v1/client-errors` | Report | `ClientErrorController.cs` |
@@ -202,6 +201,7 @@
 | GET | `api/v1/document-workbench/{moduleId:int}/field-settings/lookups/{kind}` | FieldSettingsLookups | `DocumentWorkbenchController.cs` |
 | GET | `api/v1/document-workbench/{moduleId:int}/form-chooser/{fieldKey}` | FormChooser | `DocumentWorkbenchController.cs` |
 | GET | `api/v1/document-workbench/{moduleId:int}/form-definition` | FormDefinition | `DocumentWorkbenchController.cs` |
+| GET | `api/v1/document-workbench/{moduleId:int}/numeric-context` | NumericContext | `DocumentWorkbenchController.cs` |
 | POST | `api/v1/document-workbench/{moduleId:int}/query` | Query | `DocumentWorkbenchController.cs` |
 | DELETE | `api/v1/document-workbench/{moduleId:int}/record` | DeleteRecord | `DocumentWorkbenchController.cs` |
 | GET | `api/v1/document-workbench/{moduleId:int}/record` | Record | `DocumentWorkbenchController.cs` |
@@ -301,7 +301,7 @@
 
 ## 二、前端页面路由
 
-- 源文件 `path:` 50 处、解析出 50 条（两者必须相等）。权限模块号来自包住该路由的
+- 源文件 `path:` 49 处、解析出 49 条（两者必须相等）。权限模块号来自包住该路由的
   `RequirePermission permission={moduleReadPermission(N)}`；空表示该页面不需要模块读权限（如登录后即可见的助手页）。
 
 | 路径 | 页面 | 权限模块 |
@@ -333,7 +333,6 @@
 | `/admin/users/:userId/rights` | `UserRightsPage` | 2306 |
 | `/assistant` | `AssistantPage` | 2103 |
 | `/assistant/sessions` | `SessionAdminPage` | 2103 |
-| `/bom-expand` | `BomExpandPage` | — |
 | `/car-summary` | `CarSummaryPage` | 199901 |
 | `/dashboard` | `DashboardPage` | — |
 | `/fallback/modules/:moduleId` | `FallbackModulePage` | — |

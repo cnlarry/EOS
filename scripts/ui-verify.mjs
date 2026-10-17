@@ -112,16 +112,6 @@ try {
   record('查询中心加载', searchText.includes('查询模块'))
   await page.screenshot({ path: join(shotDir, 'search-center.png'), fullPage: false })
 
-  // 8. BOM 展开（输入产品号并展开）
-  await page.goto(`${baseUrl}/bom-expand`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('input', { timeout: 10000 })
-  await page.fill('input[placeholder*="产品编号"], input.form-control.form-control-sm', '23-66-2365')
-  await page.getByRole('button', { name: '展开' }).click()
-  await page.waitForTimeout(1000)
-  const bomText = await page.locator('body').innerText()
-  record('BOM 展开执行', bomText.includes('元件料号') || bomText.includes('23-66-2365'))
-  await page.screenshot({ path: join(shotDir, 'bom-expand.png'), fullPage: false })
-
   // 9. 单据打印视图（1405 客户订单，E2E14 数据）
   await page.goto(`${baseUrl}/print/1405?key=${encodeURIComponent(JSON.stringify(['DD', 'DD26080014']))}`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.erp-print-page', { timeout: 10000 }).catch(() => {})

@@ -24,7 +24,6 @@ export const ModuleButtonsPage = lazy(() => import('../features/admin/ModuleButt
 export const ModuleActionsPage = lazy(() => import('../features/admin/ModuleActionsPage').then((module) => ({ default: module.ModuleActionsPage })))
 export const ProfilePage = lazy(() => import('../features/settings/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 export const SystemSettingsPage = lazy(() => import('../features/settings/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })))
-export const BomExpandPage = lazy(() => import('../features/bom/BomExpandPage').then((module) => ({ default: module.BomExpandPage })))
 export const CarSummaryPage = lazy(() => import('../features/reports/CarSummaryPage').then((module) => ({ default: module.CarSummaryPage })))
 export const JobPage = lazy(() => import('../features/jobs/JobPage').then((module) => ({ default: module.JobPage })))
 export const SearchCenterPage = lazy(() => import('../features/search-center/SearchCenterPage').then((module) => ({ default: module.SearchCenterPage })))

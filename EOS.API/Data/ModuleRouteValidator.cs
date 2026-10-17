@@ -78,7 +78,7 @@ internal static class ModuleRouteValidator
         "/admin/groups", "/admin/report-setup", "/admin/module-groups", "/admin/module-buttons",
         "/admin/module-actions",
         "/import", "/settings/system", "/settings/hr-setup", "/settings/hrm-setup",
-        "/bom-expand", "/jobs", "/my-tasks", "/car-summary",
+        "/jobs", "/my-tasks", "/car-summary",
         "/workflow/design", "/workflow/monitor",
     ];
 

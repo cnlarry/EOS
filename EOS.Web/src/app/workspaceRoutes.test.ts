@@ -26,7 +26,6 @@ describe('WORKSPACE_ROUTES', () => {
       '/jobs',
       '/import',
       '/print/1606',
-      '/bom-expand',
       '/car-summary',
       '/workflow/design',
       '/workflow/monitor',

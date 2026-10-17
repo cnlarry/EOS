@@ -4,7 +4,6 @@
 # add NOLOCK. Adding NOLOCK to a file outside this list fails
 # NolockAllowlistTests; register the file here only after review confirms a
 # read-only/reporting justification. Remove entries that no longer use NOLOCK.
-EOS.API/Controllers/BomExpandController.cs
 EOS.API/Controllers/ReportCenterController.cs
 EOS.API/Controllers/ReportMetricController.cs
 EOS.API/Controllers/TableDataController.cs

@@ -16,7 +16,6 @@ const navigation: NavigationItem[] = [
         icon: 'settings',
         children: [
           { id: 'module-2313', label: '日志管理', alias: 'LOGS', route: '/admin/logs', icon: 'settings', moduleId: 2313 },
-          { id: 'module-129802', label: 'BOM展开表', route: '/bom-expand', icon: 'settings', moduleId: 129802 },
           { id: 'module-23012', label: '接口日志', route: '/admin/interface-logs', icon: 'settings', moduleId: 23012 },
         ],
       },
@@ -36,8 +35,8 @@ const navigation: NavigationItem[] = [
 
 describe('searchMenu 菜单搜索', () => {
   it('按模块编号命中叶子并给出完整面包屑', () => {
-    expect(searchMenu(navigation, '129802')).toEqual([
-      expect.objectContaining({ breadcrumb: '系统管理 / 数据表维护 / BOM展开表' }),
+    expect(searchMenu(navigation, '23012')).toEqual([
+      expect.objectContaining({ breadcrumb: '系统管理 / 数据表维护 / 接口日志' }),
     ])
   })
 
@@ -60,7 +59,7 @@ describe('searchMenu 菜单搜索', () => {
   })
 
   it('按显示名与别名命中，且大小写不敏感', () => {
-    expect(searchMenu(navigation, 'BOM')).toHaveLength(1)
+    expect(searchMenu(navigation, '接口')).toHaveLength(1)
     expect(searchMenu(navigation, 'logs')).toHaveLength(1)
     expect(searchMenu(navigation, '首页')).toEqual([expect.objectContaining({ breadcrumb: '首页' })])
   })
