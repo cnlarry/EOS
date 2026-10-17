@@ -283,7 +283,11 @@ public sealed class PurApplySyncLiveTests
             while (await reader.ReadAsync(token))
             {
                 details.Add(string.Join('|', Enumerable.Range(0, reader.FieldCount)
-                    .Select(index => reader.IsDBNull(index) ? string.Empty : Convert.ToString(reader.GetValue(index), System.Globalization.CultureInfo.InvariantCulture)?.Trim())));
+                    .Select(index => reader.IsDBNull(index) ? string.Empty
+                    // 数值去尾零：decimal 会带 scale（2.000000），期望字面量是 2
+                    : reader.GetValue(index) is decimal number
+                        ? number.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                        : Convert.ToString(reader.GetValue(index), System.Globalization.CultureInfo.InvariantCulture)?.Trim())));
             }
         }
         var moreQty = new List<double>();

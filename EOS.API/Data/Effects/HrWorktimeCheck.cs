@@ -113,7 +113,7 @@ internal static class HrWorktimeCheck
         => Convert.ToDouble(reader.GetValue(index)).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private static string Str(SqlDataReader reader, int index)
-        => reader.IsDBNull(index) ? string.Empty : reader.GetValue(index).ToString()?.Trim() ?? string.Empty;
+        => reader.IsDBNull(index) ? string.Empty : EffectCellText.Format(reader.GetValue(index));
 
     /// <summary>参数解析（fail-closed：三张表与全部列名必须物理存在、文案非空）。</summary>
     internal static HrWorktimeCheckConfig Parse(JsonElement root, ISet<string> columns)

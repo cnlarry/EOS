@@ -286,7 +286,9 @@ public sealed class PurPurchaseCatalogLiveTests
             while (await reader.ReadAsync(token))
                 details.Add(string.Join('|', Enumerable.Range(0, reader.FieldCount)
                     .Select(i => reader.IsDBNull(i) ? string.Empty
-                        : Convert.ToString(reader.GetValue(i), System.Globalization.CultureInfo.InvariantCulture)?.Trim())));
+                        : reader.GetValue(i) is decimal number
+                    ? number.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                    : Convert.ToString(reader.GetValue(i), System.Globalization.CultureInfo.InvariantCulture)?.Trim())));
         }
         var moreQty = new List<double>();
         await using (var command = new SqlCommand(

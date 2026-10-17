@@ -253,7 +253,7 @@ internal static class CopOrderCheck
             : value;
 
     private static string Str(SqlDataReader reader, int index)
-        => reader.IsDBNull(index) ? string.Empty : reader.GetValue(index).ToString()?.Trim() ?? string.Empty;
+        => reader.IsDBNull(index) ? string.Empty : EffectCellText.Format(reader.GetValue(index));
 
     /// <summary>参数解析（fail-closed：八张表的每个列名都必须物理存在，八条文案均非空）。</summary>
     internal static CopOrderCheckConfig Parse(JsonElement root, string masterTable, ISet<string> columns)

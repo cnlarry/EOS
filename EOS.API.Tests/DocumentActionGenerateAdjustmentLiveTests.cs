@@ -328,7 +328,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         // 逐行携带位置与批次（既有实现只带库别与料号）
         var carried = await ScalarAsync<string>(connection,
             $"""
-            SELECT LTRIM(RTRIM(PRO_NO)) + '|' + LTRIM(RTRIM(DEPOT_ID)) + '|' + LTRIM(RTRIM(ISNULL(LOCATION_NO,N''))) + '|' + CAST(QTY AS varchar(20))
+            SELECT LTRIM(RTRIM(PRO_NO)) + '|' + LTRIM(RTRIM(DEPOT_ID)) + '|' + LTRIM(RTRIM(ISNULL(LOCATION_NO,N''))) + '|' + FORMAT(QTY, '0.######')
             FROM dbo.{TargetDetailTable} WHERE LTRIM(RTRIM(OCCUR_NO))=@no;
             """, ("@no", adjustNo));
         Assert.Equal($"{TestProduct}|{_depot}|{TestLocation}|{DiffQty}", carried);

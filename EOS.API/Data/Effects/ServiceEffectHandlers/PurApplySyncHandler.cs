@@ -61,7 +61,7 @@ public sealed class PurApplySyncHandler : IEffectServiceHandler
             await using var reader = await read.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
                 moreRows.Add((Convert.ToInt32(reader.GetValue(0)),
-                    reader.GetValue(1)?.ToString()?.Trim() ?? string.Empty,
+                    EffectCellText.Format(reader.GetValue(1)),
                     Convert.ToDecimal(reader.GetValue(2))));
         }
 

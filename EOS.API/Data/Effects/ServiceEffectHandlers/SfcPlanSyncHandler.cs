@@ -58,7 +58,7 @@ public sealed class SfcPlanSyncHandler : IEffectServiceHandler
             await using var reader = await command.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
                 missing.Add((reader.GetValue(0)?.ToString()?.Trim() ?? string.Empty,
-                    reader.GetValue(1)?.ToString()?.Trim() ?? string.Empty,
+                    EffectCellText.Format(reader.GetValue(1)),
                     Convert.ToDouble(reader.GetValue(2))));
         }
         foreach (var row in missing)

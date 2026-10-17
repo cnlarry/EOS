@@ -140,7 +140,14 @@ public sealed class MrpRecalcLiveTests
             while (await reader.ReadAsync(token))
             {
                 for (var index = 0; index < reader.FieldCount; index++)
-                    parts.Add(reader.IsDBNull(index) ? "-" : Convert.ToString(reader.GetValue(index))!.Trim());
+                {
+                    // 数值去尾零：数值列改为 decimal 后 Convert.ToString 会带 scale（0.000000），
+                    // 而 ExpectedFixture 是迁移前的字面量（0），不对齐会把结果比对判成不一致。
+                    parts.Add(reader.IsDBNull(index) ? "-"
+                        : reader.GetValue(index) is decimal number
+                            ? number.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                            : Convert.ToString(reader.GetValue(index))!.Trim());
+                }
             }
         }
         return (checksumValue, string.Join('|', parts));

@@ -66,7 +66,8 @@ public class DetailReferenceColumnFillerLiveTests
             connection, null, "PUR_DUE_D", DueFields, [row], CancellationToken.None);
 
         Assert.Null(error);
-        Assert.Equal(expected, row["PRICE"]);
+        // decimal 的 Equals 区分 scale（1m 与 1.000000m 不相等），这里比数值而非表示
+        Assert.Equal(0m, Convert.ToDecimal(expected) - Convert.ToDecimal(row["PRICE"]));
     }
 
     /// <summary>送货单（1406）的单价由被引用的客户订单明细带出（旧过程 P_WF_COP_SEND 同款关联键）。</summary>
@@ -93,7 +94,8 @@ public class DetailReferenceColumnFillerLiveTests
             connection, null, "COP_SEND_D", DueFields, [row], CancellationToken.None);
 
         Assert.Null(error);
-        Assert.Equal(expected, row["PRICE"]);
+        // decimal 的 Equals 区分 scale（1m 与 1.000000m 不相等），这里比数值而非表示
+        Assert.Equal(0m, Convert.ToDecimal(expected) - Convert.ToDecimal(row["PRICE"]));
     }
 
     /// <summary>没有引用键（无采购/无收料场景）不动该列，也不报错。</summary>

@@ -71,6 +71,10 @@ internal static class CheckSupport
         {
             DateTime date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             string text => text.Trim(),
+            // 数值去尾零：decimal 的 Convert.ToString 保留 scale（10.000000），
+            // 而迁移前是 float（10）。诊断行直接进用户文案，尾零会一路带到界面上，
+            // 也会让"诊断行与旧过程逐字一致"的测试全部失败。
+            decimal or double or float => EOS.API.Data.Effects.EffectCellText.Format(value),
             _ => Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty,
         };
     }
