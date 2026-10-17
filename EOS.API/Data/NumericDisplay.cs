@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace EOS.API.Data;
 
@@ -42,12 +43,28 @@ public static class NumericDisplay
         return IsIntegerType(dataType) ? IntegerFormat : QuantityFormat;
     }
 
-    /// <summary>解析最终使用的 .NET 格式串：显式优先，缺失时按语义族/类型推导。</summary>
+    /// <summary>自定义数字格式白名单：# 0 , . ; ( ) % 负号与空格。</summary>
+    private static readonly Regex CustomFormatPattern = new(@"^[#0,.;()%\-\s]{1,60}$", RegexOptions.Compiled);
+
+    /// <summary>标准数字格式白名单（不含 <c>C</c>：它依赖区域文化的货币符号，本类不持有该上下文）。</summary>
+    private static readonly Regex StandardFormatPattern = new(@"^[NnFfGgEePpDdXx]\d{0,2}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// 解析最终使用的 .NET 格式串：显式优先，缺失或非法时按语义族/类型推导。
+    ///
+    /// 必须做白名单校验：.NET 的 <c>ToString</c> 遇到无法识别的格式串**不抛异常**，
+    /// 而是把字符原样当字面量输出——脏配置（如误填成 <c>yyyy-MM-dd</c> 或中文）会变成脏显示，
+    /// 而不是回退到默认。前端 <c>fieldFormat.ts</c> 有同样一道校验。
+    /// </summary>
     public static string Resolve(
-        string? explicitFormat, string? numericRole, string? dataType, int amountDecimals = DefaultAmountDecimals) =>
-        string.IsNullOrWhiteSpace(explicitFormat)
-            ? DefaultFormat(numericRole, dataType, amountDecimals)
-            : explicitFormat.Trim();
+        string? explicitFormat, string? numericRole, string? dataType, int amountDecimals = DefaultAmountDecimals)
+    {
+        if (string.IsNullOrWhiteSpace(explicitFormat)) return DefaultFormat(numericRole, dataType, amountDecimals);
+        var format = explicitFormat.Trim();
+        return CustomFormatPattern.IsMatch(format) || StandardFormatPattern.IsMatch(format)
+            ? format
+            : DefaultFormat(numericRole, dataType, amountDecimals);
+    }
 
     /// <summary>
     /// 按三级回落格式化。

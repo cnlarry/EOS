@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using Xunit;
 
 namespace EOS.API.Tests;
 
@@ -11,7 +12,8 @@ public sealed class NumericDisplayTests
     [Fact]
     public void 显式格式优先于一切推导()
     {
-        Assert.Equal("1,234.5000", NumericDisplay.Format(1234.5m, "0.0000"));
+        // "0.0000" 不含千分位分隔符，所以不加逗号
+        Assert.Equal("1234.5000", NumericDisplay.Format(1234.5m, "0.0000"));
         Assert.Equal("1235", NumericDisplay.Format(1234.5m, "0"));
     }
 
@@ -26,7 +28,7 @@ public sealed class NumericDisplayTests
     public void 未配格式时小数类型最多六位且去尾零()
     {
         Assert.Equal("1,234.5", NumericDisplay.Format(1234.5m, null, dataType: "decimal"));
-        Assert.Equal("1,234.567891", NumericDisplay.Format(1234.5678901m, null, dataType: "decimal"));
+        Assert.Equal("1,234.56789", NumericDisplay.Format(1234.5678901m, null, dataType: "decimal"));
         Assert.Equal("1,234", NumericDisplay.Format(1234m, null, dataType: "decimal"));
     }
 
