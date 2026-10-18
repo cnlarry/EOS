@@ -75,7 +75,8 @@ public sealed class WorkbenchColumnOrderLiveTests
         {
             var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
             var builder = new WorkbenchDefinitionBuilder(connections, provider,
-                TestFormCapability.None, NullLogger<WorkbenchDefinitionBuilder>.Instance);
+                TestFormCapability.None, TestBusinessConfig.Create(connections),
+                NullLogger<WorkbenchDefinitionBuilder>.Instance);
             var emptyDenied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var definition = await builder.GetDefinitionAsync(ModuleId, TestUserId, "Z", true, true,
                 emptyDenied, emptyDenied, CancellationToken.None);

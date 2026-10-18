@@ -64,6 +64,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
     private static WorkbenchDefinitionBuilder Builder(DbConnectionFactory connections, WorkbenchDefinitionProvider provider)
         => new(connections, provider,
             TestFormCapability.None,
+            TestBusinessConfig.Create(connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
 
     /// <summary>

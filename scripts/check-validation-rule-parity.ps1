@@ -11,9 +11,11 @@
       ② 键闭集：库内 VALIDATION_KEY 全部落在 ValidationRuleRegistry.KnownKeys 内；
       ③ 参数结构：PARAM_STRUCT 必须是非空 JSON **对象**文本（运行时把这段文本解析成对象，
          数组/标量/坏 JSON 会在模块加载期抛错，使该模块保存与批核全线失败）；
-      ④ 落地一致：每一行都必须出现在所属模块**当前快照**的 validationRules 段里，双向比对——
+      ④ 落地一致：**有当前快照的模块**，每一行都必须出现在快照的 validationRules 段里，双向比对——
          "配了但引擎读不到"（表有快照无）与"快照落后于配置"（快照有表无）分别报出；
          同时核对配了参数的行在快照里确实带 params；
+      ④b 无当前快照的模块（定制承载页，不参与发布）每请求实时装配，配置表就是运行期真值，
+         因此不参与 ④ 的比对，改为断言"装配得出单据面"——装配不出来的模块同样读不到规则；
       ⑤ 运行时口径（默认执行，-SkipRuntime 跳过）：dotnet test 跑 ValidationRuleParityLiveTests，
          把每个模块的快照段逐条喂进真实 EffectPlanLoader（内部即 ValidationRuleRegistry）。
 
@@ -106,7 +108,9 @@ WHERE d.IS_CURRENT=1;
     $missingInSnapshot = Invoke-Rows @'
 SELECT CONCAT('module=', r.M_IDX, ' stage=', RTRIM(r.STAGE), ' seq=', r.SEQ, ' key=', RTRIM(r.VALIDATION_KEY))
 FROM dbo.MODULE_VALIDATION_RULE r WITH (NOLOCK)
-WHERE NOT EXISTS (
+WHERE EXISTS (SELECT 1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
+              WHERE s.M_IDX=r.M_IDX AND s.IS_CURRENT=1)
+  AND NOT EXISTS (
     SELECT 1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT d WITH (NOLOCK)
     CROSS APPLY OPENJSON(d.DEFINITION_JSON, '$.validationRules') j
     WHERE d.IS_CURRENT=1 AND d.M_IDX=r.M_IDX
@@ -118,6 +122,25 @@ ORDER BY r.M_IDX, r.STAGE, r.SEQ;
 '@
     if ($missingInSnapshot.Count -gt 0) {
         $failures.Add("已配置但当前快照里没有（引擎不会执行）：$($missingInSnapshot.Count) 条 → $($missingInSnapshot -join '; ')")
+    }
+
+    # ④b 无当前快照的模块：实时装配，必须有单据面（否则实时也装配不出定义）
+    $surfaceLess = Invoke-Rows @'
+SELECT CONCAT('module=', c.M_IDX, ' kind=', ISNULL(NULLIF(LTRIM(RTRIM(n.NODE_KIND)),''),'<none>'),
+              ' master=', ISNULL(NULLIF(LTRIM(RTRIM(m.MASTER_TABLE)),''),'<empty>'),
+              ' form=', ISNULL(CAST(m.UNIFIED_FORM_ENABLED AS int),0))
+FROM (SELECT DISTINCT M_IDX FROM dbo.MODULE_VALIDATION_RULE WITH (NOLOCK)) c
+LEFT JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=c.M_IDX
+LEFT JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=c.M_IDX
+WHERE NOT EXISTS (SELECT 1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
+                  WHERE s.M_IDX=c.M_IDX AND s.IS_CURRENT=1)
+  AND (m.M_IDX IS NULL
+       OR NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NULL
+       OR NOT (ISNULL(n.NODE_KIND,N'')=N'WORKBENCH' OR ISNULL(m.UNIFIED_FORM_ENABLED,0)=1))
+ORDER BY c.M_IDX;
+'@
+    if ($surfaceLess.Count -gt 0) {
+        $failures.Add("无当前快照且装配不出单据面（规则不会被任何运行时读者读取）：$($surfaceLess -join '; ')")
     }
 
     $missingInTable = Invoke-Rows @'
@@ -214,7 +237,7 @@ ORDER BY VALIDATION_KEY, STAGE;
         exit 1
     }
 
-    Write-Output "PASS ADR-016 S0 校验规则口径一致（$total 条逐条落在闭集内、全部进入当前快照、已参数结构合法、运行时全部接受）。"
+    Write-Output "PASS ADR-016 S0 校验规则口径一致（$total 条逐条落在闭集内、有快照的模块全部进入当前快照、无快照的模块可实时装配、参数结构合法、运行时全部接受）。"
     exit 0
 } catch {
     Write-Output "FAIL ADR-016 S0 校验规则口径核对执行失败：$(($_.Exception.Message -replace "`r?`n", ' ').Trim())"

@@ -45,7 +45,8 @@ public sealed class FormNewDefaultDateSentinelLiveTests
         var connections = Connections();
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            TestFormCapability.None, NullLogger<WorkbenchDefinitionBuilder>.Instance);
+            TestFormCapability.None, TestBusinessConfig.Create(connections),
+            NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var empty = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var definition = await builder.GetDefinitionAsync(ModuleId, "admin", "Z", true, true,
