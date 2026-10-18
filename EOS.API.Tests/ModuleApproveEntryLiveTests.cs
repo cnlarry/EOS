@@ -52,6 +52,7 @@ public sealed class ModuleApproveEntryLiveTests : IDisposable
             Array.Empty<IDocumentUserAction>(), NullLogger<DocumentActionRegistry>.Instance);
         _businessConfig = new ModuleBusinessConfigRepository(
             connections, dirtyMarker, auditWriter, documentActions, new WorkbenchIdempotency(),
+            LiveFormCapability.FromEnvironment(),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
         _menus = new MenuAdminRepository(
             connections, _businessConfig, dirtyMarker, auditWriter, NullLogger<MenuAdminRepository>.Instance);

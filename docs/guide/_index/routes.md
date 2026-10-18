@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: e3016951ce38c296 -->
+<!-- code-map-fingerprint: 7d0bde66667fe7d9 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 40 个、方法级路由属性 283 处、解析出 283 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 41 个、方法级路由属性 289 处、解析出 289 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -173,6 +173,12 @@
 | POST | `api/v1/auth/login` | Login | `AuthenticationController.cs` |
 | POST | `api/v1/auth/logout` | Logout | `AuthenticationController.cs` |
 | PUT | `api/v1/auth/password` | ChangePassword | `AuthenticationController.cs` |
+| GET | `api/v1/bom/compare` | Compare | `BomController.cs` |
+| GET | `api/v1/bom/expand` | Expand | `BomController.cs` |
+| GET | `api/v1/bom/gross-requirement` | GrossRequirement | `BomController.cs` |
+| POST | `api/v1/bom/import-lines` | ImportLines | `BomController.cs` |
+| POST | `api/v1/bom/new-version` | NewVersion | `BomController.cs` |
+| GET | `api/v1/bom/where-used` | WhereUsed | `BomController.cs` |
 | GET | `api/v1/car-summary` | Query | `CarSummaryController.cs` |
 | POST | `api/v1/chooser/query` | Query | `ChooserController.cs` |
 | POST | `api/v1/client-errors` | Report | `ClientErrorController.cs` |
@@ -301,7 +307,7 @@
 
 ## 二、前端页面路由
 
-- 源文件 `path:` 49 处、解析出 49 条（两者必须相等）。权限模块号来自包住该路由的
+- 源文件 `path:` 55 处、解析出 55 条（两者必须相等）。权限模块号来自包住该路由的
   `RequirePermission permission={moduleReadPermission(N)}`；空表示该页面不需要模块读权限（如登录后即可见的助手页）。
 
 | 路径 | 页面 | 权限模块 |
@@ -333,6 +339,12 @@
 | `/admin/users/:userId/rights` | `UserRightsPage` | 2306 |
 | `/assistant` | `AssistantPage` | 2103 |
 | `/assistant/sessions` | `SessionAdminPage` | 2103 |
+| `/bom/product` | `BomProductListPage` | 1204 |
+| `/bom/product/:proNo/:edition/compare/:otherEdition` | `BomComparePage` | 1204 |
+| `/bom/product/:proNo/:edition/edit` | `BomProductEditorPage` | 1204 |
+| `/bom/product/:proNo/:edition/tree` | `BomTreePage` | 1204 |
+| `/bom/product/new` | `BomProductNewPage` | 1204 |
+| `/bom/product/where-used/:proNo` | `BomWhereUsedPage` | 1204 |
 | `/car-summary` | `CarSummaryPage` | 199901 |
 | `/dashboard` | `DashboardPage` | — |
 | `/fallback/modules/:moduleId` | `FallbackModulePage` | — |

@@ -32,6 +32,13 @@ describe('WORKSPACE_ROUTES', () => {
       '/settings/profile',
       '/settings/PRODUCT',
       '/fallback/modules/1606',
+      // 产品 BOM（1204）的三个定制视图：列表 / 反查 / 结构树
+      '/bom/product',
+      '/bom/product/new',
+      '/bom/product/where-used/H15-05SZ-200',
+      '/bom/product/H15-05SZ-200/01/edit',
+      '/bom/product/H15-05SZ-200/01/tree',
+      '/bom/product/H15-05SZ-200/01/compare/02',
     ]
     for (const path of paths) {
       expect(matchRoutes(WORKSPACE_ROUTES, path), `${path} 未匹配到路由`).not.toBeNull()

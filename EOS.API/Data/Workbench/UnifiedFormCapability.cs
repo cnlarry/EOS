@@ -35,6 +35,16 @@ public interface IUnifiedFormCapabilitySource
     Task<UnifiedFormCapability> GetAsync(int moduleId, CancellationToken token);
 
     /// <summary>
+    /// 在调用方连接（可带事务）上读同一份真值。保存路径要在调用方事务内判定"有没有单据面"，
+    /// 此时另开连接会在调用方已锁住该模块行时自锁——读取点必须能被事务内复用。
+    /// </summary>
+    Task<UnifiedFormCapability> GetAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        CancellationToken token);
+
+    /// <summary>
     /// 统一表单可用的模块集合（含"仅浏览"的模块）。
     /// 消费方：跨模块浏览链接目标、发布管理枚举、发布门"启用"判据。
     /// </summary>
@@ -51,11 +61,20 @@ public sealed class UnifiedFormCapabilitySource(DbConnectionFactory connections)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
+        return await GetAsync(connection, null, moduleId, token);
+    }
+
+    public async Task<UnifiedFormCapability> GetAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        CancellationToken token)
+    {
         await using var command = new SqlCommand(
             """
             SELECT ISNULL(UNIFIED_FORM_ENABLED, 0), ISNULL(UNIFIED_FORM_EDIT_ENABLED, 0)
             FROM dbo.MODULES WHERE M_IDX = @ModuleId;
-            """, connection);
+            """, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))

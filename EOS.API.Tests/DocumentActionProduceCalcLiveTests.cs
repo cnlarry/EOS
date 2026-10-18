@@ -19,7 +19,8 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 制令单「计算用料」（`produce-calc-materials`）真库验收。
 ///
-/// 口径：BOM 单层叶子汇总（最新版次）→ 明细补行（项次取已用最大号 + 1）并重算需求 →
+/// 口径：读**本单的工单 BOM**（不是产品 BOM——产品 BOM 只在建单时快照一次），
+/// 单层子件汇总 → 明细补行（项次取已用最大号 + 1）并重算需求 →
 /// 订单待办按订单汇总同步 → 申购应购量回填；订单为空跳过待办/申购段；已完工结案拒绝；
 /// 底数为 0 的 BOM 行拒绝；探路零写入（含审计）。
 ///
@@ -37,7 +38,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
     private const int ModuleId = 1502;
     private const string MasterTable = "MOC_PRODUCE_M";
     private const string DetailTable = "MOC_PRODUCE_D";
-    private const string BomTable = "BOM_STRU_D";
+    private const string BomTable = "MOC_BOM_STRU_D";
     private const string MoreTable = "COP_ORDER_MORE";
     private const string ApplyDetailTable = "PUR_APPLY_D";
     private const string TestType = "ZZPC";
@@ -83,14 +84,15 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await using var connection = await OpenAsync();
-        // 产品 BOM（单层两料：A 用量 2 损耗 10，B 用量 3 损耗 0）
+        // 工单 BOM（本单主产品单层两料：A 用量 2 损耗 10，B 用量 3 损耗 0）
         await ExecAsync(connection,
             $"""
-            IF NOT EXISTS (SELECT 1 FROM dbo.{BomTable} WHERE PRO_NO=@fin AND ELEMENT_PRO_NO=@a)
-                INSERT INTO dbo.{BomTable} (PRO_NO,SERIAL_NO,EDITION,ELEMENT_PRO_NO,ELEMENT_QTY,BASE_QTY,LOST_RATE)
-                VALUES (@fin,1,N'A',@a,2,1,10),
-                       (@fin,2,N'A',@b,3,1,0);
+            IF NOT EXISTS (SELECT 1 FROM dbo.{BomTable} WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no AND PRO_NO=@fin AND ELEMENT_PRO_NO=@a)
+                INSERT INTO dbo.{BomTable} (PRODUCE_TYPE,PRODUCE_NO,PRO_NO,SERIAL_NO,ELEMENT_PRO_NO,ELEMENT_QTY,BASE_QTY,LOST_RATE)
+                VALUES (@type,@no,@fin,1,@a,2,1,10),
+                       (@type,@no,@fin,2,@b,3,1,0);
             """,
+            ("@type", TestType), ("@no", TestNo),
             ("@fin", FinishedProduct), ("@a", ElementA), ("@b", ElementB));
         // 制令单（数量 10，引用订单；未完工）+ 一行过期明细（序号 5，需求 99，用后即删）
         await ExecAsync(connection,
@@ -140,8 +142,8 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
             $"DELETE FROM dbo.{MasterTable} WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
         await ExecAsync(connection,
-            $"DELETE FROM dbo.{BomTable} WHERE PRO_NO=@fin OR ELEMENT_PRO_NO IN (@a,@b);",
-            ("@fin", FinishedProduct), ("@a", ElementA), ("@b", ElementB));
+            $"DELETE FROM dbo.{BomTable} WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
+            ("@type", TestType), ("@no", TestNo));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
@@ -304,9 +306,9 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         try
         {
             await ExecAsync(connection,
-                $"INSERT INTO dbo.{BomTable} (PRO_NO,SERIAL_NO,EDITION,ELEMENT_PRO_NO,ELEMENT_QTY,BASE_QTY,LOST_RATE) "
-                + "VALUES (@fin,9,N'A',N'ZZPCBADA',1,0,0);",
-                ("@fin", FinishedProduct));
+                $"INSERT INTO dbo.{BomTable} (PRODUCE_TYPE,PRODUCE_NO,PRO_NO,SERIAL_NO,ELEMENT_PRO_NO,ELEMENT_QTY,BASE_QTY,LOST_RATE) "
+                + "VALUES (@type,@no,@fin,9,N'ZZPCBADA',1,0,0);",
+                ("@type", TestType), ("@no", TestNo), ("@fin", FinishedProduct));
 
             var result = await RunAsync();
 

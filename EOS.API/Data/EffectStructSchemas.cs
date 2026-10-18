@@ -118,6 +118,8 @@ public static class EffectStructSchemas
             ["cus-account-sync"] = Set("master", "detail", "product", "roundDigits"),
             ["pur-apply-sync"] = Set("master", "detail", "more", "product", "orderMaster", "orderDetail"),
             ["bom-size-backfill"] = Set("sourceTable", "sourceKey", "masterKey", "fields"),
+            ["bom-snapshot-to-order"] = Set("orderProductField", "orderEditionField", "targetMasterTable",
+                "targetDetailTable", "sourceMasterTable", "sourceDetailTable", "maxDepth"),
             ["detail-rollup"] = Set("detailTable", "roundDigits", "assignments"),
             ["pur-pay-offset"] = Set("master", "offset", "due", "detail", "gateFlag", "negativeMessage", "exceedMessage", "dueMessage", "exceedOffset"),
             ["cop-receipt-offset"] = Set("master", "offset", "due", "detail", "gateFlag", "negativeMessage", "exceedMessage", "dueMessage", "exceedOffset"),

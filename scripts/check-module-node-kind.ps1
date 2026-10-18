@@ -14,13 +14,15 @@
 
       ① 判据存在且取值封闭：`dbo.V_MODULE_NODE` 必须在，NODE_KIND 只允许三个取值；
       ② 能力面一致：声明启用统一表单的模块（`MODULES.UNIFIED_FORM_ENABLED`，迁移 355 起能力进库、
-         现读）必须全是 WORKBENCH 且有操作主表。一旦自定义承载页上开了表单位，菜单管理按形态隐藏
-         主表 / 默认列 / 版式入口就会误伤一个"有表单却装配不出来"的模块；没有主表则用户点进去必 404。
+         现读）必须有操作主表，且形态不能是目录。ADR-039 D2 起形态与能力解耦：
+         定制页也可以有单据面（1204 列表自绘、维护仍走统一表单），所以不再要求必须是 WORKBENCH；
+         没有主表则装配不出表单，用户点进去必 404。
       ③ 形态外无残留：非工作台节点上不得有排序字段 / 不可解批 / 自动批核 / 可复制 /
          异常不可保存 / 明细必需字段 / 无明细不可保存 / 效果引擎开关 /
          表单打开方式。它们只有工作台定义与效果引擎会消费。
-      ④ 脏标记合法：`WORKBENCH_MODULE_DIRTY` 只允许出现在 WORKBENCH 模块上，且不得指向
-         已不存在的编号——编号级联语句不覆盖这张表，保存路径已改为"撤销旧编号的行"。
+      ④ 脏标记合法：`WORKBENCH_MODULE_DIRTY` 只允许出现在"有单据面"的模块上（工作台，或声明了
+         统一表单的定制页），且不得指向已不存在的编号——编号级联语句不覆盖这张表，保存路径已改为
+         "撤销旧编号的行"。没有单据面的模块不需要发布快照，挂脏只会永久占着待发布清单。
 
     刻意不查（都有真实消费方，与形态无关）：`MASTER_TABLE` / `DETAIL_TABLE`（报表数据集、
     搜索中心、统一选择器与助手指标的锚点）、`FILTER`（报表与选择器的**实时**数据范围）、
@@ -52,8 +54,10 @@ WHERE n.NODE_KIND NOT IN (N'WORKBENCH', N'CUSTOMPAGE', N'DIRECTORY')
 GROUP BY n.NODE_KIND;
 '@
 
-    # ② 统一表单能力（MODULES.UNIFIED_FORM_ENABLED）必须全落在 WORKBENCH 且带主表上：
+    # ② 统一表单能力（MODULES.UNIFIED_FORM_ENABLED）必须带主表，且形态不能是目录：
     #    能力位就是"运行期有统一表单"的准入面（迁移 355 之前是 appsettings 名单）。
+    #    ADR-039 D2 之后形态与能力解耦：CUSTOMPAGE 也可以有单据面（1204 的列表自绘、
+    #    维护仍走统一表单），所以这里不再要求必须是 WORKBENCH——只禁止目录。
     $formEnabledCount = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
 SELECT CONVERT(nvarchar(20), COUNT(*)) FROM dbo.MODULES WHERE ISNULL(UNIFIED_FORM_ENABLED, 0) = 1;
 '@
@@ -68,7 +72,7 @@ SELECT N'NOT_WORKBENCH | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM
        + N' 形态=' + n.NODE_KIND
 FROM dbo.MODULES m
 INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX
-WHERE ISNULL(m.UNIFIED_FORM_ENABLED, 0) = 1 AND n.NODE_KIND <> N'WORKBENCH'
+WHERE ISNULL(m.UNIFIED_FORM_ENABLED, 0) = 1 AND n.NODE_KIND NOT IN (N'WORKBENCH', N'CUSTOMPAGE')
 UNION ALL
 SELECT N'NO_MASTER_TABLE | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
 FROM dbo.MODULES m
@@ -82,6 +86,8 @@ SELECT N'RESIDUE | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNUL
 FROM dbo.MODULES m
 INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX
 WHERE n.NODE_KIND <> N'WORKBENCH'
+  -- 有单据面的定制页保留这些配置：写入仍走统一表单管线，它们都有消费方（ADR-039 D2）
+  AND ISNULL(m.UNIFIED_FORM_ENABLED, 0) = 0
   AND (NULLIF(LTRIM(RTRIM(ISNULL(m.SORT_FIELDS, N''))), N'') IS NOT NULL
     OR NULLIF(LTRIM(RTRIM(ISNULL(m.NOT_BACK_FIELDS, N''))), N'') IS NOT NULL
     OR NULLIF(LTRIM(RTRIM(ISNULL(m.NOT_BACK_FIELDS_M, N''))), N'') IS NOT NULL
@@ -96,12 +102,26 @@ WHERE n.NODE_KIND <> N'WORKBENCH'
     OR ISNULL(m.APPROVE_ENABLED, 0) = 1);
 '@
 
-    # ④ 脏标记只属于 WORKBENCH，且不得指向已不存在的编号
+    # ④ 脏标记只属于统一工作台模块：定制页与目录**不走发布流程**（230101 对该形态本来就不给
+    #    发布入口，保存路径 MenuAdminRepository 也按形态清脏）。给它们标脏只会在待发布清单里
+    #    挂上永远发不出来的条目。
     $dirtyDrift = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
 SELECT N'DIRTY | ' + CONVERT(nvarchar(20), d.M_IDX) + N' 形态=' + ISNULL(n.NODE_KIND, N'(编号不存在)')
 FROM dbo.WORKBENCH_MODULE_DIRTY d
 LEFT JOIN dbo.V_MODULE_NODE n ON n.M_IDX = d.M_IDX
 WHERE n.NODE_KIND IS NULL OR n.NODE_KIND <> N'WORKBENCH';
+'@
+
+    # ⑤ 非工作台节点不得有当前快照。运行期判据是"**有快照就一定用快照**"
+    #    （见 WorkbenchDefinitionBuilder.GetDefinitionAsync），所以形态变更后遗留的快照会让
+    #    运行期继续用旧定义——主键序、表名、效果动作段都可能是旧的，表现为"改了没生效"或
+    #    "记录打不开"。定制页的定义每请求实时装配，没有"发布"这一步。
+    $snapshotDrift = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
+SELECT N'SNAPSHOT | ' + CONVERT(nvarchar(20), s.M_IDX) + N' 形态=' + ISNULL(n.NODE_KIND, N'(编号不存在)')
+       + N' 版本=' + CONVERT(nvarchar(10), s.VERSION)
+FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s
+LEFT JOIN dbo.V_MODULE_NODE n ON n.M_IDX = s.M_IDX
+WHERE s.IS_CURRENT = 1 AND (n.NODE_KIND IS NULL OR n.NODE_KIND <> N'WORKBENCH');
 '@
 
     # 覆盖范围写入结论（形态分布是这条门禁的"分母"，读的人要一眼看得出查了什么）
@@ -122,6 +142,7 @@ $unknownKind = @($unknownKind | Where-Object { $_ -and $_.Trim() -ne '' })
 $whitelistDrift = @($whitelistDrift | Where-Object { $_ -and $_.Trim() -ne '' })
 $residue = @($residue | Where-Object { $_ -and $_.Trim() -ne '' })
 $dirtyDrift = @($dirtyDrift | Where-Object { $_ -and $_.Trim() -ne '' })
+$snapshotDrift = @($snapshotDrift | Where-Object { $_ -and $_.Trim() -ne '' })
 $shape = @($shape | Where-Object { $_ -and $_.Trim() -ne '' })
 
 if ($exists.Count -eq 0 -or $exists[0].Trim() -ne 'OK') {
@@ -150,6 +171,12 @@ if ($residue.Count -gt 0) {
 if ($dirtyDrift.Count -gt 0) {
     Write-Output 'FAIL WORKBENCH_MODULE_DIRTY holds rows for non-workbench or non-existent modules (they would sit in the "pending publish" list forever):'
     $dirtyDrift | ForEach-Object { Write-Output "  $_" }
+    exit 1
+}
+
+if ($snapshotDrift.Count -gt 0) {
+    Write-Output 'FAIL non-workbench nodes hold a current definition snapshot (the runtime prefers the snapshot whenever one exists, so a leftover drives stale keys/tables/rules):'
+    $snapshotDrift | ForEach-Object { Write-Output "  $_" }
     exit 1
 }
 

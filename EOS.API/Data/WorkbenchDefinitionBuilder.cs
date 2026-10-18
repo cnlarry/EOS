@@ -156,6 +156,8 @@ public sealed class WorkbenchDefinitionBuilder(
                            // 表单打开方式同样取在原位之后追加：新增列只影响末尾序号，既有取位不动。
                            // 路由只有 M_URL 一个字段（迁移 321 删掉了 NEW_URL / MODI_URL / HELP_URL）；
                            // 栅格列数不在这里——它是页签级事实（MODULE_FORM_TAB.LAYOUT_COLUMNS，迁移 319 起就只此一处）
+                           // 能力位不在这条查询里取：它只经 IUnifiedFormCapabilitySource 读，
+                           // 装配判据在下面按"有没有单据面"现问。
                            "FORM_OPEN_MODE,FORM_DIALOG_WIDTH,FORM_DIALOG_HEIGHT " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
@@ -183,13 +185,22 @@ public sealed class WorkbenchDefinitionBuilder(
         await reader.CloseAsync();
         // 分组表达式在 MODULES 之外（MODULE_GROUPS），与主表元数据同一次装配实时读取
         var groupExpressions = await ReadGroupExpressionsAsync(connection, moduleId, token);
-        // 工作台模块判定：承载页是 /workbench，或没声明承载页但有主表（默认落统一工作台，见迁移 321）。
-        // 两类"装配不出来"要分开记：定制承载页与目录模块**本来就不装配工作台定义**，这是日常事实
-        // （定义装配会对每个可见模块问一次），按 Debug 记；只有"声明了工作台承载页却给不出可用的
-        // 表标识符"才是元数据配置错误，按 Warning 记——否则每次打开一个定制页都会往运行日志里
-        // 落一条 Warning，把真正的异常淹掉。
+        // 装配判据是「有没有单据面」，不是「形态是不是工作台」（ADR-039 D2）：
+        //   · 工作台形态：总是装配——它是单据的默认承载面；
+        //   · 定制页形态：仅当声明了 UNIFIED_FORM_ENABLED 才装配。1204 这类"界面自己画、
+        //     写入仍走工作台管线"的模块需要定义；报表页、搜索中心不需要。
+        //   · 目录形态：永远不装配。
+        // 这样 NODE_KIND 只回答"菜单点进去打开谁"，能力位回答"有没有单据面"，两者不再互相绑死。
+        //
+        // 两类"装配不出来"要分开记：定制页与目录模块不装配是日常事实（定义装配会对每个可见
+        // 模块问一次），按 Debug 记；只有"声明了工作台承载页却给不出可用的表标识符"才是元数据
+        // 配置错误，按 Warning 记——否则每次打开一个定制页都会往运行日志里落一条 Warning，
+        // 把真正的异常淹掉。
         var nodeKind = ModuleRouteValidator.ResolveKind(url, master);
-        if (nodeKind != ModuleNodeKind.Workbench)
+        var declaresForm = nodeKind == ModuleNodeKind.Workbench
+            || (nodeKind == ModuleNodeKind.CustomPage
+                && (await formCapability.GetAsync(moduleId, token)).FormEnabled);
+        if (!declaresForm)
         {
             logger.LogDebug("模块 {ModuleId} 不装配工作台定义 kind={Kind} url={Url} master={Master}",
                 moduleId, nodeKind, url, master);

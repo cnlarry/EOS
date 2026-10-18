@@ -33,6 +33,7 @@ public static class ValidationRuleRegistry
                 "masterTable", "detailTable", "joinFields", "groupFields", "masterGroupFields",
                 "documentDetailFields", "diagnosticFields", "maxRows", "displayLookup", "excludeVia")),
             ["line-require"] = WithWhen(KeySet("checks")),
+            ["require-when-referenced"] = WithWhen(KeySet("checks")),
             ["no-cycle"] = WithWhen(KeySet("checks")),
             ["custom-validation"] = WithWhen(KeySet("handler", "check")),
             ["period-overlap"] = WithWhen(KeySet(
@@ -75,6 +76,7 @@ public static class ValidationRuleRegistry
         "duplicate-check",
         "line-require",
         "period-overlap",
+        "require-when-referenced",
         "no-cycle",
         "custom-validation",
     };

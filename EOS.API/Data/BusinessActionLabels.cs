@@ -68,6 +68,7 @@ public static class BusinessActionLabels
             ["cus-account-sync"] = "海关对帐单汇总",
             ["pur-apply-sync"] = "请购单同步",
             ["bom-size-backfill"] = "BOM 长宽回填",
+            ["bom-snapshot-to-order"] = "工单BOM快照",
             ["detail-rollup"] = "明细汇总回主表",
             ["pur-pay-offset"] = "付款预冲抵",
             ["cop-receipt-offset"] = "收款预冲抵",
@@ -136,6 +137,7 @@ public static class BusinessActionLabels
             ["duplicate-check"] = "查重/唯一性",
             ["line-require"] = "行字段约束",
             ["period-overlap"] = "期间不重叠",
+            ["require-when-referenced"] = "条件必填+引用存在",
             ["no-cycle"] = "成环检测",
             ["custom-validation"] = "定制校验",
         };
@@ -205,6 +207,7 @@ public static class BusinessActionLabels
             ["cus-account-sync"] = "海关对帐单的金额与数量汇总。",
             ["pur-apply-sync"] = "请购单生效后同步到采购单（回写已采购量等）。",
             ["bom-size-backfill"] = "把来源表的长宽回填到 BOM 行。",
+            ["bom-snapshot-to-order"] = "制令单保存时把产品 BOM 整棵快照到工单 BOM（已有工单 BOM 则不覆盖）。",
             ["detail-rollup"] = "明细按列汇总后回写主表指定列。",
             ["pur-pay-offset"] = "付款单与来源单据的预冲抵（含超额与到期的提示文案）。",
             ["cop-receipt-offset"] = "收款单与来源单据的预冲抵（含超额与到期的提示文案）。",

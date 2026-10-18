@@ -60,6 +60,7 @@ public static class EffectRegistry
         ["cus-account-sync"] = Status.Service,
         ["pur-apply-sync"] = Status.Service,
         ["bom-size-backfill"] = Status.Service,
+        ["bom-snapshot-to-order"] = Status.Service,
         ["detail-rollup"] = Status.Service,
         ["pur-pay-offset"] = Status.Service,
         ["cop-receipt-offset"] = Status.Service,

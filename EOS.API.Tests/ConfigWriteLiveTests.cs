@@ -343,6 +343,7 @@ public sealed class ConfigWriteLiveTests : IDisposable
                 Options.Create(new AuditSettings())),
             new DocumentActionRegistry([new DocumentActionProbeHandler()], NullLogger<DocumentActionRegistry>.Instance),
             new WorkbenchIdempotency(),
+            LiveFormCapability.FromEnvironment(),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 

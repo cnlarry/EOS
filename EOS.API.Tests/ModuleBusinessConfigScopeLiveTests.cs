@@ -50,7 +50,8 @@ public sealed class ModuleBusinessConfigScopeLiveTests : IDisposable
             new IDocumentUserAction[] { new FakeButtonAction() }, NullLogger<DocumentActionRegistry>.Instance);
         _config = new ModuleBusinessConfigRepository(
             connections, new WorkbenchDirtyMarker(connections), auditWriter, documentActions,
-            new WorkbenchIdempotency(), NullLogger<ModuleBusinessConfigRepository>.Instance);
+            new WorkbenchIdempotency(), LiveFormCapability.FromEnvironment(),
+            NullLogger<ModuleBusinessConfigRepository>.Instance);
         _moduleId = 97_000_000 + Random.Shared.Next(0, 9_999_999);
     }
 

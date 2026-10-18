@@ -27,6 +27,7 @@ import { parseWorkbenchKey, workbenchAction, workbenchCopy, workbenchEdit, workb
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
+import { safeBackPath } from '../../lib/navigation'
 import { FormFieldRenderer, type ChooserAnchor } from './FormFieldRenderer'
 import { ChooserSourceMenu } from './ChooserSourceMenu'
 import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
@@ -1079,7 +1080,16 @@ export function FormEditorPage() {
   }
 
   const back = () => {
-    // 跨模块关联浏览：返回来源工作台列表；常规浏览/编辑返回当前模块列表
+    // 跨模块关联浏览的三种回退口径，按精度从高到低：
+    //   ① `back`：来源页的完整地址（含 query）——切回原页签，且位置精确
+    //      （前提是来源页把视图状态写进了 URL）；地址经 safeBackPath 校验，挡开放重定向。
+    //   ② `from`：只有模块号，退回来源模块的列表页。
+    //   ③ 都没有：回当前模块列表。
+    const backPath = safeBackPath(searchParams.get('back'))
+    if (backPath) {
+      navigate(backPath)
+      return
+    }
     navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
   }
 

@@ -88,9 +88,9 @@ public sealed class BomCycleCheckLiveTests
             var plan = await LoadPlanAsync(connection, transaction, token);
             await ExecuteAsync(connection, transaction, token, """
                 INSERT INTO dbo.BOM_STRU_M (PRO_NO) VALUES (N'ADR12BOMX');
-                INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMX', 1, N'ADR12BOMY');
-                INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMY', 1, N'ADR12BOMZ');
-                INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMZ', 1, N'ADR12BOMY');
+                INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMX', N'01', 1, N'ADR12BOMY');
+                INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMY', N'01', 1, N'ADR12BOMZ');
+                INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMZ', N'01', 1, N'ADR12BOMY');
                 """);
             // 原过程在这种数据上会无限展开（层数只增不减）⇒ 永远挂住保存；
             // 目录规则按 maxDepth=100 判定为循环（fail-closed），不再挂死。
@@ -141,25 +141,38 @@ public sealed class BomCycleCheckLiveTests
     private static async Task<ModuleEffectPlan> LoadPlanAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
-        string masterTable, detailTable, pkJson, paramStruct;
+        string masterTable, detailTable, paramStruct;
         await using (var command = new SqlCommand("""
-            SELECT m.MASTER_TABLE, m.DETAIL_TABLE, s.DEFINITION_JSON, r.PARAM_STRUCT
+            SELECT LTRIM(RTRIM(m.MASTER_TABLE)), LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE, N''))), r.PARAM_STRUCT
             FROM dbo.MODULES m
-            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = m.M_IDX AND s.IS_CURRENT = 1
             JOIN dbo.MODULE_VALIDATION_RULE r ON r.M_IDX = m.M_IDX AND r.STAGE = N'SAVE'
                  AND r.VALIDATION_KEY = N'no-cycle'
             WHERE m.M_IDX = 1204;
             """, connection, transaction))
         {
             await using var reader = await command.ExecuteReaderAsync(token);
-            Assert.True(await reader.ReadAsync(token), "模块 1204 缺少当前快照或 SAVE 期 no-cycle 配置");
+            Assert.True(await reader.ReadAsync(token), "模块 1204 缺少 SAVE 期 no-cycle 配置");
             masterTable = reader.GetString(0);
             detailTable = reader.GetString(1);
-            using var definition = JsonDocument.Parse(reader.GetString(2));
-            pkJson = definition.RootElement.GetProperty("MasterPkOrder").GetRawText();
-            paramStruct = reader.GetString(3);
+            paramStruct = reader.GetString(2);
         }
-        var pkOrder = JsonSerializer.Deserialize<List<string>>(pkJson)!;
+        // 主键序从**物理主键约束**推导，不读发布快照：1204 是定制页，不参与发布流程
+        // （迁移 415 已清掉历史快照），运行期按 MODULES/FIELDS 实时装配。
+        var pkOrder = new List<string>();
+        await using (var command = new SqlCommand("""
+            SELECT c.name
+            FROM sys.key_constraints kc
+            JOIN sys.index_columns ic ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
+            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE kc.parent_object_id = OBJECT_ID(@QualifiedTable) AND kc.type = 'PK'
+            ORDER BY ic.key_ordinal;
+            """, connection, transaction))
+        {
+            command.Parameters.Add("@QualifiedTable", SqlDbType.NVarChar, 200).Value = "dbo." + masterTable;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token)) pkOrder.Add(reader.GetString(0));
+        }
+        Assert.NotEmpty(pkOrder);
         using var parameters = JsonDocument.Parse(paramStruct);
         return new ModuleEffectPlan(1204, masterTable, detailTable, "live-bom-cycle", pkOrder,
             Array.Empty<EffectActionPlan>(),
@@ -172,29 +185,29 @@ public sealed class BomCycleCheckLiveTests
             INSERT INTO dbo.BOM_STRU_M (PRO_NO) VALUES (N'ADR12BOMA'), (N'ADR12BOMC'), (N'ADR12BOME'),
                                                       (N'ADR12BOMH'), (N'ADR12BOML1');
             -- 自环
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMA', 1, N'ADR12BOMA');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMA', N'01', 1, N'ADR12BOMA');
             -- 两级环：C→D→C
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMC', 1, N'ADR12BOMD');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMD', 1, N'ADR12BOMC');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMC', N'01', 1, N'ADR12BOMD');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMD', N'01', 1, N'ADR12BOMC');
             -- 三级环：E→F→G→E
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOME', 1, N'ADR12BOMF');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMF', 1, N'ADR12BOMG');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMG', 1, N'ADR12BOME');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOME', N'01', 1, N'ADR12BOMF');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMF', N'01', 1, N'ADR12BOMG');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMG', N'01', 1, N'ADR12BOME');
             -- 无环：H→I→J（J 无下级）
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMH', 1, N'ADR12BOMI');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMI', 1, N'ADR12BOMJ');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMH', N'01', 1, N'ADR12BOMI');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOMI', N'01', 1, N'ADR12BOMJ');
             -- 深链无环：L1→L2→…→L12（末级无下级）
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML1', 1, N'ADR12BOML2');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML2', 1, N'ADR12BOML3');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML3', 1, N'ADR12BOML4');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML4', 1, N'ADR12BOML5');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML5', 1, N'ADR12BOML6');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML6', 1, N'ADR12BOML7');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML7', 1, N'ADR12BOML8');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML8', 1, N'ADR12BOML9');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML9', 1, N'ADR12BOML10');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML10', 1, N'ADR12BOML11');
-            INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML11', 1, N'ADR12BOML12');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML1', N'01', 1, N'ADR12BOML2');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML2', N'01', 1, N'ADR12BOML3');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML3', N'01', 1, N'ADR12BOML4');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML4', N'01', 1, N'ADR12BOML5');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML5', N'01', 1, N'ADR12BOML6');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML6', N'01', 1, N'ADR12BOML7');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML7', N'01', 1, N'ADR12BOML8');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML8', N'01', 1, N'ADR12BOML9');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML9', N'01', 1, N'ADR12BOML10');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML10', N'01', 1, N'ADR12BOML11');
+            INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO) VALUES (N'ADR12BOML11', N'01', 1, N'ADR12BOML12');
             """);
 
     private static async Task ExecuteAsync(

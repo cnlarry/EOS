@@ -39,6 +39,12 @@ import {
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
+  BomProductListPage,
+  BomProductEditorPage,
+  BomProductNewPage,
+  BomComparePage,
+  BomTreePage,
+  BomWhereUsedPage,
 } from './lazyRoutes'
 import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportIdentityRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
 import { AssistantPage } from '../features/assistant/AssistantPage'
@@ -100,6 +106,21 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
     { path: 'admin/users/:userId/button-rights', element: withSuspense(<UserButtonRightsPage />) },
   ] },
   { path: 'admin/report-setup', element: withSuspense(<ReportAdminRoute />) },
+  // 产品 BOM（模块 1204）：定制承载面（ADR-039 D1/D10）。
+  // 三个视图共用 1204 的读权限；单层维护仍走 `/workbench/1204/view/...`，
+  // 复用统一表单与写入管线——权限、审计、效果链都不在这里重写。
+  // 路径用静态段而不是 query：深链可分享、前进后退语义一致、`RequirePermission` 可按路径配。
+  { element: <RequirePermission permission={moduleReadPermission(1204)} />, children: [
+    { path: 'bom/product', element: withSuspense(<BomProductListPage />) },
+    // 静态段在前：`new` / `where-used` 与动态段都是三段，靠顺序消歧
+    { path: 'bom/product/new', element: withSuspense(<BomProductNewPage />) },
+    { path: 'bom/product/where-used/:proNo', element: withSuspense(<BomWhereUsedPage />) },
+    // 结构树就是浏览态：双击列表进 `/tree`；「编辑」按钮才进可写态。
+    // 没有独立的浏览页——维护页只剩可写一种形态，少一层"只读渲染"的分支。
+    { path: 'bom/product/:proNo/:edition/tree', element: withSuspense(<BomTreePage />) },
+    { path: 'bom/product/:proNo/:edition/edit', element: withSuspense(<BomProductEditorPage />) },
+    { path: 'bom/product/:proNo/:edition/compare/:otherEdition', element: withSuspense(<BomComparePage />) },
+  ] },
   { path: 'workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
   { path: 'workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
   { path: 'workbench/:moduleId/edit/*', element: withSuspense(<FormEditorRoute />) },

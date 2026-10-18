@@ -25,7 +25,12 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
 
     private const string MasterTable = "MOC_PRODUCE_M";
     private const string DetailTable = "MOC_PRODUCE_D";
-    private const string BomTable = "BOM_STRU_D";
+    /// <summary>
+    /// 算料读**工单 BOM**（这一单实际用什么），不读产品 BOM。
+    /// 产品 BOM 只在制令单首次保存时快照过来一次（效果 `bom-snapshot-to-order`），
+    /// 之后计划员对本单结构的调整（换料、改用量）必须被算料尊重。
+    /// </summary>
+    private const string BomTable = "MOC_BOM_STRU_D";
     private const string OrderDetailTable = "COP_ORDER_D";
     private const string OrderMoreTable = "COP_ORDER_MORE";
     private const string ApplyDetailTable = "PUR_APPLY_D";
@@ -83,7 +88,6 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
                      (DetailTable, OrderTypeField), (DetailTable, OrderNoField), (DetailTable, OrderSerialField),
                      (BomTable, ProField), (BomTable, ElementProField),
                      (BomTable, ElementQtyField), (BomTable, BaseQtyField), (BomTable, LostRateField),
-                     (BomTable, "EDITION"),
                      (OrderDetailTable, OrderTypeField), (OrderDetailTable, OrderNoField),
                      (OrderDetailTable, SerialField), (OrderDetailTable, TypeField), (OrderDetailTable, NoField),
                      (OrderMoreTable, OrderTypeField), (OrderMoreTable, OrderNoField), (OrderMoreTable, ProField),
@@ -162,34 +166,43 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
 
     /// <summary>
     /// 单层叶子汇总（旧 `P_BOM_LIST @pro,1,3` 的同语义直查）：直接子件按料号分组，
-    /// 用量按 `ELEMENT_QTY/BASE_QTY`、损耗按 `MAX(LOST_RATE)`。版次取最新（与 BOM 展开页同口径）。
-    /// `BASE_QTY = 0` 的 BOM 行直接拒绝——既有实现在这里除零炸事务，同样 fail-closed，但要给出料号。
+    /// 用量按 `ELEMENT_QTY/BASE_QTY`、损耗按 `MAX(LOST_RATE)`。
+    /// 读的是**本单的工单 BOM**（计划员可能已按实际调整），不是产品 BOM——产品 BOM
+    /// 只在建单时快照一次。因此这里没有"取最新版次"这一步：工单 BOM 已经是确定的快照。
+    /// `BASE_QTY = 0` 的行直接拒绝——既有实现在这里除零炸事务，同样 fail-closed，但要给出料号。
     /// </summary>
     private static async Task<IReadOnlyList<BomElement>> ExplodeBomAsync(
         DocumentActionContext context, string productNo, CancellationToken token)
     {
         var q = ServiceEffectSql.Q;
-        var latestEdition =
-            $"(SELECT MAX({q("EDITION")}) FROM dbo.{q(BomTable)} WHERE LTRIM(RTRIM({q(ProField)}))=@pro)";
+        var type = context.KeyValues.Count > 0 ? context.KeyValues[0].Trim() : string.Empty;
+        var no = context.KeyValues.Count > 1 ? context.KeyValues[1].Trim() : string.Empty;
+        // 本单主产品那一节：工单 BOM 存的是整棵树（每个父件一行），
+        // 算料只算"本单要直接投入的料"，下阶由子制令各自负责。
+        var scope = $"{q(TypeField)}=@type AND {q(NoField)}=@no AND {q(ProField)}=@pro";
+
         await using var guard = new SqlCommand(
             $"SELECT TOP 1 LTRIM(RTRIM({q(ElementProField)})) FROM dbo.{q(BomTable)} "
-            + $"WHERE LTRIM(RTRIM({q(ProField)}))=@pro AND {q("EDITION")}={latestEdition} "
-            + $"AND ISNULL({q(BaseQtyField)}, 0)=0;",
+            + $"WHERE {scope} AND ISNULL({q(BaseQtyField)}, 0)=0;",
             context.Connection, context.Transaction);
+        guard.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
+        guard.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
         guard.Parameters.Add("@pro", SqlDbType.NVarChar, 60).Value = productNo;
         var bad = await guard.ExecuteScalarAsync(token);
         if (bad is not null && bad is not DBNull)
         {
-            throw new InvalidOperationException($"BOM 有底数为 0 的行（料号 {((string)bad).Trim()}），无法计算用料，请先修正 BOM。");
+            throw new InvalidOperationException($"工单 BOM 有底数为 0 的行（料号 {((string)bad).Trim()}），无法计算用料，请先修正工单 BOM。");
         }
 
         await using var command = new SqlCommand(
             $"SELECT LTRIM(RTRIM({q(ElementProField)})), "
             + $"SUM(ISNULL({q(ElementQtyField)}, 0)/{q(BaseQtyField)}), MAX(ISNULL({q(LostRateField)}, 0)), "
             + $"SUM(ISNULL({q(ElementQtyField)}, 0)/{q(BaseQtyField)}*(1+ISNULL({q(LostRateField)}, 0)/100)) "
-            + $"FROM dbo.{q(BomTable)} WHERE LTRIM(RTRIM({q(ProField)}))=@pro AND {q("EDITION")}={latestEdition} "
+            + $"FROM dbo.{q(BomTable)} WHERE {scope} "
             + $"GROUP BY LTRIM(RTRIM({q(ElementProField)}));",
             context.Connection, context.Transaction);
+        command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
+        command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
         command.Parameters.Add("@pro", SqlDbType.NVarChar, 60).Value = productNo;
         var rows = new List<BomElement>();
         await using var reader = await command.ExecuteReaderAsync(token);

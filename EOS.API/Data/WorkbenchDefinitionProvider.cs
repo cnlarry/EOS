@@ -11,8 +11,12 @@ namespace EOS.API.Data;
 /// 运行时 Definition 快照提供者：
 /// 启动或显式刷新时从 WORKBENCH_DEFINITION_SNAPSHOT（IS_CURRENT=1）加载已发布快照，
 /// 提供模块级不可变基线（DefinitionVersion = module-{id}-v{n}）。
-/// DocumentWorkbenchRepository 在模块「已发布且未脏」时优先使用基线构建每用户定义，
-/// 脏模块/无快照模块回退实时元数据构建；发布动作后刷新对应模块快照。
+///
+/// **有快照就一定用快照，脏标记不参与这条判定。** 它是"待发布积压清单"的输入，
+/// 不是运行期回退开关：回退会让快照里的效果引擎配置段丢失，使引擎静默退出、落到
+/// 旧批核路径。所以**未发布的模块级改动不参与执行**（判据见
+/// `WorkbenchDefinitionBuilder.GetDefinitionAsync`）；只有完全没有快照的模块才实时构建。
+/// 发布动作后刷新对应模块快照。
 /// </summary>
 public sealed class WorkbenchDefinitionProvider(
     DbConnectionFactory connections,

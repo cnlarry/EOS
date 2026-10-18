@@ -9,13 +9,14 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 产品 BOM（1204，原 `bom-stru` C#）入效果目录后的真库验证，覆盖保存期三条前置校验与一段写：
+/// 产品 BOM（1204，原 `bom-stru` C#）入效果目录后的真库验证，覆盖保存期四条前置校验与一段写：
 ///   ① 主表产品编号必须存在于产品档案（`reference-exists` 主表域）；
 ///   ② 明细元件编号必须存在于产品档案（`reference-exists` 明细域，逐行回报序号）；
 ///   ③ 明细元件底数必须大于零（`line-require` 的 `assert`，逐行回报序号）；
-///   ④ 通过后把产品档案的历史长宽列复制到本单旧长宽列（SAVE 期 `bom-size-backfill`）。
-/// ①~③ 把旧过程 `P_BOM_STRU_After_Save` 的语句内联为基准，比较"拒绝与否 + 文案"（按空白归一，
-/// 与对拍脚本同口径）；④ 把旧过程的 UPDATE 内联为基准，比较主表最终状态。事务结束回滚。
+///   ④ 明细损耗率必须介于 0 与 100 之间（`line-require`，迁移 408 新增）；
+///   ⑤ 通过后把产品档案的历史长宽列复制到本单旧长宽列（SAVE 期 `bom-size-backfill`）。
+/// ①~④ 把旧过程 `P_BOM_STRU_After_Save` 的语句内联为基准，比较"拒绝与否 + 文案"（按空白归一，
+/// 与对拍脚本同口径）；⑤ 把旧过程的 UPDATE 内联为基准，比较主表最终状态。事务结束回滚。
 /// </summary>
 [Trait("Category", "Integration")]
 [Collection("live-database")]
@@ -34,7 +35,7 @@ public sealed class BomStruCatalogLiveTests
     private const string Ghost = "ADR12BGHOST";
 
     [Fact]
-    public async Task 产品BOM_三条前置校验与旧过程一致()
+    public async Task 产品BOM_四条前置校验与旧过程一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);
@@ -65,7 +66,16 @@ public sealed class BomStruCatalogLiveTests
             Assert.StartsWith("以下序号项元件底数不能小于0", Normalize(baseQtyError.Message));
             Assert.Contains("1", Normalize(baseQtyError.Message));
 
-            // ④ 全部通过
+            // ④ 损耗率越界（迁移 408 新增的行断言）
+            await SeedAsync(connection, transaction, token, master: Root, elements: [Child], baseQty: 2);
+            await ExecuteAsync(connection, transaction, token,
+                "UPDATE dbo.BOM_STRU_D SET LOST_RATE=120 WHERE PRO_NO=@ProNo;", ("@ProNo", Root));
+            var lostError = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Root]));
+            // 文案取模块级 MESSAGE（GE/LE 共用一个句），诊断行追加在末尾。
+            Assert.StartsWith("以下序号项损耗率必须介于 0 与 100 之间", Normalize(lostError.Message));
+
+            // ⑤ 全部通过
             await SeedAsync(connection, transaction, token, master: Root, elements: [Child], baseQty: 2);
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Root]);
         }
@@ -146,7 +156,7 @@ public sealed class BomStruCatalogLiveTests
         {
             serial++;
             await ExecuteAsync(connection, transaction, token, """
-                INSERT INTO dbo.BOM_STRU_D (PRO_NO, SERIAL_NO, ELEMENT_PRO_NO, BASE_QTY) VALUES (@Master, @Serial, @Element, @BaseQty);
+                INSERT INTO dbo.BOM_STRU_D (PRO_NO, EDITION, SERIAL_NO, ELEMENT_PRO_NO, BASE_QTY) VALUES (@Master, N'01', @Serial, @Element, @BaseQty);
                 """, ("@Master", master), ("@Serial", serial), ("@Element", element), ("@BaseQty", baseQty));
         }
     }
@@ -177,20 +187,36 @@ public sealed class BomStruCatalogLiveTests
     {
         string masterTable, detailTable, pkJson;
         await using (var command = new SqlCommand("""
-            SELECT m.MASTER_TABLE, m.DETAIL_TABLE, s.DEFINITION_JSON
-            FROM dbo.MODULES m
-            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = m.M_IDX AND s.IS_CURRENT = 1
-            WHERE m.M_IDX = @ModuleId;
+            SELECT LTRIM(RTRIM(m.MASTER_TABLE)), LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE, N'')))
+            FROM dbo.MODULES m WHERE m.M_IDX = @ModuleId;
             """, connection, transaction))
         {
             command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
             await using var reader = await command.ExecuteReaderAsync(token);
-            Assert.True(await reader.ReadAsync(token), "模块 1204 缺少当前快照");
+            Assert.True(await reader.ReadAsync(token), "模块 1204 不存在");
             masterTable = reader.GetString(0);
             detailTable = reader.GetString(1);
-            using var definition = JsonDocument.Parse(reader.GetString(2));
-            pkJson = definition.RootElement.GetProperty("MasterPkOrder").GetRawText();
         }
+        // 主键序从**物理主键约束**推导，不读发布快照：1204 是定制页，不参与发布流程
+        // （迁移 415 已清掉历史快照），运行期按 MODULES/FIELDS 实时装配。
+        // 取物理主键而不是字段元数据：主键顺序在这里是"库怎么定义身份"，
+        // 约束是唯一不会撒谎的地方。
+        var pkColumns = new List<string>();
+        await using (var command = new SqlCommand("""
+            SELECT c.name
+            FROM sys.key_constraints kc
+            JOIN sys.index_columns ic ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
+            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE kc.parent_object_id = OBJECT_ID(@QualifiedTable) AND kc.type = 'PK'
+            ORDER BY ic.key_ordinal;
+            """, connection, transaction))
+        {
+            command.Parameters.Add("@QualifiedTable", SqlDbType.NVarChar, 200).Value = "dbo." + masterTable;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token)) pkColumns.Add(reader.GetString(0));
+        }
+        Assert.NotEmpty(pkColumns);
+        pkJson = "[" + string.Join(",", pkColumns.Select(column => "\"" + column + "\"")) + "]";
         // 按 SEQ 装载该模块全部启用的 SAVE 期规则（产品/元件引用、底数断言）
         var rules = new List<EffectValidationPlan>();
         await using (var command = new SqlCommand("""
@@ -208,7 +234,8 @@ public sealed class BomStruCatalogLiveTests
                     parameters.RootElement.Clone(), reader.IsDBNull(3) ? null : reader.GetString(3)));
             }
         }
-        Assert.Equal(3, rules.Count);
+        // 2 条 reference-exists + 2 条 line-require（底数、损耗率）；no-cycle 不在本口径内。
+        Assert.Equal(4, rules.Count);
         var pkOrder = JsonSerializer.Deserialize<List<string>>(pkJson)!;
         return new ModuleEffectPlan(ModuleId, masterTable, detailTable, "live-bom-stru", pkOrder,
             Array.Empty<EffectActionPlan>(), rules);

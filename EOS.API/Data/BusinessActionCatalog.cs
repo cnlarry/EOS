@@ -82,6 +82,7 @@ public static class BusinessActionCatalog
         "cus-account-sync",
         "pur-apply-sync",
         "bom-size-backfill",
+        "bom-snapshot-to-order",
         "detail-rollup",
         "pur-pay-offset",
         "cop-receipt-offset",
@@ -147,6 +148,7 @@ public static class BusinessActionCatalog
         "duplicate-check",
         "line-require",
         "period-overlap",
+        "require-when-referenced",
         "no-cycle",
         "custom-validation",
     };

@@ -46,7 +46,8 @@ public sealed class ConfigOverviewLiveTests
         _config = new ModuleBusinessConfigRepository(
             connections, new WorkbenchDirtyMarker(connections), auditWriter,
             new DocumentActionRegistry(Array.Empty<IDocumentUserAction>(), NullLogger<DocumentActionRegistry>.Instance),
-            new WorkbenchIdempotency(), NullLogger<ModuleBusinessConfigRepository>.Instance);
+            new WorkbenchIdempotency(), LiveFormCapability.FromEnvironment(),
+            NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 
     [Fact]

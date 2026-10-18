@@ -1,5 +1,6 @@
 using EOS.API.Data;
 using EOS.API.Data.Workbench;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
 namespace EOS.API.Tests;
@@ -40,6 +41,13 @@ internal sealed class FakeUnifiedFormCapabilitySource(
     public Task<UnifiedFormCapability> GetAsync(int moduleId, CancellationToken token)
         => Task.FromResult(new UnifiedFormCapability(
             formEnabledIds.Contains(moduleId), writableIds.Contains(moduleId)));
+
+    public Task<UnifiedFormCapability> GetAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        CancellationToken token)
+        => GetAsync(moduleId, token);
 
     public Task<IReadOnlySet<int>> GetFormEnabledIdsAsync(CancellationToken token)
         => Task.FromResult(formEnabledIds);

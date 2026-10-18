@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Bom;
 using EOS.API.Data.Effects;
 using EOS.API.Data.ModuleGroups;
 using EOS.API.Services;
@@ -242,7 +243,9 @@ builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.InventoryReserveHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.InventoryReleaseHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.InventoryReleaseBySourceHandler>();
+builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.BomSnapshotToOrderHandler>();
 builder.Services.AddScoped<EOS.API.Features.Inventory.MonthCloseSnapshotService>();
+builder.Services.AddScoped<BomRepository>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionRegistry>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionAuthorization>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionExecutor>();

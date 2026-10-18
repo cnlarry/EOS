@@ -62,6 +62,7 @@ public static class EffectParamPhysicalValidator
         "cus-account-sync",
         "pur-apply-sync",
         "bom-size-backfill",
+        "bom-snapshot-to-order",
         "detail-rollup",
         "pur-pay-offset",
         "cop-receipt-offset",
@@ -194,6 +195,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "bom-size-backfill":
                     _ = BomSizeBackfillHandler.Parse(root, plan.MasterTable!, columns);
+                    break;
+                case "bom-snapshot-to-order":
+                    _ = BomSnapshotToOrderHandler.Parse(root, plan.MasterTable!, columns);
                     break;
                 case "detail-rollup":
                     _ = DetailRollupHandler.Parse(root, plan.MasterTable!, columns);

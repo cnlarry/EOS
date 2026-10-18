@@ -529,6 +529,163 @@ button, input, select { font: inherit; }
   .erp-menu-admin .col-lg-5.erp-menu-tree { display: flex; flex-direction: column; min-height: 0; max-height: none; }
   .erp-menu-admin .col-lg-7 { display: flex; flex-direction: column; min-height: 0; }
 }
+/* ==========================================================================
+   统一树视图（ErpTree）
+   **画法不在这里定义**：层级虚线、子项圆点、箭头旋转、深度缩进全部复用 230101
+   那一套 `.erp-nav-*` + `--menu-gpad/--menu-cpad/--menu-dot/--menu-line`
+   （那组坐标是逐层对过像素的，另起一套等于重调一遍）。
+   这里只补两处 230101 没有的通用件。
+   ========================================================================== */
+/* 节点右侧的辅助信息（BOM 树用来显示累计用量）：贴在标题行末，单行不换行 */
+.erp-tree .erp-tree-inline-aux {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--tblr-secondary);
+  font-family: var(--tblr-font-monospace);
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* 箭头的可点热区：230101 里整行点击即展开，BOM 树要"点行看配方、点箭头才折叠"，
+   所以给箭头单独一层命中区（stopPropagation 在组件里做） */
+.erp-tree .erp-tree-toggle-hit { display: inline-flex; align-items: center; }
+/* 节点名的三段：料号正常色 → 品名灰色 → 版次灰且小一号。
+   用 inline-flex + **baseline** 对齐：三段字号不同（12/12/11），行内默认居中会让
+   版次浮到文字中间、看起来错位；基线对齐才是"同一行文字"的观感。
+   选中时整体随料号加粗（字重不单独压回去），一眼看出"我在看哪一行" */
+.erp-tree .erp-tree-label { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.erp-tree .erp-tree-sub { color: var(--tblr-secondary); }
+.erp-tree .erp-tree-edition { color: var(--tblr-secondary); font-size: 11px; }
+
+/* BOM 定制页（新增 / 编辑）：卡片观感与列表页一致。
+   统一表单把 `.erp-form-card` 压成透明无边框（它满屏铺开、不要卡片壳），
+   但定制页是"卡片放在工作区里"，所以这里把外观恢复回来。
+   **10px 间隙不在这里加**——它由工作区外壳的 `--erp-workspace-gap` 提供，
+   再叠一层 padding 会变成 20px。 */
+/* 卡片的**边框与圆角由 `.erp-form-grid` 自己提供**（display:block + border + radius 8px
+   + padding 10px），这里只补白色底：统一表单里它透出的是页根背景，而定制页的页根是
+   工作区底色，不补白就不成"一张卡"。
+   **不要给 `.erp-form-card` 再加边框**——那是第二层框，实测会套成双线。 */
+.erp-bom-form-page .erp-form-grid { background: var(--tblr-bg-surface); }
+/* 主表与明细是两块卡片：中间留 10px，与卡内 padding 同档 */
+.erp-bom-form-page .erp-form-grid + .erp-form-grid { margin-top: 10px; }
+
+/* 产品 BOM 结构树（1204）：左树右详情。两栏骨架与 230101 菜单管理同源——
+   card 已是 flex column（页根 .erp-full-list-page 给的），这里让布局区撑满剩余高度，
+   左右两栏各自内部滚动，页级不出滚动条 */
+.erp-bom-tree-page .erp-bom-tree-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  overflow: hidden;
+}
+.erp-bom-tree-page .erp-bom-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--tblr-border-color);
+}
+/* 层级栏：料号 + 版次与深度，作为树的表头（与 230101 的树区头部同位置） */
+.erp-bom-tree-page .erp-bom-tree-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-bom-tree-page .erp-bom-tree-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
+/* 视图页签：放在命令栏左侧（`search` 槽），与右侧按钮同一行。
+   Bootstrap 的 nav-tabs 自带下边框，会把命令栏压出双线——去掉它，只保留激活态 */
+.erp-bom-tree-page .erp-bom-mode-tabs { border-bottom: 0; gap: 2px; }
+.erp-bom-tree-page .erp-bom-mode-tabs .nav-link {
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--tblr-secondary);
+  border: 0;
+  border-radius: 6px;
+}
+.erp-bom-tree-page .erp-bom-mode-tabs .nav-link:hover { background: var(--tblr-bg-surface-secondary); }
+.erp-bom-tree-page .erp-bom-mode-tabs .nav-link.active {
+  color: var(--tblr-primary);
+  font-weight: 600;
+  background: var(--tblr-primary-lt);
+}
+/* 树头里的版次下拉：24px 高、12px 字号，与这一行的文字同档，
+   不按表单控件的 38px 走——它是工具条里的紧凑控件，不是表单字段 */
+.erp-bom-tree-page .erp-bom-edition-select {
+  /* 132px 是按"02（最新）"这一档算的：两个数字 + 全角括号"最新" + 下拉箭头 + 内边距。
+     104px 时箭头会压住末尾的"新"，看起来像被截断 */
+  width: 132px;
+  min-width: 132px;
+  height: 24px;
+  padding-block: 0;
+  font-size: 12px;
+}
+.erp-bom-tree-page .erp-bom-tree-detail { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+/* 选中态加粗：230101 的分组行只改颜色（那里选中不承载"当前查看对象"的语义），
+   BOM 树的选中就是"右侧正在显示谁"，必须与子项的 .active 一样看得见 */
+.erp-menu-tree.erp-tree .erp-nav-group-toggle.group-active { font-weight: 650; }
+.erp-bom-tree-page .erp-bom-tree-detail-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-bom-tree-page .erp-bom-tree-detail-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* 右栏分节：本件 BOM 资料 / 在上级配方中的位置 / 料件属性。
+   三段回答不同问题，用细分隔线与小标题分开，避免读成一串属性 */
+.erp-bom-tree-page .erp-bom-section + .erp-bom-section { border-top: 1px solid var(--tblr-border-color); }
+.erp-bom-tree-page .erp-bom-section-title {
+  margin: 0;
+  padding: 10px 12px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tblr-secondary);
+}
+/* 右栏配方属性：两列描述列表（窄栏自动落成一列）。
+   标签固定 72px 宽，值左对齐——比逐行表格更像"属性卡"，也更省横向空间 */
+.erp-bom-tree-page .erp-bom-recipe {
+  display: grid;
+  /* 固定两列：字段顺序就是 DOM 顺序，按"左一格、右一格"填。
+     用 auto-fit 会让宽屏变三列、窄屏变一列，字段成对关系被打散 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 4px 12px 12px;
+}
+@media (max-width: 767.98px) {
+  .erp-bom-tree-page .erp-bom-recipe { grid-template-columns: minmax(0, 1fr); }
+}
+.erp-bom-tree-page .erp-bom-recipe > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-bom-tree-page .erp-bom-recipe dt {
+  flex: 0 0 72px;
+  color: var(--tblr-secondary);
+  font-weight: 400;
+}
+.erp-bom-tree-page .erp-bom-recipe dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 991.98px) {
+  /* 窄屏上下堆叠：树给固定上限，详情占剩余，各自滚动 */
+  .erp-bom-tree-page .erp-bom-tree-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 38%) minmax(0, 1fr); }
+  .erp-bom-tree-page .erp-bom-tree { border-right: 0; border-bottom: 1px solid var(--tblr-border-color); }
+}
+
 /* 模块分组（230102）/ 自定义按钮（230103）/ 行为动作、校验规则（230104）三页共用的两栏外壳：
    外层是页面根，白色圆角卡片与顶部命令栏都由 ErpListCard 提供（与全站列表页同一套外壳），
    模块清单与配置区两栏走 card-body。卡片内边距取区块间距，与页面其余留白口径一致 */

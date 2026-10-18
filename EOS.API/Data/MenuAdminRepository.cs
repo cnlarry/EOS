@@ -731,9 +731,26 @@ public sealed class MenuAdminRepository(
         // "表单可用"），服务端只钉这条不变量——"表单可用"是主声明，没有表单面就谈不上写。
         if (!input.UnifiedFormEnabled && input.UnifiedFormEditEnabled)
             input = input with { UnifiedFormEditEnabled = false };
-        if (ModuleRouteValidator.ResolveKind(input.M_URL, input.MASTER_TABLE) == ModuleNodeKind.Workbench)
+        var kind = ModuleRouteValidator.ResolveKind(input.M_URL, input.MASTER_TABLE);
+        if (kind == ModuleNodeKind.Workbench)
             return input;
         var hasMaster = !string.IsNullOrWhiteSpace(input.MASTER_TABLE);
+        // 定制页只要**声明了统一表单能力**，就是"有单据面"的模块（ADR-039 D2）：
+        // 界面自己画，但写入仍走同一套工作台管线，所以明细必需字段、不可保存、缺列不可保存、
+        // 可复制、批核这些配置**有消费方**，不能按形态清掉。
+        // 仍然清掉的只有"列表视图专属"两项：排序字段与不可回退字段由定制页自己决定。
+        if (kind == ModuleNodeKind.CustomPage && input.UnifiedFormEnabled && hasMaster)
+        {
+            return input with
+            {
+                SORT_FIELDS = null,
+                NOT_BACK_FIELDS = null,
+                NOT_BACK_FIELDS_M = null,
+                FILTER = input.FILTER,
+                SEARCH_1 = input.SEARCH_1,
+                SEARCH_2 = input.SEARCH_2,
+            };
+        }
         return input with
         {
             SORT_FIELDS = null,
@@ -744,7 +761,7 @@ public sealed class MenuAdminRepository(
             ERROR_NO_SAVE = false,
             DETAIL_NO_FIELDS = null,
             DETAIL_NO_SAVE = false,
-            // 非统一工作台模块（报表 / 搜索中心 / 自定义页 / 目录）没有单据面，也就没有批核入口
+            // 没有单据面的模块（报表 / 搜索中心 / 纯展示定制页 / 目录）没有批核入口
             ApproveEnabled = false,
             // 同理没有表单面：统一表单能力两位一律落回默认（这条正是"点进去空壳页"的防呆）
             UnifiedFormEnabled = false,

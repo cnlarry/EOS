@@ -194,6 +194,21 @@ public sealed class WorkbenchDefinitionSnapshotService(
 
     private async Task<WorkbenchPublishResult> PublishOneAsync(int moduleId, string publishedBy, CancellationToken token)
     {
+        // 定制页与目录节点**不走发布流程**：它们的定义每请求实时装配，没有"冻结基线"这回事
+        // （230101 对这两种形态本来就不提供发布入口）。
+        //
+        // 这条守卫不是可选的洁癖：运行期判据是"**有快照就一定用快照**"，一旦有人在保存配置时
+        // 顺带触发了发布，库里就会留下一份快照，于是定制页反被它钉死——主键序、表名、效果动作
+        // 段全都停在发布那一刻，表现为"改了没生效"或"记录打不开"。
+        var nodeKind = await ReadNodeKindAsync(moduleId, token);
+        if (nodeKind is not null && !string.Equals(nodeKind, "WORKBENCH", StringComparison.Ordinal))
+        {
+            logger.LogDebug("跳过发布：非工作台模块 module={ModuleId} kind={Kind}", moduleId, nodeKind);
+            return new WorkbenchPublishResult(moduleId, string.Empty, false, null,
+                $"module-{moduleId}-live", false, [],
+                Error: "该模块不是统一工作台模块，不走发布流程（定义每请求实时装配）。");
+        }
+
         var report = await validator.ValidateAsync(moduleId, publishedBy, token);
         if (!report.Passed)
         {
@@ -316,6 +331,18 @@ public sealed class WorkbenchDefinitionSnapshotService(
         return new WorkbenchPublishResult(moduleId, report.Title, !reused, version,
             $"module-{moduleId}-v{version}", true, report.Checks,
             Error: null);
+    }
+
+    /// <summary>节点形态（`dbo.V_MODULE_NODE`，与 <c>ModuleRouteValidator.ResolveKind</c> 同源）；模块不存在返回 null。</summary>
+    private async Task<string?> ReadNodeKindAsync(int moduleId, CancellationToken token)
+    {
+        const string sql = "SELECT NODE_KIND FROM dbo.V_MODULE_NODE WHERE M_IDX=@ModuleId;";
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        var value = await command.ExecuteScalarAsync(token);
+        return value is null or DBNull ? null : ((string)value).Trim();
     }
 
     private async Task<(string Master, string? Detail)> ReadModuleTablesAsync(int moduleId, CancellationToken token)

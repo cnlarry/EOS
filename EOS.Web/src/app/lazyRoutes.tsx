@@ -35,6 +35,13 @@ export const FlowMonitorPage = lazy(() => import('../features/workflow/FlowMonit
 export const ReportCenterPage = lazy(() => import('../features/reports/ReportCenterPage').then((module) => ({ default: module.ReportCenterPage })))
 export const ReportInboxPage = lazy(() => import('../features/reports/ReportInboxPage').then((module) => ({ default: module.ReportInboxPage })))
 export const LayoutDesignerPage = lazy(() => import('../features/layout-designer/LayoutDesignerPage').then((module) => ({ default: module.LayoutDesignerPage })))
+// 产品 BOM（模块 1204）的定制承载面，见 ADR-039 D1/D10
+export const BomProductListPage = lazy(() => import('../features/bom/BomProductListPage').then((module) => ({ default: module.BomProductListPage })))
+export const BomProductEditorPage = lazy(() => import('../features/bom/BomProductEditorPage').then((module) => ({ default: module.BomProductEditorPage })))
+export const BomComparePage = lazy(() => import('../features/bom/BomComparePage').then((module) => ({ default: module.BomComparePage })))
+export const BomProductNewPage = lazy(() => import('../features/bom/BomProductNewPage').then((module) => ({ default: module.BomProductNewPage })))
+export const BomTreePage = lazy(() => import('../features/bom/BomTreePage').then((module) => ({ default: module.BomTreePage })))
+export const BomWhereUsedPage = lazy(() => import('../features/bom/BomWhereUsedPage').then((module) => ({ default: module.BomWhereUsedPage })))
 // 工作助手管理（菜单组 31，见 ADR-030）
 export const AdminSessionsPage = lazy(() => import('../features/assistant-admin/AdminSessionsPage').then((module) => ({ default: module.AdminSessionsPage })))
 export const MechanismOverviewPage = lazy(() => import('../features/assistant-admin/MechanismOverviewPage').then((module) => ({ default: module.MechanismOverviewPage })))

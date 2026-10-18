@@ -42,6 +42,8 @@ public sealed class EffectValidationExecutor
                 "duplicate-check" => await DuplicateCheck.RunAsync(connection, transaction, plan, rule, keyValues, token),
                 "period-overlap" => await PeriodOverlapCheck.RunAsync(connection, transaction, rule, keyValues, token),
                 "line-require" => await LineRequireCheck.RunAsync(connection, transaction, plan, rule, keyValues, token),
+                // 有条件必填 + 组合存在性：目标表里有这个来源值时，必填字段不得为空且组合必须命中
+                "require-when-referenced" => await RequireWhenReferencedCheck.RunAsync(connection, transaction, plan, rule, keyValues, token),
                 "no-cycle" => await NoCycleCheck.RunAsync(connection, transaction, plan, rule, keyValues, token),
                 "custom-validation" => await CustomValidationCheck.RunAsync(connection, transaction, plan, rule, keyValues, token),
                 _ => throw new EffectConfigException($"校验键 '{rule.ValidationKey}' 尚未实现运行时执行。"),

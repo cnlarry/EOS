@@ -79,6 +79,9 @@ internal static class ModuleRouteValidator
         "/admin/module-actions",
         "/import", "/settings/system", "/settings/hr-setup", "/settings/hrm-setup",
         "/jobs", "/my-tasks", "/car-summary",
+        // 产品 BOM（模块 1204）的定制承载面（ADR-039 D1）：菜单点进去是列表页。
+        // 结构树与反查是它的**子路径**，不进这张表——白名单只回答"菜单打开哪个页"。
+        "/bom/product",
         "/workflow/design", "/workflow/monitor",
     ];
 

@@ -42,6 +42,7 @@ public sealed class ModuleBusinessConfigReadLiveTests
         return new ModuleBusinessConfigRepository(connections, dirtyMarker, auditWriter,
             new DocumentActionRegistry([new DocumentActionProbeHandler()], NullLogger<DocumentActionRegistry>.Instance),
             new WorkbenchIdempotency(),
+            LiveFormCapability.FromEnvironment(),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 

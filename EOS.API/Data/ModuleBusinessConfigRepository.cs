@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json;
 using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Workbench;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -19,6 +20,7 @@ public sealed class ModuleBusinessConfigRepository(
     WorkbenchAuditWriter auditWriter,
     DocumentActionRegistry documentActions,
     WorkbenchIdempotency idempotency,
+    IUnifiedFormCapabilitySource formCapability,
     ILogger<ModuleBusinessConfigRepository> logger)
 {
     /// <summary>
@@ -142,9 +144,13 @@ public sealed class ModuleBusinessConfigRepository(
             }
         }
 
-        // 界面左栏的模块清单：候选集与保存时的拒存规则同源（统一工作台 + 有主表）。
+        // 界面左栏的模块清单：候选集与保存时的拒存规则同源（**有单据面** + 有主表）。
         // 它取代了原先的"选择模块"弹窗——配置面按自己的门取自己的候选集，不借 230101 的菜单端点。
+        // ADR-039 D2 之后"有单据面"不再等价于"形态是 WORKBENCH"：定制页只要声明了统一表单能力，
+        // 行为动作与校验规则照样由效果引擎执行（1204 就是这样），所以候选集要把它放进来。
         var targets = new List<ModuleConfigTargetOptionDto>();
+        // 能力位只经唯一读取点取，不在候选集查询里直摸那两列。
+        var formEnabledIds = await formCapability.GetFormEnabledIdsAsync(token);
         await using (var targetCommand = new SqlCommand(
             """
             SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
@@ -152,9 +158,10 @@ public sealed class ModuleBusinessConfigRepository(
                    LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t WITH (NOLOCK)
                                         WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.MASTER_TABLE))),''))),
                    LTRIM(RTRIM(ISNULL((SELECT TOP 1 t.T_DESC FROM dbo.TABLES t WITH (NOLOCK)
-                                        WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.DETAIL_TABLE))),'')))
+                                        WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(m.DETAIL_TABLE))),''))),
+                   LTRIM(RTRIM(ISNULL(n.NODE_KIND,'')))
             FROM dbo.MODULES m WITH (NOLOCK)
-            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX AND n.NODE_KIND=N'WORKBENCH'
+            INNER JOIN dbo.V_MODULE_NODE n WITH (NOLOCK) ON n.M_IDX=m.M_IDX
             WHERE NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NOT NULL
             ORDER BY m.M_IDX;
             """, connection))
@@ -162,8 +169,13 @@ public sealed class ModuleBusinessConfigRepository(
             await using var reader = await targetCommand.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
             {
+                var moduleId = reader.GetInt32(0);
+                var isWorkbench = reader.GetString(6)
+                    .Equals(ModuleRouteValidator.WireName(ModuleNodeKind.Workbench), StringComparison.OrdinalIgnoreCase);
+                if (!isWorkbench && !formEnabledIds.Contains(moduleId))
+                    continue;
                 targets.Add(new ModuleConfigTargetOptionDto(
-                    reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(4),
+                    moduleId, reader.GetString(1), reader.GetString(2), reader.GetString(4),
                     reader.GetString(3), reader.GetString(5), 0));
             }
         }
@@ -437,11 +449,17 @@ public sealed class ModuleBusinessConfigRepository(
 
         var (masterTable, detailTable, nodeKind) = await ReadModuleShapeAsync(connection, transaction, moduleId, token)
             ?? throw new KeyNotFoundException($"模块 {moduleId} 不存在。");
-        // 行为动作与校验规则由统一工作台的效果引擎执行，自定义承载页与目录节点没有这条链路：
-        // 配置了也不会跑。服务端兜底拒收（前端隐藏这三个配置页签只改善体验）。
+        // 行为动作与校验规则由效果引擎执行。**判据是"有没有单据面"，不是"形态是不是工作台"**
+        // （ADR-039 D2）：定制页只要声明了统一表单能力，写入仍走同一套管线，效果链照常跑
+        // （1204 就属于这种）。目录节点与纯展示定制页没有这条链路，配置了也不会跑，服务端兜底拒收。
+        // 能力位在调用方事务内读（同一连接），不另开连接——否则调用方已锁住该模块行时会自锁。
+        var isWorkbench = nodeKind == ModuleRouteValidator.WireName(ModuleNodeKind.Workbench);
+        var customPageFormEnabled = !isWorkbench
+            && (await formCapability.GetAsync(connection, transaction, moduleId, token)).FormEnabled;
         var hasConfig = request.Actions.Count > 0 || request.ValidationRules.Count > 0;
-        if (hasConfig && nodeKind != ModuleRouteValidator.WireName(ModuleNodeKind.Workbench))
-            throw new ArgumentException("该节点不是统一工作台模块：行为动作与校验规则只有统一工作台会执行，没有可挂载的消费方。");
+        var hasDocumentSurface = isWorkbench || (customPageFormEnabled && masterTable is not null);
+        if (hasConfig && !hasDocumentSurface)
+            throw new ArgumentException("该节点没有单据面：行为动作与校验规则只在有统一表单的模块上执行，没有可挂载的消费方。");
         if (masterTable is null && detailTable is null && hasConfig)
             throw new ArgumentException("两表皆空模块禁止配置业务动作/校验规则。");
 
@@ -959,6 +977,7 @@ public sealed class ModuleBusinessConfigRepository(
         int moduleId,
         CancellationToken token)
     {
+        // 只取表形态与节点形态；能力位由 IUnifiedFormCapabilitySource 单独回答（唯一读取点）。
         const string sql = """
             SELECT m.MASTER_TABLE, m.DETAIL_TABLE, n.NODE_KIND
             FROM dbo.MODULES m WITH (NOLOCK)
