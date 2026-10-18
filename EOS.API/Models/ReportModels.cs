@@ -43,7 +43,9 @@ public sealed record ReportColumn(
     string? DisplayFormat = null,
     [property: JsonIgnore] bool? IsCost = null,
     [property: JsonIgnore] bool? IsSecrecy = null,
-    [property: JsonIgnore] string? DenyKey = null);
+    [property: JsonIgnore] string? DenyKey = null,
+    // 数值语义族（ADR-038）：前端据此把金额默认显示成两位小数。
+    string? NumericRole = null);
 
 public sealed record ReportDefinition(
     int ModuleId,

@@ -166,14 +166,25 @@ function formatCustomNumber(num: number, formatText: string, locale: string): st
 }
 
 /**
- * 未配置 DISPLAY_FORMAT 时的类型默认：整数无小数，小数最多 6 位去尾零、带千分位。
- * 刻意**不**按金额压到 2 位——前端拿不到"这列是不是金额"（NumericRole 不下发），
- * 压错会把按千克计量的数量截断；等 numeric-context 端点上线后再细分。
+ * 未配置 DISPLAY_FORMAT 时的类型默认：
+ * - 金额（NUMERIC_ROLE=AMOUNT）是会计口径，固定两位小数，尾零必须显示（800 → 800.00）；
+ * - 整型列是序号/项次/编号一类标识，**不分组**（1024 不能显示成 1,024）；
+ * - 其余数值（数量/单价/汇率/比率）最多 6 位、去尾零、带千分位。
+ *
+ * 语义族不在定义快照里（`NumericRole` 不下发），由 `numeric-context` 端点单独提供；
+ * 取不到 role 时按类型兜底，不会把金额截断成整数。
  */
-function formatDefaultNumber(num: number, dataType: string, locale: string): string {
+function formatDefaultNumber(num: number, dataType: string, locale: string, numericRole?: string | null): string {
+  if (numericRole?.trim().toUpperCase() === 'AMOUNT') {
+    return new Intl.NumberFormat(locale, {
+      useGrouping: true,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num)
+  }
   const isInteger = /^(int|bigint|smallint|tinyint)$/.test(dataType.toLowerCase())
   return new Intl.NumberFormat(locale, {
-    useGrouping: true,
+    useGrouping: !isInteger,
     minimumFractionDigits: 0,
     maximumFractionDigits: isInteger ? 0 : 6,
   }).format(num)
@@ -185,6 +196,7 @@ function formatNumberValue(
   dataType: string,
   locale: string,
   currency: string,
+  numericRole?: string | null,
 ): string {
   const { group, decimal } = getSeparators(locale)
   // 按当前 locale 的分组符与小数点解析：德语区 "1.234,5" 与英语区 "1,234.5" 都要能读
@@ -196,7 +208,7 @@ function formatNumberValue(
   const num = typeof value === 'number' ? value : normalized
   if (!Number.isFinite(num)) return String(value)
   const formatText = format?.trim()
-  if (!formatText) return formatDefaultNumber(num, dataType, locale)
+  if (!formatText) return formatDefaultNumber(num, dataType, locale, numericRole)
   const standard = /^([NnFfGgEePpCcDdXx])(\d{0,2})$/.exec(formatText)
   if (standard) return formatStandardNumber(num, standard[1], standard[2] ? Number(standard[2]) : null, locale, currency)
   if (!/[0#]/.test(formatText)) return String(num)
@@ -208,6 +220,11 @@ export interface FormatOptions {
   locale?: string | null
   /** `C` 格式使用的 ISO 4217 币别，缺省取单据币别，再缺省为 CNY。 */
   currency?: string | null
+  /**
+   * 字段的数值语义族（`FIELDS.NUMERIC_ROLE`）：金额默认固定两位小数。
+   * 它不在定义快照里，由 `numeric-context` 端点单独下发；取不到时按数据类型兜底。
+   */
+  numericRole?: string | null
 }
 
 export function formatFieldValue(
@@ -228,7 +245,7 @@ export function formatFieldValue(
     || /^[NnFfGgEePpCcDdXx]\d{0,2}$/.test(formatText)
     || formatText.includes('0')
     || formatText.includes('#')
-  if (numericLike) return formatNumberValue(value, format, type, locale, currency)
+  if (numericLike) return formatNumberValue(value, format, type, locale, currency, options?.numericRole)
   if (/[yMdHhms]/i.test(formatText)) return formatDateValue(value, format, locale)
   return String(value)
 }

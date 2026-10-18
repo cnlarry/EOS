@@ -798,7 +798,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
                    COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),
-                   LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,'')))
+                   LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,''))),LTRIM(RTRIM(ISNULL(f.NUMERIC_ROLE,'')))
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
@@ -815,8 +815,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             if(Convert.ToBoolean(reader.GetValue(3))&&!canViewCost)continue;
             if(Convert.ToBoolean(reader.GetValue(4))&&!canViewSecrecy)continue;
             var displayFormat=reader.GetString(5);
+            var numericRole=reader.GetString(6);
             columns.Add(new ReportColumn(key,reader.GetString(1),reader.GetString(2),
-                string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim()));
+                string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim(),
+                NumericRole:string.IsNullOrWhiteSpace(numericRole)?null:numericRole.Trim()));
         }
         await reader.DisposeAsync();
         var pkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,masterTable,token);

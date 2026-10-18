@@ -86,6 +86,12 @@ export interface FormFieldDefinition {
    rowSpan?: number | null
    /** 所属分节（模块级版式；与复合格解耦） */
    sectionId?: string | null
+   /**
+    * 数值语义族（`FIELDS.NUMERIC_ROLE`）：AMOUNT/QTY/PRICE/RATE/PERCENT。
+    * 服务端不下发它（会惊动定义快照），由页面按 `numeric-context` 的 `fieldRoles` 挂上，
+    * 仅用于显示默认（金额固定两位）。
+    */
+   numericRole?: string | null
    }
 
 /** 统一表单定义（按当前用户权限过滤后的录入视图） */

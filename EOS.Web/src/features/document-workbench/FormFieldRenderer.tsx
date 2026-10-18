@@ -73,7 +73,7 @@ function DecimalControl({ field, value, disabled, onChange, onBlur, error }: Con
     const canonical = canonicalizeDecimalValue(value)
     // 不可解析（含货币符号等）保留原值交由校验报错；可解析则套 DISPLAY_FORMAT 展示
     if (canonical && Number.isFinite(Number(canonical))) {
-      const formatted = formatFieldValue(Number(canonical), field.dataType, field.displayFormat)
+      const formatted = formatFieldValue(Number(canonical), field.dataType, field.displayFormat, { numericRole: field.numericRole })
       const next = formatted === '' ? canonical : formatted
       if (next !== value) onChange(next)
     }
@@ -207,7 +207,7 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
     control = CONTROL_RENDERERS.checkbox({ field, value, disabled: true, onChange: () => {}, error })
   } else if (readOnlyStatic) {
     // 只读文本（非复选框字段）
-    const display = formatFieldValue(value, field.dataType, field.displayFormat)
+    const display = formatFieldValue(value, field.dataType, field.displayFormat, { numericRole: field.numericRole })
     control = (
       <span className="erp-form-static">
         {display || '—'}

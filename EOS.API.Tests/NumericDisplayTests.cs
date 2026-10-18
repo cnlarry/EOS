@@ -18,10 +18,20 @@ public sealed class NumericDisplayTests
     }
 
     [Fact]
-    public void 未配格式时整数类型不带小数位()
+    public void 未配格式时整数类型不带小数位且不分组()
     {
-        Assert.Equal("1,234", NumericDisplay.Format(1234m, null, dataType: "int"));
-        Assert.Equal("1,235", NumericDisplay.Format(1234.5m, null, dataType: "bigint"));
+        // 序号/项次/编号是标识符：1024 显示成 1,024 是误伤
+        Assert.Equal("1234", NumericDisplay.Format(1234m, null, dataType: "int"));
+        Assert.Equal("1235", NumericDisplay.Format(1234.5m, null, dataType: "bigint"));
+    }
+
+    [Fact]
+    public void 无类型信息时按值的形态兜底()
+    {
+        // PDF 主表取值与版式里没标 format 的列拿不到 dataType：
+        // 整数按标识符不分组，带小数才按数量格式
+        Assert.Equal("1024", NumericDisplay.Format(1024m, null));
+        Assert.Equal("1,234.5", NumericDisplay.Format(1234.5m, null));
     }
 
     [Fact]

@@ -23,7 +23,7 @@ import { describeApiError } from '../../lib/errors'
 interface ReportOption { label: string; value: string }
 interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
 interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null; defaultValueTo: string | null }
-interface ReportColumn { key: string; label: string; dataType: string; displayFormat?: string | null }
+interface ReportColumn { key: string; label: string; dataType: string; displayFormat?: string | null; numericRole?: string | null }
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; dataSource: 'table' | 'aggregate'; parameters: ReportParameter[] }
 interface ReportParameter { name: string; dataType: string; maxLength: number; serialNo: number; isTo: boolean; constant: string | null }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
@@ -47,6 +47,8 @@ interface ResultColumn {
   label: string
   dataType: string
   displayFormat: string | null
+  /** 数值语义族（FIELDS.NUMERIC_ROLE）：金额按两位小数显示；结果集动态列没有它。 */
+  numericRole?: string | null
 }
 
 const DEFAULT_PAGE_SIZE = 50
@@ -191,6 +193,7 @@ export function ReportViewerPage({
       label: column.label,
       dataType: column.dataType,
       displayFormat: column.displayFormat ?? null,
+      numericRole: column.numericRole ?? null,
     }))
   }, [definition.data, spResultColumns])
 
@@ -198,7 +201,7 @@ export function ReportViewerPage({
     () => resultColumns.map((column) => ({
       accessorKey: column.key,
       header: column.label,
-      cell: (info) => formatFieldValue(info.getValue(), column.dataType, column.displayFormat) || '—',
+      cell: (info) => formatFieldValue(info.getValue(), column.dataType, column.displayFormat, { numericRole: column.numericRole }) || '—',
       meta: { cellClassName: alignClass(null, column.dataType) },
     })),
     [resultColumns],

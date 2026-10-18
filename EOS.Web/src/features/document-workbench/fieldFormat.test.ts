@@ -30,7 +30,24 @@ describe('formatFieldValue', () => {
     expect(formatFieldValue(1234.5, 'float', '#,##0.00')).toBe('1,234.50')
     // 未配置格式时补类型默认（ADR-037 批 2）：小数最多 6 位、带千分位，不再裸输出
     expect(formatFieldValue(1234.5, 'float', null, { locale: 'en-US' })).toBe('1,234.5')
-    expect(formatFieldValue(1234, 'int', null, { locale: 'en-US' })).toBe('1,234')
+  })
+
+  it('整数类型默认不分组：序号/项次/编号是标识符，不是计量值', () => {
+    expect(formatFieldValue(1234, 'int', null, { locale: 'en-US' })).toBe('1234')
+    expect(formatFieldValue(1024, 'smallint', null, { locale: 'en-US' })).toBe('1024')
+    // 显式配置千分位仍然生效（三级回落第一级优先）
+    expect(formatFieldValue(1234, 'int', '#,##0', { locale: 'en-US' })).toBe('1,234')
+  })
+
+  it('金额语义默认固定两位小数，尾零必须显示', () => {
+    const amount = { locale: 'en-US', numericRole: 'AMOUNT' }
+    expect(formatFieldValue(800, 'decimal', null, amount)).toBe('800.00')
+    expect(formatFieldValue(800.1, 'decimal', null, amount)).toBe('800.10')
+    expect(formatFieldValue(1234.567, 'decimal', null, amount)).toBe('1,234.57')
+    // 非金额的小数仍按最多 6 位去尾零
+    expect(formatFieldValue(800, 'decimal', null, { locale: 'en-US', numericRole: 'QTY' })).toBe('800')
+    // 显式格式优先于语义默认
+    expect(formatFieldValue(800, 'decimal', '0', amount)).toBe('800')
   })
 
   it('locale 决定分组符与小数点，不再硬编码 zh-CN', () => {

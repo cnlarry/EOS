@@ -21,8 +21,8 @@ public static class NumericDisplay
     /// <summary>数量与其它小数的默认格式：最多 6 位、去尾零、带千分位。</summary>
     public const string QuantityFormat = "#,##0.######";
 
-    /// <summary>整数类型的默认格式：无小数位、带千分位。</summary>
-    public const string IntegerFormat = "#,##0";
+    /// <summary>整数类型的默认格式：无小数位、不分组（序号/项次/编号是标识符，分组会变成 1,024）。</summary>
+    public const string IntegerFormat = "0";
 
     /// <summary>整数类型集合（判断"该不该有小数位"）。</summary>
     public static bool IsIntegerType(string? dataType) =>
@@ -36,12 +36,33 @@ public static class NumericDisplay
     public static string DefaultFormat(
         string? numericRole, string? dataType, int amountDecimals = DefaultAmountDecimals)
     {
-        if (string.Equals(numericRole, "AMOUNT", StringComparison.OrdinalIgnoreCase))
+        if (IsAmountRole(numericRole))
         {
             return AmountFormat(amountDecimals);
         }
         return IsIntegerType(dataType) ? IntegerFormat : QuantityFormat;
     }
+
+    private static bool IsAmountRole(string? numericRole) =>
+        string.Equals(numericRole, "AMOUNT", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>显式格式是否可用（非空且命中白名单）。</summary>
+    private static bool HasUsableFormat(string? explicitFormat)
+    {
+        if (string.IsNullOrWhiteSpace(explicitFormat)) return false;
+        var format = explicitFormat.Trim();
+        return CustomFormatPattern.IsMatch(format) || StandardFormatPattern.IsMatch(format);
+    }
+
+    /// <summary>值本身是否为整数（无小数部分）。</summary>
+    private static bool IsIntegralValue(object value) => value switch
+    {
+        decimal number => number == decimal.Truncate(number),
+        double number => number == Math.Truncate(number),
+        float number => number == MathF.Truncate(number),
+        sbyte or byte or short or ushort or int or uint or long or ulong => true,
+        _ => false,
+    };
 
     /// <summary>自定义数字格式白名单：# 0 , . ; ( ) % 负号与空格。</summary>
     private static readonly Regex CustomFormatPattern = new(@"^[#0,.;()%\-\s]{1,60}$", RegexOptions.Compiled);
@@ -59,10 +80,8 @@ public static class NumericDisplay
     public static string Resolve(
         string? explicitFormat, string? numericRole, string? dataType, int amountDecimals = DefaultAmountDecimals)
     {
-        if (string.IsNullOrWhiteSpace(explicitFormat)) return DefaultFormat(numericRole, dataType, amountDecimals);
-        var format = explicitFormat.Trim();
-        return CustomFormatPattern.IsMatch(format) || StandardFormatPattern.IsMatch(format)
-            ? format
+        return HasUsableFormat(explicitFormat)
+            ? explicitFormat!.Trim()
             : DefaultFormat(numericRole, dataType, amountDecimals);
     }
 
@@ -81,6 +100,13 @@ public static class NumericDisplay
         if (!IsNumeric(value)) return Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
 
         var format = Resolve(explicitFormat, numericRole, dataType, amountDecimals);
+        // 既没有类型也没有语义时（PDF 主表取值、版式里没标 format 的列），按值的形态兜底：
+        // 整数值是序号/编号/行号一类标识，分组会让 1024 变成 1,024；带小数才按数量格式。
+        if (!HasUsableFormat(explicitFormat) && string.IsNullOrWhiteSpace(dataType)
+            && !IsAmountRole(numericRole) && IsIntegralValue(value))
+        {
+            format = IntegerFormat;
+        }
         try
         {
             return ((IFormattable)value).ToString(format, CultureInfo.InvariantCulture);

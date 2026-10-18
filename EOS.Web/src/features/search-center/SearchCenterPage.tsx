@@ -12,7 +12,7 @@ import type { ColumnDef } from '../../lib/tanstackTable'
 import { describeApiError } from '../../lib/errors'
 
 interface SearchableModule { moduleId: number; title: string; masterTable: string; detailTable: string | null; searchMaster: boolean; searchDetail: boolean }
-interface SearchField { key: string; label: string; dataType: string; displayFormat?: string | null }
+interface SearchField { key: string; label: string; dataType: string; displayFormat?: string | null; numericRole?: string | null }
 interface SearchDefinition { moduleId: number; title: string; table: string; fields: SearchField[]; columns: SearchField[]; pkOrder: string[] }
 interface SearchResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 
@@ -51,7 +51,7 @@ export function SearchCenterPage() {
     () => (definition.data?.columns ?? []).map((column) => ({
       accessorKey: column.key,
       header: column.label,
-      cell: (info) => formatFieldValue(info.getValue(), column.dataType, column.displayFormat ?? null) || '—',
+      cell: (info) => formatFieldValue(info.getValue(), column.dataType, column.displayFormat ?? null, { numericRole: column.numericRole }) || '—',
       meta: { cellClassName: column.dataType.includes('float') || column.dataType.includes('int') ? 'text-end' : undefined },
     })),
     [definition.data],

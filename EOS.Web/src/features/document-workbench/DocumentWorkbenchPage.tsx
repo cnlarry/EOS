@@ -74,6 +74,11 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const groupId=rawGroupId!=null&&/^\d+$/.test(rawGroupId)?Number(rawGroupId):null
   const groupValue=groupId!=null&&rawGroupValue!=null?rawGroupValue:null
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
+  // 数值语义族（ADR-037）：显示默认要用它（金额固定两位、整数不分组）。
+  // 定义快照不含这一项，故单独取一次；与表单页共用同一 queryKey，切页不重复请求。
+  const numericContext=useQuery({queryKey:['workbench',moduleId,'numeric-context'],queryFn:()=>apiClient.get<{fieldRoles:Record<string,string>}>(`/document-workbench/${moduleId}/numeric-context`),enabled:Boolean(moduleId),staleTime:5*60*1000})
+  const fieldRoles=numericContext.data?.fieldRoles
+  const roleOf=useCallback((key:string)=>fieldRoles?.[key.toUpperCase()],[fieldRoles])
   // 滚动加载模式下 pageSize 即每次抓取的块大小：50 ≈ 两屏缓冲，减少请求与“加载更多”闪烁
   const pageSize=50
   // 网格渲染全部显示列：服务端下发的集合即用户选择列，截断会让选择列与网格不一致
@@ -177,21 +182,21 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         filterable:field.isQueryable,
         dataType:field.dataType,
         truncate:(field.dataType??'').toLowerCase()!=='bit',
-        title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
-        copyText:({value})=>formatFieldValue(value,field.dataType,field.format)||'—',
+        title:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||undefined,
+        copyText:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||'—',
         headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.masterTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
       },
       cell:(info)=>{
         const value=info.getValue()
         if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
-        const text=formatFieldValue(value,field.dataType,field.format)
+        const text=formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})
         if(!text)return '—'
         return field.browseModuleId&&field.browseModuleId>0
           ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(moduleReadPermission(field.browseModuleId))}/>
           :text
       },
     })),
-  ],[master,hasPermission,moduleId,navigate,definition.data?.masterTable])
+  ],[master,hasPermission,moduleId,navigate,definition.data?.masterTable,roleOf])
   const detailColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>detail.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
     id:field.key,
     accessorKey:field.key,
@@ -203,20 +208,20 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       minWidth:field.width,
       dataType:field.dataType,
       truncate:(field.dataType??'').toLowerCase()!=='bit',
-      title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
-      copyText:({value})=>formatFieldValue(value,field.dataType,field.format)||'—',
+      title:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||undefined,
+      copyText:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||'—',
       headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.detailTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
     },
     cell:(info)=>{
       const value=info.getValue()
       if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
-      const text=formatFieldValue(value,field.dataType,field.format)
+      const text=formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})
       if(!text)return '—'
       return field.browseModuleId&&field.browseModuleId>0
         ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(moduleReadPermission(field.browseModuleId))}/>
         :text
     },
-  })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable])
+  })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable,roleOf])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   // 助手处境上报：列表筛选条件与选中行主键（服务端会再截断并按字段白名单校验）。

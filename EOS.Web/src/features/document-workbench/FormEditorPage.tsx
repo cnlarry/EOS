@@ -148,6 +148,26 @@ class FormDialogUnderlayBoundary extends Component<{ children: ReactNode }, { fa
   }
 }
 
+/**
+ * 把 numeric-context 下发的字段语义族挂到定义上（定义快照里没有这一项）。
+ * 只影响显示默认（金额固定两位），不改变提交流程与校验口径。
+ */
+function withNumericRoles(
+  definition: FormDefinition | undefined,
+  roles: Record<string, string> | undefined,
+): FormDefinition | undefined {
+  if (!definition || !roles) return definition
+  const attach = (field: FormFieldDefinition): FormFieldDefinition => {
+    const role = roles[field.key.toUpperCase()]
+    return role ? { ...field, numericRole: role } : field
+  }
+  return {
+    ...definition,
+    masterFields: definition.masterFields.map(attach),
+    detailFields: definition.detailFields.map(attach),
+  }
+}
+
 interface MasterFieldProps {
   field: FormFieldDefinition
   value: string
@@ -479,7 +499,7 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
       // 浏览态与工作台子表同口径：纯文本展示（bit 用禁用复选框），保留电子表格能力
       //（表头排序/列宽拖拽/复制/键盘导航/吸顶表头由 ErpTable 默认提供；title/copyText 取展示文本）
       if (viewing) {
-        const formatted = (value: unknown) => formatFieldValue(value, field.dataType, field.displayFormat)
+        const formatted = (value: unknown) => formatFieldValue(value, field.dataType, field.displayFormat, { numericRole: field.numericRole })
         return {
           id: field.key,
           accessorKey: field.key,
@@ -690,6 +710,21 @@ export function FormEditorPage() {
     queryKey: ['workbench', moduleId, 'form-definition', isEdit ? 'edit' : isView ? 'view' : 'new'],
     queryFn: () => apiClient.get<FormDefinition>(`/document-workbench/${moduleId}/form-definition?mode=${isEdit ? 'edit' : isView ? 'view' : 'new'}`),
   })
+  // 数值精度上下文（ADR-037）：金额精度跟单据币别、数量精度跟行单位；
+  // fieldRoles 同时供显示默认使用（金额固定两位）。单独端点下发而不进 form-definition，
+  // 避免惊动定义快照；5 分钟内复用，避免每次校验都请求。
+  const numericContextQuery = useQuery({
+    queryKey: ['workbench', moduleId, 'numeric-context'],
+    queryFn: () => apiClient.get<NumericContext>(`/document-workbench/${moduleId}/numeric-context`),
+    enabled: Boolean(moduleId),
+    staleTime: 5 * 60 * 1000,
+  })
+  // 定义快照不带数值语义族：把 numeric-context 的 fieldRoles 挂到字段上供显示推导。
+  // 引用稳定（仅在定义或上下文变化时重建），不打断下游 memo 网格的重渲染优化。
+  const formWithRoles = useMemo(
+    () => withNumericRoles(formQuery.data, numericContextQuery.data?.fieldRoles),
+    [formQuery.data, numericContextQuery.data?.fieldRoles],
+  )
   const recordQuery = useQuery({
     queryKey: ['workbench', moduleId, 'record', keyParam ?? copyFrom],
     queryFn: () => apiClient.get<RecordBundle>(`/document-workbench/${moduleId}/record`, { query: { key: keyParam ?? copyFrom ?? '' } }),
@@ -1027,15 +1062,6 @@ export function FormEditorPage() {
       const message = describeApiError(cause, '撤回失败，请稍后重试。')
       window.alert(message)
     },
-  })
-
-  // 数值精度上下文（ADR-037）：金额精度跟单据币别、数量精度跟行单位。
-  // 单独端点下发而不进 form-definition，避免惊动定义快照；5 分钟内复用，避免每次校验都请求。
-  const numericContextQuery = useQuery({
-    queryKey: ['workbench', moduleId, 'numeric-context'],
-    queryFn: () => apiClient.get<NumericContext>(`/document-workbench/${moduleId}/numeric-context`),
-    enabled: Boolean(moduleId),
-    staleTime: 5 * 60 * 1000,
   })
 
   const validateClient = (): boolean => {
@@ -1480,7 +1506,7 @@ export function FormEditorPage() {
     )
   }
 
-  const form = formQuery.data
+  const form = (formWithRoles ?? formQuery.data)!
   if (!form) return inFormShell(null)
   // 明细走金额汇总（明细表有 AMOUNT 列）时，主表金额列强制只读展示（保存后服务端权威聚合）
   const masterAmountLocked = form.detailFields.some(field => field.key.toUpperCase() === 'AMOUNT')
