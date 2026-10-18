@@ -68,9 +68,13 @@ public sealed class BomNewVersionLiveTests
             var state = await ReadAsync(
                 """
                 SELECT LTRIM(RTRIM(CREATE_PERSON)) + '|' + CONVERT(nvarchar(2), CONFIRM_TAG)
+                     + '|' + CASE WHEN LAST_UPDATE_DATE IS NULL THEN 'NULL' ELSE 'SET' END
+                     + '|' + LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY, N'')))
                 FROM dbo.BOM_STRU_M WHERE PRO_NO=@pro AND EDITION=N'02';
                 """, token);
-            Assert.Equal([$"{Executor}|0"], state);
+            // 新版次是刚写入的记录：最后修改人与时间必须同步落地，
+            // 否则列表的「最后修改」列会空着（实测踩到）。
+            Assert.Equal([$"{Executor}|0|SET|{Executor}"], state);
         }
         finally
         {

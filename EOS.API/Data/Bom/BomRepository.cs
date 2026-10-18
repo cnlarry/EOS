@@ -8,9 +8,9 @@ namespace EOS.API.Data.Bom;
 /// <summary>
 /// 产品 BOM（模块 1204）的结构查询：多层展开、毛需求、反查用途。
 ///
-/// 三个出口共用同一套"选版"规则（ADR-039 6.3）：优先用调用方指定的版次，
-/// 某层没有该版次时回退到该料号的最大版次，并在结果里标出 <see cref="BomTreeRow.IsFallback"/>。
-/// 回退必须显式——否则用户看不懂"为什么这一层展开出了东西、那一层没有"。
+/// 三个出口共用同一套"选版"规则（ADR-039 6.3）：结构树与毛需求的下一层版次
+/// 由父行明细的 <c>ELEMENT_EDITION</c> 决定，不在运行时回退；反查用途按每个父件
+/// 选中的版次（<c>@rootEdition</c>，缺省取最大版次）向上走。
 ///
 /// 环检测靠路径而不是深度：回到已出现过的料号即停止该分支。这样环会在第一次
 /// 回到自身时被切断，而不是跑到 maxDepth 上限才失败，且停止原因就在 PATH 里。
@@ -30,8 +30,8 @@ public sealed class BomRepository(DbConnectionFactory connections)
     public const int DefaultWhereUsedDepth = 5;
 
     /// <summary>
-    /// 选版：每个料号挑一条 BOM。同名版次优先，其次取最大版次。
-    /// 两位数字版次（ADR-039 D4）保证 MAX 的字典序与数值序一致。
+    /// 反查用途的选版：每个父件挑一条 BOM。与 <c>@rootEdition</c> 相同的版次优先，
+    /// 否则取最大版次。两位数字版次（ADR-039 D4）保证 MAX 的字典序与数值序一致。
     /// </summary>
     private const string EditionPick = """
         EDITION_PICK AS (
@@ -46,8 +46,8 @@ public sealed class BomRepository(DbConnectionFactory connections)
         """;
 
     /// <summary>
-    /// 结构树：从根向下逐层展开。递归成员里不能出现子查询/TOP/OUTER JOIN，
-    /// 所以"下一层用哪一版"靠预先生成的 EDITION_PICK 关联，不靠 APPLY。
+    /// 结构树：从根向下逐层展开。下一层用父行 <c>ELEMENT_EDITION</c> 指定的子件版次，
+    /// 递归成员里不做运行时选版；没有指定版次（材料）时自然展开到该行为止。
     /// </summary>
     private static readonly string TreeSql = $"""
         WITH TREE AS (
@@ -418,6 +418,7 @@ public sealed class BomRepository(DbConnectionFactory connections)
                      ("BOM_STRU_M", "PLAN_PERSON"), ("BOM_STRU_M", "REMARK"),
                      ("BOM_STRU_M", "P_LENGTH_OLD"), ("BOM_STRU_M", "P_WIDTH_OLD"),
                      ("BOM_STRU_M", "CREATE_PERSON"), ("BOM_STRU_M", "CREATE_DATE"),
+                     ("BOM_STRU_M", "LAST_UPDATE_BY"), ("BOM_STRU_M", "LAST_UPDATE_DATE"),
                      ("BOM_STRU_M", "CONFIRM_TAG"),
                      ("BOM_STRU_D", "PRO_NO"), ("BOM_STRU_D", "EDITION"), ("BOM_STRU_D", "SERIAL_NO"),
                      ("BOM_STRU_D", "ELEMENT_PRO_NO"), ("BOM_STRU_D", "ELEMENT_EDITION"),
@@ -456,9 +457,11 @@ public sealed class BomRepository(DbConnectionFactory connections)
     {
         var insertMaster = """
             INSERT INTO dbo.BOM_STRU_M (PRO_NO, EDITION, BATCH_QTY, ATTENTION, PLAN_PERSON, REMARK,
-                                        P_LENGTH_OLD, P_WIDTH_OLD, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG)
+                                        P_LENGTH_OLD, P_WIDTH_OLD, CREATE_PERSON, CREATE_DATE,
+                                        LAST_UPDATE_BY, LAST_UPDATE_DATE, CONFIRM_TAG)
             SELECT PRO_NO, @newEdition, BATCH_QTY, ATTENTION, PLAN_PERSON, REMARK,
-                   P_LENGTH_OLD, P_WIDTH_OLD, @executor, SYSDATETIME(), 0
+                   P_LENGTH_OLD, P_WIDTH_OLD, @executor, SYSDATETIME(),
+                   @executor, SYSDATETIME(), 0
             FROM dbo.BOM_STRU_M WHERE PRO_NO=@pro AND EDITION=@edition;
             """;
         await using (var command = new SqlCommand(insertMaster, connection, transaction))
@@ -723,7 +726,9 @@ public sealed class BomRepository(DbConnectionFactory connections)
                 reader.GetString(1),
                 reader.GetInt16(2),
                 reader.GetDecimal(3),
-                reader.GetDecimal(4),
+                // BASE_QTY 是 int（可为 NULL，SQL 侧已 ISNULL 兜成 1）；
+                // 直接 GetDecimal 会抛 InvalidCastException，版本对比因此整个 500。
+                Convert.ToDecimal(reader.GetValue(4), CultureInfo.InvariantCulture),
                 reader.GetDecimal(5),
                 reader.GetString(6)));
         }
