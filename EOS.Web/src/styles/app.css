@@ -638,6 +638,13 @@ button, input, select { font: inherit; }
   font-size: 12px;
   border-bottom: 1px solid var(--tblr-border-color);
 }
+/* 左右表头同高：左栏的版次下拉是 24px + 上下 6px 内边距 + 1px 下边框，
+   右栏只有一行 12px 文字。两边用同一个 min-height 兜底，避免左高右矮。 */
+.erp-bom-tree-page .erp-bom-tree-head,
+.erp-bom-tree-page .erp-bom-tree-detail-head {
+  min-height: 37px;
+  box-sizing: border-box;
+}
 .erp-bom-tree-page .erp-bom-tree-detail-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
 /* 右栏分节：本件 BOM 资料 / 在上级配方中的位置 / 料件属性。
    三段回答不同问题，用细分隔线与小标题分开，避免读成一串属性 */
