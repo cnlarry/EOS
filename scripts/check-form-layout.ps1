@@ -21,6 +21,10 @@
       ⑦ 持当前快照的模块必须都有版式行（表级默认推导的输入列已退役，"无版式行"不再等价于
          "按元数据顺序渲染"而是"未定制"；缺行 = 表单缺页签、缺复合格、备注不再整行）。
 
+    ⑥⑦ 只对**有表单面**的工作台模块成立：`UNIFIED_FORM_ENABLED=0` 的模块双击直接进列表、
+    不渲染表单，版式行对它没有消费方。定制承载页（`NODE_KIND=CUSTOMPAGE`）界面自己画、
+    不读 `MODULE_FORM_LAYOUT`，同样不在判据范围内。
+
     -SelfTest 做判别力自检：把同一批判据用在合成样本上，命中面必须与预期一致
     （"该抓的抓住、不该抓的放过"，否则全绿没有意义）。只跑 SELECT，不改任何数据。
 
@@ -141,9 +145,10 @@ SELECT N'LAYOUT_NOT_PUBLISHED | M_IDX=' + CONVERT(nvarchar(12), c.M_IDX) + N' | 
        + N' | 快照=' + CASE WHEN s.DEFINITION_JSON IS NULL THEN N'缺失'
                             ELSE N'未含版式段' END
 FROM counts c
--- 定制承载页不读 MODULE_FORM_LAYOUT（界面自己画），它的版式行是死配置，
--- 要求它发布一份含版式的快照没有消费方（ADR-039 §11）。只对工作台形态判。
+-- 只对有表单面的工作台模块判：定制页不读 MODULE_FORM_LAYOUT（界面自己画，ADR-039 §11），
+-- 而 UNIFIED_FORM_ENABLED=0 的模块双击直接进列表、根本不渲染表单。
 JOIN dbo.V_MODULE_NODE n ON n.M_IDX = c.M_IDX AND n.NODE_KIND = N'WORKBENCH'
+JOIN dbo.MODULES m ON m.M_IDX = c.M_IDX AND ISNULL(m.UNIFIED_FORM_ENABLED,0) = 1
 LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = c.M_IDX AND s.IS_CURRENT = 1
 WHERE s.DEFINITION_JSON IS NULL
    OR s.DEFINITION_JSON NOT LIKE N'%FormLayout%'
@@ -158,9 +163,10 @@ $snapshotWithoutLayoutSql = @'
 SELECT N'SNAPSHOT_WITHOUT_LAYOUT | M_IDX=' + CONVERT(nvarchar(12), s.M_IDX)
        + N' | 快照版本=' + CONVERT(nvarchar(12), s.VERSION)
 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s
--- 同上：只守工作台形态。定制页不该有当前快照（check-module-node-kind ⑤），
--- 万一有也不该按必须有版式行来判。
+-- 同上：只守有表单面的工作台模块。定制页不该有当前快照（check-module-node-kind ⑤），
+-- 列表型模块（UNIFIED_FORM_ENABLED=0）没有表单，也就不需要版式行。
 JOIN dbo.V_MODULE_NODE n ON n.M_IDX = s.M_IDX AND n.NODE_KIND = N'WORKBENCH'
+JOIN dbo.MODULES m ON m.M_IDX = s.M_IDX AND ISNULL(m.UNIFIED_FORM_ENABLED,0) = 1
 WHERE s.IS_CURRENT = 1
   AND NOT EXISTS (SELECT 1 FROM dbo.MODULE_FORM_LAYOUT l WHERE l.M_IDX = s.M_IDX)
 ORDER BY s.M_IDX;
