@@ -186,7 +186,16 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
   // （disabled 输入框）以保持组合字段左右宽度协调；带选择器的联动字段（CURR_ID/TAX_ID）
   // 保留只读框+可用选择按钮。
   const readOnlyStatic = viewing || (field.serverFilled && !hasChooser)
-  const disabled = !readOnlyStatic && (field.isReadonly || field.serverFilled)
+  // 数据仅可选入（FIELDS.ONLY_CHOOSE）：值只能由选择器回填，键盘与粘贴一律不收。
+  // 必须真有一个可用的选择入口才锁——没有入口还锁，字段就永远填不上（存量里存在
+  // ONLY_CHOOSE=1 却没配数据来源的字段，那是元数据缺口，界面不替它兜成死结）；
+  // 下拉、复选与日期本身就是选择控件，无需再加锁。
+  // 只读/服务端填充的字段本来就 disabled（联动列由选择器带出），不靠这条再去锁，
+  // 否则"必填星号该不该出现"会与只读口径打架。
+  const chooseOnlyLocked = !readOnlyStatic && !field.isReadonly && !field.serverFilled
+    && field.onlyChoose && hasChooser
+    && (variant === 'text' || variant === 'decimal' || variant === 'textarea')
+  const disabled = !readOnlyStatic && (field.isReadonly || field.serverFilled || chooseOnlyLocked)
   // 只读联动字段的选择按钮仍可用；serverFilled 无选择器时按钮无意义
   const chooserDisabled = field.serverFilled && !hasChooser
   // 本字段的来源菜单正展开：按钮让出朝向菜单的那侧边框与圆角（与菜单顶/底边融为一体）
@@ -216,7 +225,12 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
   }
 
   const container = (
-    <div className="erp-form-control" data-field-key={field.key}>
+    <div
+      className="erp-form-control"
+      data-field-key={field.key}
+      // 锁住的输入框点不进也打不了字，原因写在容器上：悬停能看到"为什么不能输"，而不是一个哑掉的格子
+      title={chooseOnlyLocked ? '该字段只能通过选择器录入' : undefined}
+    >
       <div className="d-flex erp-control-row">
         {control}
         {hasChooser && !readOnlyStatic ? (
@@ -252,7 +266,8 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
         title={field.label}
         onContextMenu={onFieldSetup ? event => { event.preventDefault(); onFieldSetup(field, event.clientX, event.clientY) } : undefined}
       >
-        {field.label}{!readOnlyStatic && variant !== 'checkbox' && !disabled && field.isRequired ? ' *' : ''}
+        {/* 只能选入的字段只是"不能手输"，仍然要用户填（选择器），必填星号照常显示 */}
+        {field.label}{!readOnlyStatic && variant !== 'checkbox' && (!disabled || chooseOnlyLocked) && field.isRequired ? ' *' : ''}
       </label>
       {container}
     </div>

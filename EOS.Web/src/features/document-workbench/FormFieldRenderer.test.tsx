@@ -249,4 +249,41 @@ describe('FormFieldRenderer', () => {
     expect(container.querySelector('.erp-form-label')).toBeNull()
     expect(container.querySelector('.erp-form-control')).not.toBeNull()
   })
+
+  describe('数据仅可选入（ONLY_CHOOSE）', () => {
+    const activeChooser = [{ active: true, table: 'PRODUCT', description: null, moduleId: null, filter: null, returnMapping: '[{"target":"code","column":"PRO_NO"}]', serialNo: 1 }]
+
+    it('有可用来源时文本框不可键入，选择按钮仍可用', () => {
+      const onChoose = vi.fn()
+      const { container } = render(<FormFieldRenderer field={field({ onlyChoose: true, isRequired: true, choosers: activeChooser })} value="P001" onChange={() => undefined} onChoose={onChoose} />)
+      expect(container.querySelector('input.form-control')).toBeDisabled()
+      // 锁的是键入而不是填写：必填星号照常显示，提示说明为什么打不了字
+      expect(screen.getByText('字段一 *')).toBeInTheDocument()
+      expect(container.querySelector('.erp-form-control')).toHaveAttribute('title', '该字段只能通过选择器录入')
+      const button = screen.getByRole('button', { name: '选择' })
+      expect(button).not.toBeDisabled()
+      fireEvent.click(button)
+      expect(onChoose).toHaveBeenCalled()
+    })
+
+    it('没有可用来源时不锁：字段仍可手输，不兜成永远填不上的字段', () => {
+      const { container } = render(<FormFieldRenderer field={field({ onlyChoose: true })} value="" onChange={() => undefined} onChoose={vi.fn()} />)
+      expect(container.querySelector('input.form-control')).not.toBeDisabled()
+      expect(container.querySelector('.erp-form-control')).not.toHaveAttribute('title')
+    })
+
+    it('下拉与日期不额外加锁：原生控件本身就是选择', () => {
+      const { container, rerender } = render(
+        <FormFieldRenderer field={field({ onlyChoose: true, options: [{ value: 'O', label: 'O' }], choosers: activeChooser })} value="O" onChange={() => undefined} onChoose={vi.fn()} />,
+      )
+      expect(container.querySelector('select')).not.toBeDisabled()
+      rerender(<FormFieldRenderer field={field({ onlyChoose: true, dataType: 'date', choosers: activeChooser })} value="2026-10-18" onChange={() => undefined} onChoose={vi.fn()} />)
+      expect(container.querySelector('input')).not.toBeDisabled()
+    })
+
+    it('多行文本同样锁住键入', () => {
+      const { container } = render(<FormFieldRenderer field={field({ onlyChoose: true, key: 'REMARK', choosers: activeChooser })} value="" onChange={() => undefined} onChoose={vi.fn()} />)
+      expect(container.querySelector('textarea')).toBeDisabled()
+    })
+  })
 })

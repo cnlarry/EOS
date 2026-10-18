@@ -110,10 +110,18 @@ const activeChoosers = field => (field.choosers ?? []).filter(source => source.a
 const hasChooser = field => fieldVariant(field) !== 'select' && activeChoosers(field).length > 0
 /** 只读文本（不是输入控件）：服务端填充且没有选择器。 */
 const expectStatic = field => field.serverFilled === true && !hasChooser(field)
-/** 控件应当 disabled：只读，或服务端填充但有选择器（只读联动列，选择按钮仍可用）。 */
-const expectDisabled = field => field.serverFilled === true || field.isReadonly === true
-/** 用户可写：既非只读也非服务端填充。 */
-const expectEditable = field => field.serverFilled !== true && field.isReadonly !== true
+/**
+ * 数据仅可选入（FIELDS.ONLY_CHOOSE）：镜像 FormFieldRenderer 的 chooseOnlyLocked——
+ * 只锁"能自由键入"的文本框/数值框，且必须真有可用选择入口（没有来源还锁，字段就永远填不上，
+ * 存量里就有这种元数据缺口）；下拉、复选与日期本身即选择控件，不在锁定范围内。
+ * 只读/服务端填充的字段本来就 disabled（联动列由选择器带出），不靠这条再去锁。
+ */
+const chooseOnlyLocked = field => field.onlyChoose === true && field.isReadonly !== true && field.serverFilled !== true
+  && hasChooser(field) && (fieldVariant(field) === 'text' || fieldVariant(field) === 'decimal')
+/** 控件应当 disabled：只读，或服务端填充但有选择器（只读联动列，选择按钮仍可用），或只能选入。 */
+const expectDisabled = field => field.serverFilled === true || field.isReadonly === true || chooseOnlyLocked(field)
+/** 用户可写：既非只读也非服务端填充，也没被"只能选入"锁住键入。 */
+const expectEditable = field => field.serverFilled !== true && field.isReadonly !== true && !chooseOnlyLocked(field)
 /**
  * 主表金额列在「明细表有 AMOUNT 列」时被强制只读——那几列保存后由服务端按明细权威汇总，
  * 不让用户填是设计行为，不是缺陷。镜像 FormEditorPage 的 masterAmountLocked 与
@@ -356,8 +364,13 @@ const injectMap = {
     return key
   })()`,
   'disable-required': `(() => {
-    const node = [...document.querySelectorAll('.erp-form-card .erp-form-field')]
-      .find(el => /\\*$/.test((el.querySelector('.erp-form-label')?.textContent ?? '').trim()))
+    // 靶子必须是"本可编辑"的必填字段：只能选入（ONLY_CHOOSE）的字段本来就是 disabled，
+    // 拿它当靶子注入等于什么也没改，自检会假通过
+    const node = [...document.querySelectorAll('.erp-form-card .erp-form-field')].find(el => {
+      if (!/\\*$/.test((el.querySelector('.erp-form-label')?.textContent ?? '').trim())) return false
+      const input = el.querySelector('input:not([type=checkbox]), select, textarea')
+      return Boolean(input) && !input.disabled
+    })
     const key = node?.dataset.fieldKey
     const input = node?.querySelector('input:not([type=checkbox]), select, textarea')
     if (!input) return null
@@ -415,9 +428,11 @@ function checkMasterField(moduleId, field, rendered, defaults, tabNo, locked = f
   if (!staticExpected && disabledExpected && !rendered.disabled) {
     report(moduleId, 'READONLY_EDITABLE', `字段 ${field.key}（${field.label}）只读/服务端填充，却渲染成可编辑控件`, 'fail', { field: field.key, tabNo })
   }
-  // 必填标记：源码条件 = 必填 且 非只读文本 且 非复选框 且 控件未禁用。
+  // 必填标记：源码条件 = 必填 且 非只读文本 且 非复选框 且（控件未禁用 或 只能选入）。
+  // 只能选入的字段只是"不能手输"，仍然要用户去选择器里选，星号照常显示。
   // 复合格 [主][从] 只有一个标签（属于主字段），从字段旁边本来就没有星号，故只对"标签持有者"断言。
-  const expectMarker = field.isRequired && !staticExpected && variant !== 'checkbox' && !rendered.disabled && rendered.cellMain !== false
+  const expectMarker = field.isRequired && !staticExpected && variant !== 'checkbox'
+    && (!rendered.disabled || chooseOnlyLocked(field)) && rendered.cellMain !== false
   if (expectMarker && rendered.labelText && !rendered.labelText.trimEnd().endsWith('*')) {
     report(moduleId, 'REQUIRED_NO_MARKER', `必填字段 ${field.key}（${field.label}）标签缺少必填标记：${rendered.labelText}`, 'fail', { field: field.key, tabNo })
   }
