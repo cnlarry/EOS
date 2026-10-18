@@ -477,7 +477,8 @@ public sealed class WorkbenchCommandHandler(
             {
                 continue;
             }
-            logger.LogDebug("并发冲突诊断 field={Field} expected={Expected} current={Current}", key, expected, display);
+            logger.LogDebug("并发冲突诊断 field={Field} expected=[{Expected}] current=[{Current}]",
+                key, expected, display);
             return RecordSaveResult.Failed(RecordAccessStatus.ConcurrentModified, "CONCURRENT_MODIFIED", "字段内容已被他人修改，请刷新后重试！", [new FieldError(key, "字段内容已被他人修改，请刷新后重试！", "CONCURRENT_MODIFIED")]);
         }
 
@@ -606,7 +607,8 @@ public sealed class WorkbenchCommandHandler(
                             && !ValuesEqual(item.Expected, fresh.GetValueOrDefault(item.Key))).Key)
                         ?? cas.Keys[0];
                 }
-                logger.LogDebug("并发冲突（CAS 未命中） module={ModuleId} field={Field}", definition.ModuleId, conflicted);
+                logger.LogDebug("并发冲突（CAS 未命中） module={ModuleId} field={Field}",
+                    definition.ModuleId, conflicted);
                 return RecordSaveResult.Failed(RecordAccessStatus.ConcurrentModified, "CONCURRENT_MODIFIED",
                     "字段内容已被他人修改，请刷新后重试！",
                     [new FieldError(conflicted, "字段内容已被他人修改，请刷新后重试！", "CONCURRENT_MODIFIED")]);
@@ -1328,7 +1330,16 @@ public sealed class WorkbenchCommandHandler(
             keys.Add(key);
             if (expected is null)
             {
-                sql.Append($" AND [{key}] IS NULL");
+                // 与 `ValuesEqual` 同口径：null 与"全空白"都算没有值。
+                //
+                // 只写 `IS NULL` 会漏掉 `nchar` 填充的空串：`nchar(10)` 里存的是十个空格
+                // （非 NULL），而 `TryConvert` 把客户端提交的空串转成 null——于是 CAS 拼出
+                // `WHERE [PLAN_PERSON] IS NULL`，永远匹配不到，UPDATE 影响 0 行，
+                // 用户**一个字都没改**也被判 `CONCURRENT_MODIFIED`。
+                //
+                // `= N''` 在 SQL Server 的字符语义下会忽略尾随空格，
+                // 所以它对 `''`、`'  '`、`N'          '` 都成立，与 IsBlank 一致。
+                sql.Append($" AND ([{key}] IS NULL OR [{key}] = N'')");
                 continue;
             }
             var name = $"@c{parameters.Count}";

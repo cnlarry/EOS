@@ -37,12 +37,17 @@ public sealed class WorkbenchCasPredicateTests
     }
 
     [Fact]
-    public void NullExpectedBecomesIsNullNotEquals()
+    public void NullExpectedMatchesNullAndBlank()
     {
-        // 拼成 `= NULL` 恒为 UNKNOWN，永远不匹配 —— 那会让每一次保存都报"已被他人修改"
+        // 两件事同时要满足：
+        //   ① 不能拼成 `= NULL`（恒为 UNKNOWN，每次保存都报"已被他人修改"）；
+        //   ② 也不能只写 `IS NULL`——`nchar/char` 列里的"空"是**填充空格**（`'          '`），
+        //      而 `TryConvert` 把客户端提交的空串转成 null，两者只匹配 IS NULL 就永远不命中，
+        //      表现是"一个字都没改也报 CONCURRENT_MODIFIED"（1204 的 PLAN_PERSON 就栽在这）。
+        //      `= N''` 在字符语义下忽略尾随空格，与 `ValuesEqual` 的 IsBlank 同口径。
         var predicate = WorkbenchCommandHandler.BuildCasPredicate([("REMARK", null, null)], Pk);
 
-        Assert.Equal(" AND [REMARK] IS NULL", predicate.Sql);
+        Assert.Equal(" AND ([REMARK] IS NULL OR [REMARK] = N'')", predicate.Sql);
         Assert.Empty(predicate.Parameters);
         Assert.Single(predicate.Keys);
     }
