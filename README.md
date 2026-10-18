@@ -41,13 +41,13 @@
 | --- | --- |
 | ![单据列表](screenshots/workbench-sales-order-list.png) | ![统一表单](screenshots/unified-form-editor.png) |
 
-| 报价单 | 表单设计器 |
+| BOM结构树 | 表单设计器 |
 | --- | --- |
-| ![报价单](screenshots/workbench-quote-list.png) | ![版式设计器](screenshots/layout-designer.png) |
+| ![BOM结构树](screenshots/bom-tree.png) | ![版式设计器](screenshots/layout-designer.png) |
 
-| 模块管理 | 深色主题 |
+| 业务流程图 | 深色主题 |
 | --- | --- |
-| ![模块管理](screenshots/module-admin.png) | ![深色主题](screenshots/dark-theme.png) |
+| ![业务流程图](screenshots/business-flow.png) | ![深色主题](screenshots/dark-theme.png) |
 
 > 截图为合成测试数据（示例公司、测试客户），用于功能预览。
 
