@@ -46,6 +46,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
                     NullLogger<EOS.API.Data.DocumentActions.DocumentActionRegistry>.Instance),
                 new WorkbenchIdempotency(),
                 LiveFormCapability.FromEnvironment(),
+                TestBusinessConfig.Reader(connections),
                 NullLogger<ModuleBusinessConfigRepository>.Instance),
             dirtyMarker, auditWriter, NullLogger<MenuAdminRepository>.Instance);
         var baseId = 990000000 + Random.Shared.Next(0, 9999999);

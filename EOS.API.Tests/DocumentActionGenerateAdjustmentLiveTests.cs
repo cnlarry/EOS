@@ -232,7 +232,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             new DepotStockPolicyService(connections, auditWriter), new WorkbenchVirtualColumnResolver(),
             NullLogger<WorkbenchCommandHandler>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            TestFormCapability.None, TestBusinessConfig.Create(connections),
+            TestFormCapability.None, TestBusinessConfig.Reader(connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var rights = new ModuleRightsRepository(connections, NullLogger<ModuleRightsRepository>.Instance);
         var permissions = new PermissionService(rights, new PermissionCache(Configuration()));

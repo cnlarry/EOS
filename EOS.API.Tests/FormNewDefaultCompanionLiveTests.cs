@@ -53,7 +53,7 @@ public sealed class FormNewDefaultCompanionLiveTests
         var connections = Connections();
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            TestFormCapability.None, TestBusinessConfig.Create(connections),
+            TestFormCapability.None, TestBusinessConfig.Reader(connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var empty = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

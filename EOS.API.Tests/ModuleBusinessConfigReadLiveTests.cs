@@ -43,6 +43,7 @@ public sealed class ModuleBusinessConfigReadLiveTests
             new DocumentActionRegistry([new DocumentActionProbeHandler()], NullLogger<DocumentActionRegistry>.Instance),
             new WorkbenchIdempotency(),
             LiveFormCapability.FromEnvironment(),
+            TestBusinessConfig.Reader(connections),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 

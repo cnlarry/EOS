@@ -143,7 +143,7 @@ public sealed class FormPrimaryKeyReadonlyLiveTests : IAsyncLifetime
         new(_connections,
             new WorkbenchDefinitionProvider(_connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
             TestFormCapability.Single(ModuleId, editEnabled: true),
-            TestBusinessConfig.Create(_connections),
+            TestBusinessConfig.Reader(_connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
 
     private static IReadOnlySet<string> Empty => new HashSet<string>(StringComparer.OrdinalIgnoreCase);

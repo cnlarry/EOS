@@ -51,6 +51,7 @@ public sealed class ModuleBusinessConfigScopeLiveTests : IDisposable
         _config = new ModuleBusinessConfigRepository(
             connections, new WorkbenchDirtyMarker(connections), auditWriter, documentActions,
             new WorkbenchIdempotency(), LiveFormCapability.FromEnvironment(),
+            TestBusinessConfig.Reader(connections),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
         _moduleId = 97_000_000 + Random.Shared.Next(0, 9_999_999);
     }

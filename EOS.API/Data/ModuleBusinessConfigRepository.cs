@@ -21,6 +21,7 @@ public sealed class ModuleBusinessConfigRepository(
     DocumentActionRegistry documentActions,
     WorkbenchIdempotency idempotency,
     IUnifiedFormCapabilitySource formCapability,
+    ModuleBusinessConfigReader configReader,
     ILogger<ModuleBusinessConfigRepository> logger)
 {
     /// <summary>
@@ -217,113 +218,9 @@ public sealed class ModuleBusinessConfigRepository(
             reader.GetString(4), reader.GetString(5));
     }
 
-    public async Task<ModuleBusinessConfigDto?> GetAsync(int moduleId, CancellationToken token)
-    {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        if (!await ModuleExistsAsync(connection, null, moduleId, token))
-            return null;
-
-        var actions = new List<BusinessActionDto>();
-        var actionIndex = new Dictionary<long, int>();
-        await using (var actionCommand = new SqlCommand(
-            """
-            SELECT ACTION_ID,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,
-                   CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF,
-                   LABEL,CONFIRM_TAG
-            FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK)
-            WHERE M_IDX=@ModuleId
-            ORDER BY EVENT_CODE,SEQ;
-            """, connection))
-        {
-            actionCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            await using var reader = await actionCommand.ExecuteReaderAsync(token);
-            while (await reader.ReadAsync(token))
-            {
-                var actionId = reader.GetInt64(0);
-                var action = new BusinessActionDto(
-                    reader.GetInt32(2),
-                    GetString(reader, 1) ?? string.Empty,
-                    GetString(reader, 3) ?? string.Empty,
-                    GetString(reader, 4),
-                    reader.GetBoolean(5),
-                    GetString(reader, 6) ?? "BLOCK",
-                    GetString(reader, 7),
-                    GetString(reader, 8),
-                    GetString(reader, 9),
-                    GetString(reader, 10),
-                    GetString(reader, 11),
-                    new List<BusinessActionOpDto>(),
-                    GetString(reader, 12),
-                    reader.GetBoolean(13));
-                actionIndex.Add(actionId, actions.Count);
-                actions.Add(action);
-            }
-        }
-
-        await using (var opCommand = new SqlCommand(
-            """
-            SELECT o.ACTION_ID,o.OP_SEQ,o.TARGET_TABLE,o.TARGET_FIELD,o.OP_CODE,o.SOURCE_SCOPE,
-                   o.SOURCE_TABLE,o.SOURCE_FIELD,o.SOURCE_AGG,o.SOURCE_CONSTANT,
-                   o.SOURCE_TERMS_STRUCT,o.MATCH_STRUCT,o.CONDITION_STRUCT,o.REMARK
-            FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
-            INNER JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID=o.ACTION_ID
-            WHERE a.M_IDX=@ModuleId
-            ORDER BY a.EVENT_CODE,a.SEQ,o.OP_SEQ;
-            """, connection))
-        {
-            opCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            await using var reader = await opCommand.ExecuteReaderAsync(token);
-            while (await reader.ReadAsync(token))
-            {
-                if (!actionIndex.TryGetValue(reader.GetInt64(0), out var index))
-                    continue;
-                var op = new BusinessActionOpDto(
-                    reader.GetInt32(1),
-                    GetString(reader, 2) ?? string.Empty,
-                    GetString(reader, 3) ?? string.Empty,
-                    GetString(reader, 4) ?? string.Empty,
-                    GetString(reader, 5) ?? string.Empty,
-                    GetString(reader, 6),
-                    GetString(reader, 7),
-                    GetString(reader, 8),
-                    GetString(reader, 9),
-                    GetString(reader, 10),
-                    GetString(reader, 11),
-                    GetString(reader, 12),
-                    GetString(reader, 13));
-                var current = actions[index];
-                actions[index] = current with { Ops = (current.Ops ?? []).Append(op).ToList() };
-            }
-        }
-
-        var rules = new List<ModuleValidationRuleDto>();
-        await using (var ruleCommand = new SqlCommand(
-            """
-            SELECT SEQ,STAGE,VALIDATION_KEY,ENABLED,PARAM_STRUCT,MESSAGE,REMARK,SOURCE_REF
-            FROM dbo.MODULE_VALIDATION_RULE WITH (NOLOCK)
-            WHERE M_IDX=@ModuleId
-            ORDER BY STAGE,SEQ;
-            """, connection))
-        {
-            ruleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            await using var reader = await ruleCommand.ExecuteReaderAsync(token);
-            while (await reader.ReadAsync(token))
-            {
-                rules.Add(new ModuleValidationRuleDto(
-                    reader.GetInt32(0),
-                    GetString(reader, 1) ?? string.Empty,
-                    GetString(reader, 2) ?? string.Empty,
-                    reader.GetBoolean(3),
-                    GetString(reader, 4),
-                    GetString(reader, 5),
-                    GetString(reader, 6),
-                    GetString(reader, 7)));
-            }
-        }
-
-        return new ModuleBusinessConfigDto(moduleId, actions, rules);
-    }
+    /// <summary>读一个模块的业务动作与校验规则（读取实现在 <see cref="ModuleBusinessConfigReader"/>）。</summary>
+    public Task<ModuleBusinessConfigDto?> GetAsync(int moduleId, CancellationToken token)
+        => configReader.GetAsync(moduleId, token);
 
     /// <summary>
     /// 保存模块的业务动作/校验配置（整模块替换），返回本次的结果键。
@@ -951,19 +848,6 @@ public sealed class ModuleBusinessConfigRepository(
         AddNullable(command, "@SourceRef", rule.SourceRef, 100);
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 40).Value = updatedBy;
         await command.ExecuteNonQueryAsync(token);
-    }
-
-    private static async Task<bool> ModuleExistsAsync(
-        SqlConnection connection,
-        SqlTransaction? transaction,
-        int moduleId,
-        CancellationToken token)
-    {
-        await using var command = new SqlCommand(
-            "SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.MODULES WHERE M_IDX=@ModuleId) THEN 1 ELSE 0 END;",
-            connection, transaction);
-        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-        return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ public sealed class WorkbenchDefinitionBuilder(
     DbConnectionFactory connections,
     WorkbenchDefinitionProvider definitionProvider,
     IUnifiedFormCapabilitySource formCapability,
-    ModuleBusinessConfigRepository businessConfig,
+    ModuleBusinessConfigReader businessConfig,
     ILogger<WorkbenchDefinitionBuilder> logger)
 {
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
@@ -90,7 +90,10 @@ public sealed class WorkbenchDefinitionBuilder(
 
     /// <summary>
     /// 实时装配的定义没有快照可借，业务动作与校验规则要现读补上——否则效果链与校验目录
-    /// 对这类模块是"配了但永不执行"。
+    /// 对这类模块是"配了但永不执行"（效果引擎的接管判据就是看 businessActions 有没有动作）。
+    ///
+    /// 读的是 <see cref="ModuleBusinessConfigReader"/> 而不是配置仓库：仓库依赖单据动作注册表，
+    /// 注册表里的处理器又依赖本构建器，注入仓库会在启动期成环。
     ///
     /// 只有**不参与发布**的模块会走到这里（当前是定制承载页：`M_URL` 是精确路径，
     /// 230101 不提供发布入口，发布服务也会拒绝），它们的效果链由模块权限位决定、

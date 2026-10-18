@@ -1,33 +1,13 @@
 using EOS.API.Data;
-using EOS.API.Data.DocumentActions;
-using EOS.API.Data.DocumentActions.Handlers;
 using EOS.API.Data.Workbench;
-using EOS.API.Models;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 业务动作/校验配置仓库的测试构造点：定义装配会现读这两段，而构造仓库需要一串依赖。
+/// 业务动作/校验规则只读入口的测试构造点（定义装配会现读这两段）。
+/// 配置仓库要一串依赖，而它注入不了定义构建器（会成环），所以构建器只依赖这个读取点。
 /// </summary>
 internal static class TestBusinessConfig
 {
-    public static ModuleBusinessConfigRepository Create(
-        DbConnectionFactory connections,
-        IUnifiedFormCapabilitySource? formCapability = null)
-    {
-        var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
-        var auditWriter = new WorkbenchAuditWriter(connections, new HttpContextAccessor(), provider,
-            Options.Create(new AuditSettings()));
-        return new ModuleBusinessConfigRepository(
-            connections,
-            new WorkbenchDirtyMarker(connections),
-            auditWriter,
-            new DocumentActionRegistry([new DocumentActionProbeHandler()], NullLogger<DocumentActionRegistry>.Instance),
-            new WorkbenchIdempotency(),
-            formCapability ?? TestFormCapability.None,
-            NullLogger<ModuleBusinessConfigRepository>.Instance);
-    }
+    public static ModuleBusinessConfigReader Reader(DbConnectionFactory connections) => new(connections);
 }

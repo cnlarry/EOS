@@ -30,6 +30,9 @@ EOS.API/Data/HumanResourceJobsService.cs
 EOS.API/Data/KnowledgeRepository.cs
 EOS.API/Data/MenuAdminRepository.cs
 EOS.API/Data/ModuleBusinessConfigRepository.cs
+# 配置读取从上面那个仓库抽出：定义装配要现读业务动作与校验规则，而把仓库注入构建器会成环。
+# SQL 与原仓库逐字相同（无新增读取面），NOLOCK 语义沿用原登记。
+EOS.API/Data/Workbench/ModuleBusinessConfigReader.cs
 # 字段白名单（分组表达式与模块 FILTER 共用）：只读 `FIELDS` + `sys.columns` 的登记表，
 # 由 WorkbenchDefinitionValidator 的同一段 SQL 抽出（原文件已在名单内）
 EOS.API/Data/Workbench/ModuleFieldWhitelist.cs

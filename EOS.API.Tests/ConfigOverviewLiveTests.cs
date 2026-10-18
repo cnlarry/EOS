@@ -47,6 +47,7 @@ public sealed class ConfigOverviewLiveTests
             connections, new WorkbenchDirtyMarker(connections), auditWriter,
             new DocumentActionRegistry(Array.Empty<IDocumentUserAction>(), NullLogger<DocumentActionRegistry>.Instance),
             new WorkbenchIdempotency(), LiveFormCapability.FromEnvironment(),
+            TestBusinessConfig.Reader(connections),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 

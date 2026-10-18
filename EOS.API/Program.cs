@@ -175,6 +175,9 @@ builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<NavigationGroupsRepository>();
 builder.Services.AddScoped<ModuleGroupAdminRepository>();
 builder.Services.AddScoped<MenuAdminRepository>();
+// 业务动作/校验规则的只读入口：定义装配与配置仓库共用同一份读取实现。
+// 单列它而不是直接注入仓库，是因为仓库依赖单据动作注册表与定义构建器，两者注入会成环。
+builder.Services.AddScoped<EOS.API.Data.Workbench.ModuleBusinessConfigReader>();
 builder.Services.AddScoped<ModuleBusinessConfigRepository>();
 builder.Services.AddScoped<EffectPlanLoader>();
 builder.Services.AddScoped<EffectFormulaExecutor>();

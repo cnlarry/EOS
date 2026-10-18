@@ -154,7 +154,7 @@ public sealed class ValidationRuleParityLiveTests
             connections,
             new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
             formCapability,
-            TestBusinessConfig.Create(connections, formCapability),
+            TestBusinessConfig.Reader(connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
     }
 

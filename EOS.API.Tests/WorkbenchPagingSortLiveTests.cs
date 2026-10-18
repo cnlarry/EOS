@@ -176,7 +176,7 @@ public sealed class WorkbenchPagingSortLiveTests
     {
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            TestFormCapability.None, TestBusinessConfig.Create(connections),
+            TestFormCapability.None, TestBusinessConfig.Reader(connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var definition = await builder.GetDefinitionAsync(moduleId, TestUserId, "Z", true, true,

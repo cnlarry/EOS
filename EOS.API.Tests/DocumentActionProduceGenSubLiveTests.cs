@@ -211,7 +211,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
             new DepotStockPolicyService(connections, auditWriter), new WorkbenchVirtualColumnResolver(),
             NullLogger<WorkbenchCommandHandler>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
-            TestFormCapability.None, TestBusinessConfig.Create(connections),
+            TestFormCapability.None, TestBusinessConfig.Reader(connections),
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
         return new ProduceGenSubHandler(permissions, builder, commandHandler, connections,
             NullLogger<ProduceGenSubHandler>.Instance);
