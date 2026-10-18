@@ -141,6 +141,9 @@ SELECT N'LAYOUT_NOT_PUBLISHED | M_IDX=' + CONVERT(nvarchar(12), c.M_IDX) + N' | 
        + N' | 快照=' + CASE WHEN s.DEFINITION_JSON IS NULL THEN N'缺失'
                             ELSE N'未含版式段' END
 FROM counts c
+-- 定制承载页不读 MODULE_FORM_LAYOUT（界面自己画），它的版式行是死配置，
+-- 要求它发布一份含版式的快照没有消费方（ADR-039 §11）。只对工作台形态判。
+JOIN dbo.V_MODULE_NODE n ON n.M_IDX = c.M_IDX AND n.NODE_KIND = N'WORKBENCH'
 LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = c.M_IDX AND s.IS_CURRENT = 1
 WHERE s.DEFINITION_JSON IS NULL
    OR s.DEFINITION_JSON NOT LIKE N'%FormLayout%'
@@ -155,6 +158,9 @@ $snapshotWithoutLayoutSql = @'
 SELECT N'SNAPSHOT_WITHOUT_LAYOUT | M_IDX=' + CONVERT(nvarchar(12), s.M_IDX)
        + N' | 快照版本=' + CONVERT(nvarchar(12), s.VERSION)
 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s
+-- 同上：只守工作台形态。定制页不该有当前快照（check-module-node-kind ⑤），
+-- 万一有也不该按必须有版式行来判。
+JOIN dbo.V_MODULE_NODE n ON n.M_IDX = s.M_IDX AND n.NODE_KIND = N'WORKBENCH'
 WHERE s.IS_CURRENT = 1
   AND NOT EXISTS (SELECT 1 FROM dbo.MODULE_FORM_LAYOUT l WHERE l.M_IDX = s.M_IDX)
 ORDER BY s.M_IDX;
