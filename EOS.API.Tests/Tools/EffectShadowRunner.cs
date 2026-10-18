@@ -1090,6 +1090,8 @@ public sealed class EffectShadowRunner
                 // 与服务端同一批注册：结案/取消结案钩子（挂 ENDCASE / UNENDCASE 事件），
                 // 漏注册会让真库测试拿到的管线与运行期不一致（管线对未注册的键直接判配置错误）。
                 new InventoryReleaseBySourceHandler(auditWriter),
+                // 1502 的 SAVE 链在迁移 410 之后带上了产品 BOM 到工单 BOM 的快照动作
+                new BomSnapshotToOrderHandler(),
             },
             new EffectValidationExecutor(),
             auditWriter,

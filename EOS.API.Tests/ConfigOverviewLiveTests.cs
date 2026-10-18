@@ -67,8 +67,10 @@ public sealed class ConfigOverviewLiveTests
         });
         // 已知事实：170204「其它付款凭证」配了「应付月份」
         Assert.Contains(overview.Groups, row => row.ModuleId == 170204 && row.Description == "应付月份" && row.Available);
-        // 左栏模块清单：候选集 = 统一工作台且有主表；已配条数与库内一致
-        await AssertTargetsAsync(async () => (await _groups.ReadOverviewAsync(CancellationToken.None)).Targets);
+        // 左栏模块清单：分组面只对统一工作台（定制页不读 MODULE_GROUPS）；已配条数与库内一致
+        await AssertTargetsAsync(
+            async () => (await _groups.ReadOverviewAsync(CancellationToken.None)).Targets,
+            documentSurface: false);
         Assert.Equal(2, overview.Targets.Single(target => target.ModuleId == 170204).Configured);
     }
 
@@ -123,10 +125,29 @@ public sealed class ConfigOverviewLiveTests
         });
     }
 
-    /// <summary>左栏模块清单的契约：候选集 = 统一工作台且有主表（与保存时的拒存规则同源），且逐个带模块名。</summary>
-    private static async Task AssertTargetsAsync(Func<Task<IReadOnlyList<ModuleConfigTargetOptionDto>>> readTargets)
+    /// <summary>
+    /// 左栏模块清单的契约：候选集 = 有主表且**该配置面有消费方**，且逐个带模块名。
+    ///
+    /// 两处配置面的判据**不同源，这是有意的**：
+    ///   · 业务动作/校验规则面：候选集 = **有单据面**（工作台形态，或声明了统一表单能力的定制页）。
+    ///     定制页写入仍走同一套管线，效果链与校验目录照常执行（ADR-039 D2）；
+    ///   · 模块分组面：候选集 = 工作台形态。分组是列表视图的呈现配置，定制页自己画列表、
+    ///     不读 `MODULE_GROUPS`，放进来只会产生"配了不会跑"的行。
+    /// </summary>
+    private static async Task AssertTargetsAsync(
+        Func<Task<IReadOnlyList<ModuleConfigTargetOptionDto>>> readTargets,
+        bool documentSurface = true)
     {
-        const string countSql =
+        var countSql = documentSurface
+            ?
+            """
+            SELECT COUNT(*)
+            FROM dbo.MODULES m
+            INNER JOIN dbo.V_MODULE_NODE n ON n.M_IDX=m.M_IDX
+            WHERE NULLIF(LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),'') IS NOT NULL
+              AND (n.NODE_KIND=N'WORKBENCH' OR ISNULL(m.UNIFIED_FORM_ENABLED,0)=1);
+            """
+            :
             """
             SELECT COUNT(*)
             FROM dbo.MODULES m
