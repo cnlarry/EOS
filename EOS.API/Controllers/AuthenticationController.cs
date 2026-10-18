@@ -34,7 +34,11 @@ public sealed class AuthenticationController(
             var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
             logger.LogWarning(
                 "登录被限流 userId={UserId} ip={ClientIp} remainingMinutes={RemainingMinutes} correlation={CorrelationId}",
-                request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress, minutes, RequestContext.GetCorrelationId(HttpContext));
+                // 传字符串而不是 IPAddress 对象：结构化日志落盘时会走 JSON 序列化，
+                // IPAddress 的 Address 属性在 IPv6 映射地址上抛 SocketException(10045)，
+                // 结果是"打日志把请求打崩了"——限流本该返回 429，却变成 500
+                request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                minutes, RequestContext.GetCorrelationId(HttpContext));
             var problem = ApiProblem.Create(
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.LoginLocked,
@@ -49,7 +53,8 @@ public sealed class AuthenticationController(
             {
                 logger.LogWarning(
                     "登录失败次数达阈值，账号临时锁定 userId={UserId} ip={ClientIp} correlation={CorrelationId}",
-                    request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress, RequestContext.GetCorrelationId(HttpContext));
+                    request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    RequestContext.GetCorrelationId(HttpContext));
             }
             var (code, message) = result.Failure switch
             {
@@ -101,7 +106,8 @@ public sealed class AuthenticationController(
             var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
             logger.LogWarning(
                 "修改密码被限流 userId={UserId} ip={ClientIp} remainingMinutes={RemainingMinutes} correlation={CorrelationId}",
-                userId.Trim(), HttpContext.Connection.RemoteIpAddress, minutes, RequestContext.GetCorrelationId(HttpContext));
+                userId.Trim(), HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                minutes, RequestContext.GetCorrelationId(HttpContext));
             var problem = ApiProblem.Create(
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.LoginLocked,
@@ -118,7 +124,8 @@ public sealed class AuthenticationController(
                 throttle.Reset(throttleKey);
                 logger.LogInformation(
                     "用户修改密码成功 userId={UserId} ip={ClientIp} correlation={CorrelationId}",
-                    userId.Trim(), HttpContext.Connection.RemoteIpAddress, RequestContext.GetCorrelationId(HttpContext));
+                    userId.Trim(), HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    RequestContext.GetCorrelationId(HttpContext));
                 return NoContent();
             case PasswordChangeFailure.UserNotFound:
                 return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, "用户不存在。"));
@@ -132,7 +139,8 @@ public sealed class AuthenticationController(
                 {
                     logger.LogWarning(
                         "修改密码失败次数达阈值，账号临时锁定 userId={UserId} ip={ClientIp} correlation={CorrelationId}",
-                        userId.Trim(), HttpContext.Connection.RemoteIpAddress, RequestContext.GetCorrelationId(HttpContext));
+                        userId.Trim(), HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        RequestContext.GetCorrelationId(HttpContext));
                 }
                 return BadRequest(ApiProblem.Create(
                     StatusCodes.Status400BadRequest,
