@@ -39,7 +39,7 @@ import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 import { describeApiError } from '../../lib/errors'
 
 /** 菜单编辑表单页签：**只定义"模块是什么"**（基础 / 主表 / 子表），不定义"模块怎么动"。
- *  行为配置已全部迁出（ADR-033：自定义按钮 → 230103，行为动作、校验规则 → 230104），
+ *  行为配置已全部迁出（ADR-033：自定义按钮 → 230103，行为动作 → 230104），
  *  列表分组在 230102。发布结果与版本历史仍在本页——它们是**模块级**事实。 */
 type MenuFormTab = 'basic' | 'master' | 'detail'
 
@@ -1321,7 +1321,7 @@ export function MenuAdminPage() {
                         </div>
                       </>
                     )}
-                    {/* 行为配置面已迁出本页（ADR-033）：自定义按钮 → 230103，行为动作、校验规则 → 230104。
+                    {/* 行为配置面已迁出本页（ADR-033）：自定义按钮 → 230103，行为动作 → 230104。
                         本页只留发布与版本历史——它们是模块级事实，结构性改动仍从这里统一发布。 */}
                   </TabbedPanel>
                   {publishError && (

@@ -23,7 +23,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/admin/menus': { section: '系统管理', title: '模块管理' },
   '/admin/module-groups': { section: '系统管理', title: '模块分组' },
   '/admin/module-buttons': { section: '系统管理', title: '自定义按钮' },
-  '/admin/module-actions': { section: '系统管理', title: '行为动作、校验规则' },
+  '/admin/module-actions': { section: '系统管理', title: '行为动作' },
   '/admin/groups': { section: '系统管理', title: '用户组管理' },
   '/admin/users': { section: '系统管理', title: '用户权限设定' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },

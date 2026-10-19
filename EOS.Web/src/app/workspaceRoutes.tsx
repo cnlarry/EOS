@@ -75,7 +75,7 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { element: <RequirePermission permission={moduleReadPermission(230103)} />, children: [
     { path: 'admin/module-buttons', element: withSuspense(<ModuleButtonsPage />) },
   ] },
-  // 行为动作、校验规则（模块 230104，根 23 系统管理）：页内两个页签共用一份草稿与一次提交；
+  // 行为动作（模块 230104，根 23 系统管理）：页内两个页签共用一份草稿与一次提交；
   // 保存走服务端的 actions 作用域（只替换效果链动作 + 校验规则，不碰该模块的自定义按钮），保存后自动发布
   { element: <RequirePermission permission={moduleReadPermission(230104)} />, children: [
     { path: 'admin/module-actions', element: withSuspense(<ModuleActionsPage />) },
