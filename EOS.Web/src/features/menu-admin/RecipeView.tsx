@@ -16,6 +16,7 @@ export function RecipeView({
   recipes,
   actions,
   labels,
+  canWrite,
   onCreateFromRecipe,
   onClone,
   onExpert,
@@ -24,6 +25,7 @@ export function RecipeView({
   /** 当前草稿里的效果链行：空态三选一靠它判断。 */
   actions: BusinessAction[]
   labels: LabelLookups
+  canWrite: boolean
   onCreateFromRecipe: (recipe: EffectRecipe) => void
   onClone: () => void
   onExpert: () => void
@@ -49,7 +51,9 @@ export function RecipeView({
           <div className="text-secondary small">三种起步方式：</div>
           <div className="d-flex flex-wrap align-items-center gap-2">
             <span className="badge text-bg-primary">① 从配方开始（下面选一个）</span>
-            <Button size="sm" icon={<IconCopy size={16} />} onClick={onClone}>② 从其它模块克隆</Button>
+            <Button size="sm" variant="ghost" icon={<IconCopy size={16} />} disabled={!canWrite} onClick={onClone}>
+              ② 从其它模块克隆
+            </Button>
             <Button
               size="sm"
               disabled
@@ -75,7 +79,7 @@ export function RecipeView({
                   <strong>{recipe.name}</strong>
                   <span className="text-secondary small ms-2">{recipe.key}</span>
                 </div>
-                <Button size="sm" icon={<IconPlus size={16} />} onClick={() => onCreateFromRecipe(recipe)}>
+                <Button size="sm" icon={<IconPlus size={16} />} disabled={!canWrite} onClick={() => onCreateFromRecipe(recipe)}>
                   用它新增
                 </Button>
               </div>

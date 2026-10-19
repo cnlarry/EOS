@@ -147,47 +147,51 @@ describe('BusinessActionsPanel', () => {
     vi.clearAllMocks()
   })
 
-  it('标题按主/副表显示「描述(表名)」', async () => {
+  // 表身份（主表 / 明细）由页面的 WorkbenchPanelHeader 统一承担：面板不再重复一条。
+  it('面板不重复渲染主/副表身份行（由容器页头统一承担）', async () => {
     renderWithProviders(
       <BusinessActionsPanel
         module={{ ...moduleWithTables(1607, '收料单'), MASTER_TABLE_DESC: '收料主表', DETAIL_TABLE_DESC: '收料明细' }}
       />,
     )
 
-    expect(await screen.findByText('收料主表(PUR_RECEIVE_M) / 收料明细(PUR_RECEIVE_D)')).toBeInTheDocument()
+    await screen.findByText('业务动作（1）')
+    expect(screen.queryByText(/收料主表\(PUR_RECEIVE_M\)/)).not.toBeInTheDocument()
   })
 
   // ADR-035 §2.4：模块级开关退役后，"这个模块暂时不再自动做事"靠批量停用动作表达。
-  it('「停用全部动作」经确认后调用批量停用端点', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
-    apiClientMock.post.mockResolvedValue({ moduleId: 1607, disabled: 1 })
-    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+  it('「停用全部动作」在弹窗确认后调用批量停用端点，并把发布结果交给容器', async () => {
+    const publish = {
+      moduleId: 1607, title: '收料单', published: true, version: 3,
+      definitionVersion: 'module-1607-v3', passed: true, checks: [],
+    }
+    apiClientMock.post.mockResolvedValue({ moduleId: 1607, disabled: 1, publish })
+    const onOutcome = vi.fn()
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onOutcome={onOutcome} />)
 
-    // 头部按钮在配置加载完之前就渲染，必须先等动作到位再点，否则会走"没有可停用动作"的早退
     expect(await screen.findByText('业务动作（1）')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '停用全部动作' }))
+
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(/未保存的编辑会丢失/)).toBeInTheDocument()
+    fireEvent.click(dialog.getByRole('button', { name: '停用 1 条' }))
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/module-business-config/1607/actions/disable-all',
       {},
     ))
-    expect(confirmSpy).toHaveBeenCalled()
-    expect(alertSpy).toHaveBeenCalled()
-    confirmSpy.mockRestore()
-    alertSpy.mockRestore()
+    await waitFor(() => expect(onOutcome).toHaveBeenCalledWith({ saved: true, publish }))
   })
 
-  it('「停用全部动作」在确认框里点取消则不发请求', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('「停用全部动作」在弹窗里点取消则不发请求', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
 
     expect(await screen.findByText('业务动作（1）')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '停用全部动作' }))
 
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.click(dialog.getByRole('button', { name: '取消' }))
     expect(apiClientMock.post).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
   })
 
   it('没有已启用的效果动作时「停用全部动作」禁用且不发请求', async () => {
@@ -214,12 +218,12 @@ describe('BusinessActionsPanel', () => {
     alertSpy.mockRestore()
   })
 
-  it('加载并展示业务动作与加工单', async () => {
+  it('加载并展示业务动作与加工单（默认选中第一条，加工单不必再点一次）', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
 
     expect(await screen.findByText('业务动作（1）')).toBeInTheDocument()
-    expect(screen.getByText('批核生效（APPROVE_EFFECT）')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('收料量回写采购单'))
+    // 列表列与加工单页头各有一处（同一事实，不是两种说法）。
+    expect(screen.getAllByText('批核生效（APPROVE_EFFECT）').length).toBeGreaterThan(0)
     expect(await screen.findByText('加工单（2 步）')).toBeInTheDocument()
     expect(screen.getAllByText(/已收数量\(RECEIVE_QTY\)/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/收料数量\(QTY\)/).length).toBeGreaterThan(0)
@@ -229,13 +233,12 @@ describe('BusinessActionsPanel', () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
     await screen.findByText('业务动作（1）')
 
-    expect(screen.getByText('量额/日期累加回写（field-accumulate）')).toBeInTheDocument()
-    expect(screen.getByText('失败整链回滚（BLOCK）')).toBeInTheDocument()
-    // 动作列表的「影响」列已是人话摘要（未选动作时唯一一处出现该句式）。
-    expect(screen.getByText(/采购单明细\(PUR_PURCHASE_D\)\.已收数量\(RECEIVE_QTY\) \+= 本单明细\.收料数量\(QTY\)（合计）/))
-      .toBeInTheDocument()
+    // 列表列与加工单页头各出现一次（同一句话，不是两种说法）。
+    expect(screen.getAllByText('量额/日期累加回写（field-accumulate）').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('失败整链回滚（BLOCK）').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/采购单明细\(PUR_PURCHASE_D\)\.已收数量\(RECEIVE_QTY\) \+= 本单明细\.收料数量\(QTY\)（合计）/).length)
+      .toBeGreaterThan(0)
 
-    fireEvent.click(screen.getByText('收料量回写采购单'))
     expect(await screen.findByText('加工单（2 步）')).toBeInTheDocument()
     expect(screen.getByText(/@PURCHASE_NO ← 本单明细\.PURCHASE_NO/)).toBeInTheDocument()
     expect(screen.getByText(/解批：按公式行自动反向（日期不回退）/)).toBeInTheDocument()
@@ -244,7 +247,6 @@ describe('BusinessActionsPanel', () => {
   it('字段表视图与加工单视图可切换，字段级列在表里可见', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
     await screen.findByText('业务动作（1）')
-    fireEvent.click(screen.getByText('收料量回写采购单'))
     await screen.findByText('加工单（2 步）')
 
     fireEvent.click(screen.getByRole('button', { name: '字段表' }))
@@ -256,22 +258,20 @@ describe('BusinessActionsPanel', () => {
     expect(await screen.findByText('加工单（2 步）')).toBeInTheDocument()
   })
 
-  it('步骤编辑走选区工具栏：未选中步骤时编辑/删除禁用', async () => {
+  it('步骤操作只在该步骤被选中后出现：未选中时没有「编辑步骤」，选中后可用', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
     await screen.findByText('业务动作（1）')
-
-    fireEvent.click(screen.getByText('收料量回写采购单'))
     await screen.findByText('加工单（2 步）')
 
-    const editButtons = screen.getAllByRole('button', { name: '编辑' })
-    expect(editButtons.filter((button) => !(button as HTMLButtonElement).disabled)).toHaveLength(1)
-    // 点加工单里的步骤行即选中该步骤，编辑按钮随之可用。
+    // 动作已默认选中（动作级「编辑」在上下文条上），但还没选步骤时不该有步骤级动作。
+    expect(screen.queryByRole('button', { name: '编辑步骤' })).not.toBeInTheDocument()
+
     const steps = screen.getAllByRole('button').filter((element) => element.tagName === 'LI')
     expect(steps).toHaveLength(2)
     fireEvent.click(steps[1])
     await waitFor(() => {
-      const buttons = screen.getAllByRole('button', { name: '编辑' })
-      expect(buttons.filter((button) => !(button as HTMLButtonElement).disabled)).toHaveLength(2)
+      expect(screen.getByRole('button', { name: '编辑步骤' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: '删除步骤' })).toBeEnabled()
     })
   })
 
@@ -281,7 +281,6 @@ describe('BusinessActionsPanel', () => {
       <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
     )
     await screen.findByText('业务动作（1）')
-    fireEvent.click(screen.getByText('收料量回写采购单'))
     await screen.findByText('加工单（2 步）')
 
     // 先选步骤再复制：复制步骤顺延 opSeq 且不改动作顺序号。
@@ -345,8 +344,8 @@ describe('BusinessActionsPanel', () => {
     )
     await screen.findByText('业务动作（1）')
 
-    fireEvent.click(screen.getByText('送货出库（服务级）'))
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    // 第一条动作默认选中，直接进它的编辑器（等自动选中落地再点，别抢在装载副作用之前）。
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
 
     const dialog = await screen.findByRole('dialog')
     // 根键与嵌套键都渲染成具名控件；数组项可增删。
@@ -550,8 +549,8 @@ describe('BusinessActionsPanel', () => {
     renderWithProviders(<ViewSwitchHarness onDraftChange={onDraftChange} />)
     await screen.findByText('业务动作（1）')
 
-    fireEvent.click(screen.getByText('收料量回写采购单'))
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    // 第一条动作默认选中（上下文条与表格各出现一次名称），直接进它的编辑器。
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
     const dialog = within(await screen.findByRole('dialog'))
     fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
     fireEvent.click(dialog.getByRole('button', { name: '保存' }))
@@ -914,7 +913,7 @@ describe('BusinessActionsPanel 白箱化入口', () => {
       <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />,
     )
     await screen.findByText('业务动作（1）')
-    fireEvent.click(screen.getByRole('button', { name: '预演（不改数据）' }))
+    fireEvent.click(screen.getByRole('button', { name: '预演' }))
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText(/预演不改数据/)).toBeInTheDocument()
     // 保存后效果暂不支持预演，必须显式说明**为什么**（而不是灰掉不说原因）。
@@ -923,7 +922,7 @@ describe('BusinessActionsPanel 白箱化入口', () => {
 
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="rules" />)
     await screen.findByText('校验规则（0）')
-    expect(screen.queryByRole('button', { name: '预演（不改数据）' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '预演' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '行为说明书' })).toBeInTheDocument()
   })
 
@@ -931,7 +930,6 @@ describe('BusinessActionsPanel 白箱化入口', () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />)
     await screen.findByText('业务动作（1）')
 
-    fireEvent.click(screen.getByText('收料量回写采购单'))
     await screen.findByText('加工单（2 步）')
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' }).filter((button) => !(button as HTMLButtonElement).disabled)[0])
 

@@ -156,7 +156,8 @@ describe('配方视图与专家模式的切换（阶段二）', () => {
     fireEvent.click(screen.getByRole('button', { name: '专家（键级）' }))
     // 切换回专家：草稿还是那一份（行数不变），且没有触发第二次装载。
     expect(await screen.findByText('业务动作（1）')).toBeInTheDocument()
-    expect(screen.getByText('收料量回写采购单')).toBeInTheDocument()
+    // 选中行会同时出现在上下文条与表格里：动作名有两处是正常的。
+    expect(screen.getAllByText('收料量回写采购单').length).toBeGreaterThan(0)
     expect(configLoads()).toBe(before)
   })
 

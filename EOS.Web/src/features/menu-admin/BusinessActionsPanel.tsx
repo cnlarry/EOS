@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { setConfigTarget } from '../assistant/situationSource'
+import type { ConfigSaveOutcome } from '../admin/ConfigPublishAlerts'
 import {
   IconBan,
   IconBook,
   IconDeviceFloppy,
   IconPlayerPlay,
-  IconRefresh,
 } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
@@ -47,6 +47,7 @@ import {
   parseMatchItems,
   reverseTextOf,
   ruleKey,
+  summarizeAction,
   type BusinessNameLookup,
   type MatchGroupPreset,
 } from './businessActionText'
@@ -232,10 +233,17 @@ interface BusinessActionsPanelProps {
    * 装载副作用按服务端缓存重置掉。
    */
   view?: BusinessActionsView | null
-  /** 外部要求重新装载草稿的信号（如页面「取消」丢弃改动）：每次自增都视为一个新的装载点。 */
+  /**
+   * 本页是否给了写权限（容器从 overview 的 `canWrite` 传入）。
+   * 这是**显示开关**，不是权限边界：服务端每次写入都重新鉴权。
+   */
+  canWrite?: boolean
+  /** 外部要求重新装载草稿的信号（如保存成功、页面「刷新」丢弃改动）：每次自增都是一个新的装载点。 */
   reloadSignal?: number
   /** 草稿上报：配置装载完成或编辑变化时回调；null 表示当前没有可提交的草稿（未装载/无表模块）。 */
   onDraftChange?: (draft: ModuleBusinessConfigDraft | null) => void
+  /** 批量停用这类"不经草稿直接写"的动作，把保存 + 发布结果交给容器统一展示。 */
+  onOutcome?: (outcome: ConfigSaveOutcome | null) => void
 }
 
 type EditorState =
@@ -293,8 +301,10 @@ const emptyRule = (stage: string): ValidationRule => ({
 export function BusinessActionsPanel({
   module,
   view = 'actions',
+  canWrite = true,
   reloadSignal = 0,
   onDraftChange,
+  onOutcome,
 }: BusinessActionsPanelProps) {
   const moduleId = module.M_IDX
   const hasTables = module.MASTER_TABLE != null || module.DETAIL_TABLE != null
@@ -355,6 +365,10 @@ export function BusinessActionsPanel({
   const [viewChoice, setViewChoice] = useState<'recipes' | 'expert' | null>(null)
   /** 「停用全部动作」进行中（防重复点击；成功与否都由服务端事务决定）。 */
   const [disablingAll, setDisablingAll] = useState(false)
+  /** 批量停用是破坏性且绕过草稿的动作，确认走 Modal（与全站同一套弹窗语言）。 */
+  const [confirmDisableAll, setConfirmDisableAll] = useState(false)
+  const [disableNote, setDisableNote] = useState<string | null>(null)
+  const [disableError, setDisableError] = useState<string | null>(null)
   // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
   // 用空配置覆盖主页面持有的草稿。
   const [loadedModuleId, setLoadedModuleId] = useState<number | null>(null)
@@ -381,6 +395,12 @@ export function BusinessActionsPanel({
     setSelectedManualKey(null)
     setEditor(null)
     setLoadedModuleId(null)
+    // 视图偏好与批量停用的结果都只属于"上一个模块"：不重置会让新模块继承旧选择，
+    // 空模块也会停在专家视图、看不到配方这个入门路径。
+    setViewChoice(null)
+    setConfirmDisableAll(false)
+    setDisableNote(null)
+    setDisableError(null)
     loadedPointRef.current = null
   }, [moduleId])
 
@@ -520,6 +540,13 @@ export function BusinessActionsPanel({
   useEffect(() => {
     setSelectedOpSeq(null)
   }, [selectedKey])
+
+  // 专家视图默认选中第一条动作：否则"加工单"区一片空白，用户得先猜要点哪一行才看得到内容。
+  useEffect(() => {
+    if (loadedModuleId !== moduleId || selectedKey != null || recipeFirst) return
+    const first = effectActions[0]
+    if (first) setSelectedKey(actionKey(first))
+  }, [loadedModuleId, moduleId, selectedKey, recipeFirst, effectActions])
 
   const replaceAction = (index: number, value: BusinessAction) =>
     setActions((prev) => prev.map((item, i) => (i === index ? cloneAction(value) : item)))
@@ -726,28 +753,24 @@ export function BusinessActionsPanel({
   )
 
   const disableAllActions = async () => {
-    if (enabledEffectActions.length === 0) {
-      window.alert('本模块没有已启用的效果动作——没有可停用的东西。')
-      return
-    }
-    if (
-      !window.confirm(
-        `把本模块效果链上的 ${enabledEffectActions.length} 条动作全部停用？\n\n`
-          + '· 只停动作，不动自定义按钮；要恢复需逐行启用；\n'
-          + '· 与其他配置一样，发布后才生效；\n'
-          + '· 确定后会重新加载配置，未保存的编辑会丢失。',
-      )
-    ) {
-      return
-    }
+    if (enabledEffectActions.length === 0) return
+    setConfirmDisableAll(false)
     setDisablingAll(true)
+    setDisableNote(null)
+    setDisableError(null)
     try {
-      await apiClient.post(`/admin/module-business-config/${moduleId}/actions/disable-all`, {})
-      window.alert('已停用本模块全部效果动作（发布后生效）。')
+      // 服务端写完后自动发布一次（与保存路径同语义），故这里不再需要用户另去 230101 发布。
+      const result = await apiClient.post<{ moduleId: number; disabled: number; publish?: ConfigSaveOutcome['publish'] }>(
+        `/admin/module-business-config/${moduleId}/actions/disable-all`,
+        {},
+      )
+      setDisableNote(`已停用 ${result?.disabled ?? 0} 条效果动作。`)
+      onOutcome?.({ saved: true, publish: result?.publish ?? null })
       setReloadToken((token) => token + 1)
       void configQuery.refetch()
     } catch (error) {
-      window.alert(`停用失败：${describeApiError(error, '请稍后重试。')}`)
+      onOutcome?.(null)
+      setDisableError(describeApiError(error, '停用失败，请稍后重试。'))
     } finally {
       setDisablingAll(false)
     }
@@ -767,77 +790,74 @@ export function BusinessActionsPanel({
   const ready = configQuery.isSuccess && catalogQuery.isSuccess && schemasQuery.isSuccess
 
   return (
-    <div className="d-flex flex-column gap-3">
-      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <div>
-          <strong>{tableTitle(module.MASTER_TABLE, module.MASTER_TABLE_DESC)} / {tableTitle(module.DETAIL_TABLE, module.DETAIL_TABLE_DESC)}</strong>
-        </div>
-        <div className="d-flex gap-2">
+    <div className="erp-config-pane-body">
+      {/* 模块级工具条：左侧是"看哪一面"的视图切换，右侧是只读诊断与批量动作（次一级权重）。
+          列表级的新增 / 行操作在表格自己的区块里，不在这里混排。 */}
+      <div className="erp-config-pane-toolbar">
+        <div className="erp-config-pane-tools">
           {view === 'actions' ? (
-            <div className="btn-group" role="group" aria-label="效果链视图">
-              <Button
-                size="sm"
-                variant={recipeFirst ? 'primary' : 'secondary'}
+            <div className="btn-group btn-group-sm" role="group" aria-label="效果链视图">
+              <button
+                type="button"
+                className={`btn ${recipeFirst ? 'btn-secondary' : 'btn-outline-secondary'}`}
                 onClick={() => setViewChoice('recipes')}
                 title="按业务配方配置：先选“要发生什么”，再由配方预填落到实现键"
               >
                 配方
-              </Button>
-              <Button
-                size="sm"
-                variant={recipeFirst ? 'secondary' : 'primary'}
+              </button>
+              <button
+                type="button"
+                className={`btn ${recipeFirst ? 'btn-outline-secondary' : 'btn-secondary'}`}
                 onClick={() => setViewChoice('expert')}
                 title="键级编辑（专家模式）：逐字段编辑同一份配置，与配方视图共用草稿"
               >
                 专家（键级）
-              </Button>
+              </button>
             </div>
           ) : null}
+        </div>
+        <div className="erp-config-pane-tools">
           {view === 'actions' ? (
             <Button
               size="sm"
-              icon={<IconBan size={16} />}
-              disabled={disablingAll || enabledEffectActions.length === 0}
-              onClick={() => void disableAllActions()}
-              title={
-                enabledEffectActions.length === 0
-                  ? '本模块没有已启用的效果动作'
-                  : `把本模块效果链上的 ${enabledEffectActions.length} 条动作置为停用（行级 ENABLED=0，不动自定义按钮；发布后生效）`
-              }
-            >
-              停用全部动作
-            </Button>
-          ) : null}
-          {view === 'actions' ? (
-            <Button
-              size="sm"
+              variant="ghost"
               icon={<IconPlayerPlay size={16} />}
               onClick={() => setSimulateOpen(true)}
               title="在事务内跑一遍真实的批核/解批链路并回滚，报告“会发生什么”"
             >
-              预演（不改数据）
+              预演
             </Button>
           ) : null}
           <Button
             size="sm"
+            variant="ghost"
             icon={<IconBook size={16} />}
             onClick={() => setHandbookOpen(true)}
             title="按事件汇总这个模块会发生什么（只读，可复制为 Markdown）"
           >
             行为说明书
           </Button>
-          <Button
-            size="sm"
-            icon={<IconRefresh size={16} />}
-            onClick={() => {
-              setReloadToken((token) => token + 1)
-              void configQuery.refetch()
-            }}
-          >
-            重新加载
-          </Button>
+          {view === 'actions' ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<IconBan size={16} />}
+              disabled={!canWrite || disablingAll || enabledEffectActions.length === 0}
+              onClick={() => setConfirmDisableAll(true)}
+              title={
+                enabledEffectActions.length === 0
+                  ? '本模块没有已启用的效果动作'
+                  : `把本模块效果链上的 ${enabledEffectActions.length} 条动作置为停用（行级 ENABLED=0，不动自定义按钮；保存后自动发布）`
+              }
+            >
+              停用全部动作
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {disableNote ? <div className="alert alert-success py-1 px-2 small mb-0" role="status">{disableNote}</div> : null}
+      {disableError ? <div className="alert alert-danger py-1 px-2 small mb-0" role="alert">{disableError}</div> : null}
 
       {configQuery.isLoading || catalogQuery.isLoading || schemasQuery.isLoading ? <LoadingState /> : null}
       {configQuery.isError ? (
@@ -866,6 +886,7 @@ export function BusinessActionsPanel({
               recipes={recipes}
               actions={effectActions}
               labels={labels}
+              canWrite={canWrite}
               onCreateFromRecipe={openCreateFromRecipe}
               onClone={() => setCloneOpen(true)}
               onExpert={() => setViewChoice('expert')}
@@ -874,6 +895,16 @@ export function BusinessActionsPanel({
 
           {view === 'actions' && !recipeFirst ? (
             <>
+              {/* 体检条放在清单之前：先回答"这批配置会不会被保存拦下"，再逐行改。 */}
+              <BusinessActionImpact
+                moduleId={moduleId}
+                masterTable={module.MASTER_TABLE}
+                detailTable={module.DETAIL_TABLE}
+                names={names}
+                labels={labels}
+                actions={actions}
+                rules={rules}
+              />
               <ActionsView
                 catalog={catalogQuery.data!}
                 labels={labels}
@@ -892,6 +923,7 @@ export function BusinessActionsPanel({
                 onMoveUp={() => moveSelectedAction(-1)}
                 onMoveDown={() => moveSelectedAction(1)}
                 canEdit={selectedIndex >= 0}
+                canWrite={canWrite}
               />
               {selectedAction ? (
                 <OpsView
@@ -916,24 +948,11 @@ export function BusinessActionsPanel({
                     if (selectedOp) deleteOp(selectedOp)
                   }}
                   canEditOp={selectedOp != null}
+                  canWrite={canWrite}
                 />
               ) : (
-                <div className="text-secondary small">先在上方选择一个业务动作，这里显示它的加工单。</div>
+                <div className="erp-config-hint">先在上方选择一个业务动作，这里显示它的加工单。</div>
               )}
-              <BusinessActionImpact
-                moduleId={moduleId}
-                masterTable={module.MASTER_TABLE}
-                detailTable={module.DETAIL_TABLE}
-                names={names}
-                labels={labels}
-                actions={actions}
-                rules={rules}
-              />
-              <div className="text-secondary small">
-                加工单视图按「目标表.字段 运算 本单来源 @定位键 ?条件」逐句展示（字段名带中文元数据），点句子即选中该步骤；
-                表名/列名经统一选择器选取，定位键可复用本模块已配好的同一套；条件与效果参数仍为结构化 JSON 文本。
-                保存即服务端校验（目录值/顺序/JSON/物理表列/定位键登记），校验失败不会落库。
-              </div>
             </>
           ) : null}
 
@@ -950,6 +969,7 @@ export function BusinessActionsPanel({
               onDelete={() => {
                 if (selectedRule) deleteRule(selectedRule)
               }}
+              canWrite={canWrite}
             />
           ) : null}
 
@@ -967,9 +987,36 @@ export function BusinessActionsPanel({
               onMoveUp={() => moveSelectedManualAction(-1)}
               onMoveDown={() => moveSelectedManualAction(1)}
               canEdit={selectedManual != null}
+              canWrite={canWrite}
             />
           ) : null}
         </>
+      ) : null}
+
+      {confirmDisableAll ? (
+        <Modal
+          title="停用全部动作"
+          onClose={() => setConfirmDisableAll(false)}
+          footer={(
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmDisableAll(false)}>取消</Button>
+              <Button size="sm" variant="danger" loading={disablingAll} onClick={() => void disableAllActions()}>
+                停用 {enabledEffectActions.length} 条
+              </Button>
+            </>
+          )}
+        >
+          <div className="d-flex flex-column gap-2 small">
+            <div>
+              把本模块效果链上的 <strong>{enabledEffectActions.length}</strong> 条动作全部停用？
+            </div>
+            <ul className="mb-0">
+              <li>只停效果链动作，<strong>不动自定义按钮</strong>；要恢复需逐行启用。</li>
+              <li>写完后服务端自动发布一次（与「保存」同语义）；发布未通过时按「已保存，但未生效」处理。</li>
+              <li>确定后会重新加载配置，<strong>未保存的编辑会丢失</strong>。</li>
+            </ul>
+          </div>
+        </Modal>
       ) : null}
 
       {cloneOpen ? (
@@ -1069,6 +1116,23 @@ function EditorModal({
     : editor.kind === 'op' ? (editor.index == null ? '新增公式行' : '编辑公式行')
     : (editor.index == null ? '新增校验规则' : '编辑校验规则')
 
+  // 保存前给人话摘要：配置面里最容易出错的不是"填不进去"，而是"填进去了但意思不对"。
+  const preview = editor.kind === 'action'
+    ? [
+      eventLabel(editor.value.eventCode, catalog, labels),
+      editor.value.effectName?.trim() || labelWithCode(
+        isManualAction
+          ? makeLabelLookup(Object.fromEntries((catalog.documentActions ?? []).map((item) => [item.key, item.label])))
+          : labels.effectKeys,
+        editor.value.effectKey,
+      ),
+      summarizeAction(editor.value, names),
+      editor.value.enabled ? null : '（已停用）',
+    ].filter(Boolean).join(' · ')
+    : editor.kind === 'op'
+      ? formatOpSentence(editor.value, names)
+      : `${labelWithCode(labels.validationStages, editor.value.stage)}：${labelWithCode(labels.validationKeys, editor.value.validationKey)}（第 ${editor.value.seq} 条）`
+
   return (
     <Modal
       title={title}
@@ -1077,8 +1141,8 @@ function EditorModal({
       scrollable
       footer={
         <div className="d-flex gap-2 justify-content-end">
-          <Button variant="secondary" onClick={onCancel}>取消</Button>
-          <Button variant="primary" icon={<IconDeviceFloppy size={16} />} onClick={onConfirm}>保存</Button>
+          <Button size="sm" variant="ghost" onClick={onCancel}>取消</Button>
+          <Button size="sm" variant="primary" icon={<IconDeviceFloppy size={16} />} onClick={onConfirm}>保存</Button>
         </div>
       }
     >
@@ -1098,6 +1162,10 @@ function EditorModal({
       ) : (
         <RuleForm value={editor.value} catalog={catalog} labels={labels} schemas={schemas} onChange={onRuleChange} />
       )}
+      <div className="erp-config-preview">
+        <span className="erp-config-preview-label">保存后</span>
+        <span>{preview}</span>
+      </div>
     </Modal>
   )
 }
@@ -1139,8 +1207,8 @@ function ActionForm({
   /** 当前所选事件必须让配置者看见的说明（"配了不会跑""暂未启用"这类事实）。 */
   const selectedEventNote = eventAvailabilityOf?.(value.eventCode)?.note ?? null
   return (
-    <div>
-      <div className="row g-2">
+    <div className="erp-config-form">
+      <FormSection title="何时触发" hint={selectedEventNote ?? undefined}>
         <Field label="事件" className="col-4">
           <select className="form-select form-select-sm" value={value.eventCode} onChange={(e) => set('eventCode', e.target.value)}>
             {catalog.events.map((item) => {
@@ -1152,12 +1220,21 @@ function ActionForm({
               )
             })}
           </select>
-          {selectedEventNote ? <div className="small text-warning-emphasis mt-1">{selectedEventNote}</div> : null}
         </Field>
         <Field label="顺序（事件内）" className="col-2">
           <input type="number" min={1} className="form-control form-control-sm" value={value.seq}
             onChange={(e) => set('seq', Number(e.target.value))} />
         </Field>
+        <Field label="启用" className="col-6">
+          <div className="form-check mt-1">
+            <input id="action-enabled" className="form-check-input" type="checkbox" checked={value.enabled}
+              onChange={(e) => set('enabled', e.target.checked)} />
+            <label className="form-check-label" htmlFor="action-enabled">启用该动作</label>
+          </div>
+        </Field>
+      </FormSection>
+
+      <FormSection title={isManual ? '按钮做什么' : '做什么'}>
         <Field label={isManual ? '按钮实现（代码闭集）' : '效果'} className="col-6">
           {isManual ? (
             <select className="form-select form-select-sm" value={value.effectKey} onChange={(e) => set('effectKey', e.target.value)}>
@@ -1185,20 +1262,15 @@ function ActionForm({
             </select>
           )}
         </Field>
+        <Field label="名称" className="col-6">
+          <input className="form-control form-control-sm" value={value.effectName ?? ''}
+            onChange={(e) => set('effectName', e.target.value || null)} />
+        </Field>
         {!isManual && effectDescription ? (
           <Field label="这个效果做什么" className="col-12">
             <div className="small text-secondary">{effectDescription}</div>
           </Field>
         ) : null}
-        <Field label="名称" className="col-8">
-          <input className="form-control form-control-sm" value={value.effectName ?? ''}
-            onChange={(e) => set('effectName', e.target.value || null)} />
-        </Field>
-        <Field label="失败模式" className="col-4">
-          <select className="form-select form-select-sm" value={value.failMode} onChange={(e) => set('failMode', e.target.value)}>
-            {catalog.failModes.map((item) => <option key={item} value={item}>{labelWithCode(labels.failModes, item)}</option>)}
-          </select>
-        </Field>
         {isManual ? (
           <>
             <Field label="按钮标题（显示在单据上）" className="col-8">
@@ -1207,29 +1279,51 @@ function ActionForm({
                 onChange={(e) => set('label', e.target.value || null)} />
             </Field>
             <Field label="点击前二次确认" className="col-4">
-              <div className="form-check">
+              <div className="form-check mt-1">
                 <input id="action-confirm-tag" className="form-check-input" type="checkbox" checked={value.confirmTag === true}
                   onChange={(e) => set('confirmTag', e.target.checked)} />
                 <label className="form-check-label" htmlFor="action-confirm-tag">先返回"将会发生什么"</label>
               </div>
             </Field>
+            <Field label="点击时让用户填的参数" className="col-12">
+              <DocumentActionParamsEditor json={value.params ?? null} onChange={(json) => set('params', json)} />
+            </Field>
           </>
-        ) : null}
-        <Field label="启用" className="col-12">
-          <div className="form-check">
-            <input id="action-enabled" className="form-check-input" type="checkbox" checked={value.enabled}
-              onChange={(e) => set('enabled', e.target.checked)} />
-            <label className="form-check-label" htmlFor="action-enabled">启用该动作</label>
-          </div>
+        ) : (
+          <>
+            <Field label="参数（按效果 Schema 编辑）" className="col-12">
+              <StructuredParamsEditor
+                hint={`效果键：${value.effectKey}${effectSchema ? `（根键 ${effectSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
+                rootKeys={effectSchema?.rootKeys ?? []}
+                descriptors={paramFields}
+                json={value.params ?? null}
+                emptyHint="该效果不允许配置参数。"
+                onChange={(json) => set('params', json)}
+              />
+            </Field>
+            <Field label="反向（解批语义）" className="col-12">
+              <ReverseEditor
+                kinds={reverseKinds}
+                lookup={reverseLookup}
+                descriptions={catalog.labels?.reverseKindDescriptions}
+                json={value.reverse ?? null}
+                onChange={(json) => set('reverse', json || null)}
+              />
+            </Field>
+          </>
+        )}
+        <Field label="失败模式" className="col-6">
+          <select className="form-select form-select-sm" value={value.failMode} onChange={(e) => set('failMode', e.target.value)}>
+            {catalog.failModes.map((item) => <option key={item} value={item}>{labelWithCode(labels.failModes, item)}</option>)}
+          </select>
         </Field>
-        <Field label="说明" className="col-6">
-          <input className="form-control form-control-sm" value={value.remark ?? ''}
-            onChange={(e) => set('remark', e.target.value || null)} />
-        </Field>
-        <Field label="溯源（可选）" className="col-6">
-          <input className="form-control form-control-sm" value={value.sourceRef ?? ''}
-            onChange={(e) => set('sourceRef', e.target.value || null)} />
-        </Field>
+      </FormSection>
+
+      <FormSection
+        title="条件与追溯"
+        defaultOpen={false}
+        hint={value.condition ? '已设条件' : '未设条件'}
+      >
         <Field label="条件（什么时候执行）" className="col-12">
           <ConditionEditor
             value={value.condition ?? null}
@@ -1239,34 +1333,15 @@ function ActionForm({
             onChange={(next) => set('condition', next)}
           />
         </Field>
-        {isManual ? (
-          <Field label="点击时让用户填的参数" className="col-12">
-            <DocumentActionParamsEditor json={value.params ?? null} onChange={(json) => set('params', json)} />
-          </Field>
-        ) : (
-          <Field label="参数（按效果 Schema 编辑）" className="col-12">
-            <StructuredParamsEditor
-              hint={`效果键：${value.effectKey}${effectSchema ? `（根键 ${effectSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
-              rootKeys={effectSchema?.rootKeys ?? []}
-              descriptors={paramFields}
-              json={value.params ?? null}
-              emptyHint="该效果不允许配置参数。"
-              onChange={(json) => set('params', json)}
-            />
-          </Field>
-        )}
-        {isManual ? null : (
-          <Field label="反向（解批语义）" className="col-12">
-            <ReverseEditor
-              kinds={reverseKinds}
-              lookup={reverseLookup}
-              descriptions={catalog.labels?.reverseKindDescriptions}
-              json={value.reverse ?? null}
-              onChange={(json) => set('reverse', json || null)}
-            />
-          </Field>
-        )}
-      </div>
+        <Field label="说明" className="col-6">
+          <input className="form-control form-control-sm" value={value.remark ?? ''}
+            onChange={(e) => set('remark', e.target.value || null)} />
+        </Field>
+        <Field label="溯源（可选）" className="col-6">
+          <input className="form-control form-control-sm" value={value.sourceRef ?? ''}
+            onChange={(e) => set('sourceRef', e.target.value || null)} />
+        </Field>
+      </FormSection>
     </div>
   )
 }
@@ -1300,113 +1375,129 @@ function OpForm({
       ? module.DETAIL_TABLE
       : value.sourceTable ?? null
   return (
-    <div className="row g-2">
-      <div className="col-12">
-        <div className="alert alert-light border py-1 px-2 small mb-0">
-          公式预览：<code>{formatOpSentence(value, names)}</code>
-          {formatMatch(value.match, names) ? <span className="ms-2 text-secondary">{formatMatch(value.match, names)}</span> : null}
-        </div>
+    <div className="erp-config-form">
+      <div className="erp-config-preview">
+        <span className="erp-config-preview-label">公式</span>
+        <code>{formatOpSentence(value, names)}</code>
+        {formatMatch(value.match, names) ? <span className="ms-2 text-secondary">{formatMatch(value.match, names)}</span> : null}
       </div>
-      <Field label="顺序" className="col-2">
-        <input type="number" min={1} className="form-control form-control-sm" value={value.opSeq}
-          onChange={(e) => set('opSeq', Number(e.target.value))} />
-      </Field>
-      <Field label="目标表" className="col-5">
-        <TablePickerInput
-          value={value.targetTable}
-          title="选择目标表"
-          onChange={(next) => set('targetTable', next)}
-        />
-      </Field>
-      <Field label="目标字段" className="col-5">
-        <ColumnPickerInput
-          table={value.targetTable}
-          value={value.targetField}
-          title="选择目标字段"
-          names={names}
-          onChange={(next) => set('targetField', next)}
-        />
-      </Field>
-      <Field label="运算" className="col-4">
-        <select className="form-select form-select-sm" value={value.opCode} onChange={(e) => set('opCode', e.target.value)}>
-          {catalog.opCodes.map((item) => <option key={item} value={item}>{labelWithCode(labels.opCodes, item)}</option>)}
-        </select>
-      </Field>
-      <Field label="源范围" className="col-4">
-        <select className="form-select form-select-sm" value={value.sourceScope}
-          onChange={(e) => set('sourceScope', e.target.value)}>
-          {catalog.sourceScopes.map((item) => <option key={item} value={item}>{labelWithCode(labels.sourceScopes, item)}</option>)}
-        </select>
-      </Field>
-      <Field label="源聚合（空=单值）" className="col-4">
-        <select className="form-select form-select-sm" value={value.sourceAgg ?? ''}
-          onChange={(e) => set('sourceAgg', e.target.value || null)}>
-          <option value="">（单值）</option>
-          {catalog.sourceAggregates.map((item) => <option key={item} value={item}>{labelWithCode(labels.sourceAggregates, item)}</option>)}
-        </select>
-      </Field>
-      {isTable ? (
-        <Field label="源表（已登记上下文表）" className="col-6">
+
+      <FormSection title="目标">
+        <Field label="顺序" className="col-2">
+          <input type="number" min={1} className="form-control form-control-sm" value={value.opSeq}
+            onChange={(e) => set('opSeq', Number(e.target.value))} />
+        </Field>
+        <Field label="目标表" className="col-5">
           <TablePickerInput
-            value={value.sourceTable ?? ''}
-            title="选择上下文表"
-            onChange={(next) => set('sourceTable', next || null)}
+            value={value.targetTable}
+            title="选择目标表"
+            onChange={(next) => set('targetTable', next)}
           />
         </Field>
-      ) : null}
-      {isConstant ? (
-        <Field label="常量值" className="col-6">
-          <input className="form-control form-control-sm" value={value.sourceConstant ?? ''}
-            onChange={(e) => set('sourceConstant', e.target.value)} />
+        <Field label="目标字段" className="col-5">
+          <ColumnPickerInput
+            table={value.targetTable}
+            value={value.targetField}
+            title="选择目标字段"
+            names={names}
+            onChange={(next) => set('targetField', next)}
+          />
         </Field>
-      ) : (
-        <>
-          <Field label="源字段（与源加减项二选一）" className="col-6">
-            <ColumnPickerInput
-              table={sourceTable}
-              value={value.sourceField ?? ''}
-              title="选择源字段"
-              names={names}
-              onChange={(next) => set('sourceField', next || null)}
+        <Field label="运算" className="col-4">
+          <select className="form-select form-select-sm" value={value.opCode} onChange={(e) => set('opCode', e.target.value)}>
+            {catalog.opCodes.map((item) => <option key={item} value={item}>{labelWithCode(labels.opCodes, item)}</option>)}
+          </select>
+        </Field>
+      </FormSection>
+
+      <FormSection title="来源">
+        <Field label="源范围" className="col-4">
+          <select className="form-select form-select-sm" value={value.sourceScope}
+            onChange={(e) => set('sourceScope', e.target.value)}>
+            {catalog.sourceScopes.map((item) => <option key={item} value={item}>{labelWithCode(labels.sourceScopes, item)}</option>)}
+          </select>
+        </Field>
+        <Field label="源聚合（空=单值）" className="col-4">
+          <select className="form-select form-select-sm" value={value.sourceAgg ?? ''}
+            onChange={(e) => set('sourceAgg', e.target.value || null)}>
+            <option value="">（单值）</option>
+            {catalog.sourceAggregates.map((item) => <option key={item} value={item}>{labelWithCode(labels.sourceAggregates, item)}</option>)}
+          </select>
+        </Field>
+        {isTable ? (
+          <Field label="源表（已登记上下文表）" className="col-4">
+            <TablePickerInput
+              value={value.sourceTable ?? ''}
+              title="选择上下文表"
+              onChange={(next) => set('sourceTable', next || null)}
             />
           </Field>
-          <Field label="源加减项（结构化 JSON，可选）" className="col-12">
-            <JsonArea value={value.sourceTerms ?? ''} onChange={(text) => set('sourceTerms', text || null)} />
-            {formatSourceTerms(value.sourceTerms) ? (
-              <div className="small text-secondary mt-1">解析为：{formatSourceTerms(value.sourceTerms)}</div>
-            ) : null}
+        ) : null}
+        {isConstant ? (
+          <Field label="常量值" className="col-6">
+            <input className="form-control form-control-sm" value={value.sourceConstant ?? ''}
+              onChange={(e) => set('sourceConstant', e.target.value)} />
           </Field>
-        </>
-      )}
-      <Field label="定位键" className="col-12">
-        <MatchEditor
-          moduleId={module.M_IDX}
-          masterTable={module.MASTER_TABLE}
-          detailTable={module.DETAIL_TABLE}
-          targetTable={value.targetTable}
-          contextTable={value.sourceTable ?? null}
-          value={value.match ?? null}
-          scopeLabels={scopeLabels}
-          names={names}
-          presets={matchPresets.filter((preset) => preset.targetTable.toUpperCase() === value.targetTable.trim().toUpperCase())}
-          onApplyToSiblings={onApplyMatchToSiblings}
-          onChange={(next) => set('match', next)}
-        />
-      </Field>
-      <Field label="条件（什么时候执行）" className="col-12">
-        <ConditionEditor
-          value={value.condition ?? null}
-          names={names}
-          targetTable={value.targetTable}
-          masterTable={module.MASTER_TABLE}
-          detailTable={module.DETAIL_TABLE}
-          onChange={(next) => set('condition', next)}
-        />
-      </Field>
-      <Field label="说明" className="col-12">
-        <input className="form-control form-control-sm" value={value.remark ?? ''}
-          onChange={(e) => set('remark', e.target.value || null)} />
-      </Field>
+        ) : (
+          <>
+            <Field label="源字段（与源加减项二选一）" className="col-6">
+              <ColumnPickerInput
+                table={sourceTable}
+                value={value.sourceField ?? ''}
+                title="选择源字段"
+                names={names}
+                onChange={(next) => set('sourceField', next || null)}
+              />
+            </Field>
+            <Field label="源加减项（结构化 JSON，可选）" className="col-12">
+              <JsonArea
+                value={value.sourceTerms ?? ''}
+                expect="array"
+                onChange={(text) => set('sourceTerms', text || null)}
+              />
+              {formatSourceTerms(value.sourceTerms) ? (
+                <div className="small text-secondary mt-1">解析为：{formatSourceTerms(value.sourceTerms)}</div>
+              ) : null}
+            </Field>
+          </>
+        )}
+      </FormSection>
+
+      <FormSection
+        title="定位键、条件与说明"
+        defaultOpen
+        hint={[value.match ? '已设定位键' : '未设定位键', value.condition ? '已设条件' : null].filter(Boolean).join(' · ')}
+      >
+        <Field label="定位键" className="col-12">
+          <MatchEditor
+            moduleId={module.M_IDX}
+            masterTable={module.MASTER_TABLE}
+            detailTable={module.DETAIL_TABLE}
+            targetTable={value.targetTable}
+            contextTable={value.sourceTable ?? null}
+            value={value.match ?? null}
+            scopeLabels={scopeLabels}
+            names={names}
+            presets={matchPresets.filter((preset) => preset.targetTable.toUpperCase() === value.targetTable.trim().toUpperCase())}
+            onApplyToSiblings={onApplyMatchToSiblings}
+            onChange={(next) => set('match', next)}
+          />
+        </Field>
+        <Field label="条件（什么时候执行）" className="col-12">
+          <ConditionEditor
+            value={value.condition ?? null}
+            names={names}
+            targetTable={value.targetTable}
+            masterTable={module.MASTER_TABLE}
+            detailTable={module.DETAIL_TABLE}
+            onChange={(next) => set('condition', next)}
+          />
+        </Field>
+        <Field label="说明" className="col-12">
+          <input className="form-control form-control-sm" value={value.remark ?? ''}
+            onChange={(e) => set('remark', e.target.value || null)} />
+        </Field>
+      </FormSection>
     </div>
   )
 }
@@ -1427,50 +1518,58 @@ function RuleForm({
   const set = <K extends keyof ValidationRule>(key: K, next: ValidationRule[K]) => onChange({ ...value, [key]: next })
   const paramSchema = (schemas.validationParams ?? []).find((item) => item.validationKey === value.validationKey)
   return (
-    <div className="row g-2">
-      <Field label="阶段" className="col-4">
-        <select className="form-select form-select-sm" value={value.stage} onChange={(e) => set('stage', e.target.value)}>
-          {catalog.validationStages.map((item) => <option key={item} value={item}>{labelWithCode(labels.validationStages, item)}</option>)}
-        </select>
-      </Field>
-      <Field label="顺序（阶段内）" className="col-2">
-        <input type="number" min={1} className="form-control form-control-sm" value={value.seq}
-          onChange={(e) => set('seq', Number(e.target.value))} />
-      </Field>
-      <Field label="校验模板" className="col-6">
-        <select className="form-select form-select-sm" value={value.validationKey}
-          onChange={(e) => set('validationKey', e.target.value)}>
-          {catalog.validationKeys.map((item) => <option key={item} value={item}>{labelWithCode(labels.validationKeys, item)}</option>)}
-        </select>
-      </Field>
-      <Field label="启用" className="col-12">
-        <div className="form-check">
-          <input id="rule-enabled" className="form-check-input" type="checkbox" checked={value.enabled}
-            onChange={(e) => set('enabled', e.target.checked)} />
-          <label className="form-check-label" htmlFor="rule-enabled">启用该规则</label>
-        </div>
-      </Field>
-      <Field label="参数（按校验模板 Schema 编辑）" className="col-12">
-        <StructuredParamsEditor
-          hint={`校验模板：${value.validationKey}${paramSchema && paramSchema.rootKeys.length > 0 ? `（根键 ${paramSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
-          rootKeys={paramSchema?.rootKeys ?? []}
-          json={value.params ?? null}
-          emptyHint="该校验模板不允许配置参数。"
-          onChange={(json) => set('params', json)}
-        />
-      </Field>
-      <Field label="失败文案（可选）" className="col-6">
-        <input className="form-control form-control-sm" value={value.message ?? ''}
-          onChange={(e) => set('message', e.target.value || null)} />
-      </Field>
-      <Field label="溯源（可选）" className="col-6">
-        <input className="form-control form-control-sm" value={value.sourceRef ?? ''}
-          onChange={(e) => set('sourceRef', e.target.value || null)} />
-      </Field>
-      <Field label="说明（可选）" className="col-12">
-        <input className="form-control form-control-sm" value={value.remark ?? ''}
-          onChange={(e) => set('remark', e.target.value || null)} />
-      </Field>
+    <div className="erp-config-form">
+      <FormSection title="规则">
+        <Field label="阶段" className="col-4">
+          <select className="form-select form-select-sm" value={value.stage} onChange={(e) => set('stage', e.target.value)}>
+            {catalog.validationStages.map((item) => <option key={item} value={item}>{labelWithCode(labels.validationStages, item)}</option>)}
+          </select>
+        </Field>
+        <Field label="顺序（阶段内）" className="col-2">
+          <input type="number" min={1} className="form-control form-control-sm" value={value.seq}
+            onChange={(e) => set('seq', Number(e.target.value))} />
+        </Field>
+        <Field label="校验模板" className="col-6">
+          <select className="form-select form-select-sm" value={value.validationKey}
+            onChange={(e) => set('validationKey', e.target.value)}>
+            {catalog.validationKeys.map((item) => <option key={item} value={item}>{labelWithCode(labels.validationKeys, item)}</option>)}
+          </select>
+        </Field>
+        <Field label="启用" className="col-12">
+          <div className="form-check">
+            <input id="rule-enabled" className="form-check-input" type="checkbox" checked={value.enabled}
+              onChange={(e) => set('enabled', e.target.checked)} />
+            <label className="form-check-label" htmlFor="rule-enabled">启用该规则</label>
+          </div>
+        </Field>
+      </FormSection>
+
+      <FormSection title="参数">
+        <Field label="参数（按校验模板 Schema 编辑）" className="col-12">
+          <StructuredParamsEditor
+            hint={`校验模板：${value.validationKey}${paramSchema && paramSchema.rootKeys.length > 0 ? `（根键 ${paramSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
+            rootKeys={paramSchema?.rootKeys ?? []}
+            json={value.params ?? null}
+            emptyHint="该校验模板不允许配置参数。"
+            onChange={(json) => set('params', json)}
+          />
+        </Field>
+      </FormSection>
+
+      <FormSection title="文案与追溯" defaultOpen={false} hint={value.message ? '已设失败文案' : undefined}>
+        <Field label="失败文案（可选）" className="col-6">
+          <input className="form-control form-control-sm" value={value.message ?? ''}
+            onChange={(e) => set('message', e.target.value || null)} />
+        </Field>
+        <Field label="溯源（可选）" className="col-6">
+          <input className="form-control form-control-sm" value={value.sourceRef ?? ''}
+            onChange={(e) => set('sourceRef', e.target.value || null)} />
+        </Field>
+        <Field label="说明（可选）" className="col-12">
+          <input className="form-control form-control-sm" value={value.remark ?? ''}
+            onChange={(e) => set('remark', e.target.value || null)} />
+        </Field>
+      </FormSection>
     </div>
   )
 }
@@ -1549,22 +1648,68 @@ function Field({
   )
 }
 
-function JsonArea({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+/**
+ * 表单分组：主流程默认展开，低频项收在折叠区（标题右侧写"已设 / 未设"，收起也知道里面有没有东西）。
+ * 用原生 `<details>` 而不是自绘折叠：键盘可达、无额外状态，且打印/复制的语义不变。
+ */
+function FormSection({
+  title,
+  hint,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  hint?: string
+  defaultOpen?: boolean
+  children: ReactNode
+}) {
   return (
-    <textarea
-      className="form-control form-control-sm font-monospace"
-      rows={3}
-      spellCheck={false}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder="{}"
-    />
+    <details className="erp-config-form-section" open={defaultOpen}>
+      <summary>
+        <span className="erp-config-form-section-title">{title}</span>
+        {hint ? <span className="erp-config-form-section-hint">{hint}</span> : null}
+      </summary>
+      <div className="row g-2">{children}</div>
+    </details>
   )
 }
 
-/** 表标识：描述(表名)；缺描述时退化为表名，表名为空显示占位符。 */
-function tableTitle(table: string | null, description?: string | null): string {
-  const tableId = (table ?? '').trim()
-  if (tableId === '') return '—'
-  return `${(description ?? '').trim() || tableId}(${tableId})`
+/** 结构化 JSON 输入：边输边校验（不合法就红边 + 一句原因），别等保存被服务端拒回来。 */
+function JsonArea({
+  value,
+  expect = 'object',
+  onChange,
+}: {
+  value: string
+  expect?: 'object' | 'array'
+  onChange: (value: string) => void
+}) {
+  const trimmed = value.trim()
+  const error = useMemo(() => {
+    if (trimmed === '') return null
+    try {
+      const parsed: unknown = JSON.parse(trimmed)
+      if (expect === 'array' && !Array.isArray(parsed)) return '这里需要 JSON 数组（[ … ]）。'
+      if (expect === 'object' && (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))) {
+        return '这里需要 JSON 对象（{ … }）。'
+      }
+      return null
+    } catch {
+      return 'JSON 语法不合法，保存会被服务端拒绝。'
+    }
+  }, [trimmed, expect])
+  return (
+    <>
+      <textarea
+        className={`form-control form-control-sm font-monospace${error ? ' is-invalid' : ''}`}
+        rows={3}
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={expect === 'array' ? '[]' : '{}'}
+        aria-invalid={error != null}
+      />
+      {error ? <div className="invalid-feedback d-block">{error}</div> : null}
+    </>
+  )
 }

@@ -4,6 +4,20 @@
    会把开关钉在"跟随系统偏好"，使 data-bs-theme 切到 dark 也不改变任何颜色。 */
 :root {
   font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+
+  /* 选中项标准（左栏 / 树 / 清单里"当前选中那一项"）：底色 + 文字 + 左缘色条。
+     底色用 color-mix 把品牌色混进**当前主题的卡面**，浅色与深色各自成立；
+     深色下 10% 的混比在深底上几乎看不见，故提高混比并提亮文字与色条。
+     页面与组件一律引用这三个 token，不要另写 primary-lt / 固定色——两套写法
+     必然在深色模式下分叉。表格行的选中（.erp-row-active）同用这一组底色。 */
+  --erp-active-bg: color-mix(in srgb, var(--tblr-primary) 10%, var(--tblr-bg-surface));
+  --erp-active-fg: var(--tblr-primary);
+  --erp-active-bar: var(--tblr-primary);
+}
+[data-bs-theme='dark'] {
+  --erp-active-bg: color-mix(in srgb, var(--tblr-primary) 26%, var(--tblr-bg-surface));
+  --erp-active-fg: color-mix(in srgb, var(--tblr-primary) 45%, #fff);
+  --erp-active-bar: color-mix(in srgb, var(--tblr-primary) 70%, #fff);
 }
 
 /* 弹窗正文字体统一 12px（标题/按钮等特殊元素除外） */
@@ -184,7 +198,12 @@ button, input, select { font: inherit; }
 .erp-menu-tree .nav-link-icon { flex: 0 0 18px; width: 18px; margin: 0 !important; }
 .erp-menu-tree .nav-link-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .erp-menu-tree .nav-link-title > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.erp-menu-tree .nav-link.active { color: var(--tblr-primary); font-weight: 650; }
+.erp-menu-tree .nav-link.active {
+  background: var(--erp-active-bg);
+  color: var(--erp-active-fg);
+  box-shadow: inset 2px 0 0 var(--erp-active-bar);
+  font-weight: 650;
+}
 .erp-menu-tree .erp-nav-group-toggle.group-active { color: var(--tblr-primary); }
 .erp-menu-tree .erp-nav-group { flex: 0 0 32px; height: 32px; min-height: 32px; max-height: 32px; }
 .erp-menu-tree .erp-nav-group-toggle { height: 32px; min-height: 32px; max-height: 32px; }
@@ -194,13 +213,23 @@ button, input, select { font: inherit; }
 /* 权限矩阵模块树：复用系统菜单/菜单管理左侧树的样式（虚线、圆点、缩进几何） */
 .erp-rights-tree .nav-link-title { align-items: center; }
 .erp-rights-tree .erp-nav-child { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.erp-rights-tree .erp-nav-child.active { color: var(--tblr-primary); font-weight: 650; background: var(--tblr-primary-lt); }
+.erp-rights-tree .erp-nav-child.active {
+  background: var(--erp-active-bg);
+  color: var(--erp-active-fg);
+  box-shadow: inset 2px 0 0 var(--erp-active-bar);
+  font-weight: 650;
+}
 .erp-rights-tree .erp-nav-child .rights-tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-rights-tree .erp-nav-group-toggle { cursor: pointer; }
 .erp-rights-tree .rights-tree-label { min-width: 0; }
 .erp-rights-tree .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: 3px; }
 .erp-rights-tree .erp-rights-leaf-root { height: 32px; min-height: 32px; padding: 0 11px; display: flex; align-items: center; gap: 8px; cursor: pointer; border-radius: 7px; }
-.erp-rights-tree .erp-rights-leaf-root.active { color: var(--tblr-primary); font-weight: 650; background: var(--tblr-primary-lt); }
+.erp-rights-tree .erp-rights-leaf-root.active {
+  background: var(--erp-active-bg);
+  color: var(--erp-active-fg);
+  box-shadow: inset 2px 0 0 var(--erp-active-bar);
+  font-weight: 650;
+}
 /* 组权限页（菜单管理式左右分栏）：树区填满左列、内部滚动，去掉弹窗场景的 460px 上限 */
 .erp-menu-admin .erp-rights-tree .rights-tree-scroll { max-height: none; flex: 1 1 auto; min-height: 0; }
 /* 拖拽排序/跨父移动 */
@@ -348,7 +377,11 @@ button, input, select { font: inherit; }
   font-size: 12px;
 }
 .erp-field-picker-option:hover { background: var(--tblr-primary-lt); }
-.erp-field-picker-option.picked { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.erp-field-picker-option.picked {
+  background: var(--erp-active-bg);
+  color: var(--erp-active-fg);
+  box-shadow: inset 2px 0 0 var(--erp-active-bar);
+}
 .erp-field-picker-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-field-picker-order {
   display: inline-grid;
@@ -456,7 +489,8 @@ button, input, select { font: inherit; }
 .erp-report-page,
 .erp-flow-page,
 .erp-workbench-page,
-.erp-import-page {
+.erp-import-page,
+.erp-config-workbench {
   min-height: 320px;
   overflow: hidden;
 }
@@ -480,6 +514,7 @@ button, input, select { font: inherit; }
 .erp-dashboard-started > .erp-list-card,
 .erp-catalog-card,
 .erp-import-page > .erp-list-card,
+.erp-config-workbench > .erp-list-card,
 .erp-form-page > .erp-form-card {
   flex: 1 1 auto;
   min-height: 0;
@@ -693,10 +728,213 @@ button, input, select { font: inherit; }
   .erp-bom-tree-page .erp-bom-tree { border-right: 0; border-bottom: 1px solid var(--tblr-border-color); }
 }
 
-/* 模块分组（230102）/ 自定义按钮（230103）/ 行为动作、校验规则（230104）三页共用的两栏外壳：
-   外层是页面根，白色圆角卡片与顶部命令栏都由 ErpListCard 提供（与全站列表页同一套外壳），
-   模块清单与配置区两栏走 card-body。卡片内边距取区块间距，与页面其余留白口径一致 */
-.erp-config-workbench .card-body { padding: var(--erp-block-gap); }
+/* 通用选择清单（ErpSelectionList）：左栏 / 树侧边"切换当前对象"的清单。
+   底色、选中态（token 见文件头「选中项标准」）、悬停、滚动与空态都在这里定义一次；
+   页面只用自身语义类补宽度与分隔线（如 .erp-config-rail / .erp-field-nav），
+   不要再复写 .erp-selection-item 的选中样式——那正是深浅色分叉的来源 */
+.erp-selection-list {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.erp-selection-list-header { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+/* 清单头里的搜索框（ErpSearchBox）按栏宽铺满：它的 flex-basis 是横向列表的 360px，
+   在纵向 flex 里会把高度顶成 360px，故这里改回 auto 并让高度走自身的 34px */
+.erp-selection-list-header .erp-list-global-search { flex: 0 0 auto; width: 100%; max-width: none; }
+.erp-selection-list-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.erp-selection-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.erp-selection-item:hover { background: var(--tblr-bg-surface-secondary); }
+.erp-selection-item.is-active {
+  background: var(--erp-active-bg);
+  color: var(--erp-active-fg);
+  box-shadow: inset 2px 0 0 var(--erp-active-bar);
+}
+.erp-selection-item:disabled { cursor: not-allowed; opacity: .55; }
+.erp-selection-item-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.erp-selection-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.erp-selection-item-label.is-monospace { font-family: var(--tblr-font-monospace); font-weight: 500; }
+.erp-selection-item-description {
+  font-size: 11px;
+  color: var(--tblr-secondary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.erp-selection-item.is-active .erp-selection-item-description { color: inherit; opacity: .75; }
+.erp-selection-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--tblr-secondary);
+  white-space: nowrap;
+}
+.erp-selection-item.is-active .erp-selection-item-meta { color: inherit; opacity: .85; }
+.erp-selection-list-empty { display: flex; flex-direction: column; gap: 8px; padding: 8px; font-size: 12px; color: var(--tblr-secondary); }
+
+/* 行为动作（230104）的两栏配置面：左栏常驻模块清单、右栏是选中模块的配置/全库总览。
+   整页与字段设置页同一套骨架——卡片体直接作为 grid（行轨道 minmax(0,1fr) 给出确定高度），
+   左右两栏各自内部滚动，页面级不出滚动条，也就不需要写死 72vh 那种魔数。
+   模块分组（230102）/ 自定义按钮（230103）走扁平列表，不套这具外壳。 */
+.erp-config-workbench > .erp-list-card > .card-body.erp-config-workbench-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 20rem minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+/* 左栏只负责分隔线；清单的底纹、选中态、滚动与空态由 ErpSelectionList 给。
+   计数分两列（动作 / 规则），总数看不出"配的是哪一类" */
+.erp-config-rail { border-right: 1px solid var(--tblr-border-color); }
+.erp-config-rail-filter { flex: 0 0 auto; margin: 0; }
+.erp-config-rail-counts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--tblr-secondary);
+  white-space: nowrap;
+}
+.erp-config-count.is-zero { opacity: .45; }
+.erp-config-dirty { width: 8px; height: 8px; border-radius: 50%; background: var(--tblr-warning); flex: 0 0 auto; }
+/* 右栏：页头状态条 + 页签 + 内容，自己滚动 */
+.erp-config-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+.erp-config-detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-config-detail-title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.erp-config-detail-title { font-size: 15px; font-weight: 600; }
+.erp-config-detail-id { font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); font-size: 12px; }
+.erp-config-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+}
+.erp-config-meta-sep { opacity: .6; }
+/* 选中模块的配置区：模块级工具条（视图切换 / 只读诊断）与内容 */
+.erp-config-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.erp-config-pane-body { display: flex; flex-direction: column; gap: 10px; }
+.erp-config-pane-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.erp-config-pane-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.erp-config-pane-tools:last-child { margin-left: auto; }
+/* 列表区块：标题 + 区块动作 + 选中后的上下文条 + 表格 */
+.erp-config-section { display: flex; flex-direction: column; gap: 6px; }
+.erp-config-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.erp-config-section-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* 选中一行后才出现的上下文工具条：编辑 / 复制 / 排序 / 删除贴着它作用的那一行，
+   而不是常驻一排灰按钮。虚线边框表示"这是临时出现的一层" */
+.erp-config-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  border: 1px dashed var(--tblr-border-color);
+  border-radius: 6px;
+  background: var(--tblr-bg-surface-secondary);
+  font-size: 12px;
+}
+.erp-config-context-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-config-context-actions { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.erp-config-hint { font-size: 12px; color: var(--tblr-secondary); }
+/* 全库总览：标题 + 视图切换 + 表格。总览表格自己滚（表头吸顶）——
+   全库动辄数百行，让右栏整体滚会把表头滚走，想对一行数据还得先滚回去看列名 */
+.erp-config-overview { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
+.erp-config-overview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex-wrap: wrap; flex: 0 0 auto; }
+.erp-config-overview > .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.erp-config-overview .erp-table-shell > .table-responsive { overflow: visible; }
+.erp-config-overview .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+/* 编辑弹窗的分组表单：主流程展开，低频项收进折叠区（标题右侧写"已设 / 未设"） */
+.erp-config-form { display: flex; flex-direction: column; gap: 10px; }
+.erp-config-form-section {
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  padding: 8px 10px;
+}
+.erp-config-form-section > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  font-size: 13px;
+}
+.erp-config-form-section > summary::-webkit-details-marker { display: none; }
+.erp-config-form-section > summary::before { content: '▸'; color: var(--tblr-secondary); font-size: 11px; }
+.erp-config-form-section[open] > summary::before { content: '▾'; }
+.erp-config-form-section[open] > summary { margin-bottom: 8px; }
+.erp-config-form-section-title { flex: 0 0 auto; }
+.erp-config-form-section-hint { font-weight: 400; font-size: 11px; color: var(--tblr-secondary); margin-left: auto; }
+/* 保存前的人话摘要：填进去了不等于意思对，这一条比任何装饰都更能减少误配 */
+.erp-config-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-top: 10px;
+  border-radius: 6px;
+  background: var(--tblr-bg-surface-secondary);
+  font-size: 12px;
+  color: var(--tblr-secondary);
+}
+.erp-config-preview-label { flex: 0 0 auto; font-weight: 600; color: var(--tblr-body-color); }
+@media (max-width: 991.98px) {
+  /* 窄屏两栏改为上下堆叠：不再限高，交由页面滚动 */
+  .erp-config-workbench { overflow: visible; min-height: 0; }
+  .erp-config-workbench > .erp-list-card { overflow: visible; }
+  .erp-config-workbench > .erp-list-card > .card-body.erp-config-workbench-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+  .erp-config-rail { max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--tblr-border-color); }
+  .erp-config-detail { overflow: visible; }
+}
 /* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 个人设置（/settings/profile）：区块之间的 10px 间距由页面骨架给（页根类已加进那一组），
@@ -1285,7 +1523,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .page-body .d-grid > * { min-width: 0; }
 .erp-tab-panel > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
-.erp-row-active td { background: var(--tblr-primary-lt) !important; }
+.erp-row-active td { background: var(--erp-active-bg) !important; }
 .erp-master-table-region { position: relative; min-height: 341px; max-height: calc(100vh - 266px - var(--erp-tabbar-height) - var(--erp-workspace-gap)); overflow-y: auto; overscroll-behavior: contain; transition: opacity .12s ease; }
 .erp-master-table-region.is-loading { pointer-events: none; opacity: .62; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }

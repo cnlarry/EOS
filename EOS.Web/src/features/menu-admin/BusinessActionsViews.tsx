@@ -67,6 +67,7 @@ export function ActionsView({
   onMoveUp,
   onMoveDown,
   canEdit,
+  canWrite,
 }: {
   catalog: BusinessConfigCatalog
   labels: LabelLookups
@@ -83,6 +84,8 @@ export function ActionsView({
   onMoveUp: () => void
   onMoveDown: () => void
   canEdit: boolean
+  /** 本页是否可写（只读时新建/复制/编辑/删除一律不可点，而不是点完被服务端拒）。 */
+  canWrite: boolean
 }) {
   const columns = useMemo<ColumnDef<BusinessAction, unknown>[]>(() => [
     { accessorKey: 'eventCode', header: '事件', cell: (info) => eventLabel(String(info.getValue()), catalog, labels) },
@@ -107,8 +110,12 @@ export function ActionsView({
     {
       accessorKey: 'enabled',
       header: '启用',
-      cell: (info) => (info.getValue() ? '是' : '否'),
-      meta: { minWidth: 60 },
+      cell: ({ row }) => (
+        <span className={`badge ${row.original.enabled ? 'text-bg-success' : 'text-bg-secondary'}`}>
+          {row.original.enabled ? '启用' : '停用'}
+        </span>
+      ),
+      meta: { minWidth: 80 },
     },
     {
       accessorKey: 'failMode',
@@ -128,34 +135,71 @@ export function ActionsView({
     { accessorKey: 'remark', header: '说明', cell: (info) => emptyText(String(info.getValue() ?? '')) },
   ], [catalog, labels, names, documentActionLookup])
 
+  const selected = actions.find((action) => actionKey(action) === selectedKey) ?? null
+  const selectedText = selected == null
+    ? ''
+    : selected.effectName?.trim()
+      || labelWithCode(selected.eventCode === MANUAL_EVENT ? documentActionLookup : labels.effectKeys, selected.effectKey)
+      || selected.effectKey
+
   return (
-    <section>
-      <div className="d-flex align-items-center justify-content-between mb-1">
+    <section className="erp-config-section">
+      <div className="erp-config-section-head">
         <h6 className="mb-0">业务动作（{actions.length}）</h6>
-        <div className="d-flex gap-1">
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={onCreate}>新增</Button>
-          <Button size="sm" icon={<IconCopy size={16} />} onClick={onClone}>从其它模块复制</Button>
-          <Button size="sm" icon={<IconArrowUp size={16} />} onClick={onMoveUp} disabled={!canEdit} aria-label="上移">上移</Button>
-          <Button size="sm" icon={<IconArrowDown size={16} />} onClick={onMoveDown} disabled={!canEdit} aria-label="下移">下移</Button>
-          <Button size="sm" icon={<IconCopy size={16} />} onClick={onDuplicate} disabled={!canEdit}>复制</Button>
-          <Button size="sm" icon={<IconEdit size={16} />} onClick={onEdit} disabled={!canEdit}>编辑</Button>
-          <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!canEdit}>删除</Button>
+        <div className="erp-config-section-actions">
+          <Button size="sm" icon={<IconPlus size={16} />} disabled={!canWrite} onClick={onCreate}>新增</Button>
+          <Button size="sm" variant="ghost" icon={<IconCopy size={16} />} disabled={!canWrite} onClick={onClone}>
+            从其它模块复制
+          </Button>
         </div>
       </div>
+
+      {selected ? (
+        <div className="erp-config-context-bar">
+          <span className="erp-config-context-label">
+            已选 <strong>{selectedText}</strong>
+            <span className="text-secondary ms-1">
+              {eventLabel(selected.eventCode, catalog, labels)} · 第 {selected.seq} 条
+            </span>
+          </span>
+          <div className="erp-config-context-actions">
+            <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} disabled={!canWrite || !canEdit} onClick={onEdit}>
+              编辑
+            </Button>
+            <Button size="sm" variant="ghost" icon={<IconCopy size={14} />} disabled={!canWrite || !canEdit} onClick={onDuplicate}>
+              复制
+            </Button>
+            <Button size="sm" variant="ghost" icon={<IconArrowUp size={14} />} disabled={!canWrite || !canEdit} onClick={onMoveUp}>
+              上移
+            </Button>
+            <Button size="sm" variant="ghost" icon={<IconArrowDown size={14} />} disabled={!canWrite || !canEdit} onClick={onMoveDown}>
+              下移
+            </Button>
+            <Button size="sm" variant="ghost" className="text-danger" icon={<IconTrash size={14} />} disabled={!canWrite || !canEdit} onClick={onDelete}>
+              删除
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="erp-config-hint">点一行选中，编辑 / 复制 / 排序 / 删除会出现在这一行上方；双击行可直接编辑。</div>
+      )}
+
       <ErpTable
         columns={columns}
         data={actions}
         getRowId={(row) => actionKey(row)}
         activeRowId={selectedKey ?? undefined}
         onRowClick={(row) => onSelect(actionKey(row))}
+        onRowDoubleClick={canWrite ? () => onEdit() : undefined}
         rowClickSingleSelect
         clientSideSorting
         copyable={false}
-        empty={<div className="p-3 text-secondary">尚未配置业务动作，点「新增」开始。</div>}
+        empty={(
+          <div className="p-3 text-secondary">
+            尚未配置业务动作，点「新增」开始；也可以从其它模块克隆一套。
+          </div>
+        )}
       />
-      <div className="text-secondary small mt-2">
-        自定义按钮（用户点击触发的那类）在「自定义按钮」页签里单独配。
-      </div>
     </section>
   )
 }
@@ -179,6 +223,7 @@ export function OpsView({
   onEditOp,
   onDeleteOp,
   canEditOp,
+  canWrite,
 }: {
   action: BusinessAction
   ops: BusinessActionOp[]
@@ -197,12 +242,13 @@ export function OpsView({
   onEditOp: () => void
   onDeleteOp: () => void
   canEditOp: boolean
+  canWrite: boolean
 }) {
   return (
-    <section>
-      <div className="d-flex align-items-center justify-content-between mb-1 flex-wrap gap-2">
+    <section className="erp-config-section">
+      <div className="erp-config-section-head">
         <h6 className="mb-0">加工单（{ops.length} 步）</h6>
-        <div className="d-flex gap-1 align-items-center flex-wrap">
+        <div className="erp-config-section-actions">
           <div className="btn-group btn-group-sm" role="group" aria-label="加工单视图切换">
             <button
               type="button"
@@ -219,10 +265,16 @@ export function OpsView({
               字段表
             </button>
           </div>
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={onCreateOp}>新增步骤</Button>
-          <Button size="sm" icon={<IconCopy size={16} />} onClick={onDuplicateOp} disabled={!canEditOp}>复制步骤</Button>
-          <Button size="sm" icon={<IconEdit size={16} />} onClick={onEditOp} disabled={!canEditOp}>编辑</Button>
-          <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={onDeleteOp} disabled={!canEditOp}>删除</Button>
+          <Button size="sm" icon={<IconPlus size={16} />} disabled={!canWrite} onClick={onCreateOp}>新增步骤</Button>
+          {canEditOp ? (
+            <>
+              <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} disabled={!canWrite} onClick={onEditOp}>编辑步骤</Button>
+              <Button size="sm" variant="ghost" icon={<IconCopy size={14} />} disabled={!canWrite} onClick={onDuplicateOp}>复制步骤</Button>
+              <Button size="sm" variant="ghost" className="text-danger" icon={<IconTrash size={14} />} disabled={!canWrite} onClick={onDeleteOp}>
+                删除步骤
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
       {opView === 'sheet' ? (
@@ -325,6 +377,7 @@ export function RulesView({
   onCreate,
   onEdit,
   onDelete,
+  canWrite,
 }: {
   labels: LabelLookups
   rules: ValidationRule[]
@@ -333,6 +386,7 @@ export function RulesView({
   onCreate: () => void
   onEdit: () => void
   onDelete: () => void
+  canWrite: boolean
 }) {
   const columns = useMemo<ColumnDef<ValidationRule, unknown>[]>(() => [
     { accessorKey: 'stage', header: '阶段', cell: (info) => labelWithCode(labels.validationStages, String(info.getValue())) },
@@ -345,33 +399,62 @@ export function RulesView({
     {
       accessorKey: 'enabled',
       header: '启用',
-      cell: (info) => (info.getValue() ? '是' : '否'),
-      meta: { minWidth: 60 },
+      cell: ({ row }) => (
+        <span className={`badge ${row.original.enabled ? 'text-bg-success' : 'text-bg-secondary'}`}>
+          {row.original.enabled ? '启用' : '停用'}
+        </span>
+      ),
+      meta: { minWidth: 80 },
     },
     { accessorKey: 'message', header: '失败文案', cell: (info) => emptyText(String(info.getValue() ?? '')) },
     { accessorKey: 'sourceRef', header: '溯源', cell: (info) => emptyText(String(info.getValue() ?? '')) },
   ], [labels])
 
+  const selected = rules.find((rule) => ruleKey(rule) === selectedRuleId) ?? null
+
   return (
-    <section>
-      <div className="d-flex align-items-center justify-content-between mb-1">
+    <section className="erp-config-section">
+      <div className="erp-config-section-head">
         <h6 className="mb-0">校验规则（{rules.length}）</h6>
-        <div className="d-flex gap-1">
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={onCreate}>新增规则</Button>
-          <Button size="sm" icon={<IconEdit size={16} />} onClick={onEdit} disabled={!selectedRuleId}>编辑</Button>
-          <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!selectedRuleId}>删除</Button>
+        <div className="erp-config-section-actions">
+          <Button size="sm" icon={<IconPlus size={16} />} disabled={!canWrite} onClick={onCreate}>新增规则</Button>
         </div>
       </div>
+
+      {selected ? (
+        <div className="erp-config-context-bar">
+          <span className="erp-config-context-label">
+            已选 <strong>{labelWithCode(labels.validationKeys, selected.validationKey)}</strong>
+            <span className="text-secondary ms-1">
+              {labelWithCode(labels.validationStages, selected.stage)} · 第 {selected.seq} 条
+            </span>
+          </span>
+          <div className="erp-config-context-actions">
+            <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} disabled={!canWrite} onClick={onEdit}>编辑</Button>
+            <Button size="sm" variant="ghost" className="text-danger" icon={<IconTrash size={14} />} disabled={!canWrite} onClick={onDelete}>
+              删除
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="erp-config-hint">点一行选中，编辑 / 删除会出现在这一行上方；双击行可直接编辑。</div>
+      )}
+
       <ErpTable
         columns={columns}
         data={rules}
         getRowId={(row) => ruleKey(row)}
         activeRowId={selectedRuleId ?? undefined}
         onRowClick={(row) => onSelect(ruleKey(row))}
+        onRowDoubleClick={canWrite ? () => onEdit() : undefined}
         rowClickSingleSelect
         clientSideSorting
         copyable={false}
-        empty={<div className="p-3 text-secondary">尚未配置模块校验规则（核心默认校验为代码内建，不在此表）。</div>}
+        empty={(
+          <div className="p-3 text-secondary">
+            尚未配置模块校验规则（核心默认校验为代码内建，不在此表），点「新增规则」加一条。
+          </div>
+        )}
       />
     </section>
   )
@@ -391,6 +474,7 @@ export function ManualButtonsView({
   onMoveUp,
   onMoveDown,
   canEdit,
+  canWrite,
 }: {
   actions: BusinessAction[]
   documentActions: DocumentActionCatalogEntry[]
@@ -404,6 +488,7 @@ export function ManualButtonsView({
   onMoveUp: () => void
   onMoveDown: () => void
   canEdit: boolean
+  canWrite: boolean
 }) {
   const entryByKey = useMemo(
     () => new Map(documentActions.map((item) => [item.key, item])),
@@ -450,13 +535,19 @@ export function ManualButtonsView({
       accessorKey: 'confirmTag',
       header: '需确认',
       meta: { minWidth: 80 },
-      cell: (info) => (info.getValue() ? '是' : '否'),
+      cell: ({ row }) => (row.original.confirmTag
+        ? <span className="badge text-bg-info">是</span>
+        : <span className="text-secondary">否</span>),
     },
     {
       accessorKey: 'enabled',
       header: '启用',
-      meta: { minWidth: 60 },
-      cell: (info) => (info.getValue() ? '是' : '否'),
+      meta: { minWidth: 80 },
+      cell: ({ row }) => (
+        <span className={`badge ${row.original.enabled ? 'text-bg-success' : 'text-bg-secondary'}`}>
+          {row.original.enabled ? '是' : '否'}
+        </span>
+      ),
     },
     {
       id: 'authorization',
@@ -479,24 +570,24 @@ export function ManualButtonsView({
   ], [entryByKey, authorizationByKey])
 
   return (
-    <section>
-      <div className="d-flex align-items-center justify-content-between mb-1">
+    <section className="erp-config-section">
+      <div className="erp-config-section-head">
         <h6 className="mb-0">自定义按钮（{actions.length}）</h6>
-        <div className="d-flex gap-1">
+        <div className="erp-config-section-actions">
           <Button
             size="sm"
             icon={<IconPlus size={16} />}
             onClick={onCreate}
-            disabled={documentActions.length === 0}
+            disabled={!canWrite || documentActions.length === 0}
             title={documentActions.length === 0 ? '操作注册表里没有可配置的按钮键' : undefined}
           >
             新增
           </Button>
-          <Button size="sm" icon={<IconArrowUp size={16} />} onClick={onMoveUp} disabled={!canEdit} aria-label="上移">上移</Button>
-          <Button size="sm" icon={<IconArrowDown size={16} />} onClick={onMoveDown} disabled={!canEdit} aria-label="下移">下移</Button>
-          <Button size="sm" icon={<IconCopy size={16} />} onClick={onDuplicate} disabled={!canEdit}>复制</Button>
-          <Button size="sm" icon={<IconEdit size={16} />} onClick={onEdit} disabled={!canEdit}>编辑</Button>
-          <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!canEdit}>删除</Button>
+          <Button size="sm" variant="ghost" icon={<IconArrowUp size={16} />} onClick={onMoveUp} disabled={!canWrite || !canEdit} aria-label="上移">上移</Button>
+          <Button size="sm" variant="ghost" icon={<IconArrowDown size={16} />} onClick={onMoveDown} disabled={!canWrite || !canEdit} aria-label="下移">下移</Button>
+          <Button size="sm" variant="ghost" icon={<IconCopy size={16} />} onClick={onDuplicate} disabled={!canWrite || !canEdit}>复制</Button>
+          <Button size="sm" variant="ghost" icon={<IconEdit size={16} />} onClick={onEdit} disabled={!canWrite || !canEdit}>编辑</Button>
+          <Button size="sm" variant="ghost" className="text-danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!canWrite || !canEdit}>删除</Button>
         </div>
       </div>
       <ErpTable
