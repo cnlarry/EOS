@@ -565,14 +565,16 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   if (loadError) {
     return (
       <div className="erp-designer">
-        <div className="erp-designer-error">{loadError}</div>
-        <div className="erp-designer-toolbar">
-          <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void load()}>
-            重试
-          </Button>
-          <Button size="sm" className="erp-command-btn" icon={<IconArrowLeft size={16} />} onClick={exit}>
-            返回表单
-          </Button>
+        <div className="erp-designer-shell">
+          <div className="erp-designer-toolbar">
+            <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void load()}>
+              重试
+            </Button>
+            <Button size="sm" className="erp-command-btn" icon={<IconArrowLeft size={16} />} onClick={exit}>
+              返回表单
+            </Button>
+          </div>
+          <div className="erp-designer-error">{loadError}</div>
         </div>
       </div>
     )
@@ -594,6 +596,9 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
 
   return (
     <div className="erp-designer">
+      {/* 工具栏与画布收进同一张白卡：与整页统一表单同一层次——卡内命令栏、底部分割线、内容在下。
+          弹窗（表单呈现 / 选择器）是 position: fixed，不受这张卡的 overflow 裁剪。 */}
+      <div className="erp-designer-shell">
       <div className="erp-designer-toolbar">
         {/* 返回是工具条首位（浏览类页面的统一位置）：更靠前于破坏性动作，避免误触保存/重置 */}
         <ErpCommandBar
@@ -960,6 +965,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           {dragging ? <div className="erp-designer-drag-card">{draggedLabel}</div> : null}
         </DragOverlay>
       </DndContext>
+      </div>
 
       {/* 主表加字段走系统统一选择器：候选 = 本模块该表的可排字段 − 当前草稿里显示中的字段
           （排除项由 placedKeysForPicker 按草稿给出，已移出表单的字段因此回到候选里） */}

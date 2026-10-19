@@ -16,15 +16,36 @@
   color: var(--tblr-danger);
 }
 
+/* 工具栏与画布同属一张白卡：工具栏是卡内命令栏（底部分割线），画布在卡内。
+   与整页统一表单（.erp-form-page-full）同一层次，设计态与运行态看起来是一回事 */
+.erp-designer-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .erp-designer-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 6px 10px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
   background: var(--tblr-bg-surface);
-  border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--tblr-border-color);
+  border-radius: 0;
+}
+
+/* 状态/套用来源等工具栏下方的临时条：与卡内边距对齐，不贴边 */
+.erp-designer-shell > .erp-designer-status,
+.erp-designer-shell > .erp-designer-templates {
+  margin: 10px 12px 0;
 }
 
 /* 命令栏按钮间距与区块留白同口径（10px）；覆盖 ErpCommandBar 自带的 gap-2 工具类 */
@@ -142,6 +163,7 @@
   align-items: stretch;
   min-height: 0;
   flex: 1;
+  padding: 10px 12px 12px;
 }
 
 .erp-designer-main {
@@ -222,6 +244,15 @@
 .erp-designer-tab-input {
   width: 90px;
   font-size: 12px;
+}
+
+/* 卡内画布：主表单网格不再自带边框/圆角（外层卡已给），页签行补回底线。
+   active 页签用白底盖住这条线，与内容连成一体——与运行态整页表单同一套。 */
+.erp-designer-shell .erp-designer-tabs { border-bottom: 1px solid var(--tblr-border-color); }
+.erp-designer-shell .erp-designer-canvas:not(.is-dialog) > .erp-form-grid {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 /* 网格盒与页签贴合：active 页签底部与盒子上边框连成一体（与运行态同一观感） */

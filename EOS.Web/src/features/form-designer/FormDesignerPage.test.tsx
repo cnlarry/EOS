@@ -125,8 +125,13 @@ describe('FormDesignerPage', () => {
   })
 
   it('加载后渲染画布与明细表头，并给出添加字段/字段管理入口', async () => {
-    renderPage()
+    const { container } = renderPage()
     expect(await screen.findByText('ORDER_NO')).toBeInTheDocument()
+    // 工具栏是设计器白卡的命令栏（与整页统一表单同一层次），画布在同一张卡里
+    const shell = container.querySelector('.erp-designer-shell')
+    expect(shell).not.toBeNull()
+    expect(shell!.querySelector(':scope > .erp-designer-toolbar')).not.toBeNull()
+    expect(shell!.querySelector('.erp-designer-body')).not.toBeNull()
     // 明细列以真实表头横铺（而不是竖排列表）
     expect(screen.getByText(/明细列（COP_ORDER_D）/)).toBeInTheDocument()
     // 表头显示字段名（与运行态明细网格一致），而不是字段代号
