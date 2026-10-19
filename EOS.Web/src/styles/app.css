@@ -1255,16 +1255,30 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   grid-template-rows: minmax(0, 1fr);
 }
 .erp-field-editor-page .card-body > .row.g-0 { display: contents; }
-.erp-field-editor-page .erp-field-nav { width: 260px; min-width: 0; min-height: 0; }
-.erp-field-editor-page .erp-field-nav > .overflow-auto { min-height: 0; }
+/* 字段导航复用 ErpSelectionList：这里只给宽度与分隔线，条目外观（含选中态）不在此复写 */
+.erp-field-editor-page .erp-field-nav {
+  width: 260px;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--tblr-border-color);
+}
+/* 页内标题：描述在前、ID 在后；描述缺失时只看得到 ID，不会出现空白主标题 */
+.erp-field-editor-context { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.erp-field-editor-context-title {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.erp-field-editor-context-code {
+  font-family: var(--tblr-font-monospace);
+  font-size: 11px;
+  color: var(--tblr-secondary);
+  white-space: nowrap;
+}
 .erp-field-editor-page .card-body > .row.g-0 > .col { min-width: 0; min-height: 0; overflow-y: auto; }
-/* 字段导航项：底色由本规则给透明（不用 bg-transparent 工具类——它是 !important，
-   会盖掉 hover 底色）；当前项用 bg-primary-lt，hover 时以亮度微调给出反馈。
-   左右 10px 用 padding 而非 margin：字段项整行可点，hover 底色需铺满整行到左栏边框 */
-.erp-field-editor-page .erp-field-nav-header { padding: 8px 10px; }
-.erp-field-editor-page .erp-field-nav-item { cursor: pointer; background-color: transparent; padding-right: 10px; padding-left: 10px; }
-.erp-field-editor-page .erp-field-nav-item:hover { background-color: var(--tblr-gray-100, rgba(15, 23, 42, 0.06)); }
-.erp-field-editor-page .erp-field-nav-item.bg-primary-lt:hover { filter: brightness(0.96); }
 /* 右栏内边距 10px：选项卡面板自带边框，与卡片边框之间保留 10px */
 .erp-field-editor-page .erp-field-editor-body { padding: 10px; }
 @media (max-width: 767.98px) {

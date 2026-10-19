@@ -2,8 +2,10 @@ import { IconArrowLeft, IconDeviceFloppy, IconPlus, IconX } from '@tabler/icons-
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { LoadingState } from '../../components/common/AsyncState'
+import { ErrorState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
+import { ErpSearchBox } from '../../components/common/ErpSearchBox'
+import { ErpSelectionList } from '../../components/common/ErpSelectionList'
 import { Button } from '../../components/ui/Button'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { useTabDirty } from '../../components/layout/workspaceDirty'
@@ -112,8 +114,22 @@ export function FieldEditorRoute() {
   const gotoField = (key: string) => {
     navigate(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(key)}${moduleId ? `?moduleId=${moduleId}` : ''}`)
   }
+  // 字段键大小写不敏感：路由里可能是小写，清单里是库内原样的大小写。
+  const activeFieldId = useMemo(() => {
+    const wanted = fieldId.toLowerCase()
+    return (fieldsQuery.data ?? []).find(item => item.fieldId.toLowerCase() === wanted)?.fieldId ?? fieldId
+  }, [fieldId, fieldsQuery.data])
   const actionRef = useRef<{ save: () => void; saveAsync: () => Promise<void> } | null>(null)
   const [saveState, setSaveState] = useState({ canSave: false, saving: false, dirty: false })
+  const [fieldKeyword, setFieldKeyword] = useState('')
+
+  // 左栏只导同表字段：按字段名与中文名过滤，切换字段时不重置关键字（连续找同前缀字段更顺）。
+  const listedFields = useMemo(() => {
+    const needle = fieldKeyword.trim().toLowerCase()
+    const items = fieldsQuery.data ?? []
+    if (needle === '') return items
+    return items.filter(item => `${item.fieldId} ${item.description}`.toLowerCase().includes(needle))
+  }, [fieldsQuery.data, fieldKeyword])
 
   // 未保存改动登记给外壳：关闭标签、离开当前标签时的确认与保存由外壳统一处理
   useTabDirty(saveState.dirty, {
@@ -153,18 +169,38 @@ export function FieldEditorRoute() {
       apiClient.get<TableColumn[]>(`/admin/tables/${encodeURIComponent(targetTable)}/columns`),
   }), [tableId, fieldId, copyFrom, isNew])
 
+  // 页内标题：人话在前（表描述 · 字段描述），ID 在后（等宽次色）。
+  // 描述缺失时回落到 ID——两种信息都不丢，读的人不必去猜某个英文标识是什么。
+  const tableLabel = (tableDescription ?? '').trim() || tableId
+  const fieldDescriptionOf = (id: string | null) => {
+    if (!id) return ''
+    return (fieldsQuery.data ?? [])
+      .find(item => item.fieldId.toLowerCase() === id.toLowerCase())
+      ?.description?.trim() ?? ''
+  }
+  const currentFieldLabel = fieldDescriptionOf(fieldId) || fieldId
+  const copySourceLabel = copyFrom ? (fieldDescriptionOf(copyFrom) || copyFrom) : ''
+
   return (
     <div className="erp-field-editor-page">
       <ErpListCard
         ariaLabel="字段设置工具栏"
         search={(
-          <span className="fw-semibold small font-monospace">
-            {isNew ? (copyFrom ? `复制字段：${copyFrom}` : `新增字段（${tableDescription || tableId}）`) : `${tableId}.${fieldId}`}
-          </span>
+          <div className="erp-field-editor-context">
+            <span className="erp-field-editor-context-title">
+              {isNew
+                ? (copyFrom ? `复制字段 · ${copySourceLabel} · ${tableLabel}` : `新增字段 · ${tableLabel}`)
+                : `${tableLabel} · ${currentFieldLabel}`}
+            </span>
+            <span className="erp-field-editor-context-code">
+              {isNew ? (copyFrom ? `${copyFrom} → ${tableId}` : tableId) : `${tableId}.${fieldId}`}
+            </span>
+          </div>
         )}
         actions={(
           <>
             <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={() => navigate(backTo)}>返回</Button>
+            <Button size="sm" variant="secondary" icon={<IconPlus size={16} />} onClick={() => gotoField('new')}>新增</Button>
             <Button size="sm" variant="secondary" icon={<IconX size={16} />} onClick={() => navigate(backTo)}>取消</Button>
             <Button size="sm" variant="primary" icon={<IconDeviceFloppy size={16} />} loading={saveState.saving} disabled={!saveState.canSave} onClick={() => actionRef.current?.save()}>保存</Button>
           </>
@@ -172,26 +208,37 @@ export function FieldEditorRoute() {
       >
           <div className="card-body p-0">
             <div className="row g-0">
-              <div className="col-auto border-end d-flex flex-column erp-field-nav">
-                <div className="erp-field-nav-header border-bottom d-flex justify-content-between align-items-center">
-                  <strong className="small">字段列表（{fieldsQuery.data?.length ?? '…'}）</strong>
-                  <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => gotoField('new')}>新增</Button>
-                </div>
-                <div className="flex-grow-1 overflow-auto">
-                  {fieldsQuery.isPending && <LoadingState label="加载字段…" />}
-                  {fieldsQuery.data?.map(item => (
-                    <button
-                      key={item.fieldId}
-                      type="button"
-                      className={`erp-field-nav-item d-block w-100 text-start py-1 border-0 ${item.fieldId.toLowerCase() === fieldId.toLowerCase() ? 'bg-primary-lt' : ''}`}
-                      onClick={() => gotoField(item.fieldId)}
-                    >
-                      <div className="small fw-semibold font-monospace text-truncate">{item.fieldId}</div>
-                      <div className="text-secondary small text-truncate">{item.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <ErpSelectionList
+                ariaLabel="字段列表"
+                className="erp-field-nav"
+                header={(
+                  <ErpSearchBox
+                    value={fieldKeyword}
+                    onChange={setFieldKeyword}
+                    placeholder="搜索字段"
+                    ariaLabel="搜索字段"
+                    shortcut={false}
+                  />
+                )}
+                loading={fieldsQuery.isPending}
+                loadingLabel="加载字段…"
+                error={fieldsQuery.isError
+                  ? <div className="p-2"><ErrorState message="加载字段失败。" onRetry={() => void fieldsQuery.refetch()} /></div>
+                  : null}
+                empty={(
+                  <div className="erp-selection-list-empty">
+                    {fieldKeyword.trim() === '' ? '这张表还没有字段。' : '没有匹配的字段。'}
+                  </div>
+                )}
+                items={listedFields.map(item => ({
+                  id: item.fieldId,
+                  label: item.fieldId,
+                  monospace: true,
+                  description: item.description,
+                }))}
+                activeId={activeFieldId}
+                onSelect={gotoField}
+              />
               <div className="col">
                 <div className="erp-field-editor-body">
                   <FieldEditorForm

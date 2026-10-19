@@ -102,6 +102,11 @@ describe('FieldEditorRoute', () => {
   it('渲染全页两栏与选项卡，加载字段元数据与变更历史', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('PRODUCT_EDITION.PRO_NO')).toBeInTheDocument())
+    // 页内标题：描述在前（表 · 字段），ID 在后；只给 ID 时用户认不出是哪个表
+    await waitFor(() => {
+      expect(document.querySelector('.erp-field-editor-context')?.textContent)
+        .toContain('产品版次 · 产品编号')
+    })
     // 左栏字段导航
     await waitFor(() => expect(screen.getAllByText('PRO_NO').length).toBeGreaterThan(0))
     expect(screen.getAllByText('QTY').length).toBeGreaterThan(0)
@@ -120,6 +125,20 @@ describe('FieldEditorRoute', () => {
     expect(screen.getByText('原标题')).toBeInTheDocument()
     // 操作人显示姓名（SYSDN 解析）
     expect(screen.getByText(/管理员/)).toBeInTheDocument()
+  })
+
+  it('左栏搜索按字段名与中文名过滤同表字段', async () => {
+    renderPage()
+    const proNo = await screen.findByRole('button', { name: /PRO_NO/ })
+    expect(proNo).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索字段' }), { target: { value: '数量' } })
+    await waitFor(() => expect(screen.queryByRole('button', { name: /PRO_NO/ })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /QTY/ })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索字段' }), { target: { value: 'QTY' } })
+    await waitFor(() => expect(screen.queryByRole('button', { name: /PRO_NO/ })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /QTY/ })).toBeInTheDocument()
   })
 
   it('标签名固定为「字段设置」，页内标题为「表.字段」跟随选中字段', async () => {
@@ -179,7 +198,7 @@ describe('FieldEditorRoute', () => {
 
   it('新增态显示空表单且保存调用 POST 字段维护接口', async () => {
     renderPage('/admin/fields/PRODUCT_EDITION/new')
-    await waitFor(() => expect(screen.getByText('新增字段（产品版次）')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('新增字段 · 产品版次')).toBeInTheDocument())
     const keyInput = screen.getAllByText('字段名称')[0].closest('.col-md-4')!.querySelector('input') as HTMLInputElement
     fireEvent.change(keyInput, { target: { value: 'NEW_CODE' } })
     const labelInput = screen.getAllByText('字段标题')[0].closest('.col-md-4')!.querySelector('input') as HTMLInputElement
