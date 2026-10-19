@@ -28,6 +28,10 @@
  * 上面两条 DETAIL_GATE_* 的后果是同一条：**该模块的明细行加不出来**——「新增一行」要求门禁字段先有值，
  * 而这个值用户无论如何都给不出。★ = 直接废掉一个界面功能，优先级最高。
  *
+ * 「无路可填」包含一种不显眼的形态：选择器打得开、行点得下去、确认按钮也可用，但确认后
+ * **本字段的值没变**——数据源的回填目标（RETURN_ITEMS）只映射了同组伴生列、不含本字段。
+ * 界面上不报任何错，用户只会反复选。故补门禁时以「值真的回来了」为判据，不以「选择器交互成功」为准。
+ *
  * 另记 info 级观察（不作为失败）：STATIC_EMPTY（只读静态字段进页面为空）、
  * REQUIRED_READONLY_EMPTY（只读必填列进页面为空——联动列的设计行为，先观察再定）、
  * DEFAULT_MISMATCH（默认值落上了但与元数据字面不同，多为展示格式差异）。
@@ -346,6 +350,34 @@ async function pickViaChooser(page, key) {
   return false
 }
 
+/** 读字段控件当前值：与 fillGateFields 用同一套 DOM 兜底选择器。 */
+async function readFieldValue(page, key) {
+  return page.evaluate(key => {
+    const escaped = window.CSS.escape(key)
+    const box = document.querySelector(`.erp-form-card .erp-form-control[data-field-key="${escaped}"]`)
+      ?? document.querySelector(`.erp-form-card [data-field-key="${escaped}"] .erp-form-control`)
+    const input = box?.querySelector('input:not([type=checkbox]), select, textarea')
+    return input ? String(input.value ?? '') : null
+  }, key)
+}
+
+/**
+ * 点选择器挑一行，并断言**本字段**因此拿到了值。
+ *
+ * 「选择器弹得出来、行也点得下去」不等于「值回填了」：数据源的回填目标（`RETURN_ITEMS`）
+ * 若只映射同组伴生列、不含本字段，选完确认之后字段仍是空的，而这一点从界面上看不出任何错——
+ * 用户只是反复选、值反复不出现。明细门禁字段落在这类配置上时，明细行永远加不出来。
+ * 故这里以「值真的变了」为唯一判据，而不是「选择器交互成功」。
+ */
+async function pickViaChooserForField(page, key) {
+  const before = await readFieldValue(page, key)
+  const picked = await pickViaChooser(page, key)
+  if (!picked) return { picked: false, changed: false }
+  await page.waitForTimeout(250)
+  const after = await readFieldValue(page, key)
+  return { picked: true, changed: String(after ?? '') !== '' && after !== before }
+}
+
 const injectMap = {
   'hide-field': `(() => {
     const node = [...document.querySelectorAll('.erp-form-card .erp-form-field[data-field-key]')]
@@ -560,6 +592,8 @@ async function sweepModule(page, moduleId, errors, { inject }) {
     } else {
       let headers = await page.evaluate(headerScope)
       let blocked = ''
+      // 门禁已定性为硬缺陷时，"列头没检查到"只是同一事实的后果，不重复记一条观察项
+      let gateReported = 0
       if (headers.length === 0) {
         // 「新增一行」要求 detailNoFields（单别/单号/客户/币别那一组主表字段）先有值，而这些字段
         // 散布在多个页签上。逐页签两段补齐：先往普通控件里写探针值，再对"只读联动列"
@@ -570,8 +604,14 @@ async function sweepModule(page, moduleId, errors, { inject }) {
         const reasons = new Map()
         const everFound = new Set()
         const chooserUsable = new Set()
+        /** 经选择器真拿到值的键：选择器「打得开」与「值回来了」是两件事，只有后者算可填。 */
+        const returned = new Set()
         const returnSources = collectReturnSources(form.masterFields)
-        const note = (key, reason) => { if (!reasons.has(key)) reasons.set(key, reason) } // 保留首次的成因，后续页签的"本页签无此控件"不该盖掉它
+        // 成因取"最有信息量"的那一条：首次取样常落在还没渲染的页签上（"本页签无此控件"），
+        // 那是时序噪声，不该盖掉后面真正卡住的原因；反过来它自己也不该被别的页签盖掉。
+        const note = (key, reason) => {
+          if (!reasons.has(key) || reasons.get(key) === '本页签无此控件') reasons.set(key, reason)
+        }
         const activateTab = async index => {
           if (tabs.length === 0) return
           const button = page.locator('.erp-form-tabs button.nav-link').nth(index)
@@ -592,10 +632,14 @@ async function sweepModule(page, moduleId, errors, { inject }) {
               else note(item.key, item.reason)
             }
             for (const key of [...pending]) {
-              if (await pickViaChooser(page, key)) {
-                reasons.delete(key)
-                await page.waitForTimeout(200)
+              const picked = await pickViaChooserForField(page, key)
+              if (picked.picked && picked.changed) {
+                returned.add(key); pending.delete(key); reasons.delete(key)
+              } else if (picked.picked) {
+                // 选择器里有行、确认也点得下去，但本字段的值没变：数据源没有把本字段列进回填目标
+                note(key, '选择器选中确认后未回填本字段')
               }
+              await page.waitForTimeout(150)
             }
             // 只读联动列自己没有数据源，值只能由别的字段带出：顺着 RETURN_ITEMS 找到那个来源字段，
             // 点开它的选择器挑一行（这正是用户平时的路径——先选币别/厂商，汇率自己出来）。
@@ -650,10 +694,16 @@ async function sweepModule(page, moduleId, errors, { inject }) {
             const masterField = (form.masterFields ?? []).find(item => item.key === key)
             if (!masterField) {
               report(moduleId, 'DETAIL_GATE_NOT_A_FIELD', `明细门禁（DETAIL_NO_FIELDS）点名了 ${key}，但该字段不在本模块的主表录入面上，界面既不显示也不校验它 —— 门禁永远过不去，明细行加不出来`, 'fail', { field: key })
+              gateReported++
             } else if (!everFound.has(key)) {
               report(moduleId, 'DETAIL_GATE_UNFILLABLE', `明细门禁字段 ${key}（${masterField.label}）：所有页签都没有渲染它的控件，而模块要求填了它才能加明细行 —— 明细行加不出来`, 'fail', { field: key })
+              gateReported++
             } else if (!chooserUsable.has(key) && !returnSources.has(key.toUpperCase())) {
               report(moduleId, 'DETAIL_GATE_UNFILLABLE', `明细门禁字段 ${key}（${masterField.label}）：只读、无可用数据源、也不在任何选择器的回填目标里，用户无路可填 —— 明细行加不出来`, 'fail', { field: key })
+              gateReported++
+            } else if (chooserUsable.has(key) && !returned.has(key) && !returnSources.has(key.toUpperCase())) {
+              report(moduleId, 'DETAIL_GATE_UNFILLABLE', `明细门禁字段 ${key}（${masterField.label}）：选择器可以打开、行也能选中，但确认后该字段仍为空 —— 数据源的回填目标（RETURN_ITEMS）没有包含本字段，用户选完拿不到值 —— 明细行加不出来`, 'fail', { field: key })
+              gateReported++
             }
           }
           const alert = await page.locator('.erp-form-page .alert-danger').first().innerText().catch(() => '')
@@ -666,7 +716,9 @@ async function sweepModule(page, moduleId, errors, { inject }) {
         }
       }
       if (headers.length === 0) {
-        report(moduleId, 'DETAIL_HEADER_UNCHECKED', `明细子表处于空表态（未渲染表头），${detailVisible.length} 个明细字段的列头覆盖本次未检查${blocked ? `；阻塞原因：${blocked}` : ''}`, 'info', {})
+        if (gateReported === 0) {
+          report(moduleId, 'DETAIL_HEADER_UNCHECKED', `明细子表处于空表态（未渲染表头），${detailVisible.length} 个明细字段的列头覆盖本次未检查${blocked ? `；阻塞原因：${blocked}` : ''}`, 'info', {})
+        }
       } else {
         // 标签里常有用于对齐的连续空格（如「库    别」），HTML 渲染会折叠成单个空格，比对前两侧都归一
         const flat = text => String(text ?? '').replace(/\s+/g, '')

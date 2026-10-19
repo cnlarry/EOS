@@ -204,8 +204,11 @@ $cases = @(
         Mutation = "UPDATE dbo.MODULES SET MASTER_TABLE = N'V_PUR_DUE_M' WHERE M_IDX = @new;"
     },
     @{
-        Name = 'C4'; Desc = '承载页地址不合法'
-        Mutation = "UPDATE dbo.MODULES SET M_URL = N'/no-such-page' WHERE M_IDX = @new;"
+        # 注意：`/no-such-page` 这类地址会让节点形态变成 CUSTOMPAGE（见 ModuleRouteValidator.ResolveKind），
+        # 发布在进入校验器**之前**就被"非工作台模块不发布"挡掉——那测的是另一条守卫，不是 route_valid。
+        # 要真正打到 route_valid，得用"仍被判 WORKBENCH、但写了已退场动作模板"的值。
+        Name = 'C4'; Desc = '承载页写了已退场的动作模板'
+        Mutation = "UPDATE dbo.MODULES SET M_URL = N'/workbench/{moduleId}/new' WHERE M_IDX = @new;"
     },
     # 以下是"**能通过发布校验**的极端配置"：发布成功之后，表单渲染与建单才是真正被 fuzz 的路径。
     # 前四个用例都被校验挡在门外，只证明了"校验器不会 500"，没证明"渲染/写入不会 500"。
@@ -275,13 +278,20 @@ try {
                         $entry = @($parsedPublish) | Where-Object { $_.moduleId -eq $moduleId } | Select-Object -First 1
                         $published = [bool]($entry.published)
                         if (-not $published) {
+                            # 拒绝的原因有两种载体：校验器的失败 check（带 code），或发布守卫的 error 文案
+                            # （例如"该模块不是统一工作台模块，不走发布流程"——它在进校验器之前就返回，
+                            # 本来就没有 check）。两种都算"说清了原因"，只有两个都空才是无码拒绝。
                             $codes = @($entry.checks | Where-Object { -not $_.passed } | ForEach-Object { $_.code })
-                            if ($codes.Count -eq 0 -or @($codes | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
-                                [void]$script:Findings.Add("$($item.Name) publish 判未通过但没有给出 check.code（配置者不知道为什么）")
+                            $hasCodes = $codes.Count -gt 0 -and @($codes | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0
+                            $hasError = -not [string]::IsNullOrWhiteSpace([string]$entry.error)
+                            if (-not $hasCodes -and -not $hasError) {
+                                [void]$script:Findings.Add("$($item.Name) publish 判未通过但既没有 check.code 也没有 error 文案（配置者不知道为什么）")
                                 $failed = $true
                                 Write-Host '    [FAIL] publish 拒绝但无原因码' -ForegroundColor Red
-                            } else {
+                            } elseif ($hasCodes) {
                                 Write-Host "    [ok]   publish 拒绝并给出原因码：$($codes -join ', ')" -ForegroundColor DarkGray
+                            } else {
+                                Write-Host "    [ok]   publish 拒绝并给出原因：$($entry.error)" -ForegroundColor DarkGray
                             }
                         }
                     }

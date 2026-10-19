@@ -154,8 +154,16 @@ internal static class LineRequireCheck
             if (triggerSql.Count == 0 && assertSql is null)
                 throw new EffectConfigException("line-require.check 缺少 triggers 或 condition。");
             // 违规谓词：断言形态取反（未命中即违规），默认形态为字段空值。
+            //
+            // 空值必须先把列转成字符串再比空串：直接写 `col = ''` 时，SQL Server 会把空串按
+            // 列的存储类型转换——数值列（decimal/float/int）一律报「从数据类型 varchar 转换为
+            // numeric 时出错」，整条校验以 500 收场，等于该规则从未真正生效（改 float→decimal
+            // 之后更明显）。转成 nvarchar 对数值、日期、bit 都安全：有值时永远不等于空串，
+            // NULL 由前半句 `IS NULL` 命中；字符列的空串与纯空白在 SQL Server 的字符比较下
+            // 仍等于空串，语义与原来一致。
+            var column = $"{rowAlias}.{EffectConditionCompiler.Identifier(field)}";
             var violationSql = assertSql is null
-                ? $"({rowAlias}.{EffectConditionCompiler.Identifier(field)} IS NULL OR {rowAlias}.{EffectConditionCompiler.Identifier(field)} = '')"
+                ? $"({column} IS NULL OR CAST({column} AS nvarchar(4000)) = '')"
                 : "NOT (" + assertSql + ")";
             var triggerPredicate = triggerSql.Count == 0 ? string.Empty : "(" + string.Join(" OR ", triggerSql) + ") AND ";
             var sql = "SELECT TOP 1 1 FROM dbo." + EffectConditionCompiler.Identifier(rowTable)

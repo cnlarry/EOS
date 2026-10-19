@@ -506,6 +506,8 @@ async function runConcurrencyBattery(page, moduleId, form, values, details, runT
       detail: `连点保存返回 ${first.status}/${second.status}：${(first.status >= 500 ? first.text : second.text).slice(0, 200)}`,
     })
   } else if (first.status === 200) {
+    // 覆盖度登记：这一因子确实跑到了（结论另看 findings）。
+    boundaryFactorRuns.set('IDEMPOTENCY', (boundaryFactorRuns.get('IDEMPOTENCY') ?? 0) + 1)
     const firstKey = JSON.stringify(first.json?.key ?? null)
     const secondKey = JSON.stringify(second.json?.key ?? null)
     if (second.status === 200 && secondKey !== firstKey) {
@@ -529,6 +531,7 @@ async function runConcurrencyBattery(page, moduleId, form, values, details, runT
 
   // ② 空明细提交：明细必填的模块交空数组
   if ((form.detailFields ?? []).length > 0) {
+    boundaryFactorRuns.set('EMPTY_DETAILS', (boundaryFactorRuns.get('EMPTY_DETAILS') ?? 0) + 1)
     const empty = await api(page, 'POST', path, {
       values: variant(2),
       details: [],
@@ -840,6 +843,7 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
     // "两次都成功"只说明写入被忽略，不说明有竞态——这类模块直接跳过，不冒充结论。
     const serverOwnedChange = changeable && SERVER_OWNED_KEYS.has(String(changeable.key ?? '').toUpperCase())
     if (boundary && changeable && serverOwnedChange) {
+      boundaryFactorRuns.set('CONCURRENT_UPDATE_SKIPPED', (boundaryFactorRuns.get('CONCURRENT_UPDATE_SKIPPED') ?? 0) + 1)
       findings.push({
         moduleId,
         code: 'CONCURRENT_UPDATE_SKIPPED',
@@ -867,6 +871,7 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
       if (ra.status >= 500 || rb.status >= 500) {
         findings.push({ moduleId, code: 'BOUNDARY_5XX', field: changeable.key, detail: `并发改单返回 ${ra.status}/${rb.status}：${(ra.status >= 500 ? ra.text : rb.text).slice(0, 200)}` })
       } else if (ra.status === 200 && rb.status === 200) {
+        boundaryFactorRuns.set('CONCURRENT_UPDATE', (boundaryFactorRuns.get('CONCURRENT_UPDATE') ?? 0) + 1)
         const after = await api(page, 'GET', `/api/v1/document-workbench/${moduleId}/record?${keyQuery}`)
         const finalValue = String(after.json?.master?.[changeable.key] ?? '').trim()
         const submitted = [makeBody('A', 1).values[changeable.key], makeBody('B', 2).values[changeable.key]]
@@ -891,6 +896,7 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
       } else if (codes.every(code => code === 'BUSINESS_VALIDATION_FAILED' || code === 'VALIDATION_FAILED')) {
         // 两次都被业务/值校验挡下（探针值不合业务，如 1418 的"客户订单号重复"）：
         // 并发校验这一步根本没走到，记 info，不冒充"并发没问题"，也不当成缺陷。
+        boundaryFactorRuns.set('CONCURRENT_UPDATE_SKIPPED', (boundaryFactorRuns.get('CONCURRENT_UPDATE_SKIPPED') ?? 0) + 1)
         findings.push({
           moduleId,
           code: 'CONCURRENT_UPDATE_SKIPPED',
@@ -899,6 +905,7 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
           detail: `并发改单未验证：两次都被 ${codes[0]} 挡下（探针值不合业务）`,
         })
       } else if (!codes.includes('CONCURRENT_MODIFIED')) {
+        boundaryFactorRuns.set('CONCURRENT_UPDATE', (boundaryFactorRuns.get('CONCURRENT_UPDATE') ?? 0) + 1)
         findings.push({
           moduleId,
           code: 'CONCURRENT_UPDATE_NO_CODE',
@@ -906,6 +913,7 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
           detail: `并发改单：${ra.status}/${rb.status}，失败那次不是 CONCURRENT_MODIFIED（${codes.join(' / ') || '无 code'}）`,
         })
       } else {
+        boundaryFactorRuns.set('CONCURRENT_UPDATE', (boundaryFactorRuns.get('CONCURRENT_UPDATE') ?? 0) + 1)
         findings.push({
           moduleId,
           code: 'CONCURRENT_UPDATE_OK',
