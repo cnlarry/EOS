@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
@@ -84,6 +84,8 @@ export function LogAdminPage() {
 
   const logs = useQuery({
     queryKey: ['logs-query', keyword, level, file],
+    // 改关键字/级别时不收掉旧结果：整块转圈会让日志列表"消失-出现"闪一下
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<LogQueryResponse>('/logs', {
       query: { take: TAKE, keyword: keyword || undefined, level: level || undefined, file: file || undefined },
     }),
@@ -233,6 +235,7 @@ export function LogAdminPage() {
           <ErpTable
             columns={columns}
             data={logs.data?.entries ?? []}
+            loading={logs.isFetching}
             getRowId={(row: LogEntryRow) => `${row.file}:${row.ts}:${row.message ?? ''}:${row.correlationId ?? ''}`}
             rowSelection={rowSelection}
             onRowSelectionChange={setRowSelection}

@@ -1,5 +1,5 @@
 import { IconEdit, IconListDetails, IconPlus, IconTrash } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -47,6 +47,7 @@ export function TableAdminPage() {
   // 表元数据一次性加载：本地筛选即可，不需要分页与手动刷新
   const tables = useQuery({
     queryKey: ['field-admin', 'tables', kind],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<FieldAdminTable[]>('/admin/tables', { query: { kind: kind || undefined } }),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -171,6 +172,7 @@ export function TableAdminPage() {
       >
         {tables.isPending ? <LoadingState label="正在加载数据表…" /> : tables.isError ? <ErrorState message={errorMessage} onRetry={() => void tables.refetch()} /> : (
           <ErpTable
+            loading={tables.isFetching}
             columns={columns}
             data={filtered}
             getRowId={(row) => row.tableId}

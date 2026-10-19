@@ -26,6 +26,36 @@ const VIRTUAL_MIN_ROWS = 80
 /** 可视区上/下行数缓冲，保证滚动过程中新入视口的行已被渲染 */
 const VIRTUAL_OVERSCAN = 12
 
+/**
+ * 虚拟窗口的行区间（start 含、end 不含）。
+ *
+ * 滚到底时必须把 end 直接拉到 total：`ceil(viewport / 行高)` 是按首行实测高度估算的，
+ * 而粘性表头占位、行高与整表平均值不完全一致，都会让估算少算几行；一旦少算，
+ * 底部虚拟占位行就留下来，表现为"数据已经到底，下面还有一大块空白"。
+ * 到底后占位行消失会把滚动位置钳到新的底部，下一次计算仍然判定为"到底"，
+ * 因此不会在两种高度之间来回抖动。
+ */
+export function computeVirtualWindow(scrollTop: number, viewport: number, scrollHeight: number, total: number, height: number) {
+  if (height <= 0 || total <= 0) return { start: 0, end: 0 }
+  const atBottom = scrollHeight > viewport && scrollTop >= scrollHeight - viewport - 2
+  const start = Math.max(0, Math.floor(scrollTop / height) - VIRTUAL_OVERSCAN)
+  const end = atBottom
+    ? total
+    : Math.min(total, start + Math.ceil(viewport / height) + VIRTUAL_OVERSCAN * 2)
+  return { start, end }
+}
+
+/**
+ * 量值类字段：没有显式对齐时默认右对齐，让金额/数量成列可扫。
+ * 整型不在内——编号、项次、年月一类标识也常是整型，右对齐反而不像编号；
+ * 与 fieldFormat 的默认口径一致（整型不分组即"标识"）。
+ */
+const MEASURE_DATA_TYPES = new Set(['decimal', 'numeric', 'money', 'smallmoney', 'float', 'real', 'double'])
+
+function defaultNumericAlign(dataType: string | undefined): string | undefined {
+  return dataType && MEASURE_DATA_TYPES.has(dataType.toLowerCase()) ? 'text-end' : undefined
+}
+
 interface ErpTableProps<TData extends RowData> {
   columns: ColumnDef<TData, unknown>[]
   data: TData[]
@@ -82,6 +112,12 @@ interface ErpTableProps<TData extends RowData> {
   /** 大数据行窗口化：行数超过阈值且滚动容器可滚时只渲染可视区行（+overscan）。
    *  启用后屏幕外行不在 DOM，复制等取文本操作优先使用列 meta.copyText。 */
   virtualize?: boolean
+  /**
+   * 后台刷新中（配合 React Query 的 `isFetching` 与 `keepPreviousData`）：
+   * 保留旧行、整体降透明度并挡掉点击，右上角转小圈。
+   * 不要用 `isPending` 驱动它——首载没有旧数据，应当由页面渲染整块状态。
+   */
+  loading?: boolean
 }
 
 /**
@@ -137,6 +173,7 @@ export function ErpTable<TData>({
   hasMore = false,
   loadingMore = false,
   virtualize = false,
+  loading = false,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -325,9 +362,8 @@ export function ErpTable<TData>({
       setVirtualWindow({ start: 0, end: Math.min(total, VIRTUAL_OVERSCAN * 2 + 10) })
       return
     }
-    const start = Math.max(0, Math.floor(container.scrollTop / height) - VIRTUAL_OVERSCAN)
-    const end = Math.min(total, start + Math.ceil(viewport / height) + VIRTUAL_OVERSCAN * 2)
-    setVirtualWindow((current) => (current.start === start && current.end === end ? current : { start, end }))
+    const next = computeVirtualWindow(container.scrollTop, viewport, container.scrollHeight, total, height)
+    setVirtualWindow((current) => (current.start === next.start && current.end === next.end ? current : next))
   }, [])
 
   // 行数变化后重估窗口化：行数不足 / 容器不可滚时回退全量渲染
@@ -545,7 +581,7 @@ export function ErpTable<TData>({
   if (data.length === 0 && empty != null) return <>{empty}</>
 
   return (
-    <div ref={shellRef} className="erp-table-shell" tabIndex={0} onKeyDown={handleKeyDown}>
+    <div ref={shellRef} className={`erp-table-shell${loading ? ' is-loading' : ''}`} tabIndex={0} aria-busy={loading || undefined} onKeyDown={handleKeyDown}>
       <ErpDataTable responsive={responsive} resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''}`.trim()} persistResize={persistResize} onColumnResize={onColumnResize} fitRef={fitRef}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -600,7 +636,7 @@ export function ErpTable<TData>({
                     data-col-min-floor={meta?.minWidthFloor ? 'true' : undefined}
                     data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
                     data-col-autofit={meta?.autoWidth ? 'true' : undefined}
-                    className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
+                    className={[meta?.className ?? defaultNumericAlign(meta?.dataType), meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                   >
                     {header.isPlaceholder ? null : menuItems.length > 0 || draggable ? (
@@ -719,7 +755,7 @@ export function ErpTable<TData>({
                   return (
                     <td
                       key={cell.id}
-                      className={[cellMeta?.cellClassName ?? cellMeta?.className, cellFrozen].filter(Boolean).join(' ') || undefined}
+                      className={[cellMeta?.cellClassName ?? cellMeta?.className ?? defaultNumericAlign(cellMeta?.dataType), cellFrozen].filter(Boolean).join(' ') || undefined}
                       style={Object.keys(cellStyle).length > 0 ? cellStyle : undefined}
                       onMouseEnter={(event) => {
                         // title 延迟到悬停才计算，避免大列表渲染热路径对每个单元格做格式化

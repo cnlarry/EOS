@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { IconEye, IconRefresh } from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
@@ -88,6 +88,7 @@ export function FlowMonitorPage() {
 
   const list = useQuery({
     queryKey: ['flow-monitor', status, keyword.trim()],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<{ rows: MonitorRow[]; overdueDays: number }>(
       `/workflow/monitor?status=${status}&keyword=${encodeURIComponent(keyword.trim())}`,
     ),
@@ -95,6 +96,7 @@ export function FlowMonitorPage() {
 
   const detail = useQuery({
     queryKey: ['flow-monitor-detail', selectedWfId],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<MonitorDetail>(`/workflow/monitor/${selectedWfId}`),
     enabled: selectedWfId != null,
   })
@@ -213,6 +215,7 @@ export function FlowMonitorPage() {
           <ErrorState message={errorMessage} onRetry={() => void list.refetch()} />
         ) : (
           <ErpTable
+            loading={list.isFetching}
             columns={columns}
             data={rows}
             getRowId={(row) => String(row.wfId)}
@@ -255,6 +258,7 @@ export function FlowMonitorPage() {
                     <div>
                       <h3 className="small fw-semibold mb-1">步骤任务</h3>
                       <ErpTable
+                        loading={detail.isFetching}
                         columns={[
                           { accessorKey: 'step', header: '步骤', cell: (info) => <span className="font-monospace">{String(info.getValue() ?? '')}</span> },
                           { accessorKey: 'stepDesc', header: '步骤名称' },

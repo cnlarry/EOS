@@ -1,5 +1,5 @@
 import { IconRefresh } from '@tabler/icons-react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -34,6 +34,8 @@ export function FieldAuditPage() {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const result = useQuery({
     queryKey: ['field-audit', kind],
+    // 切视图时保留上一份结果，避免表格整块消失再出现
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<FieldAuditResult>(`/table-data/field-audit/${kind}`),
   })
 
@@ -109,6 +111,7 @@ export function FieldAuditPage() {
           <ErpTable
             columns={columns}
             data={result.data?.rows ?? []}
+            loading={result.isFetching}
             getRowId={(row: FieldAuditRow) => `${row.T_ID}.${row.F_ID}`}
             empty={<EmptyState title="该视图无差异数据" description="物理列与 FIELDS 元数据一致。" />}
             resizable

@@ -346,8 +346,8 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
                 onClick={() => setColumnsOpen(true)}
               />
             </div>
-            {error ? <ErrorState message={error} onRetry={() => void fetchPage(page)} /> : null}
-            {!error && loading && rows.length === 0 ? <LoadingState label="正在加载…" /> : null}
+            {error ? <ErrorState message={error} onRetry={() => void fetchPage(page)} size="compact" /> : null}
+            {!error && loading && rows.length === 0 ? <LoadingState label="正在加载…" size="compact" /> : null}
             {!error && !loading && rows.length === 0 ? (
               <div className="text-secondary py-4 text-center">{emptyText}</div>
             ) : null}

@@ -1,5 +1,5 @@
 import { IconRefresh, IconTrash } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -51,6 +51,7 @@ export function KbAdminPage() {
 
   const documents = useQuery({
     queryKey: ['assistant-admin-kb-documents', activeCollection, includeDeleted],
+    placeholderData: keepPreviousData,
     queryFn: () => listKbDocuments(activeCollection, includeDeleted),
     enabled: activeCollection.length > 0,
   })
@@ -174,6 +175,7 @@ export function KbAdminPage() {
           <ErrorState message={errorMessage} onRetry={() => void documents.refetch()} />
         ) : (
           <ErpTable
+            loading={documents.isFetching}
             columns={columns}
             data={items}
             getRowId={(row) => row.docId}

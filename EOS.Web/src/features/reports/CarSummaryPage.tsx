@@ -84,6 +84,7 @@ export function CarSummaryPage() {
           <ErrorState message={errorMessage} onRetry={runQuery} />
         ) : (
           <ErpTable
+            loading={result.isFetching}
             columns={columns}
             data={result.data?.rows ?? []}
             getRowId={(row) => `${String(row.CAR_ID ?? '')}.${String(row.YM_RPT ?? '')}`}

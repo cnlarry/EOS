@@ -1,7 +1,7 @@
 import {
   IconAdjustments, IconAlertTriangle, IconCircleCheck, IconEdit, IconKey, IconPlus, IconRefresh, IconTrash,
 } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
@@ -155,6 +155,7 @@ export function ModelAdminPage() {
   const providers = useQuery({ queryKey: ['assistant-admin-providers'], queryFn: listProviders })
   const usage = useQuery({
     queryKey: ['assistant-admin-model-usage', days],
+    placeholderData: keepPreviousData,
     queryFn: () => getModelUsage(days),
   })
 
@@ -562,7 +563,7 @@ export function ModelAdminPage() {
                   <EmptyState title="还没有供应商"
                     description="点上方「添加供应商」从预设目录选一家，或选「自定义」自己填端点。" />
                 ) : (
-                  <ErpTable columns={providerColumns} data={items}
+                  <ErpTable loading={providers.isFetching} columns={providerColumns} data={items}
                     getRowId={(row) => String(row.providerId)}
                     empty={<EmptyState title="还没有供应商" description="点「添加供应商」建立第一个接入点。" />}
                     resizable storageKey="assistant-admin-providers"
@@ -713,7 +714,7 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
           ) : models.length === 0 ? (
             <EmptyState title="这段时间还没有模型调用记录" description="有回复之后这里会出现按模型的用量。" />
           ) : (
-            <ErpTable columns={USAGE_COLUMNS} data={models}
+            <ErpTable loading={usage.isFetching} columns={USAGE_COLUMNS} data={models}
               getRowId={(row) => row.modelName} resizable clientSideSorting
               storageKey="assistant-admin-usage-models" />
           )}
@@ -728,7 +729,7 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
           <EmptyState title="这段时间还没有调用记录" description="有回复之后这里会出现每日趋势。" />
         ) : (
           // 倒序：最近的一天在上面（按天的表默认是升序，读的人第一眼想看今天）
-          <ErpTable columns={TREND_COLUMNS} data={[...trend].reverse()}
+          <ErpTable loading={usage.isFetching} columns={TREND_COLUMNS} data={[...trend].reverse()}
             getRowId={(row) => row.day} resizable clientSideSorting
             storageKey="assistant-admin-usage-trend" />
         )}

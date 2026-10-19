@@ -13,6 +13,21 @@
   --erp-active-bg: color-mix(in srgb, var(--tblr-primary) 10%, var(--tblr-bg-surface));
   --erp-active-fg: var(--tblr-primary);
   --erp-active-bar: var(--tblr-primary);
+
+  /* 视觉刻度：字号与圆角只有这一张取值表，新代码不写字面量。
+     字号四档对应"徽标 → 辅助说明 → 正文 → 标题"，圆角三档对应
+     "小控件 → 按钮/导航 → 卡片/弹窗"。登录页营销排版、助手 markdown 内容、
+     品牌标记的 logo 比例圆角属于另一套尺度，在自己的规则里保留字面量并注明。 */
+  --erp-font-2xs: 10px;
+  --erp-font-xs: 11px;
+  --erp-font-sm: 12px;
+  --erp-font-md: 13px;
+  --erp-font-lg: 15px;
+  --erp-radius-xs: 4px;
+  --erp-radius-sm: 6px;
+  --erp-radius-md: 8px;
+  --erp-radius-lg: 12px;
+  --erp-radius-pill: 999px;
 }
 [data-bs-theme='dark'] {
   --erp-active-bg: color-mix(in srgb, var(--tblr-primary) 26%, var(--tblr-bg-surface));
@@ -21,7 +36,7 @@
 }
 
 /* 弹窗正文字体统一 12px（标题/按钮等特殊元素除外） */
-.modal-body { font-size: 12px; }
+.modal-body { font-size: var(--erp-font-sm); }
 
 html, body, #root { width: 100%; min-height: 100%; margin: 0 !important; }
 html { margin-left: 0 !important; }
@@ -35,7 +50,7 @@ button, input, select { font: inherit; }
 .rights-matrix-layout { min-height: 420px; }
 .rights-tree-panel { width: 300px; display: flex; flex-direction: column; }
 .rights-tree-scroll { overflow: auto; max-height: 460px; flex: 1; }
-.rights-tree-row { border-radius: 4px; }
+.rights-tree-row { border-radius: var(--erp-radius-xs); }
 .rights-tree-row:hover { background: var(--bs-tertiary-bg); }
 .rights-tree-label { max-width: 190px; line-height: 1.2; white-space: normal; }
 .rights-field-list, .rights-picker-list { max-height: 300px; overflow: auto; }
@@ -67,20 +82,20 @@ button, input, select { font: inherit; }
 .erp-sidebar .navbar-nav:hover { scrollbar-color: var(--tblr-border-color) transparent; }
 .erp-sidebar .navbar-nav::-webkit-scrollbar { width: 5px; height: 0; }
 .erp-sidebar .navbar-nav::-webkit-scrollbar:horizontal { display: none; height: 0; }
-.erp-sidebar .navbar-nav::-webkit-scrollbar-thumb { background: transparent; border-radius: 5px; }
+.erp-sidebar .navbar-nav::-webkit-scrollbar-thumb { background: transparent; border-radius: var(--erp-radius-sm); }
 .erp-sidebar .navbar-nav:hover::-webkit-scrollbar-thumb { background: var(--tblr-border-color); }
 .erp-sidebar .navbar-brand { display: flex; align-items: center; justify-content: flex-start !important; gap: 12px; width: 100%; min-height: 64px; margin: 0; padding: 14px 14px 13px !important; border-bottom: 1px solid var(--tblr-border-color); text-align: left; }
 .erp-sidebar .navbar-brand > span:last-child { min-width: 0; text-align: left; }
-.erp-sidebar .navbar-brand small { display: block; color: var(--tblr-secondary); font-size: 11px; font-weight: 500; margin-top: 2px; }
+.erp-sidebar .navbar-brand small { display: block; color: var(--tblr-secondary); font-size: var(--erp-font-xs); font-weight: 500; margin-top: 2px; }
 .erp-brand-mark { display: grid; flex: 0 0 auto; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(145deg, #206bc4, #4d91e5); color: white; font-weight: 800; box-shadow: 0 7px 18px rgba(32, 107, 196, .28); }
-.erp-sidebar .nav-link { width: auto; display: flex; align-items: center; justify-content: flex-start !important; gap: 11.5px; border-radius: 7px; margin: 0px 7px; padding: 0px 11px; text-align: left; }
+.erp-sidebar .nav-link { width: auto; display: flex; align-items: center; justify-content: flex-start !important; gap: 11.5px; border-radius: var(--erp-radius-md); margin: 0px 7px; padding: 0px 11px; text-align: left; }
 /* 顶层直达项（工作台/个人设置）与菜单保持同字号 */
-.erp-sidebar .navbar-nav > .nav-link { font-size: 12px; }
+.erp-sidebar .navbar-nav > .nav-link { font-size: var(--erp-font-sm); }
 .erp-sidebar .nav-link-icon { flex: 0 0 18px; width: 18px; margin: 0 !important; }
 .erp-sidebar .nav-link-title { min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .erp-sidebar .nav-link.active { color: var(--tblr-primary); font-weight: 650; }
 .erp-nav-group { flex: 0 0 38px; width: 100%; height: 38px; min-height: 38px; max-height: 38px; margin: 0; padding: 0; }
-.erp-nav-group-toggle { width: calc(100% - 14px) !important; height: 38px; min-height: 38px; max-height: 38px; margin-block: 0; padding-block: 0 !important; box-sizing: border-box; border: 0; background: transparent; color: inherit; font-size: 12px; }
+.erp-nav-group-toggle { width: calc(100% - 14px) !important; height: 38px; min-height: 38px; max-height: 38px; margin-block: 0; padding-block: 0 !important; box-sizing: border-box; border: 0; background: transparent; color: inherit; font-size: var(--erp-font-sm); }
 .erp-nav-group-toggle.group-active { color: var(--tblr-primary); }
 /* 展开中的分组（含其祖先）：用主色标出当前展开分支的归属 */
 .erp-nav-group-toggle.group-open { color: var(--tblr-primary); }
@@ -90,21 +105,21 @@ button, input, select { font: inherit; }
 .erp-nav-group-toggle[aria-expanded="true"] .erp-nav-chevron { transform: rotate(90deg); }
 .erp-nav-children { margin: 1px 0 5px; }
 .erp-nav-children { position: relative; }
-.erp-sidebar .navbar-nav .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: 12px; }
+.erp-sidebar .navbar-nav .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: var(--erp-font-sm); }
 .erp-sidebar .erp-nav-child .nav-link-title { display: block; flex: 1 1 auto; min-width: 0; }
 
 /* ---- 菜单搜索 ---- */
-.erp-nav-search { display: flex; align-items: center; gap: 7px; margin: 10px 10px 6px; padding: 0 9px; height: 32px; border: 1px solid var(--tblr-border-color); border-radius: 7px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); flex: 0 0 auto; }
-.erp-nav-search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font-size: 12px; }
+.erp-nav-search { display: flex; align-items: center; gap: 7px; margin: 10px 10px 6px; padding: 0 9px; height: 32px; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-md); background: var(--tblr-bg-surface); color: var(--tblr-secondary); flex: 0 0 auto; }
+.erp-nav-search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font-size: var(--erp-font-sm); }
 .erp-nav-search input::placeholder { color: var(--tblr-secondary); }
-.erp-nav-search-clear { border: 0; background: transparent; color: var(--tblr-secondary); font-size: 14px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.erp-nav-search-clear { border: 0; background: transparent; color: var(--tblr-secondary); font-size: var(--erp-font-lg); line-height: 1; padding: 0 2px; cursor: pointer; }
 .erp-nav-search-clear:hover { color: var(--tblr-primary); }
-.erp-nav-kbd { flex: 0 0 auto; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); font-size: 10px; padding: 1px 6px; }
+.erp-nav-kbd { flex: 0 0 auto; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-sm); background: var(--tblr-bg-surface); color: var(--tblr-secondary); font-size: var(--erp-font-2xs); padding: 1px 6px; }
 .erp-nav-search-results { padding: 4px 8px 12px; }
-.erp-nav-search-empty { padding: 14px 8px; color: var(--tblr-secondary); font-size: 12px; text-align: center; }
-.erp-nav-search-result { display: block; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 7px; padding: 7px 9px; margin: 2px 0; cursor: pointer; }
+.erp-nav-search-empty { padding: 14px 8px; color: var(--tblr-secondary); font-size: var(--erp-font-sm); text-align: center; }
+.erp-nav-search-result { display: block; width: 100%; text-align: left; border: 0; background: transparent; border-radius: var(--erp-radius-md); padding: 7px 9px; margin: 2px 0; cursor: pointer; }
 .erp-nav-search-result:hover { background: var(--tblr-primary-lt); }
-.erp-nav-search-crumb { display: block; color: var(--tblr-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erp-nav-search-crumb { display: block; color: var(--tblr-secondary); font-size: var(--erp-font-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- 多级菜单（2 级起，深度几何由 JS 内联 CSS 变量驱动，天然支持任意层级） ---- */
 /* 对齐基线（侧栏元素左缘含 7px 外边距，::before 的 left 相对元素自身）：
@@ -118,7 +133,7 @@ button, input, select { font: inherit; }
 .erp-nav-group:not(.erp-nav-group-depth-1) .erp-nav-group-toggle {
   gap: 6px;
   padding-left: var(--menu-gpad, 40px) !important;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 /* 分组展开后：从父级展开/折叠箭头正下方向下延伸的虚线 */
 .erp-nav-children::before {
@@ -148,7 +163,7 @@ button, input, select { font: inherit; }
 .erp-sidebar-collapsed .erp-nav-search { display: none; }
 /* 折叠/展开开关：贴在侧栏右边缘的小把手。锚定在底部用户区之上而不是视口固定高度，
    用户区高度变化（展开/折叠两种排布）时把手自动跟随，不会压住用户卡 */
-.erp-sidebar-toggle { position: absolute; top: -50px; right: 1px; z-index: 5; width: 29px; min-width: 29px; max-width: 29px; height: 42px; min-height: 42px; padding: 0; border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); }
+.erp-sidebar-toggle { position: absolute; top: -50px; right: 1px; z-index: 5; width: 29px; min-width: 29px; max-width: 29px; height: 42px; min-height: 42px; padding: 0; border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: var(--erp-radius-md) 0 0 var(--erp-radius-md); background: var(--tblr-bg-surface); color: var(--tblr-secondary); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); }
 .erp-sidebar-toggle:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); }
 /* 折叠态：72px 侧栏里贴边把手会压住菜单图标，改为用户区中、头像上方的同款圆形按钮
    （order 提到最前，与头像/模式开关同一竖线） */
@@ -188,11 +203,11 @@ button, input, select { font: inherit; }
   margin: 0;
   padding: 0 11px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--erp-radius-md);
   background: transparent;
   color: inherit;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 .erp-menu-tree .nav-link:hover { background: var(--tblr-primary-lt); }
 .erp-menu-tree .nav-link-icon { flex: 0 0 18px; width: 18px; margin: 0 !important; }
@@ -208,8 +223,8 @@ button, input, select { font: inherit; }
 .erp-menu-tree .erp-nav-group { flex: 0 0 32px; height: 32px; min-height: 32px; max-height: 32px; }
 .erp-menu-tree .erp-nav-group-toggle { height: 32px; min-height: 32px; max-height: 32px; }
 /* 管理页子菜单行与侧栏同用 --menu-cpad/--menu-dot 深度几何（menuDepth.ts） */
-.erp-menu-tree .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: 12px; }
-.erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
+.erp-menu-tree .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: var(--erp-font-sm); }
+.erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--erp-font-xs); flex: 0 0 auto; }
 /* 权限矩阵模块树：复用系统菜单/菜单管理左侧树的样式（虚线、圆点、缩进几何） */
 .erp-rights-tree .nav-link-title { align-items: center; }
 .erp-rights-tree .erp-nav-child { display: flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -222,8 +237,8 @@ button, input, select { font: inherit; }
 .erp-rights-tree .erp-nav-child .rights-tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-rights-tree .erp-nav-group-toggle { cursor: pointer; }
 .erp-rights-tree .rights-tree-label { min-width: 0; }
-.erp-rights-tree .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: 3px; }
-.erp-rights-tree .erp-rights-leaf-root { height: 32px; min-height: 32px; padding: 0 11px; display: flex; align-items: center; gap: 8px; cursor: pointer; border-radius: 7px; }
+.erp-rights-tree .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: var(--erp-radius-xs); }
+.erp-rights-tree .erp-rights-leaf-root { height: 32px; min-height: 32px; padding: 0 11px; display: flex; align-items: center; gap: 8px; cursor: pointer; border-radius: var(--erp-radius-md); }
 .erp-rights-tree .erp-rights-leaf-root.active {
   background: var(--erp-active-bg);
   color: var(--erp-active-fg);
@@ -279,7 +294,7 @@ button, input, select { font: inherit; }
   max-width: 240px;
   padding: 4px;
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   background: var(--tblr-bg-surface);
   box-shadow: 0 8px 24px rgba(24, 36, 51, .14);
 }
@@ -290,18 +305,18 @@ button, input, select { font: inherit; }
   width: 100%;
   padding: 6px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: transparent;
   color: inherit;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   white-space: nowrap;
 }
 .erp-menu-context-menu button:hover { background: var(--tblr-primary-lt); }
 .erp-menu-context-menu button.text-danger { color: var(--tblr-danger); }
 .erp-menu-context-menu button.text-danger:hover { background: var(--tblr-danger-lt); }
 .erp-menu-rename-wrap { flex: 1 1 auto; }
-.erp-menu-rename-input { height: 26px; min-height: 26px; padding: 2px 8px; font-size: 12px; }
+.erp-menu-rename-input { height: 26px; min-height: 26px; padding: 2px 8px; font-size: var(--erp-font-sm); }
 .erp-menu-icon-grid {
   display: flex;
   flex-wrap: wrap;
@@ -311,7 +326,7 @@ button, input, select { font: inherit; }
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
 }
 .erp-menu-icon-preview {
   display: inline-grid;
@@ -319,7 +334,7 @@ button, input, select { font: inherit; }
   width: 34px;
   height: 34px;
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   color: var(--tblr-primary);
   background: var(--tblr-primary-lt);
 }
@@ -332,14 +347,39 @@ button, input, select { font: inherit; }
   min-width: 64px;
   padding: 6px 4px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--erp-radius-md);
   background: transparent;
   color: var(--tblr-secondary);
-  font-size: 10px;
+  font-size: var(--erp-font-2xs);
 }
 .erp-menu-icon-option:hover { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .erp-menu-icon-option.active { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .erp-menu-icon-option span { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ================= 弹窗层次 =================
+ * 全系统弹窗只有 components/ui/Modal 一个出口，层次规则集中在这里，不在各页覆盖。
+ * 层次靠三件事分开：遮罩压暗背景、背景糊到"不可读但可辨"、弹窗自身有描边与投影。
+ * Tabler 默认四项都不够：它把遮罩放在 .modal-backdrop（本项目不渲染该元素，实际只有
+ * 4px 模糊）、边框色是 transparent、阴影是 box-shadow-sm，于是白卡直接浮在白底上。 */
+.modal.modal-blur {
+  background-color: rgb(15 23 42 / .46);
+  -webkit-backdrop-filter: blur(10px) saturate(.9);
+  backdrop-filter: blur(10px) saturate(.9);
+}
+[data-bs-theme='dark'] .modal.modal-blur { background-color: rgb(2 6 23 / .62); }
+.modal-content {
+  border-color: rgb(15 23 42 / .12);
+  box-shadow:
+    0 24px 64px -16px rgb(15 23 42 / .35),
+    0 8px 20px -8px rgb(15 23 42 / .18);
+}
+/* 深色下黑色投影几乎不可见，改用亮描边 + 顶部内高光把卡面"提"起来 */
+[data-bs-theme='dark'] .modal-content {
+  border-color: rgb(255 255 255 / .14);
+  box-shadow:
+    0 24px 64px -16px rgb(0 0 0 / .8),
+    0 8px 20px -8px rgb(0 0 0 / .55),
+    inset 0 1px 0 rgb(255 255 255 / .06);
+}
 /* ================= 统一弹窗尺寸规范 =================
  * sm 560px：单栏选择；md 720px：列表/双栏选择；lg 880px：网格/图标；xl 970px：双栏转移。
  * 所有选择器弹窗统一使用 .erp-dialog-*，并同步 --tblr-modal-width 与最大宽度。 */
@@ -355,13 +395,13 @@ button, input, select { font: inherit; }
   width: 100%;
   padding: 6px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: transparent;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 .erp-menu-table-option:hover { background: var(--tblr-primary-lt); }
-.erp-menu-table-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
+.erp-menu-table-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--erp-font-xs); flex: 0 0 auto; }
 .erp-menu-table-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-field-picker-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow-y: auto; }
 .erp-field-picker-option {
@@ -371,10 +411,10 @@ button, input, select { font: inherit; }
   width: 100%;
   padding: 6px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: transparent;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 .erp-field-picker-option:hover { background: var(--tblr-primary-lt); }
 .erp-field-picker-option.picked {
@@ -392,7 +432,7 @@ button, input, select { font: inherit; }
   border-radius: 50%;
   background: var(--tblr-primary-lt);
   color: var(--tblr-primary);
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
 }
 .erp-field-picker-row {
   display: flex;
@@ -400,15 +440,15 @@ button, input, select { font: inherit; }
   gap: 8px;
   padding: 5px 10px;
   border: 1px solid var(--tblr-border-color);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-sm);
+  font-size: var(--erp-font-sm);
 }
 .erp-field-dir {
   border: 1px solid var(--tblr-border-color);
-  border-radius: 5px;
+  border-radius: var(--erp-radius-sm);
   background: transparent;
   color: var(--tblr-primary);
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   padding: 1px 6px;
 }
 .erp-field-dir:hover { background: var(--tblr-primary-lt); }
@@ -419,7 +459,7 @@ button, input, select { font: inherit; }
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--erp-radius-sm);
   background: transparent;
   color: var(--tblr-secondary);
 }
@@ -444,7 +484,7 @@ button, input, select { font: inherit; }
 .erp-filter-row-line > .form-control { flex: 1 1 auto; min-width: 0; }
 .erp-filter-logic { flex: 0 0 70px !important; }
 .erp-filter-op { flex: 0 0 80px !important; }
-.erp-filter-row-issues { display: flex; flex-direction: column; gap: 2px; padding-left: 2px; font-size: 12px; }
+.erp-filter-row-issues { display: flex; flex-direction: column; gap: 2px; padding-left: 2px; font-size: var(--erp-font-sm); }
 .erp-menu-form { overflow-y: auto; }
 /* ==========================================================================
    页面骨架（**唯一事实源**）：三件事——页根、卡片、卡内表格区。
@@ -579,7 +619,7 @@ button, input, select { font: inherit; }
   padding-left: 10px;
   color: var(--tblr-secondary);
   font-family: var(--tblr-font-monospace);
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   white-space: nowrap;
 }
 /* 箭头的可点热区：230101 里整行点击即展开，BOM 树要"点行看配方、点箭头才折叠"，
@@ -591,7 +631,7 @@ button, input, select { font: inherit; }
    选中时整体随料号加粗（字重不单独压回去），一眼看出"我在看哪一行" */
 .erp-tree .erp-tree-label { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
 .erp-tree .erp-tree-sub { color: var(--tblr-secondary); }
-.erp-tree .erp-tree-edition { color: var(--tblr-secondary); font-size: 11px; }
+.erp-tree .erp-tree-edition { color: var(--tblr-secondary); font-size: var(--erp-font-xs); }
 
 /* BOM 定制页（新增 / 编辑）：卡片观感与列表页一致。
    统一表单把 `.erp-form-card` 压成透明无边框（它满屏铺开、不要卡片壳），
@@ -629,7 +669,7 @@ button, input, select { font: inherit; }
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   color: var(--tblr-secondary);
   border-bottom: 1px solid var(--tblr-border-color);
 }
@@ -639,10 +679,10 @@ button, input, select { font: inherit; }
 .erp-bom-tree-page .erp-bom-mode-tabs { border-bottom: 0; gap: 2px; }
 .erp-bom-tree-page .erp-bom-mode-tabs .nav-link {
   padding: 4px 10px;
-  font-size: 13px;
+  font-size: var(--erp-font-md);
   color: var(--tblr-secondary);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
 }
 .erp-bom-tree-page .erp-bom-mode-tabs .nav-link:hover { background: var(--tblr-bg-surface-secondary); }
 .erp-bom-tree-page .erp-bom-mode-tabs .nav-link.active {
@@ -659,7 +699,7 @@ button, input, select { font: inherit; }
   min-width: 132px;
   height: 24px;
   padding-block: 0;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 .erp-bom-tree-page .erp-bom-tree-detail { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 /* 选中态加粗：230101 的分组行只改颜色（那里选中不承载"当前查看对象"的语义），
@@ -671,7 +711,7 @@ button, input, select { font: inherit; }
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   border-bottom: 1px solid var(--tblr-border-color);
 }
 /* 左右表头同高：左栏的版次下拉是 24px + 上下 6px 内边距 + 1px 下边框，
@@ -688,7 +728,7 @@ button, input, select { font: inherit; }
 .erp-bom-tree-page .erp-bom-section-title {
   margin: 0;
   padding: 10px 12px 0;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   font-weight: 600;
   color: var(--tblr-secondary);
 }
@@ -710,7 +750,7 @@ button, input, select { font: inherit; }
   align-items: baseline;
   gap: 10px;
   padding: 7px 0;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   border-bottom: 1px solid var(--tblr-border-color);
 }
 .erp-bom-tree-page .erp-bom-recipe dt {
@@ -754,7 +794,7 @@ button, input, select { font: inherit; }
   width: 100%;
   padding: 6px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -769,7 +809,7 @@ button, input, select { font: inherit; }
 .erp-selection-item:disabled { cursor: not-allowed; opacity: .55; }
 .erp-selection-item-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
 .erp-selection-item-label {
-  font-size: 13px;
+  font-size: var(--erp-font-md);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -777,7 +817,7 @@ button, input, select { font: inherit; }
 }
 .erp-selection-item-label.is-monospace { font-family: var(--tblr-font-monospace); font-weight: 500; }
 .erp-selection-item-description {
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   color: var(--tblr-secondary);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -790,12 +830,12 @@ button, input, select { font: inherit; }
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   color: var(--tblr-secondary);
   white-space: nowrap;
 }
 .erp-selection-item.is-active .erp-selection-item-meta { color: inherit; opacity: .85; }
-.erp-selection-list-empty { display: flex; flex-direction: column; gap: 8px; padding: 8px; font-size: 12px; color: var(--tblr-secondary); }
+.erp-selection-list-empty { display: flex; flex-direction: column; gap: 8px; padding: 8px; font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
 
 /* 行为动作（230104）的两栏配置面：左栏常驻模块清单、右栏是选中模块的配置/全库总览。
    整页与字段设置页同一套骨架——卡片体直接作为 grid（行轨道 minmax(0,1fr) 给出确定高度），
@@ -819,7 +859,7 @@ button, input, select { font: inherit; }
   flex-direction: column;
   align-items: flex-end;
   gap: 1px;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   line-height: 1.25;
   color: var(--tblr-secondary);
   white-space: nowrap;
@@ -844,14 +884,14 @@ button, input, select { font: inherit; }
   border-bottom: 1px solid var(--tblr-border-color);
 }
 .erp-config-detail-title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.erp-config-detail-title { font-size: 15px; font-weight: 600; }
-.erp-config-detail-id { font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); font-size: 12px; }
+.erp-config-detail-title { font-size: var(--erp-font-lg); font-weight: 600; }
+.erp-config-detail-id { font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); font-size: var(--erp-font-sm); }
 .erp-config-detail-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   color: var(--tblr-secondary);
 }
 .erp-config-meta-sep { opacity: .6; }
@@ -875,13 +915,13 @@ button, input, select { font: inherit; }
   flex-wrap: wrap;
   padding: 4px 8px;
   border: 1px dashed var(--tblr-border-color);
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: var(--tblr-bg-surface-secondary);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 .erp-config-context-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-config-context-actions { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
-.erp-config-hint { font-size: 12px; color: var(--tblr-secondary); }
+.erp-config-hint { font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
 /* 全库总览：标题 + 视图切换 + 表格。总览表格自己滚（表头吸顶）——
    全库动辄数百行，让右栏整体滚会把表头滚走，想对一行数据还得先滚回去看列名 */
 .erp-config-overview { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
@@ -903,14 +943,14 @@ button, input, select { font: inherit; }
   cursor: pointer;
   list-style: none;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--erp-font-md);
 }
 .erp-config-form-section > summary::-webkit-details-marker { display: none; }
-.erp-config-form-section > summary::before { content: '▸'; color: var(--tblr-secondary); font-size: 11px; }
+.erp-config-form-section > summary::before { content: '▸'; color: var(--tblr-secondary); font-size: var(--erp-font-xs); }
 .erp-config-form-section[open] > summary::before { content: '▾'; }
 .erp-config-form-section[open] > summary { margin-bottom: 8px; }
 .erp-config-form-section-title { flex: 0 0 auto; }
-.erp-config-form-section-hint { font-weight: 400; font-size: 11px; color: var(--tblr-secondary); margin-left: auto; }
+.erp-config-form-section-hint { font-weight: 400; font-size: var(--erp-font-xs); color: var(--tblr-secondary); margin-left: auto; }
 /* 保存前的人话摘要：填进去了不等于意思对，这一条比任何装饰都更能减少误配 */
 .erp-config-preview {
   display: flex;
@@ -918,9 +958,9 @@ button, input, select { font: inherit; }
   gap: 8px;
   padding: 6px 10px;
   margin-top: 10px;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: var(--tblr-bg-surface-secondary);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   color: var(--tblr-secondary);
 }
 .erp-config-preview-label { flex: 0 0 auto; font-weight: 600; color: var(--tblr-body-color); }
@@ -974,7 +1014,7 @@ button, input, select { font: inherit; }
 .erp-import-item:last-child::after { visibility: hidden; }
 .erp-import-item.is-done::before,
 .erp-import-item.is-done::after { background: var(--tblr-success); }
-.erp-import-node { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 0; border-radius: 999px; background: transparent; color: var(--tblr-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.erp-import-node { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 0; border-radius: var(--erp-radius-pill); background: transparent; color: var(--tblr-secondary); font-size: var(--erp-font-sm); white-space: nowrap; cursor: pointer; }
 .erp-import-node:hover { background: var(--tblr-bg-surface-secondary); }
 .erp-import-node-mark { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--tblr-border-color); border-radius: 50%; background: var(--tblr-bg-surface); }
 .erp-import-node-label { min-width: 0; line-height: 1; }
@@ -983,9 +1023,9 @@ button, input, select { font: inherit; }
 .erp-import-item.is-done .erp-import-node { color: var(--tblr-success); }
 .erp-import-item.is-done .erp-import-node-mark { border-color: var(--tblr-success); background: var(--tblr-success); color: #fff; }
 .erp-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.erp-import-hint { min-width: 0; color: var(--tblr-secondary); font-size: 12px; }
+.erp-import-hint { min-width: 0; color: var(--tblr-secondary); font-size: var(--erp-font-sm); }
 /* 步骤区：一次只显示一步，自成一块，并吃掉卡片剩下的高度（进度条与步骤头固定不动） */
-.erp-import-step { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); flex: 1 1 auto; min-height: 0; }
+.erp-import-step { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-sm); background: var(--tblr-bg-surface); flex: 1 1 auto; min-height: 0; }
 /* 步骤头一行：右侧「上一步 / 下一步」（第 1 步左侧是模块搜索框），两者中线对齐。
    不再有「第 N 步：…」标题——当前在哪一步由进度条的选中节点与按钮上的节点名承担 */
 .erp-import-step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 8px; border-bottom: 1px solid var(--tblr-border-color); flex: 0 0 auto; }
@@ -1005,24 +1045,24 @@ button, input, select { font: inherit; }
 .erp-import-scroll .erp-table-shell { flex: 0 1 auto; min-height: 0; overflow: auto; }
 .erp-import-scroll .table-responsive { overflow: visible; }
 .erp-import-scroll .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
-.erp-import-drop { display: grid; place-items: center; width: 100%; min-height: 120px; padding: 16px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); font-size: 12px; text-align: center; cursor: pointer; }
+.erp-import-drop { display: grid; place-items: center; width: 100%; min-height: 120px; padding: 16px; border: 1px dashed var(--tblr-border-color); border-radius: var(--erp-radius-sm); background: var(--tblr-bg-surface); color: var(--tblr-secondary); font-size: var(--erp-font-sm); text-align: center; cursor: pointer; }
 .erp-import-drop.is-over { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); color: var(--tblr-primary); }
-.erp-import-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 6px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); font-size: 12px; flex: 0 0 auto; }
+.erp-import-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 6px 10px; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-sm); background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); font-size: var(--erp-font-sm); flex: 0 0 auto; }
 .erp-import-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.erp-import-panel-title { color: var(--tblr-secondary); font-size: 12px; font-weight: 600; }
+.erp-import-panel-title { color: var(--tblr-secondary); font-size: var(--erp-font-sm); font-weight: 600; }
 .erp-import-filter-select { width: auto; min-width: 140px; }
 /* 页内文字链接：向导页不允许出现「上一步/下一步」之外的按钮，辅助动作一律走链接 */
-.erp-import-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; font-size: 12px; flex: 0 0 auto; }
+.erp-import-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; font-size: var(--erp-font-sm); flex: 0 0 auto; }
 .erp-import-links a { color: var(--tblr-primary); text-decoration: none; }
 .erp-import-links a:hover { text-decoration: underline; }
 /* 导入日志：等宽、收缩到可用高度后内部滚动，新行由脚本贴底 */
-.erp-import-log { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface-secondary); font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 12px; line-height: 1.7; }
+.erp-import-log { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-sm); background: var(--tblr-bg-surface-secondary); font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: var(--erp-font-sm); line-height: 1.7; }
 .erp-import-log-line { display: flex; gap: 8px; }
 .erp-import-log-at { flex: 0 0 auto; color: var(--tblr-secondary); }
 .erp-import-log-line.is-ok { color: var(--tblr-success); }
 .erp-import-log-line.is-bad { color: var(--tblr-danger); }
-.erp-import-badge-ok { display: inline-block; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--tblr-success) 14%, transparent); color: var(--tblr-success); font-size: 11px; font-weight: 600; }
-.erp-import-badge-bad { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--tblr-danger-lt); color: var(--tblr-danger); font-size: 11px; font-weight: 600; }
+.erp-import-badge-ok { display: inline-block; padding: 0 6px; border-radius: var(--erp-radius-pill); background: color-mix(in srgb, var(--tblr-success) 14%, transparent); color: var(--tblr-success); font-size: var(--erp-font-xs); font-weight: 600; }
+.erp-import-badge-bad { display: inline-block; padding: 0 6px; border-radius: var(--erp-radius-pill); background: var(--tblr-danger-lt); color: var(--tblr-danger); font-size: var(--erp-font-xs); font-weight: 600; }
 .erp-import-cell-bad { color: var(--tblr-danger); font-weight: 600; text-decoration: underline dotted; text-underline-offset: 2px; }
 .erp-import-row-bad > td { background: color-mix(in srgb, var(--tblr-danger) 7%, transparent); }
 /* 助手设置（3105）：这一页是**长表单**——设置项比一屏高，而 .erp-full-list-page 的 overflow:hidden 是
@@ -1054,21 +1094,21 @@ button, input, select { font: inherit; }
 }
 .erp-catalog-head .erp-search { flex: 1 1 240px; min-width: 180px; max-width: 420px; }
 .erp-catalog-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.erp-catalog-title strong { font-size: 14px; line-height: 1.2; }
-.erp-catalog-title span { font-size: 12px; color: var(--tblr-secondary); white-space: nowrap; }
+.erp-catalog-title strong { font-size: var(--erp-font-lg); line-height: 1.2; }
+.erp-catalog-title span { font-size: var(--erp-font-sm); color: var(--tblr-secondary); white-space: nowrap; }
 .erp-catalog-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 .erp-catalog-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
 .erp-catalog-section { display: flex; flex-direction: column; gap: 8px; }
 .erp-catalog-section-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
-.erp-catalog-section-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
-.erp-catalog-section-head .erp-catalog-count { font-size: 12px; color: var(--tblr-secondary); }
+.erp-catalog-section-head h2 { margin: 0; font-size: var(--erp-font-md); font-weight: 600; }
+.erp-catalog-section-head .erp-catalog-count { font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
 .erp-catalog-section-head .erp-catalog-section-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 /* 收藏/最近使用的空态提示：只是一行说明，不占整块空白 */
 .erp-catalog-hint {
   padding: 10px 12px;
   border: 1px dashed var(--tblr-border-color);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-md);
+  font-size: var(--erp-font-sm);
   color: var(--tblr-secondary);
 }
 .erp-catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
@@ -1078,7 +1118,7 @@ button, input, select { font: inherit; }
   display: flex;
   min-height: 64px;
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   background: var(--tblr-bg-surface);
 }
 .erp-catalog-tile:hover { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); }
@@ -1094,9 +1134,9 @@ button, input, select { font: inherit; }
   text-align: left;
   cursor: pointer;
 }
-.erp-catalog-tile-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; border-radius: 8px; }
-.erp-catalog-tile-name { font-size: 13px; font-weight: 600; padding-right: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.erp-catalog-tile-meta { font-size: 11px; color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-catalog-tile-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; border-radius: var(--erp-radius-md); }
+.erp-catalog-tile-name { font-size: var(--erp-font-md); font-weight: 600; padding-right: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-catalog-tile-meta { font-size: var(--erp-font-xs); color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-catalog-tile-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
 .erp-catalog-tile:hover .erp-catalog-tile-actions,
 .erp-catalog-tile:focus-within .erp-catalog-tile-actions,
@@ -1113,7 +1153,7 @@ button, input, select { font: inherit; }
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: var(--tblr-bg-surface);
   color: var(--tblr-secondary);
   cursor: pointer;
@@ -1122,7 +1162,7 @@ button, input, select { font: inherit; }
 .erp-catalog-tile-btn:disabled { opacity: .4; cursor: default; }
 .erp-catalog-tile-btn.is-favorite { color: var(--tblr-yellow); }
 /* 紧凑行（最近使用 / 分组内的报表条目）：整行一个按钮，右侧放时间或操作 */
-.erp-catalog-rows { display: flex; flex-direction: column; border: 1px solid var(--tblr-border-color); border-radius: 8px; overflow: hidden; }
+.erp-catalog-rows { display: flex; flex-direction: column; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-md); overflow: hidden; }
 .erp-catalog-row { display: flex; align-items: center; gap: 8px; min-width: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .erp-catalog-row:last-child { border-bottom: 0; }
 .erp-catalog-row:hover { background: var(--tblr-primary-lt); }
@@ -1139,21 +1179,21 @@ button, input, select { font: inherit; }
   cursor: pointer;
 }
 .erp-catalog-row-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
-.erp-catalog-row-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.erp-catalog-row-meta { font-size: 11px; color: var(--tblr-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.erp-catalog-row-tail { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding-right: 8px; font-size: 11px; color: var(--tblr-secondary); white-space: nowrap; }
+.erp-catalog-row-name { font-size: var(--erp-font-md); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erp-catalog-row-meta { font-size: var(--erp-font-xs); color: var(--tblr-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erp-catalog-row-tail { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding-right: 8px; font-size: var(--erp-font-xs); color: var(--tblr-secondary); white-space: nowrap; }
 .erp-catalog-badge {
   display: inline-flex;
   align-items: center;
   height: 16px;
   padding: 0 5px;
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: var(--erp-radius-xs);
+  font-size: var(--erp-font-2xs);
   color: var(--tblr-primary);
   background: var(--tblr-primary-lt);
 }
 /* 业务域分组：默认折叠为「域 + 计数」索引，展开后显示域内报表 */
-.erp-catalog-group { border: 1px solid var(--tblr-border-color); border-radius: 8px; overflow: hidden; }
+.erp-catalog-group { border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-md); overflow: hidden; }
 .erp-catalog-group + .erp-catalog-group { margin-top: 8px; }
 .erp-catalog-group-title {
   display: flex;
@@ -1168,8 +1208,8 @@ button, input, select { font: inherit; }
 }
 button.erp-catalog-group-title { cursor: pointer; }
 button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
-.erp-catalog-group-title strong { font-size: 13px; font-weight: 600; }
-.erp-catalog-group-title .erp-catalog-count { font-size: 12px; color: var(--tblr-secondary); margin-left: auto; }
+.erp-catalog-group-title strong { font-size: var(--erp-font-md); font-weight: 600; }
+.erp-catalog-group-title .erp-catalog-count { font-size: var(--erp-font-sm); color: var(--tblr-secondary); margin-left: auto; }
 .erp-catalog-group-title svg { flex: 0 0 auto; color: var(--tblr-secondary); }
 .erp-catalog-group-body { border-top: 1px solid var(--tblr-border-color); }
 .erp-catalog-empty .erp-state { min-height: 0; padding: 20px 12px; gap: .35rem; }
@@ -1189,8 +1229,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   background: var(--tblr-bg-surface);
 }
 .erp-report-head-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.erp-report-head-title h1 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.2; }
-.erp-report-head-title span { font-size: 12px; color: var(--tblr-secondary); }
+.erp-report-head-title h1 { margin: 0; font-size: var(--erp-font-lg); font-weight: 600; line-height: 1.2; }
+.erp-report-head-title span { font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
 .erp-report-head-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 /* 条件区：标签列定宽右对齐 + 控件列自适应，字段名长短不一时标签与控件仍对齐。
    auto-fit 让宽屏一行多列、窄屏自动回流，不使用固定 col-md-* 栅格 */
@@ -1200,7 +1240,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-report-conditions .card-body { padding: 10px; }
 .erp-query-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 14px; }
 .erp-query-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; }
-.erp-query-label { font-size: 12px; color: var(--tblr-secondary); text-align: right; white-space: nowrap; }
+.erp-query-label { font-size: var(--erp-font-sm); color: var(--tblr-secondary); text-align: right; white-space: nowrap; }
 .erp-query-control { min-width: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .erp-query-control .form-control-sm,
 .erp-query-control .form-select-sm { height: 28px; }
@@ -1215,10 +1255,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   gap: 8px;
   padding: 6px 10px;
   border: 1px solid var(--tblr-danger);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   background: var(--tblr-danger-lt);
   color: var(--tblr-danger);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 .erp-report-alert button {
   margin-left: auto;
@@ -1266,7 +1306,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 页内标题：描述在前、ID 在后；描述缺失时只看得到 ID，不会出现空白主标题 */
 .erp-field-editor-context { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .erp-field-editor-context-title {
-  font-size: 13px;
+  font-size: var(--erp-font-md);
   font-weight: 600;
   min-width: 0;
   overflow: hidden;
@@ -1275,7 +1315,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 }
 .erp-field-editor-context-code {
   font-family: var(--tblr-font-monospace);
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   color: var(--tblr-secondary);
   white-space: nowrap;
 }
@@ -1293,7 +1333,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    内容面板带完整边框 + 系统圆角 + padding 10px；
    激活标签向下延伸 1px、用面板底色覆盖面板上边框，与面板融为一体；未激活标签仍完整显示面板上边框 */
 .erp-tabbed-panel-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
-.erp-tabbed-panel-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
+.erp-tabbed-panel-tabs .nav-link { padding: 5px 14px; font-size: var(--erp-font-md); border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
 .erp-tabbed-panel-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
 /* 相邻标签重叠 1px：相邻的右/左边框共享同一像素列。Tabler 默认非激活标签边框为
    1px 透明占位、hover/激活仅切换颜色，任何状态切换都不改变边框宽度，
@@ -1314,7 +1354,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .card-header.erp-card-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; }
 /* 列表上方的统计/说明行（"共 N 个…"）：卡头之下、表格之上的一行提示文字。
    样式（字号 / 次要色 / 内边距）就此一处定义 */
-.erp-list-header { padding: 8px 16px 0; font-size: 12px; color: var(--tblr-secondary); }
+.erp-list-header { padding: 8px 16px 0; font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
 /* 配置面列表（230102 模块分组 / 230103 自定义按钮）：同一模块的多行在视觉上是一块——
    每块的第一行画一条上分隔线。刻意**不用跨行合并单元格**：`ErpTable` 每行每列必产出一个 `<td>`
    （合并要改公共组件），而合并会打坏复制（按列索引取单元格）与排序（同模块的行一被重排，合并块就碎）。
@@ -1323,18 +1363,18 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称）；
    ErpCommandBar 按钮（.erp-command-btn）为图标+文字、工具栏纯图标触发器
    （.erp-command-icon-btn，分组/导出分割）为 28px，均豁免此强制方块尺寸 */
-.erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) svg { width: 16px; height: 16px; }
 /* 统一命令栏（ErpCommandBar）图标+文字按钮：图标 16px + 动作名（新增/编辑/批核/打印等），
    统一 28px 高、左右 10px 内边距、宽度随内容自适应（不设固定宽度），
    供工作台/表单/列表在任意容器内保持同一表意与尺寸 */
-.erp-command-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; white-space: nowrap; }
+.erp-command-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: var(--erp-radius-md); white-space: nowrap; }
 .erp-command-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
 /* 工具栏纯图标触发器（分组/导出分割下拉等）：28×28、圆角、图标 16px，与 .erp-command-btn 高度对齐 */
-.erp-command-icon-btn { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-command-icon-btn { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
 .erp-command-icon-btn svg { width: 16px; height: 16px; }
-.erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
-.erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
+.erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: var(--erp-font-sm); }
+.erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: var(--erp-font-sm); text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
 /* 命令栏右侧按钮区：允许换行——按钮多的页（权限矩阵、版式设计器）在窄视口下
    不横向溢出，放得下时仍是一行，视觉与单行时一致 */
@@ -1378,7 +1418,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-sidebar-footer { position: relative; display: flex; flex: 0 0 auto; flex-direction: column; gap: 8px; padding: 10px; border-top: 1px solid var(--tblr-border-color); }
 .erp-sidebar-footer .erp-user-row { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .erp-sidebar-footer .erp-user-menu { flex: 1 1 auto; width: 100%; min-width: 0; }
-.erp-sidebar-footer .erp-user { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; text-align: left; }
+.erp-sidebar-footer .erp-user { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: var(--erp-radius-md); background: transparent; box-shadow: none; text-align: left; }
 .erp-sidebar-footer .erp-user:hover,
 .erp-sidebar-footer .erp-user-menu.is-open .erp-user { background: var(--tblr-bg-surface-secondary); }
 /* 头像：定尺寸圆形容器 + 内层圆头像，外圈留 2px 背景色间隙作为描边。
@@ -1386,11 +1426,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-user-avatar { display: inline-flex; flex: 0 0 28px; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 50%; background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 1px var(--tblr-border-color); }
 /* 头像底色取用户名哈希出的品牌色，文字固定白色；深色主题下把品牌色压暗一档，
    既保证白字对比，也避免高饱和色在深色界面里发亮 */
-.erp-user-avatar .avatar { width: 24px; height: 24px; margin: 0; border-radius: 50%; background-color: var(--erp-avatar-color, var(--tblr-primary)); color: #fff; font-size: 10px; font-weight: 650; }
+.erp-user-avatar .avatar { width: 24px; height: 24px; margin: 0; border-radius: 50%; background-color: var(--erp-avatar-color, var(--tblr-primary)); color: #fff; font-size: var(--erp-font-2xs); font-weight: 650; }
 [data-bs-theme='dark'] .erp-user-avatar .avatar { background-color: color-mix(in srgb, var(--erp-avatar-color, var(--tblr-primary)) 66%, #0b1220); }
 .erp-sidebar-footer .erp-user-meta { flex: 1 1 auto; min-width: 0; }
-.erp-sidebar-footer .erp-user-name { display: block; overflow: hidden; color: var(--tblr-body-color); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.erp-sidebar-footer .erp-user-groups { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.erp-sidebar-footer .erp-user-name { display: block; overflow: hidden; color: var(--tblr-body-color); font-size: var(--erp-font-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.erp-sidebar-footer .erp-user-groups { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: var(--erp-font-xs); text-overflow: ellipsis; white-space: nowrap; }
 .erp-user-chevron { flex: 0 0 auto; color: var(--tblr-secondary); transition: transform .15s ease; }
 .erp-user-menu.is-open .erp-user-chevron { transform: rotate(180deg); }
 /* 菜单向上弹出：覆盖 .erp-user-menu .dropdown-menu 的向下定位 */
@@ -1410,9 +1450,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-sidebar-collapsed .erp-user-chevron { display: none; }
 /* 折叠态菜单浮层：点一级图标弹出第一层，逐级再展开下一层，侧栏保持折叠。
    用 fixed 定位（导航列本身是滚动容器，放流内会被裁切），坐标由触发项位置算出 */
-.erp-nav-flyout { position: fixed; z-index: 1050; width: 11rem; max-height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: thin; padding: 6px; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); box-shadow: 0 16px 24px 2px rgba(0, 0, 0, .07), 0 6px 30px 5px rgba(0, 0, 0, .06); }
-.erp-nav-flyout-title { padding: 4px 10px 6px; color: var(--tblr-secondary); font-size: 11px; font-weight: 600; }
-.erp-nav-flyout-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--tblr-body-color); font-size: 12px; text-align: left; cursor: pointer; }
+.erp-nav-flyout { position: fixed; z-index: 1050; width: 11rem; max-height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: thin; padding: 6px; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-md); background: var(--tblr-bg-surface); box-shadow: 0 16px 24px 2px rgba(0, 0, 0, .07), 0 6px 30px 5px rgba(0, 0, 0, .06); }
+.erp-nav-flyout-title { padding: 4px 10px 6px; color: var(--tblr-secondary); font-size: var(--erp-font-xs); font-weight: 600; }
+.erp-nav-flyout-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; border-radius: var(--erp-radius-sm); background: transparent; color: var(--tblr-body-color); font-size: var(--erp-font-sm); text-align: left; cursor: pointer; }
 .erp-nav-flyout-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .erp-nav-flyout-item:hover { background: var(--tblr-bg-surface-secondary); }
 .erp-nav-flyout-item.active { color: var(--tblr-primary); font-weight: 650; }
@@ -1479,7 +1519,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-workspace-tabs .erp-tab-label { flex: 1 1 auto; min-width: 0; }
 .erp-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .erp-tab-dirty { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--tblr-primary); }
-.erp-tab-close { display: grid; flex: 0 0 auto; place-items: center; width: 18px; height: 18px; margin-left: auto; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
+.erp-tab-close { display: grid; flex: 0 0 auto; place-items: center; width: 18px; height: 18px; margin-left: auto; padding: 0; color: inherit; background: transparent; border: 0; border-radius: var(--erp-radius-xs); opacity: .6; }
 .erp-tab-close:hover { opacity: 1; background: var(--tblr-border-color); }
 /* 窄屏：标签栏左端给移动端菜单按钮（固定定位在左上角）留位 */
 @media (max-width: 991.98px) { .erp-tabbar { padding-left: 46px; } }
@@ -1503,7 +1543,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   gap: 8px;
   width: 100%;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   background-color: var(--tblr-alert-bg);
   border-color: color-mix(in srgb, var(--tblr-alert-color) 32%, var(--tblr-bg-surface));
   border-left-width: 3px;
@@ -1516,7 +1556,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 提示条内动作（如「复制报障编号」）：跟正文同行的次要按钮，不抢视觉但要好点 */
 .erp-toast-action { display: inline-block; margin-top: 4px; padding: 0; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; background: transparent; border: 0; }
 .erp-toast-action:hover { opacity: .8; }
-.erp-toast-close { flex: 0 0 auto; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
+.erp-toast-close { flex: 0 0 auto; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: var(--erp-radius-xs); opacity: .6; }
 .erp-toast-close:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
 /* 淡入：自上而下轻轻落下；淡出：向上收回并逐渐透明。位移只用几像素，够看出"来了/走了"即可。
    退出动画期间节点仍留在 DOM 里（由组件在动画结束后摘除），否则会变成瞬间消失。 */
@@ -1626,6 +1666,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-pagination-footer .erp-page-jump { width: 64px; min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
 .erp-page-size { width: auto; }
 .erp-state { min-height: 18rem; padding: 2rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; text-align: center; }
+/* 弹窗与卡片内嵌用矮档：选择器弹窗 640px 高，18rem 的状态块会占掉近一半 */
+.erp-state.is-compact { min-height: 7.5rem; padding: 1rem; gap: .5rem; }
 .erp-state-icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: .8rem; color: var(--tblr-primary); background: var(--tblr-primary-lt); }
 .erp-state-icon-error { color: var(--tblr-danger); background: var(--tblr-danger-lt); }
 /* ==========================================================================
@@ -1635,8 +1677,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
          后续新列表页也应统一使用本样式。
    用法：<table className="table table-vcenter card-table mb-0 erp-data-table">
    ========================================================================== */
-.erp-data-table { font-size: 12px; }
-.erp-data-table th { position: relative; white-space: nowrap; font-size: 12px; font-weight: 600; }
+/* 数字一律等宽：金额/数量列右对齐后，数位才真正成列。
+   比例数字下 1 与 8 的宽度差近一倍，只靠右对齐救不回来。 */
+.erp-data-table { font-size: var(--erp-font-sm); font-variant-numeric: tabular-nums; }
+.erp-data-table th { position: relative; white-space: nowrap; font-size: var(--erp-font-sm); font-weight: 600; }
 .erp-data-table thead th {
   border-top: 0;
   border-bottom: 0;
@@ -1646,10 +1690,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-data-table thead th:last-child { border-right: 0; }
 /* 深色主题下纯白竖线会成为整表最亮的一道线，改为低透明度白，保持与浅色一致的分隔强度 */
 [data-bs-theme='dark'] .erp-data-table thead th { border-right-color: rgba(255, 255, 255, .04); }
-.erp-data-table td { font-size: 12px; }
+.erp-data-table td { font-size: var(--erp-font-sm); }
 /* 单元格强制单行：超宽时由 .erp-cell-ellipsis 省略截断，title 悬停显示全文（复制仍取完整 textContent） */
 .erp-data-table td { white-space: nowrap; }
-.erp-data-table .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: 3px; }
+.erp-data-table .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: var(--erp-radius-xs); }
 .erp-data-table > :not(caption) > * > * { padding: 5px !important; }
 .erp-data-table.erp-table-compact > :not(caption) > * > * { padding: 2px 6px !important; }
 .erp-data-table tbody tr { cursor: pointer; }
@@ -1658,13 +1702,43 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-col-resizer::after { position: absolute; top: 0; right: 3px; bottom: 0; width: 2px; content: ''; background: transparent; transition: background-color .12s ease; }
 .erp-col-resizer:hover::after { background: var(--tblr-primary); }
 .erp-col-resizing, .erp-col-resizing * { cursor: col-resize !important; user-select: none !important; }
-.erp-data-table .btn-sm.erp-table-action { --tblr-btn-padding-x: 6px; --tblr-btn-padding-y: 1px; font-size: 12px; line-height: 1; min-height: 0; }
+.erp-data-table .btn-sm.erp-table-action { --tblr-btn-padding-x: 6px; --tblr-btn-padding-y: 1px; font-size: var(--erp-font-sm); line-height: 1; min-height: 0; }
 .erp-data-table .btn-sm.erp-table-action svg { width: 14px; height: 14px; }
 .erp-data-table .erp-select-column { width: 33px !important; min-width: 33px; max-width: 33px; padding: 5px !important; text-align: center; }
 .erp-data-table .erp-select-column .form-check-input { display: block; margin: 0 auto; }
 .erp-data-table .erp-browse-link { color: var(--tblr-primary); text-decoration: none; }
 .erp-data-table .erp-browse-link:hover { text-decoration: underline; }
-.erp-table-shell { outline: none; }
+.erp-table-shell { position: relative; outline: none; }
+/* 后台刷新（翻页/筛选）：保留旧行、降透明度并挡掉点击，右上角转小圈说明在取新数据。
+   整块换成 LoadingState 会让表格消失再出现，是列表最刺眼的闪动。 */
+.erp-table-shell.is-loading { pointer-events: none; opacity: .62; }
+.erp-table-shell.is-loading::after {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  content: '';
+  border: 2px solid var(--tblr-border-color);
+  border-top-color: var(--tblr-primary);
+  border-radius: 50%;
+  animation: spinner-border .65s linear infinite;
+}
+/* 细滚动条：Windows 默认 17px 带箭头，压在密集表格与弹窗里比内容还显眼。
+   只列应用内的滚动容器，不碰页面根与原生控件——浏览器设置里的"始终显示滚动条"应当优先；
+   侧栏另有"悬停才显形"的规则，不在这里重复。thumb 取边框色与次要文字的混色，
+   浅色下不至于淡到看不见，深色下也不至于黑成一条。 */
+.erp-table-shell,
+.table-responsive,
+.modal-body,
+.erp-chooser-body-table,
+.erp-chooser-extra,
+.erp-menu-table-list,
+.erp-field-picker-list,
+.erp-selection-list {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--tblr-border-color) 70%, var(--tblr-secondary)) transparent;
+}
 .erp-data-table .erp-row-focus td { box-shadow: inset 2px 0 0 var(--tblr-primary); }
 .erp-data-table tbody tr:not(.erp-row-active):hover td { background: var(--tblr-bg-surface-secondary); }
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-left,
@@ -1674,7 +1748,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
 .erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
 .erp-data-table .erp-header-menu-trigger.is-active { color: var(--tblr-primary); }
-.erp-data-table .erp-sort-priority { position: absolute; top: -5px; right: -5px; min-width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--tblr-primary); color: #fff; font-size: 9px; line-height: 1; }
+.erp-data-table .erp-sort-priority { position: absolute; top: -5px; right: -5px; min-width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-sm); background: var(--tblr-primary); color: #fff; font-size: var(--erp-font-2xs); line-height: 1; }
 .erp-data-table .erp-header-menu-trigger.is-filtered::after { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; content: ''; border-radius: 50%; background: var(--tblr-primary); }
 .erp-header-menu { z-index: 1100; min-width: 5rem; }
 .erp-data-table thead th.erp-header-menu-open,
@@ -1690,7 +1764,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-table-context-menu { min-width: 8rem; }
 /* 滚动加载更多：底部哨兵与提示（ErpTable onEndReached） */
 .erp-table-load-more { display: flex; align-items: center; justify-content: center; min-height: 28px; padding: 4px 0; }
-.erp-table-load-more-hint { font-size: 12px; color: var(--tblr-secondary); }
+.erp-table-load-more-hint { font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
 /* 行窗口化占位行：仅撑起滚动高度，不参与 hover 高亮 */
 .erp-virtual-spacer td { padding: 0 !important; }
 .erp-data-table tbody tr.erp-virtual-spacer:hover td { background: transparent; box-shadow: none; }
@@ -1701,9 +1775,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-help-list { padding-left: 18px; }
 .erp-help-list li { margin-bottom: 6px; }
 .erp-help-list li:last-child { margin-bottom: 0; }
-.erp-detail-card .table { font-size: 12px; }
+.erp-detail-card .table { font-size: var(--erp-font-sm); }
 .erp-detail-card .table th,
-.erp-detail-card .table td { font-size: 12px; }
+.erp-detail-card .table td { font-size: var(--erp-font-sm); }
 
 /* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动）。
    主表卡与明细卡之间的间隙取 10px，与全站留白口径（--erp-workspace-gap、页面顶部留白、
@@ -1725,19 +1799,153 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-workbench-page.erp-workbench-single > .erp-list-card .erp-master-table-region { max-height: none; }
 .erp-workbench-page .erp-data-table thead th.erp-frozen-left,
 .erp-workbench-page .erp-data-table thead th.erp-frozen-right { z-index: 4; }
-.erp-login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 480px); align-items: center; gap: 8vw; padding: 8vh 10vw; background: radial-gradient(circle at 15% 20%, var(--tblr-primary-lt), transparent 35%), var(--tblr-bg-surface-secondary); }
+/* 登录页：极光背景 + 网格 + 指针聚光。
+   动效只动 transform/opacity，模糊是静态的一次性光栅化；指针位置由组件写进 CSS 变量，
+   rAF 合并后只改合成层，不触发重渲染。前景（表单）保持静止，避免输入时视觉漂移。 */
+.erp-login-page {
+  --erp-login-grid-line: rgba(24, 36, 51, .07);
+  --erp-login-aurora-strength: .62;
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, 480px);
+  align-items: center;
+  gap: 8vw;
+  padding: 8vh 10vw;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 15% 20%, var(--tblr-primary-lt), transparent 38%),
+    var(--tblr-bg-surface-secondary);
+}
+[data-bs-theme='dark'] .erp-login-page {
+  --erp-login-grid-line: rgba(255, 255, 255, .05);
+  --erp-login-aurora-strength: .4;
+}
+.erp-login-page > :not(.erp-login-backdrop) { position: relative; z-index: 1; }
+.erp-login-backdrop { position: absolute; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; }
+.erp-login-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--erp-login-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--erp-login-grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 92% 84% at 38% 42%, #000 8%, transparent 78%);
+  mask-image: radial-gradient(ellipse 92% 84% at 38% 42%, #000 8%, transparent 78%);
+}
+.erp-login-aurora {
+  position: absolute;
+  width: 52vw;
+  height: 52vw;
+  min-width: 420px;
+  min-height: 420px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: var(--erp-login-aurora-strength);
+  will-change: transform;
+}
+.erp-login-aurora-a { top: -20%; left: -14%; background: radial-gradient(circle at 34% 32%, #4d91e5, transparent 68%); animation: erp-login-drift-a 26s ease-in-out infinite; }
+.erp-login-aurora-b { top: 4%; right: -18%; background: radial-gradient(circle at 58% 42%, #7c5cff, transparent 66%); opacity: calc(var(--erp-login-aurora-strength) * .7); animation: erp-login-drift-b 34s ease-in-out infinite; }
+.erp-login-aurora-c { bottom: -30%; left: 24%; background: radial-gradient(circle at 50% 50%, #2ec5b6, transparent 64%); opacity: calc(var(--erp-login-aurora-strength) * .62); animation: erp-login-drift-c 42s ease-in-out infinite; }
+.erp-login-spotlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1200px;
+  height: 1200px;
+  margin: -600px 0 0 -600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tblr-primary) 20%, transparent), transparent 62%);
+  transform: translate3d(var(--erp-pointer-x, 24vw), var(--erp-pointer-y, 30vh), 0);
+  opacity: 0;
+  transition: opacity .6s ease;
+  will-change: transform;
+}
+/* 指针精确的设备才给聚光：触屏上 :hover 会粘在最后触点，反而像残留污渍。 */
+@media (pointer: fine) {
+  .erp-login-page:hover .erp-login-spotlight { opacity: 1; }
+}
+@keyframes erp-login-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(6vw, 5vh, 0) scale(1.12); }
+}
+@keyframes erp-login-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.06); }
+  50% { transform: translate3d(-5vw, 8vh, 0) scale(.94); }
+}
+@keyframes erp-login-drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(.96); }
+  50% { transform: translate3d(4vw, -6vh, 0) scale(1.1); }
+}
+/* 入场：品牌区与卡片错开上浮，页面上"有东西在落位"而不是硬切出来 */
+@keyframes erp-login-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
 .erp-login-loading { display: flex; flex-direction: column; justify-content: center; gap: 14px; color: var(--tblr-secondary); }
+.erp-login-brand { animation: erp-login-rise .7s cubic-bezier(.16, 1, .3, 1) both; }
 .erp-login-brand-heading { display: flex; align-items: center; gap: 22px; }
 .erp-login-brand h1 { margin: 0; font-size: clamp(42px, 6vw, 68px); line-height: .9; letter-spacing: -.04em; }
 .erp-login-brand p { margin: 10px 0 0; font-size: 20px; color: var(--tblr-secondary); }
-.erp-login-mark { display: grid; flex: 0 0 auto; place-items: center; width: 72px; height: 72px; border-radius: 20px; color: #fff; background: linear-gradient(145deg, #206bc4, #4d91e5); font-size: 32px; font-weight: 800; box-shadow: 0 18px 45px rgba(32,107,196,.28); }
+.erp-login-mark {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(145deg, #206bc4, #4d91e5);
+  font-size: 32px;
+  font-weight: 800;
+  box-shadow: 0 18px 45px rgba(32, 107, 196, .28);
+  animation: erp-login-mark-pulse 5.5s ease-in-out infinite;
+}
+/* 光晕缓慢外扩，用 box-shadow 的扩散环做"呼吸"，不额外增加图层 */
+@keyframes erp-login-mark-pulse {
+  0%, 100% { box-shadow: 0 18px 45px rgba(32, 107, 196, .28), 0 0 0 0 rgba(77, 145, 229, .30); }
+  50% { box-shadow: 0 18px 45px rgba(32, 107, 196, .40), 0 0 0 14px rgba(77, 145, 229, 0); }
+}
 .erp-login-slogan { margin-top: 34px; color: var(--tblr-secondary); font-size: 15px; }
-.erp-login-card { width: 100%; box-shadow: 0 24px 70px rgba(24,36,51,.12); }
+/* 卡片半透明，让背后极光透上来一层，是这套背景"有纵深"的关键；
+   不透明度留在 88%，保证表单文字在任何背景色块上都够对比度。
+   不用 backdrop-filter：极光一直在动，卡面区域每帧都要重算模糊，收益只是磨砂感，
+   代价是持续合成成本，网络机房里那批老机器不值得为此掉帧。 */
+.erp-login-card {
+  width: 100%;
+  background: color-mix(in srgb, var(--tblr-bg-surface) 88%, transparent);
+  border-color: color-mix(in srgb, var(--tblr-border-color) 75%, transparent);
+  box-shadow: 0 24px 70px rgba(24, 36, 51, .12);
+  animation: erp-login-rise .7s cubic-bezier(.16, 1, .3, 1) .14s both;
+}
+[data-bs-theme='dark'] .erp-login-card { box-shadow: 0 24px 70px rgba(0, 0, 0, .55); }
 .erp-login-card .card-body { padding: 36px; }
 .erp-login-mobile-brand { display: none; }
 .erp-login-test-accounts { margin-top: 24px; color: var(--tblr-secondary); font-size: 12px; }
 .erp-login-test-accounts summary { width: fit-content; cursor: pointer; }
 .erp-login-test-accounts div { margin-top: 4px; padding-left: 16px; }
+/* 减少动效：装饰性位移与淡入一律去掉（保留最终态）。
+   两类例外必须保留：
+   ① Toast 的退出靠 animationend 摘节点，已在上面换成更弱的淡入淡出；
+   ② 加载指示器（spinner）停转会被读成"卡死"，不在本名单里。 */
+@media (prefers-reduced-motion: reduce) {
+  .erp-login-brand,
+  .erp-login-card,
+  .erp-login-mark,
+  .erp-login-aurora,
+  .erp-nav-chevron,
+  .erp-user-chevron,
+  .erp-catalog-tile-actions,
+  .erp-sidebar,
+  .erp-context-bar,
+  .erp-shell > .page-wrapper,
+  .erp-master-table-region,
+  .erp-command-btn,
+  .erp-assistant-cursor { animation: none; transition: none; }
+  .erp-login-spotlight,
+  .erp-col-resizer::after { transition: none; }
+}
 .erp-error-page { min-height: 100vh; display: grid; place-items: center; padding: 2rem; }
 /* 错误页/错误提示里的诊断信息：等宽字体、可横向滚动，便于整体复制给维护者。
    必须**显式给正文色**：错误页外层是 Tabler 的 .text-center（浅色文字，实测 color≈rgb(249,250,251)），
@@ -1775,8 +1983,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   .erp-login-page { grid-template-columns: 1fr; padding: 20px; }
   .erp-login-brand { display: none; }
   .erp-login-card { max-width: 440px; margin: auto; }
+  /* 小屏减少面积最大的模糊图层，避免移动端为装饰背景付光栅化成本 */
+  .erp-login-aurora { filter: blur(64px); }
+  .erp-login-aurora-c { display: none; }
   .erp-login-mobile-brand { display: flex; align-items: center; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--tblr-border-color); }
-  .erp-login-mobile-brand .erp-login-mark { width: 42px; height: 42px; border-radius: 11px; font-size: 19px; box-shadow: 0 8px 20px rgba(32,107,196,.2); }
+  .erp-login-mobile-brand .erp-login-mark { width: 42px; height: 42px; border-radius: 11px; font-size: 19px; box-shadow: 0 8px 20px rgba(32,107,196,.2); animation: none; }
   .erp-login-mobile-brand strong, .erp-login-mobile-brand small { display: block; }
   .erp-login-mobile-brand strong { font-size: 20px; line-height: 1.1; }
   .erp-login-mobile-brand small { margin-top: 3px; color: var(--tblr-secondary); font-size: 11px; }
@@ -1837,7 +2048,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   /* 容器内边距取页面标准间距 10px：表单内容与四周边框等距，不再贴边 */
   padding: 10px;
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   overflow: hidden;
   background: var(--tblr-bg-surface);
 }
@@ -1884,7 +2095,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   align-items: center;
   min-height: 24px;
   padding: 2px 10px;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   font-weight: 700;
   color: var(--tblr-secondary);
   letter-spacing: 0.02em;
@@ -1904,10 +2115,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 }
 .erp-form-static-badge {
   padding: 1px 10px;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   color: var(--tblr-secondary);
   background: var(--tblr-bg-surface-secondary);
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
 }
 
 /* 控件行：输入控件 + 附属按钮（选择器）。间距统一取 --erp-form-control-gap，
@@ -1948,7 +2159,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   line-height: 1.35;
   word-break: break-word;
   color: var(--tblr-secondary);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   font-weight: 600;
   text-align: left;
 }
@@ -1964,7 +2175,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-field .form-control { min-width: 0; }
 .erp-form-control { min-width: 0; }
 .erp-form-control .form-select { min-width: 0; }
-.erp-form-field .form-hint { font-size: 11px; }
+.erp-form-field .form-hint { font-size: var(--erp-font-xs); }
 
 @media (max-width: 767.98px) {
   .erp-form-row { grid-template-columns: 1fr; }
@@ -1972,7 +2183,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 
 /* 页签 */
 .erp-form-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
-.erp-form-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
+.erp-form-tabs .nav-link { padding: 5px 14px; font-size: var(--erp-font-md); border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
 .erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
 /* 页签错误计数徽标：隐藏页签的错误可见 */
 .erp-tab-error-badge {
@@ -1980,12 +2191,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   margin-left: 6px;
   min-width: 16px;
   padding: 0 5px;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   line-height: 16px;
   text-align: center;
   color: #fff;
   background: var(--tblr-danger);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
 }
 /* 相邻标签重叠 1px：相邻的右/左边框共享同一像素列（与系统级页签 .erp-tabbed-panel-tabs 同一套几何）。
    Tabler 的非激活标签边框本来就是 1px 透明占位，hover/激活只切换颜色、不改宽度，
@@ -2006,7 +2217,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-page-full > .erp-form-card.card {
   background: var(--tblr-bg-surface);
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   overflow: hidden;
 }
 .erp-form-page-full > .erp-form-card .erp-form-toolbar {
@@ -2039,7 +2250,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-cell-controls .form-select {
   height: 26px;
   padding: 2px 7px;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 
 .erp-form-grid textarea.form-control,
@@ -2108,7 +2319,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   gap: 2px;
   background: var(--tblr-bg-surface);
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
 }
 /* 朝按钮的那一侧挪 1px（菜单是按 top 定位的，纵向位移统一用 margin-top 表达，
@@ -2119,10 +2330,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-source-menu-item {
   padding: 4px 8px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--erp-radius-xs);
   background: transparent;
   color: var(--tblr-body-color);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -2143,12 +2354,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   padding: 4px;
   background: var(--tblr-bg-surface);
   border: 1px solid var(--tblr-border-color);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 .erp-field-setup-header {
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   color: var(--tblr-secondary);
   border-bottom: 1px solid var(--tblr-border-color);
   margin-bottom: 4px;
@@ -2158,12 +2369,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   display: block;
   width: 100%;
   padding: 5px 8px;
-  font-size: 13px;
+  font-size: var(--erp-font-md);
   text-align: left;
   color: var(--tblr-body-color);
   background: transparent;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--erp-radius-sm);
 }
 .erp-field-setup-item:hover {
   background: var(--tblr-bg-surface-secondary);
@@ -2180,7 +2391,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    与标题栏/表格的间距统一为 10px */
 .erp-chooser-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .erp-chooser-toolbar > .btn { flex: 0 0 auto; }
-.erp-chooser-toolbar .btn { font-size: 12px; }
+.erp-chooser-toolbar .btn { font-size: var(--erp-font-sm); }
 .erp-chooser-toolbar .erp-chooser-query { flex: 1 1 auto; min-width: 0; }
 /* 选择器工具行纯图标按钮（高级查询/选择列）：与查询按钮（input-group）同高，方形紧凑 */
 .erp-chooser-icon-btn {
@@ -2211,7 +2422,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 明细列宽对齐工作台子表：table-layout fixed + DISPLAY_LENGTH 宽度，输入框填满列 */
 .erp-detail-grid { table-layout: fixed; width: 100%; }
 .erp-detail-grid .form-control { width: 100%; min-width: 96px; }
-.erp-detail-grid .form-control, .erp-detail-grid .form-select { height: 30px; padding: 3px 8px; font-size: 13px; }
+.erp-detail-grid .form-control, .erp-detail-grid .form-select { height: 30px; padding: 3px 8px; font-size: var(--erp-font-md); }
 .erp-detail-grid .erp-form-control { width: 100%; min-width: 0; }
 .erp-detail-grid .erp-form-control .d-flex { flex-wrap: nowrap; }
 .erp-detail-grid .erp-form-control .d-flex > .form-control,
@@ -2300,20 +2511,20 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   padding: 5px 12px;
   background: var(--tblr-bg-surface-secondary);
   color: var(--tblr-body-color);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   font-weight: 600;
 }
 
 .erp-settings-form .form-control,
 .erp-settings-form .form-select {
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
 }
 
 .erp-settings-form .form-check-input {
   width: 14px;
   height: 14px;
   margin-top: 0;
-  border-radius: 3px;
+  border-radius: var(--erp-radius-xs);
 }
 
 /* 三列分区行：长标签优先，输入控件收窄，标签放不下时换行而非截断 */
@@ -2330,7 +2541,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 
 /* 统一表单附件对话框：附件列表项（文件名/大小/上传人/时间/备注，操作按钮右侧排列） */
 .erp-attachment-list .list-group-item { align-items: center; }
-.erp-attachment-remark { font-size: 12px; }
+.erp-attachment-remark { font-size: var(--erp-font-sm); }
 
 /* ===== 工作助手：悬浮球 + 右侧抽屉 ===== */
 .erp-assistant-fab {
@@ -2406,7 +2617,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 重命名编辑态：必须与只读下拉一眼可分，否则点完看起来"什么都没发生"（最初的用户反馈） */
 .erp-assistant-rename { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }
 .erp-assistant-rename .form-control { min-width: 0; border-color: var(--tblr-primary, #206bc4); }
-.erp-assistant-rename .btn { padding: 2px 7px; font-size: 11px; line-height: 1.5; }
+.erp-assistant-rename .btn { padding: 2px 7px; font-size: var(--erp-font-xs); line-height: 1.5; }
 .erp-assistant-menu { position: absolute; top: 100%; right: 0; z-index: 1090; }
 /* 全屏顶部条分两段：左段是"我是谁 + 当前会话"，右段是面板级动作（更多 / 记忆 / 形态切换）。
    分段靠的就是下面这条 `margin-left: auto`：把右段顶到最右侧，中间留白由两段分组承担。 */
@@ -2432,7 +2643,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   margin: auto;
   text-align: center;
   color: var(--tblr-secondary, #6c757d);
-  font-size: 13px;
+  font-size: var(--erp-font-md);
   padding: 0 16px;
 }
 
@@ -2443,9 +2654,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   gap: 6px;
   padding: 8px 10px;
   border: 1px solid var(--tblr-border-color, #e6e7e9);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   background: var(--tblr-bg-surface-secondary, #f6f8fb);
-  font-size: 13px;
+  font-size: var(--erp-font-md);
 }
 .erp-assistant-situation-head { font-weight: 600; }
 .erp-assistant-situation-line { line-height: 1.5; }
@@ -2458,14 +2669,14 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   width: 100%;
   padding: 5px 8px;
   border: 1px solid var(--tblr-border-color, #e6e7e9);
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: var(--tblr-bg-surface, #fff);
   text-align: left;
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   cursor: pointer;
 }
 .erp-assistant-situation-item:hover { border-color: var(--tblr-primary, #206bc4); }
-.erp-assistant-situation-caveat { font-size: 11px; color: var(--tblr-secondary, #6c757d); line-height: 1.45; }
+.erp-assistant-situation-caveat { font-size: var(--erp-font-xs); color: var(--tblr-secondary, #6c757d); line-height: 1.45; }
 
 /* 消息行：气泡 + 气泡**外面**的操作区。宽度上限放在行上，气泡只负责自身外观与对齐 */
 .erp-assistant-message {
@@ -2479,8 +2690,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-bubble {
   max-width: 100%;
   padding: 7px 11px;
-  border-radius: 10px;
-  font-size: 13px;
+  border-radius: var(--erp-radius-lg);
+  font-size: var(--erp-font-md);
   line-height: 1.55;
   word-break: break-word;
 }
@@ -2514,7 +2725,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-message:focus-within .erp-assistant-message-actions { opacity: 1; }
 .erp-assistant-message-actions .btn {
   padding: 0 5px;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   line-height: 1.7;
   color: var(--tblr-secondary, #6c757d);
 }
@@ -2530,8 +2741,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   flex: 0 0 auto;
   margin: 0 12px 8px;
   padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-sm);
+  font-size: var(--erp-font-sm);
   background: var(--tblr-warning-lt, #fff3cd);
   color: var(--tblr-yellow, #997404);
 }
@@ -2548,14 +2759,14 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-send { flex: 0 0 auto; }
 
 /* 「处境」开关：隐式外发的东西必须看得见、关得掉 */
-.erp-assistant-context-btn { flex: 0 0 auto; font-size: 11px; }
+.erp-assistant-context-btn { flex: 0 0 auto; font-size: var(--erp-font-xs); }
 .erp-assistant-context-panel {
   flex: 0 0 auto;
   margin: 0 12px 8px;
   padding: 8px 10px;
   border: 1px solid var(--tblr-border-color, #e6e7e9);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-sm);
+  font-size: var(--erp-font-sm);
   background: var(--tblr-bg-surface-secondary, #f8f9fa);
 }
 .erp-assistant-context-panel-head { font-weight: 600; margin-bottom: 6px; }
@@ -2572,8 +2783,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-truncated {
   margin-top: 6px;
   padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-xs);
+  font-size: var(--erp-font-sm);
   background: var(--tblr-warning-lt, #fff3cd);
   color: var(--tblr-yellow, #997404);
 }
@@ -2583,7 +2794,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px dashed var(--tblr-border-color, #e6e7e9);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   color: var(--tblr-secondary, #6c757d);
 }
 /* 它长在**用户气泡内**（主色底）：分隔线与次要文字都要按底色重算对比度，否则在白底上
@@ -2602,8 +2813,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   padding: 6px 8px;
   max-height: 220px;
   overflow: auto;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-xs);
+  font-size: var(--erp-font-sm);
   white-space: pre-wrap;
   background: var(--tblr-bg-surface-secondary, #f8f9fa);
   color: var(--tblr-secondary, #6c757d);
@@ -2709,16 +2920,16 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   border: 0;
   background: none;
   color: var(--tblr-primary, #206bc4);
-  font-size: 12px;
+  font-size: var(--erp-font-sm);
   vertical-align: baseline;
 }
 .erp-assistant-kb-link:hover { text-decoration: underline; }
 .erp-assistant-chip {
   display: inline-flex;
   align-items: center;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--erp-radius-pill);
   background: var(--tblr-bg-surface-secondary, #f6f8fb);
   border: 1px solid var(--tblr-border-color, #e6e7e9);
   color: var(--tblr-secondary, #6c757d);
@@ -2739,17 +2950,17 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   border-color: var(--tblr-yellow, #997404);
   color: var(--tblr-yellow, #997404);
 }
-.erp-assistant-tool-caret { font-size: 9px; opacity: 0.75; }
+.erp-assistant-tool-caret { font-size: var(--erp-font-2xs); opacity: 0.75; }
 .erp-assistant-tool-detail {
   flex: 1 0 100%;
   margin: 2px 0 0;
   padding: 6px 8px;
   border: 1px solid var(--tblr-border-color, #e6e7e9);
-  border-radius: 6px;
+  border-radius: var(--erp-radius-sm);
   background: var(--tblr-bg-surface, #fff);
   color: var(--tblr-secondary, #6c757d);
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--erp-font-xs);
   line-height: 1.5;
   max-height: 160px;
   overflow: auto;
@@ -2760,13 +2971,13 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-drafts { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .erp-assistant-draft-card {
   border: 1px solid var(--tblr-primary, #206bc4);
-  border-radius: 8px;
+  border-radius: var(--erp-radius-md);
   padding: 8px 10px;
   background: var(--tblr-active-bg, #f0f6ff);
   box-shadow: 0 1px 3px rgba(32, 107, 196, 0.08);
 }
 .erp-assistant-draft-table { margin: 4px 0; }
-.erp-assistant-draft-table td { padding: 2px 6px; font-size: 12px; word-break: break-all; }
+.erp-assistant-draft-table td { padding: 2px 6px; font-size: var(--erp-font-sm); word-break: break-all; }
 
 /* 就地操作卡：逐行摊开（主键 + 结论 + 可就地改的字段 + 影响面），行间可辨、失败行可辨。 */
 .erp-assistant-action-row {
@@ -2791,14 +3002,14 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   padding: 6px 0;
 }
 .erp-assistant-config-item.is-unpreviewable { background: var(--tblr-warning-lt, #fff3cd); }
-.erp-assistant-config-note { font-size: 11px; color: var(--tblr-secondary, #6c757d); line-height: 1.5; margin-top: 2px; }
+.erp-assistant-config-note { font-size: var(--erp-font-xs); color: var(--tblr-secondary, #6c757d); line-height: 1.5; margin-top: 2px; }
 .erp-assistant-config-note.is-warning { color: var(--tblr-yellow, #997404); font-weight: 600; }
 .erp-assistant-config-note.is-previewed { color: var(--tblr-green, #2fb344); }
 .erp-assistant-config-summary {
   margin-top: 6px;
   padding: 4px 6px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--erp-radius-sm);
+  font-size: var(--erp-font-sm);
   background: var(--tblr-bg-surface-secondary, #f6f8fb);
 }
 .erp-assistant-config-result { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--tblr-border-color, #e6e7e9); }

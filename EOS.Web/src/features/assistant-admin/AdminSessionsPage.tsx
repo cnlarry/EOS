@@ -1,5 +1,5 @@
 import { IconArchive, IconArchiveOff, IconRefresh, IconTrash } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -75,6 +75,8 @@ export function AdminSessionsPage() {
 
   const sessions = useQuery({
     queryKey: ['assistant-admin-sessions', view, keyword, owner, page, sortParams.sortBy, sortParams.sortDir],
+    // 翻页/改筛选时保留上一页，避免表格整块消失再出现
+    placeholderData: keepPreviousData,
     queryFn: () => listAllSessions({
       offset: (page - 1) * pageSize,
       limit: pageSize,
@@ -340,6 +342,7 @@ export function AdminSessionsPage() {
           <ErpTable
             columns={columns}
             data={items}
+            loading={sessions.isFetching}
             getRowId={(row) => row.id}
             // 不传 clientSideSorting：列表是服务端分页的，排序交给服务端（ErpTable 的 manualSorting）
             sorting={sorting}

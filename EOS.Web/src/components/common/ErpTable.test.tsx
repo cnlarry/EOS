@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ErpTable } from './ErpTable'
+import { ErpTable, computeVirtualWindow } from './ErpTable'
 
 interface Row {
   id: string
@@ -132,6 +132,50 @@ describe('ErpTable', () => {
     expect(th).toHaveAttribute('data-col-key', 'name')
     expect(th).toHaveAttribute('data-col-min-width', '120')
     expect(th).toHaveStyle({ minWidth: '120px' })
+  })
+
+  it('量值列默认右对齐，整型与显式对齐不被覆盖', () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { id: 'amount', accessorFn: () => '1,200.00', header: '金额', meta: { dataType: 'decimal' } },
+      { id: 'code', accessorFn: () => 'C001', header: '编号', meta: { dataType: 'int' } },
+      { id: 'price', accessorFn: () => '9.00', header: '单价', meta: { dataType: 'decimal', cellClassName: 'text-start' } },
+    ]
+    render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+
+    expect(screen.getByText('金额').closest('th')).toHaveClass('text-end')
+    expect(screen.getByText('编号').closest('th')).not.toHaveClass('text-end')
+    expect(screen.getAllByText('1,200.00')[0].closest('td')).toHaveClass('text-end')
+    expect(screen.getAllByText('C001')[0].closest('td')).not.toHaveClass('text-end')
+    expect(screen.getAllByText('9.00')[0].closest('td')).toHaveClass('text-start')
+    expect(screen.getAllByText('9.00')[0].closest('td')).not.toHaveClass('text-end')
+  })
+
+  it('虚拟化滚到底时窗口收到末行，不留底部占位', () => {
+    const total = 500
+    const height = 28
+    const viewport = 600
+    // 含 36px 粘性表头
+    const scrollHeight = total * height + 36
+    const bottom = scrollHeight - viewport
+
+    expect(computeVirtualWindow(bottom, viewport, scrollHeight, total, height).end).toBe(total)
+    // 行高估值偏大时按公式会少算几行，到底仍必须收到末行
+    expect(computeVirtualWindow(bottom, viewport, scrollHeight, total, height + 2).end).toBe(total)
+    // 中途只渲染可视区 + 缓冲，不能退化成全量
+    const middle = computeVirtualWindow(1200, viewport, scrollHeight, total, height)
+    expect(middle.start).toBeGreaterThan(0)
+    expect(middle.end).toBeLessThan(total)
+    // 顶部不产生上方占位
+    expect(computeVirtualWindow(0, viewport, scrollHeight, total, height).start).toBe(0)
+  })
+
+  it('后台刷新时保留旧行并标记 is-loading', () => {
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} loading />,
+    )
+    expect(container.querySelector('.erp-table-shell')).toHaveClass('is-loading')
+    expect(screen.getByText('A')).toBeInTheDocument()
+    expect(screen.getByText('B')).toBeInTheDocument()
   })
 
   it('空数据时渲染 empty 插槽；传 null 时保留空表格', () => {

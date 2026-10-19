@@ -1,5 +1,5 @@
 import { IconClick, IconEdit, IconPlus, IconRefresh, IconShield, IconTrash, IconUsers } from '@tabler/icons-react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -25,6 +25,7 @@ export function UserGroupAdminPage() {
   const navigate = useNavigate()
   const groups = useQuery({
     queryKey: ['rights-admin', 'groups'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<UserGroupSummary[]>('/admin/groups'),
   })
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
@@ -133,6 +134,7 @@ export function UserGroupAdminPage() {
       >
         {groups.isPending ? <LoadingState label="正在加载用户组…" /> : groups.isError ? <ErrorState message={errorMessage} onRetry={() => void groups.refetch()} /> : (
           <ErpTable
+            loading={groups.isFetching}
             columns={columns}
             data={filtered}
             getRowId={(row) => row.groupId.trim()}

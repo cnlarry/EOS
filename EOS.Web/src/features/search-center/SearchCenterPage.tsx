@@ -117,7 +117,7 @@ export function SearchCenterPage() {
           </div>
         </div>
         {result.isPending ? <LoadingState label="正在查询…" /> : result.isError ? <ErrorState message={describeApiError(result.error, '查询失败。')} onRetry={() => void result.refetch()} /> : (
-          <ErpTable columns={columns} data={result.data?.rows ?? []} getRowId={(row) => Object.values(row).slice(0, 2).join('-') || 'row'} empty={<div className="text-center text-secondary py-4">{activeModule ? '点击「查询」开始搜索' : '请先选择查询模块'}</div>} />
+          <ErpTable loading={result.isFetching} columns={columns} data={result.data?.rows ?? []} getRowId={(row) => Object.values(row).slice(0, 2).join('-') || 'row'} empty={<div className="text-center text-secondary py-4">{activeModule ? '点击「查询」开始搜索' : '请先选择查询模块'}</div>} />
         )}
       </ErpListCard>
     </div>

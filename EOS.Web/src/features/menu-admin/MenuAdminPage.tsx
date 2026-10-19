@@ -16,7 +16,7 @@ import {
   IconSearch,
   IconTrash,
 } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar } from '../../components/common/ErpCommandBar'
@@ -380,6 +380,7 @@ export function MenuAdminPage() {
   const modules = useQuery({ queryKey: ['menu-admin', 'modules'], queryFn: () => apiClient.get<{ total: number; modules: MenuAdminModule[] }>('/admin/menus') })
   const versions = useQuery({
     queryKey: ['menu-admin', 'versions', selectedId],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<MenuModuleVersion[]>(`/admin/menus/${selectedId}/versions`),
     enabled: versionsOpen && selectedId != null,
   })
@@ -1492,6 +1493,7 @@ export function MenuAdminPage() {
             <ErrorState message={describeApiError(versions.error, '加载版本历史失败。')} onRetry={() => void versions.refetch()} />
           ) : (
             <ErpTable
+              loading={versions.isFetching}
               columns={versionColumns}
               data={versions.data ?? []}
               getRowId={(row) => String(row.version)}

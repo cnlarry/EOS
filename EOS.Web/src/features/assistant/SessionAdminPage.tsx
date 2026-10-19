@@ -1,5 +1,5 @@
 import { IconArchive, IconArchiveOff, IconEdit, IconExternalLink, IconRefresh, IconTrash } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -61,6 +61,7 @@ export function SessionAdminPage() {
 
   const sessions = useQuery({
     queryKey: ['assistant-sessions', view, keyword, page],
+    placeholderData: keepPreviousData,
     queryFn: () => listSessions({ offset: (page - 1) * pageSize, limit: pageSize, state: view, keyword }),
   })
 
@@ -220,6 +221,7 @@ export function SessionAdminPage() {
           <ErrorState message={errorMessage} onRetry={() => void sessions.refetch()} />
         ) : (
           <ErpTable
+            loading={sessions.isFetching}
             columns={columns}
             data={items}
             getRowId={(row) => row.id}

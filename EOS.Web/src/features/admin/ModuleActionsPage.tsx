@@ -1,5 +1,5 @@
 import { IconDeviceFloppy } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -108,6 +108,7 @@ export function ModuleActionsPage() {
 
   const target = useQuery({
     queryKey: ['module-actions', moduleId, 'target'],
+    placeholderData: keepPreviousData,
     enabled: moduleId != null,
     queryFn: () => apiClient.get<ModuleConfigTarget>(`/admin/module-business-config/${moduleId}/target`),
   })
@@ -115,6 +116,7 @@ export function ModuleActionsPage() {
   // 左栏模块清单 + 未选中时的全库总览：同一份事实（谁配了什么），与写路径同源。
   const overview = useQuery({
     queryKey: ['module-actions', 'overview'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<OverviewView>('/admin/module-business-config/overview'),
   })
 
@@ -517,6 +519,7 @@ export function ModuleActionsPage() {
             />
           ) : overviewMode === 'modules' ? (
             <ErpTable
+              loading={overview.isFetching}
               columns={summaryColumns}
               data={summaryRows}
               getRowId={(row) => String(row.moduleId)}
@@ -533,6 +536,7 @@ export function ModuleActionsPage() {
             />
           ) : overviewMode === 'actions' ? (
             <ErpTable
+              loading={overview.isFetching}
               columns={actionOverviewColumns}
               data={filteredActionRows}
               getRowId={(row) => `${row.moduleId}#${row.eventCode}#${row.seq}`}
@@ -549,6 +553,7 @@ export function ModuleActionsPage() {
             />
           ) : (
             <ErpTable
+              loading={overview.isFetching}
               columns={ruleOverviewColumns}
               data={filteredRuleRows}
               getRowId={(row) => `${row.moduleId}#${row.stage}#${row.seq}`}

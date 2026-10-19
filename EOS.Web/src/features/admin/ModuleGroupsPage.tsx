@@ -1,7 +1,7 @@
 import {
   IconArrowDown, IconArrowUp, IconDeviceFloppy, IconPencil, IconPlus, IconRefresh, IconTrash,
 } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -118,6 +118,7 @@ export function ModuleGroupsPage() {
 
   const overview = useQuery({
     queryKey: ['module-groups', 'overview'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<OverviewView>('/admin/module-groups/overview'),
   })
   // 弹窗打开时才按模块取一次：样例值要真跑查询，不适合压在列表首屏上
@@ -419,6 +420,7 @@ export function ModuleGroupsPage() {
           <ErrorState message={errorMessage} onRetry={refreshAll} />
         ) : (
           <ErpTable
+            loading={overview.isFetching}
             columns={columns}
             data={rows}
             getRowId={(row) => String(row.groupId)}

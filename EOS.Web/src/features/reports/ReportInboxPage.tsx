@@ -1,5 +1,5 @@
 import { IconArrowLeft, IconDownload, IconMailOpened, IconPlus, IconTrash, IconX } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -52,10 +52,12 @@ export function ReportInboxPage() {
 
   const subscriptions = useQuery({
     queryKey: ['report-center', 'subscriptions'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<Subscription[]>('/report-center/subscriptions'),
   })
   const inbox = useQuery({
     queryKey: ['report-center', 'inbox'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<InboxItem[]>('/report-center/inbox', { query: { limit: '100' } }),
   })
 
@@ -202,6 +204,7 @@ export function ReportInboxPage() {
               <ErrorState message={describeApiError(inbox.error, '收件箱加载失败。')} onRetry={() => void inbox.refetch()} />
             ) : (
               <ErpTable
+                loading={inbox.isFetching}
                 columns={inboxColumns}
                 data={inbox.data ?? []}
                 getRowId={(row) => String(row.id)}
@@ -279,6 +282,7 @@ export function ReportInboxPage() {
               <ErrorState message={describeApiError(subscriptions.error, '订阅加载失败。')} onRetry={() => void subscriptions.refetch()} />
             ) : (
               <ErpTable
+                loading={subscriptions.isFetching}
                 columns={subscriptionColumns}
                 data={subscriptions.data ?? []}
                 getRowId={(row) => String(row.id)}

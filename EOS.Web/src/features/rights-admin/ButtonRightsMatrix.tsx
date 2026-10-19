@@ -1,5 +1,5 @@
 import { IconArrowLeft, IconSearch } from '@tabler/icons-react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
@@ -52,6 +52,7 @@ export function ButtonRightsMatrix({ open, mode, targetId, title, onClose, onSav
     : `/admin/groups/${encodeURIComponent(targetId.trim())}/button-rights`
   const matrix = useQuery({
     queryKey: ['rights-admin', mode, targetId, 'button-matrix'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<ButtonRightsRow[]>(url),
     enabled: open,
     staleTime: Number.POSITIVE_INFINITY,
@@ -197,6 +198,7 @@ export function ButtonRightsMatrix({ open, mode, targetId, title, onClose, onSav
         <EmptyState title="没有匹配的按钮" description="取消「仅显示已授权」或调整搜索关键字后重试。" />
       ) : (
         <ErpTable
+          loading={matrix.isFetching}
           columns={columns}
           data={filteredRows}
           getRowId={(row) => rowKey(row)}

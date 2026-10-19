@@ -293,6 +293,7 @@ export function UserAdminPage() {
       >
         {users.isPending && page === 1 ? <LoadingState label="正在加载用户…" /> : users.isError ? <ErrorState message={errorMessage} onRetry={() => void users.refetch()} /> : (
           <ErpTable
+            loading={users.isFetching}
             columns={columns}
             data={items}
             getRowId={(row) => row.userId.trim()}

@@ -1,7 +1,7 @@
 import {
   IconArrowDown, IconArrowUp, IconDeviceFloppy, IconPencil, IconPlus, IconRefresh, IconTrash, IconUsers,
 } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -137,6 +137,7 @@ export function ModuleButtonsPage() {
 
   const overview = useQuery({
     queryKey: ['module-buttons', 'overview'],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<OverviewView>('/admin/module-buttons/overview'),
   })
   const meta = useQuery({
@@ -567,6 +568,7 @@ export function ModuleButtonsPage() {
           <ErrorState message={errorMessage} onRetry={refreshAll} />
         ) : (
           <ErpTable
+            loading={overview.isFetching || meta.isFetching}
             columns={columns}
             data={rows}
             getRowId={(row) => `${row.moduleId}#${row.seq}`}

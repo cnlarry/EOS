@@ -1,5 +1,5 @@
 import { IconEdit, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowData, RowSelectionState } from '../../lib/tanstackTable'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
@@ -433,6 +433,8 @@ export function ReportAdminPage() {
   const tails = useQuery({ queryKey: ['report-admin', 'tails'], queryFn: () => apiClient.get<IdNameOption[]>('/report-admin/tails') })
   const sorts = useQuery({
     queryKey: ['report-admin', 'sorts', selectedReport],
+    // 取消选中时不能留着上一张报表的方案，否则明细卡会显示别的报表的数据
+    placeholderData: selectedReport !== '' ? keepPreviousData : undefined,
     queryFn: () => apiClient.get<SortRow[]>(`/report-admin/sorts?reportId=${encodeURIComponent(selectedReport)}`),
     enabled: selectedReport !== '',
   })
@@ -596,6 +598,7 @@ export function ReportAdminPage() {
           <ErrorState message={sortsError} onRetry={() => void sorts.refetch()} />
         ) : (
           <ErpTable
+            loading={sorts.isFetching}
             columns={sortColumns}
             data={sortRows}
             getRowId={(row: SortRow) => String(row.serialNo)}

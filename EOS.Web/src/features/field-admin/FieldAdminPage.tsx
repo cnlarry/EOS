@@ -1,5 +1,5 @@
 import { IconCopy, IconEdit, IconEraser, IconListDetails, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -72,6 +72,7 @@ export function FieldAdminPage() {
   const sortDesc = sorting[0]?.desc ?? false
   const fields = useQuery({
     queryKey: ['field-admin', 'fields', tableId, keyword, page, showSystem, sortBy, sortDesc],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<FieldAdminPageResult>(`/admin/tables/${encodeURIComponent(tableId)}/fields`, {
       query: { keyword, page, pageSize, excludeSystem: showSystem ? undefined : 'true', sortBy, sortDesc: sortDesc ? 'true' : undefined },
     }),
@@ -168,6 +169,7 @@ export function FieldAdminPage() {
       >
         {fields.isPending ? <LoadingState label="正在加载字段列表…" /> : fields.isError ? <ErrorState message={errorMessage} onRetry={() => void fields.refetch()} /> : (
           <ErpTable
+            loading={fields.isFetching}
             columns={columns}
             data={items}
             getRowId={(row) => `${row.tableId}.${row.fieldId}`}

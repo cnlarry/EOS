@@ -1,5 +1,5 @@
 import { IconArrowLeft, IconPlus, IconRefresh, IconSearch, IconTrash, IconUsers } from '@tabler/icons-react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -97,6 +97,7 @@ export function GroupMembersPage() {
 
   const members = useQuery({
     queryKey: ['rights-admin', 'members', id],
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get<GroupMemberSummary[]>(`/admin/groups/${encodeURIComponent(id)}/members`),
     enabled: id !== '',
   })
@@ -201,6 +202,7 @@ export function GroupMembersPage() {
           <ErrorState message={describeApiError(members.error, '加载失败。')} onRetry={() => void members.refetch()} />
         ) : (
           <ErpTable
+            loading={members.isFetching}
             columns={columns}
             data={draftMembers}
             getRowId={(row) => row.userId}

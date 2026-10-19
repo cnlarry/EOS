@@ -1,9 +1,20 @@
 import { IconEye, IconEyeOff, IconLock, IconUser } from '@tabler/icons-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './authContext'
 import { REMEMBERED_USER_KEY } from '../../lib/storageKeys'
 import { describeApiError } from '../../lib/errors'
+
+/** 背景装饰层：纯视觉、不可聚焦，故整体对辅助技术隐藏。 */
+function LoginBackdrop() {
+  return <div className="erp-login-backdrop" aria-hidden="true">
+    <div className="erp-login-grid" />
+    <div className="erp-login-aurora erp-login-aurora-a" />
+    <div className="erp-login-aurora erp-login-aurora-b" />
+    <div className="erp-login-aurora erp-login-aurora-c" />
+    <div className="erp-login-spotlight" />
+  </div>
+}
 
 export function LoginPage() {
   const { bootstrap, loading, login } = useAuth()
@@ -16,8 +27,30 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const destination = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+  const pageRef = useRef<HTMLElement>(null)
+  const frameRef = useRef<number | null>(null)
+  const pointerRef = useRef({ x: 0, y: 0 })
 
-  if (loading) return <main className="erp-login-page erp-login-loading" aria-live="polite"><div className="spinner-border text-primary" role="status" /><span>正在恢复登录状态…</span></main>
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+  }, [])
+
+  // 聚光位置写进 CSS 变量而不是 state：指针每移动一次都 setState 会让整页重渲染，
+  // 而这里只需要改一个合成层的 transform，用 rAF 合并到每帧一次。
+  function trackPointer(event: PointerEvent<HTMLElement>) {
+    pointerRef.current = { x: event.clientX, y: event.clientY }
+    if (frameRef.current !== null) return
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null
+      const page = pageRef.current
+      if (!page) return
+      const bounds = page.getBoundingClientRect()
+      page.style.setProperty('--erp-pointer-x', `${pointerRef.current.x - bounds.left}px`)
+      page.style.setProperty('--erp-pointer-y', `${pointerRef.current.y - bounds.top}px`)
+    })
+  }
+
+  if (loading) return <main className="erp-login-page erp-login-loading" aria-live="polite"><LoginBackdrop /><div className="spinner-border text-primary" role="status" /><span>正在恢复登录状态…</span></main>
   if (bootstrap) return <Navigate to={destination} replace />
 
   async function submit(event: FormEvent) {
@@ -36,7 +69,8 @@ export function LoginPage() {
     }
   }
 
-  return <main className="erp-login-page">
+  return <main className="erp-login-page" ref={pageRef} onPointerMove={trackPointer}>
+    <LoginBackdrop />
     <section className="erp-login-brand" aria-label="EOS 企业操作系统">
       <div className="erp-login-brand-heading"><div className="erp-login-mark">E</div><div><h1>EOS</h1><p>企业操作系统</p></div></div>
       <div className="erp-login-slogan">让业务流程清晰，让企业运营高效</div>
