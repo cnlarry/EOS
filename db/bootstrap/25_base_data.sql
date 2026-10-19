@@ -8,6 +8,8 @@
  *
  * 口径：
  * - 全部按物理列写入，批核标记（CONFIRM_TAG）一律置 1，保证可直接被选择器引用；
+ * - 审计口径：公司、币别、税别、价格条件、付款条件、颜色、单位、材质八类主档，
+ *   建立人 / 修改人 / 批核人一律为「管理员」，建立 / 修改 / 批核时间一律为 2008-08-08 00:00:00；
  * - 幂等：按主键存在性判断，可重复执行；已存在的记录不覆盖、不删除；
  * - 示例客户/厂商为模拟数据，非真实企业，REMARK 中已注明，可整体替换为真实数据；
  * - **不得引用真实主体的资料**：人名一律用一眼可辨的占位名（张三/李四/王五…），
@@ -21,8 +23,12 @@ GO
 
 -- ================================================================ 公司与部门
 IF NOT EXISTS (SELECT 1 FROM dbo.COMPANY WHERE LTRIM(RTRIM(COMPANY_ID)) = N'DEFAULT')
-    INSERT dbo.COMPANY (COMPANY_ID, NAME_CN, NAME_EN, SHORT_NAME_CN, SHORT_NAME_EN, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-    VALUES (N'DEFAULT', N'默认有限公司', N'DEFAULT LLC', N'默认公司', N'DEFAULT', 1, GETDATE(), GETDATE());
+    INSERT dbo.COMPANY (COMPANY_ID, NAME_CN, NAME_EN, SHORT_NAME_CN, SHORT_NAME_EN,
+                        CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                        CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+    VALUES (N'DEFAULT', N'默认有限公司', N'DEFAULT LLC', N'默认公司', N'DEFAULT',
+            N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+            N'管理员', '2008-08-08 00:00:00', 1);
 GO
 
 INSERT dbo.DEPT (DEPT_ID, DEPT_NAME, DEPT_ID_SUPERIOR, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
@@ -66,8 +72,12 @@ GO
 
 -- ================================================================ 币别
 -- 汇率以人民币为本位币的近似值，仅作为可用的初值，按实际行情维护。
-INSERT dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.CURR_ID, v.CURR_NAME, v.CURR_RATE, v.IS_BASE, 1, GETDATE(), GETDATE()
+INSERT dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE,
+                 CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                 CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.CURR_ID, v.CURR_NAME, v.CURR_RATE, v.IS_BASE,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
     (N'RMB', N'人民币',           1.0000, 1),
     (N'USD', N'美元',             7.2000, 0),
@@ -104,8 +114,12 @@ GO
 -- ================================================================ 税别与税别类型
 -- 税率是税别主档的事实：单据侧只读的 TAX_RATE 由服务端按单据选中的 TAX_ID 带出，
 -- 主档留 0 就会按 0% 算税额。取值依据见迁移 330 的取证段。
-INSERT dbo.TAX (TAX_ID, TAX_NAME, TAX_RATE, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.TAX_ID, v.TAX_NAME, v.TAX_RATE, 1, GETDATE(), GETDATE()
+INSERT dbo.TAX (TAX_ID, TAX_NAME, TAX_RATE,
+                CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.TAX_ID, v.TAX_NAME, v.TAX_RATE,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
     (N'TAX01', N'转厂',   0.0),
     (N'TAX02', N'增值税', 13.0),
@@ -136,8 +150,12 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.BANK b WHERE LTRIM(RTRIM(b.BANK_ID)) = v.BAN
 GO
 
 -- ================================================================ 价格条件 / 付款条件 / 结算方式 / 帐款类型
-INSERT dbo.PRICE (PRICE_ID, PRICE_NAME, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.PRICE_ID, v.PRICE_NAME, 1, GETDATE(), GETDATE()
+INSERT dbo.PRICE (PRICE_ID, PRICE_NAME,
+                  CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                  CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.PRICE_ID, v.PRICE_NAME,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
     (N'P001', N'整批可优惠'),
     (N'P002', N'全格'),
@@ -148,8 +166,12 @@ FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM dbo.PRICE p WHERE LTRIM(RTRIM(p.PRICE_ID)) = v.PRICE_ID);
 GO
 
-INSERT dbo.PAYMENT (PAYMENT_ID, PAYMENT_NAME, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.PAYMENT_ID, v.PAYMENT_NAME, 1, GETDATE(), GETDATE()
+INSERT dbo.PAYMENT (PAYMENT_ID, PAYMENT_NAME,
+                    CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                    CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.PAYMENT_ID, v.PAYMENT_NAME,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
     (N'001', N'现金结算'),
     (N'002', N'月结30天'),
@@ -205,8 +227,12 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.SORT s WHERE LTRIM(RTRIM(s.SORT_ID)) = v.SOR
 GO
 
 -- ================================================================ 颜色
-INSERT dbo.COLOR (COLOR_ID, COLOR_NAME, COLOR_NAME_CN, COLOR_NAME_EN, COLOR_IDNO, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.COLOR_ID, v.COLOR_NAME_CN, v.COLOR_NAME_CN, v.COLOR_NAME_EN, v.COLOR_IDNO, 1, GETDATE(), GETDATE()
+INSERT dbo.COLOR (COLOR_ID, COLOR_NAME, COLOR_NAME_CN, COLOR_NAME_EN, COLOR_IDNO,
+                  CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                  CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.COLOR_ID, v.COLOR_NAME_CN, v.COLOR_NAME_CN, v.COLOR_NAME_EN, v.COLOR_IDNO,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
     (N'C001', N'黑色',     N'Black',              N'BK001'),
     (N'C002', N'红色',     N'Red',                N'RD001'),
@@ -264,8 +290,12 @@ GO
 
 -- ================================================================ 单位
 -- UNIT_TYPE：1=数量、2=重量、3=长度（与库内既有取值一致）。
-INSERT dbo.UNIT (UNIT_ID, UNIT_NAME, UNIT_TYPE, BASE_RATE, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.UNIT_ID, v.UNIT_NAME, v.UNIT_TYPE, 1, 1, GETDATE(), GETDATE()
+INSERT dbo.UNIT (UNIT_ID, UNIT_NAME, UNIT_TYPE, BASE_RATE,
+                 CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                 CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.UNIT_ID, v.UNIT_NAME, v.UNIT_TYPE, 1,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
     (N'PCS',  N'个',        N'1'),
     (N'KPCS', N'千个',      N'1'),
@@ -298,14 +328,47 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.UNIT u WHERE LTRIM(RTRIM(u.UNIT_ID)) = v.UNI
 GO
 
 -- ================================================================ 材质
-INSERT dbo.STUFF (STUFF_ID, STUFF_NAME, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
-SELECT v.STUFF_ID, v.STUFF_NAME, 1, GETDATE(), GETDATE()
+INSERT dbo.STUFF (STUFF_ID, STUFF_NAME,
+                  CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE,
+                  CONFIRM_PERSON, CONFIRM_DATE, CONFIRM_TAG)
+SELECT v.STUFF_ID, v.STUFF_NAME,
+       N'管理员', '2008-08-08 00:00:00', N'管理员', '2008-08-08 00:00:00',
+       N'管理员', '2008-08-08 00:00:00', 1
 FROM (VALUES
-    (N'SJ',  N'塑胶'),
-    (N'TIE', N'铁'),
-    (N'Cu',  N'铜'),
-    (N'BXG', N'不锈钢'),
-    (N'Yin', N'银')
+    (N'SJ',        N'塑胶'),
+    (N'TIE',       N'铁'),
+    (N'Cu',        N'铜'),
+    (N'BXG',       N'不锈钢'),
+    (N'Yin',       N'银'),
+    (N'AL',        N'铝'),
+    (N'ZN',        N'锌'),
+    (N'NI',        N'镍'),
+    (N'SN',        N'锡'),
+    (N'PB',        N'铅'),
+    (N'AU',        N'金'),
+    (N'H62',       N'黄铜'),
+    (N'BRONZE',    N'青铜'),
+    (N'TI',        N'钛'),
+    (N'MG',        N'镁'),
+    (N'RUBBER',    N'橡胶'),
+    (N'SILICA',    N'硅胶'),
+    (N'ABS',       N'ABS'),
+    (N'PC',        N'PC'),
+    (N'PVC',       N'PVC'),
+    (N'POM',       N'POM'),
+    (N'NYLON',     N'尼龙'),
+    (N'ACRYLIC',   N'亚克力'),
+    (N'EPOXY',     N'环氧树脂'),
+    (N'FOAM',      N'泡棉'),
+    (N'POLYESTER', N'涤纶'),
+    (N'CERAMIC',   N'陶瓷'),
+    (N'GLASS',     N'玻璃'),
+    (N'PAPER',     N'纸'),
+    (N'WOOD',      N'木材'),
+    (N'MICA',      N'云母'),
+    (N'GRAPHITE',  N'石墨'),
+    (N'CARBON',    N'碳纤维'),
+    (N'MAGNET',    N'磁铁')
 ) v(STUFF_ID, STUFF_NAME)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.STUFF s WHERE LTRIM(RTRIM(s.STUFF_ID)) = v.STUFF_ID);
 GO
@@ -315,10 +378,14 @@ INSERT dbo.DEPOT (DEPOT_ID, DEPOT_NAME, MRP, PRINCIPAL, CONFIRM_TAG, CREATE_DATE
 SELECT v.DEPOT_ID, v.DEPOT_NAME, v.MRP, v.PRINCIPAL, 1, GETDATE(), GETDATE()
 FROM (VALUES
     (N'CP',    N'示例仓',         CAST(1 AS bit), CAST(NULL AS nvarchar(50))),
+    (N'YL',    N'原料仓',         CAST(1 AS bit), CAST(NULL AS nvarchar(50))),
+    (N'FG',    N'成品仓',         CAST(1 AS bit), CAST(NULL AS nvarchar(50))),
+    (N'BC',    N'半成品仓',       CAST(1 AS bit), CAST(NULL AS nvarchar(50))),
+    (N'ZC',    N'暂存仓',         CAST(0 AS bit), CAST(NULL AS nvarchar(50))),
     (N'TW',    N'托外仓',         CAST(1 AS bit), CAST(NULL AS nvarchar(50))),
     (N'PJ',    N'品检仓',         CAST(0 AS bit), CAST(NULL AS nvarchar(50))),
     (N'BF',    N'报废仓',         CAST(0 AS bit), CAST(NULL AS nvarchar(50))),
-    (N'DEMOC', N'示例东莞仓', CAST(1 AS bit), N'CK-03')
+    (N'DEMOC', N'示例东莞仓',     CAST(1 AS bit), N'admin')
 ) v(DEPOT_ID, DEPOT_NAME, MRP, PRINCIPAL)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.DEPOT d WHERE LTRIM(RTRIM(d.DEPOT_ID)) = v.DEPOT_ID);
 GO
