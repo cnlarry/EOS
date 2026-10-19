@@ -41,7 +41,11 @@ IF NOT EXISTS (SELECT 1 FROM dbo.V_MODULE_NODE WHERE M_IDX = 230104 AND NODE_KIN
 IF (SELECT COUNT(*) FROM dbo.MODULES WHERE M_IDX IN (230101, 230102, 230103)) <> 3
     THROW 51954, N'230101 / 230102 / 230103 的同族模块行不齐全，迁移中止。', 1;
 
-COMMIT TRANSACTION;
+/* PRINT 的参数只能是标量表达式：子查询要先落到变量，不能直接写在 PRINT 里
+   （SQL Server 报 1046，「在此上下文中不允许使用子查询」）。
+   且把收口打印放在 COMMIT 之前——万一打印出错，事务整体回滚，不会留下
+   "数据改了、台账没记"的半应用状态。 */
+DECLARE @name104 NVARCHAR(200) = (SELECT M_DESC FROM dbo.MODULES WHERE M_IDX = 230104);
+PRINT N'== 收口：230104 = ' + ISNULL(@name104, N'(缺失)') + N' ==';
 
-PRINT N'== 收口：230104 = '
-    + ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX = 230104), N'(缺失)') + N' ==';
+COMMIT TRANSACTION;
