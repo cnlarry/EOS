@@ -117,7 +117,15 @@ export function SearchCenterPage() {
           </div>
         </div>
         {result.isPending ? <LoadingState label="正在查询…" /> : result.isError ? <ErrorState message={describeApiError(result.error, '查询失败。')} onRetry={() => void result.refetch()} /> : (
-          <ErpTable loading={result.isFetching} columns={columns} data={result.data?.rows ?? []} getRowId={(row) => Object.values(row).slice(0, 2).join('-') || 'row'} empty={<div className="text-center text-secondary py-4">{activeModule ? '点击「查询」开始搜索' : '请先选择查询模块'}</div>} />
+          <ErpTable
+            loading={result.isFetching}
+            columns={columns}
+            data={result.data?.rows ?? []}
+            // 查询结果是跨模块的任意列：前两列的值既可能重复（空值/同日期/同状态），
+            // 也可能整行都空，拿内容拼键会把多行并成同一 React 键。分页快照内下标即唯一。
+            getRowId={(_row, index) => String(index)}
+            empty={<div className="text-center text-secondary py-4">{activeModule ? '点击「查询」开始搜索' : '请先选择查询模块'}</div>}
+          />
         )}
       </ErpListCard>
     </div>

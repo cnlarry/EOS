@@ -14,7 +14,7 @@ import {
 } from '../../lib/tanstackTable'
 // 仅此处需要 v9 原始的行数据约束（模块增强的泛型必须与 v9 声明逐字一致），桥接层对外给的是放宽口径
 import type { RowData as CoreRowData } from '@tanstack/react-table'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './queryCondition'
@@ -257,6 +257,42 @@ export function ErpTable<TData>({
     return () => observer.disconnect()
   }, [onEndReached])
 
+  /**
+   * 行键兜底去重：`getRowId` 的结果会被当作 React 键用，重复键会让 React 复用/丢弃行节点
+   * （窗口化下表现为表格中间大面积空白）。调用方给的键未必唯一——日志的字段组合、
+   * 被 1:N 关联放大的主表行都会撞键——所以这里按数据顺序给重复项补 `#2`/`#3` 后缀，
+   * 保证同一份 data 里键恒唯一。唯一键保持原值，不影响页面自己的 rowSelection / activeRowId。
+   *
+   * 页面普遍传内联箭头函数，映射每次渲染都会重算一遍；行数据是快照、条数有限，
+   * 这点开销远小于"键撞了再回头查"的代价。
+   */
+  const rowIdentity = useMemo(() => {
+    if (!getRowId) return null
+    const seen = new Map<string, number>()
+    const duplicates: string[] = []
+    const ids = data.map((row, index) => {
+      const id = String(getRowId(row, index))
+      const repeat = seen.get(id) ?? 0
+      seen.set(id, repeat + 1)
+      if (repeat === 0) return id
+      duplicates.push(id)
+      return `${id}#${repeat + 1}`
+    })
+    return { ids, duplicates }
+  }, [data, getRowId])
+  const rowIds = rowIdentity?.ids
+  const warnedDuplicatesRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!import.meta.env.DEV || !rowIdentity?.duplicates.length) return
+    // 键撞了说明调用方给的 getRowId 不足以标识一行：表格仍会正常渲染（上面已补后缀），
+    // 但页面自己的 rowSelection / activeRowId 只能匹配到第一行，需要调用方修正键定义。
+    // 同一批撞键只提醒一次——内联 getRowId 会让映射每次渲染都重算。
+    const signature = [...new Set(rowIdentity.duplicates)].slice(0, 5).join('|')
+    if (signature === warnedDuplicatesRef.current) return
+    warnedDuplicatesRef.current = signature
+    console.warn('[ErpTable] getRowId 出现重复键，已按出现顺序补后缀：', signature.split('|'))
+  }, [rowIdentity])
+
   const table = useReactTable({
     // 桥接层的列定义把行类型映射成 `TData & RowData`（为满足 v9 的索引签名约束），
     // 表格实例推出的行类型因此比入参窄一层：入参与选择状态各窄化一次。运行期无差别。
@@ -269,7 +305,7 @@ export function ErpTable<TData>({
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: clientSideSorting ? getSortedRowModel() : undefined,
-    getRowId,
+    getRowId: rowIds ? (_row: TData & CoreRowData, index: number) => rowIds[index] ?? String(index) : undefined,
     onSortingChange: updateSorting,
     onRowSelectionChange: (updater) =>
       onRowSelectionChange?.(typeof updater === 'function' ? updater(rowSelection as Record<string, true>) : updater),

@@ -443,6 +443,26 @@ describe('ErpTable', () => {
     expect(container.querySelector('table')?.parentElement).toHaveClass('erp-table-shell')
   })
 
+  it('getRowId 撞键时按出现顺序补后缀：两行都渲染且不产生重复 React 键', () => {
+    const duplicated: Row[] = [
+      { id: 'same', name: 'A' },
+      { id: 'same', name: 'B' },
+    ]
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={duplicated} getRowId={(row) => row.id} />,
+    )
+    const ids = Array.from(container.querySelectorAll('tbody tr[data-order-id]'))
+      .map((row) => row.getAttribute('data-order-id'))
+    expect(ids).toEqual(['same', 'same#2'])
+    expect(consoleError.mock.calls.filter((args) => String(args[0]).includes('same key'))).toHaveLength(0)
+    // 开发期把撞键的调用方点出来（表格仍正常工作，但页面自己的选择态只认第一行）
+    expect(consoleWarn.mock.calls.some((args) => String(args[0]).includes('getRowId'))).toBe(true)
+    consoleError.mockRestore()
+    consoleWarn.mockRestore()
+  })
+
   it('virtualize 开启但容器不可滚（无布局环境）时回退全量渲染', () => {
     const many = Array.from({ length: 120 }, (_, i) => ({ id: String(i), name: `行${i}` }))
     const { container } = render(<ErpTable columns={buildColumns()} data={many} getRowId={(row) => row.id} virtualize />)

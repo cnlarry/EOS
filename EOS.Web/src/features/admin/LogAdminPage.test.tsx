@@ -91,6 +91,28 @@ describe('LogAdminPage', () => {
     expect(screen.queryByText(/最近 \d+ 条/)).toBeNull()
   })
 
+  it('时间、消息、报障编号全同的两行日志各自成行（行键不依赖日志字段）', async () => {
+    const duplicated = {
+      ...entries,
+      entries: [
+        { ...entries.entries[0], exception: '第一份异常栈' },
+        { ...entries.entries[0], exception: '第二份异常栈' },
+      ],
+      count: 2,
+    }
+    apiClientMock.get.mockImplementation(async (path: string) =>
+      path.startsWith('/logs/files') ? files : duplicated)
+    // 行键重复时 React 会打 "Encountered two children with the same key"，
+    // 并在窗口化下复用/丢弃行节点（表现为表格中间大面积空白）
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { container } = renderPage()
+    expect(await screen.findAllByText('请求失败 GET /api/v1/admin/groups')).toHaveLength(2)
+    expect(container.querySelectorAll('tbody tr[data-order-id]')).toHaveLength(2)
+    const duplicateKeyWarnings = consoleError.mock.calls.filter((args) => String(args[0]).includes('same key'))
+    expect(duplicateKeyWarnings).toHaveLength(0)
+    consoleError.mockRestore()
+  })
+
   it('读失败的文件明说，不伪装成没有日志', async () => {
     apiClientMock.get.mockImplementation(async (path: string) =>
       path.startsWith('/logs/files')

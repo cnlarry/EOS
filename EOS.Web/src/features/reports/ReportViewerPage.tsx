@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   IconArrowLeft,
@@ -241,15 +241,6 @@ export function ReportViewerPage({
     visibleKeys: resultColumns.filter((column) => columnVisibility[column.key] !== false).map((column) => column.key),
     defaultKeys: resultColumns.map((column) => column.key),
   }], [resultColumns, columnVisibility])
-
-  const pkOrder = useMemo(() => definition.data?.masterPkOrder ?? [], [definition.data])
-  const getRowId = useCallback((row: Record<string, unknown>, index: number) => {
-    if (pkOrder.length > 0) {
-      const parts = pkOrder.map((key) => row[key])
-      if (parts.every((value) => value != null && value !== '')) return parts.map((value) => String(value)).join('~')
-    }
-    return `row-${index}`
-  }, [pkOrder])
 
   const runQuery = () => { setPage(1); setQueryKey((current) => current + 1); setActionError(null) }
 
@@ -610,7 +601,9 @@ export function ReportViewerPage({
           <ErpTable
             columns={columns}
             data={result.data?.rows ?? []}
-            getRowId={getRowId}
+            // 报表可能按明细字段排序/分组（主表与明细 1:N 关联），同一条主表主键会重复出现，
+            // 拿主键拼行键会撞键。结果是分页快照、本表无行选择语义，下标即唯一。
+            getRowId={(_row, index) => String(index)}
             columnVisibility={columnVisibility}
             resizable
             storageKey={`report-viewer-${moduleId}`}

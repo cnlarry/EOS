@@ -236,7 +236,11 @@ export function LogAdminPage() {
             columns={columns}
             data={logs.data?.entries ?? []}
             loading={logs.isFetching}
-            getRowId={(row: LogEntryRow) => `${row.file}:${row.ts}:${row.message ?? ''}:${row.correlationId ?? ''}`}
+            // 行键取快照下标：日志字段组合并不唯一（一次失败请求常落两条时间戳、消息全同、
+            // 只有异常栈不同的记录），而 React 要求兄弟节点键唯一——重复键会让它复用/丢弃
+            // 行节点，窗口化下表现为表格中间大面积空白。下标在同一个快照内天然唯一，
+            // 且本表不跨快照保持行身份（刷新即重取、选择态同时清空）。
+            getRowId={(_row: LogEntryRow, index: number) => String(index)}
             rowSelection={rowSelection}
             onRowSelectionChange={setRowSelection}
             rowClickSingleSelect
