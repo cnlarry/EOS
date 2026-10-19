@@ -1993,12 +1993,40 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-tabs .nav-item + .nav-item .nav-link { margin-left: -1px; }
 
 /* 主表单卡：视觉交给 erp-form-grid（边框/圆角/背景），卡本身透明、无内边距；
-   border-radius 归零避免 card 圆角 + overflow:hidden 裁切工具栏第一个按钮左上角 */
+   border-radius 归零避免 card 圆角 + overflow:hidden 裁切工具栏第一个按钮左上角。
+   **整页方式例外**：见下方 .erp-form-page-full——那里卡就是容器，工具栏是卡内命令栏。 */
 .erp-form-card.card { border: 0; box-shadow: none; background: transparent; border-radius: 0; }
 .erp-form-card .card-body { padding: 0; }
 
+/* 整页统一表单：工具栏、页签与字段区收进同一张白卡（与字段设置页/列表页的
+   "卡 → 命令栏 → 内容"同一套层次）。工具栏是卡内命令栏：白底 + 底部分割线；
+   字段区不再单独描边——卡边框与网格边框会套成双线。页签行补回自己的底线，
+   激活标签继续用白底盖住这条线、与内容连成一体。 */
+.erp-form-page-full > .erp-form-card.card {
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.erp-form-page-full > .erp-form-card .erp-form-toolbar {
+  margin-bottom: 0;
+  padding: 8px 12px;
+  background: var(--tblr-bg-surface);
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-form-page-full > .erp-form-card .erp-form-tabs {
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-form-page-full > .erp-form-card .erp-form-grid {
+  border: 0;
+  border-radius: 0;
+  padding: 10px 12px 12px;
+}
+
 /* 主表工具栏独立一行（表单上方），与表单网格左边框对齐，下方留 10px 间距；
-   背景透明继承页面，按钮靠左；页签单独一行在表单网格上方，页签下边框归零，与网格顶边融为一体 */
+   背景透明继承页面，按钮靠左；页签单独一行在表单网格上方，页签下边框归零，与网格顶边融为一体。
+   整页方式的间距/分割线由上面的 .erp-form-page-full 覆盖 */
 .erp-form-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-left: 0; background: transparent; }
 .erp-form-toolbar .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; }
 .erp-form-toolbar-actions { margin-left: auto; }

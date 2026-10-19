@@ -229,6 +229,8 @@ describe('FormEditorPage', () => {
     expect(body.firstElementChild?.classList.contains('erp-form-toolbar')).toBe(true)
     expect(body.firstElementChild?.textContent).toContain('保存')
     expect(body.querySelector(':scope > .erp-form-page')).not.toBeNull()
+    // 弹窗不套"整页白卡"：工具栏已经由窗体第一行承担，再包一层会变成两层框
+    expect(body.querySelector(':scope > .erp-form-page')?.classList.contains('erp-form-page-full')).toBe(false)
     expect(dialog!.querySelector('.modal-footer')).toBeNull()
     expect(body.querySelector('.erp-form-grid')).not.toBeNull()
     // 背后渲染该模块的工作台列表当底图：弹窗是"浮在工作台上"，不是"先开空白页再弹窗"
@@ -723,6 +725,8 @@ describe('FormEditorPage', () => {
     // 工具栏独立一行（保存/取消按钮），页签单独一行在表单网格上方
     expect(toolbar?.querySelector('button')).not.toBeNull()
     expect(container.querySelector('.erp-form-tabs')).not.toBeNull()
+    // 整页方式把工具栏/页签/字段区收进同一张白卡（弹窗方式不加这个类）
+    expect(container.querySelector('.erp-form-page')).toHaveClass('erp-form-page-full')
   })
 
   it('复合单元格：从字段与主字段同格、无独立标签', async () => {

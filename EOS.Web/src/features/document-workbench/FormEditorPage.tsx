@@ -1655,7 +1655,9 @@ export function FormEditorPage() {
   // 弹窗打开方式：同一份表单内容换个容器（统一弹窗组件）——地址与路由不变，
   // 这样"弹窗"不引入第二套渲染路径：保存、校验、脏位登记、权限判定全走同一条。
   const formPage = (
-    <div className="erp-form-page">
+    // 整页方式与弹窗方式共用这份内容；只有整页要把"工具栏 + 页签 + 字段区"收进同一张白卡
+    // （弹窗的工具栏已经由窗体第一行承担，再套一层卡会变成两层框）。
+    <div className={`erp-form-page${inDialog ? '' : ' erp-form-page-full'}`}>
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
       {warnings && warnings.length > 0 ? (
         <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">
