@@ -8,7 +8,11 @@ import {
   FieldEditorRoute,
   CarSummaryPage,
   ImportPage,
-  JobPage,
+  MrpRecalcPage,
+  CardBatchPage,
+  AttendanceSimulatePage,
+  AttendanceExtractPage,
+  AttendanceAdjustWagePage,
   FallbackModulePage,
   LogAdminPage,
   BusinessFlowPage,
@@ -167,7 +171,23 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { element: <RequirePermission permission={moduleReadPermission(3105)} />, children: [
     { path: 'admin/assistant/settings', element: withSuspense(<AssistantSettingsPage />) },
   ] },
-  { path: 'jobs', element: withSuspense(<JobPage />) },
+  // 后台作业按模块拆分：每个模块一个承载页，MODULES.M_URL 与这里一一对应（迁移 428）。
+  // 各自挂自己的读权限门——一个作业的浏览权不该带出另一个作业的入口。
+  { element: <RequirePermission permission={moduleReadPermission(230901)} />, children: [
+    { path: 'jobs/mrp-recalc', element: withSuspense(<MrpRecalcPage />) },
+  ] },
+  { element: <RequirePermission permission={moduleReadPermission(180218)} />, children: [
+    { path: 'jobs/card-batch', element: withSuspense(<CardBatchPage />) },
+  ] },
+  { element: <RequirePermission permission={moduleReadPermission(180654)} />, children: [
+    { path: 'jobs/attendance-simulate', element: withSuspense(<AttendanceSimulatePage />) },
+  ] },
+  { element: <RequirePermission permission={moduleReadPermission(180659)} />, children: [
+    { path: 'jobs/attendance-extract', element: withSuspense(<AttendanceExtractPage />) },
+  ] },
+  { element: <RequirePermission permission={moduleReadPermission(180505)} />, children: [
+    { path: 'jobs/attendance-adjust-wage', element: withSuspense(<AttendanceAdjustWagePage />) },
+  ] },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
   { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
   { path: '*', element: <UnknownRoutePage /> },

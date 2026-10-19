@@ -23,7 +23,11 @@ describe('WORKSPACE_ROUTES', () => {
       '/admin/module-buttons',
       '/admin/module-actions',
       '/my-tasks',
-      '/jobs',
+      '/jobs/mrp-recalc',
+      '/jobs/card-batch',
+      '/jobs/attendance-simulate',
+      '/jobs/attendance-extract',
+      '/jobs/attendance-adjust-wage',
       '/import',
       '/print/1606',
       '/car-summary',
@@ -72,6 +76,31 @@ describe('WORKSPACE_ROUTES', () => {
       expect(permissions, `${face.path} 没有挂自己的读权限门`).toContain(`fallback-module.${face.moduleId}.read`)
       for (const other of faces.filter((item) => item.moduleId !== face.moduleId)) {
         expect(permissions, `${face.path} 挂上了别的配置面的门`).not.toContain(`fallback-module.${other.moduleId}.read`)
+      }
+    }
+  })
+
+  // 后台作业的五个模块各有自己的承载页与读权限门：任一作业的浏览权不得带出另一个作业的入口。
+  it('后台作业各自挂自己的读权限门，不共用一个页面', () => {
+    const jobs = [
+      { path: '/jobs/mrp-recalc', moduleId: 230901 },
+      { path: '/jobs/card-batch', moduleId: 180218 },
+      { path: '/jobs/attendance-simulate', moduleId: 180654 },
+      { path: '/jobs/attendance-extract', moduleId: 180659 },
+      { path: '/jobs/attendance-adjust-wage', moduleId: 180505 },
+    ]
+
+    for (const job of jobs) {
+      const matched = matchRoutes(WORKSPACE_ROUTES, job.path)
+      expect(matched, `${job.path} 未匹配到路由`).not.toBeNull()
+
+      const permissions = (matched ?? [])
+        .map((entry) => (entry.route.element as { props?: { permission?: unknown } } | undefined)?.props?.permission)
+        .filter((value): value is string => typeof value === 'string')
+
+      expect(permissions, `${job.path} 没有挂自己的读权限门`).toContain(`fallback-module.${job.moduleId}.read`)
+      for (const other of jobs.filter((item) => item.moduleId !== job.moduleId)) {
+        expect(permissions, `${job.path} 挂上了别的作业的门`).not.toContain(`fallback-module.${other.moduleId}.read`)
       }
     }
   })

@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 7d0bde66667fe7d9 -->
+<!-- code-map-fingerprint: 2d8ab1547d43e8b2 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -307,7 +307,7 @@
 
 ## 二、前端页面路由
 
-- 源文件 `path:` 55 处、解析出 55 条（两者必须相等）。权限模块号来自包住该路由的
+- 源文件 `path:` 59 处、解析出 59 条（两者必须相等）。权限模块号来自包住该路由的
   `RequirePermission permission={moduleReadPermission(N)}`；空表示该页面不需要模块读权限（如登录后即可见的助手页）。
 
 | 路径 | 页面 | 权限模块 |
@@ -349,7 +349,11 @@
 | `/dashboard` | `DashboardPage` | — |
 | `/fallback/modules/:moduleId` | `FallbackModulePage` | — |
 | `/import` | `ImportPage` | 230902 |
-| `/jobs` | `JobPage` | — |
+| `/jobs/attendance-adjust-wage` | `AttendanceAdjustWagePage` | 180505 |
+| `/jobs/attendance-extract` | `AttendanceExtractPage` | 180659 |
+| `/jobs/attendance-simulate` | `AttendanceSimulatePage` | 180654 |
+| `/jobs/card-batch` | `CardBatchPage` | 180218 |
+| `/jobs/mrp-recalc` | `MrpRecalcPage` | 230901 |
 | `/layout-designer/:moduleId` | `LayoutDesignerPage` | — |
 | `/my-tasks` | `MyTasksPage` | 2102 |
 | `/print/:moduleId` | `PrintViewPage` | — |

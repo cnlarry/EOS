@@ -80,13 +80,15 @@ public sealed class JobsController(
     [HttpPost("attendance-generate")]
     public async Task<IActionResult> AttendanceGenerate([FromBody] AttendanceGenerateRequest request, CancellationToken token)
     {
-        if (!await CanRunAsync(ModuleIds.AttendanceSimulate, token) && !await CanRunAsync(ModuleIds.AttendanceExtract, token)) return Forbid();
+        if (request.Mode is not ("simulate" or "extract"))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_MODE", "mode 仅支持 simulate 或 extract。"));
+        // 模拟生成与真实抽取是两个独立模块：各认自己的设置权，不能用其中一个模块的权限执行另一个作业。
+        var moduleId = request.Mode == "extract" ? ModuleIds.AttendanceExtract : ModuleIds.AttendanceSimulate;
+        if (!await CanRunAsync(moduleId, token)) return Forbid();
         if (request.StartDate == default || request.EndDate == default || request.EndDate < request.StartDate)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RANGE", "日期范围不合法。"));
         var days = (request.EndDate - request.StartDate).Days + 1;
         if (days > AttendanceMaxDays) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "RANGE_TOO_LARGE", $"日期范围不能超过 {AttendanceMaxDays} 天。"));
-        if (request.Mode is not ("simulate" or "extract"))
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_MODE", "mode 仅支持 simulate 或 extract。"));
         var hasTarget = (request.EmpIds ?? []).Any(id => !string.IsNullOrWhiteSpace(id)) || !string.IsNullOrWhiteSpace(request.DeptId);
         if (!hasTarget) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "NO_TARGET", "请指定员工或部门。"));
         var result = await hrJobs.GenerateAttendanceAsync(

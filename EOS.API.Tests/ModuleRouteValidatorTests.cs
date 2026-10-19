@@ -27,7 +27,12 @@ public class ModuleRouteValidatorTests
     [InlineData("/my-tasks", 2102)]
     [InlineData("/workflow/design", 2101)]
     [InlineData("/workflow/monitor", 2103)]
-    [InlineData("/jobs", 230901)]
+    // 后台作业按模块拆分（迁移 428）：每个作业一个精确路径，指向别的模块的路径不得原样放行
+    [InlineData("/jobs/mrp-recalc", 230901)]
+    [InlineData("/jobs/card-batch", 180218)]
+    [InlineData("/jobs/attendance-simulate", 180654)]
+    [InlineData("/jobs/attendance-extract", 180659)]
+    [InlineData("/jobs/attendance-adjust-wage", 180505)]
     public void ExactRoutes_ReturnAsIs(string url, int moduleId)
     {
         Assert.Equal(url, ModuleRouteValidator.Resolve(url, moduleId));
@@ -44,6 +49,11 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/field-audit", 2303)]
     [InlineData("/admin/depot-stock-policy", 110310)]
     [InlineData("/admin/business-flow", 2314)]
+    [InlineData("/jobs/mrp-recalc", 230901)]
+    [InlineData("/jobs/card-batch", 180218)]
+    [InlineData("/jobs/attendance-simulate", 180654)]
+    [InlineData("/jobs/attendance-extract", 180659)]
+    [InlineData("/jobs/attendance-adjust-wage", 180505)]
     public void 定制页路由_后端精确路径与前端路由表一致(string url, int moduleId)
     {
         Assert.Equal(url, ModuleRouteValidator.Resolve(url, moduleId));
