@@ -174,7 +174,8 @@
 - 菜单管理的模块载荷新增 `APPROVE_ENABLED`（对应 `MODULES.APPROVE_ENABLED`）；勾选的**校验在服务端**，
   主表缺批核三列即 400 并指名缺哪列。
 - 行为配置新增 `POST /api/v1/admin/module-business-config/{moduleId}/actions/disable-all`
-  （响应 `{moduleId, disabled}`），写门与其它配置端点同源（`CanSetup` + 该模块配置权）。
+  （响应 `{moduleId, disabled, publish}`：写完与保存路径一样自动发布一次，`publish` 是发布结果），
+  写门与其它配置端点同源（`CanSetup` + 该模块配置权）。
 
 ## 收口（迁移 334/335）：`WorkbenchDefinition` 去掉两个归属列探测位
 

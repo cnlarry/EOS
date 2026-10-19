@@ -34,7 +34,7 @@ public sealed class ModuleBusinessConfigController(
     // 模块级事实（发布、版本历史）仍在 230101：ADR-033 §2 —— "230101 只定义模块是什么"，
     // 但发布结果与版本历史是**模块级**事实，故显式发布端点留在 230101 的门上。
     private const int MenuAdminModuleId = 230101;
-    // 行为动作、校验规则配置面的门（ADR-033 批 3，迁移 349 登记）：本控制器的读写面全归它。
+    // 行为动作配置面的门（ADR-033 批 3，迁移 349 登记）：本控制器的读写面全归它。
     private const int BehaviorModuleId = 230104;
 
     [HttpGet("meta")]
@@ -101,14 +101,16 @@ public sealed class ModuleBusinessConfigController(
 
     /// <summary>
     /// 停用本模块效果链上的全部动作（ADR-035 §2.4 承诺的批量手段）：行级 `ENABLED=0`，不动自定义按钮。
-    /// 只停不启（恢复请逐行启用）；与其他配置同一语义——**发布后生效**。
+    /// 只停不启（恢复请逐行启用）；写完与保存路径一样**自动发布一次**（ADR-033 §7.3 方案 B），
+    /// 否则批量停用会成为一个"改了但没生效、且本页没有发布入口"的死角。
     /// </summary>
     [HttpPost("{moduleId:int}/actions/disable-all")]
     public async Task<IActionResult> DisableAllActions(int moduleId, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
         var disabled = await repository.DisableAllActionsAsync(moduleId, userContext.EmployeeName, token);
-        return Ok(new DisableAllActionsResultDto(moduleId, disabled));
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        return Ok(new DisableAllActionsResultDto(moduleId, disabled, results.FirstOrDefault()));
     }
 
     /// <summary>效果参数根键与反向 kind 枚举（230101 Schema 化参数编辑器数据源）。</summary>

@@ -100,7 +100,7 @@ public sealed record ModuleConfigTargetOptionDto(
 
 /// <summary>
 /// 行为配置面的系统级总览。230103（自定义按钮）用 <see cref="Actions"/> = 全库按钮行；
-/// 230104（行为动作、校验规则）用 <see cref="Actions"/> = 全库效果链动作 + <see cref="ValidationRules"/>。
+/// 230104（行为动作）用 <see cref="Actions"/> = 全库效果链动作 + <see cref="ValidationRules"/>。
 /// <see cref="Targets"/> 是界面左栏的模块清单（含每个模块已配条数）。
 /// </summary>
 public sealed record ModuleBusinessConfigOverviewDto(
@@ -358,10 +358,13 @@ public sealed record EffectSimulationReportDto(
 /// <summary>
 /// 「停用本模块全部动作」的结果（ADR-035 §2.4）：只停不启，故回传实际被置为停用的行数，
 /// 让界面能如实说"停了 0 条（本来就没有启用的动作）"而不是假装成功。
+/// `Publish` 与保存路径同语义（ADR-033 §7.3 方案 B）：写完后自动发布一次，
+/// 使这个批量动作与页面上其它写操作一样"点完即生效"，不必再回 230101 单独发布。
 /// </summary>
 public sealed record DisableAllActionsResultDto(
     [property: JsonPropertyName("moduleId")] int ModuleId,
-    [property: JsonPropertyName("disabled")] int Disabled);
+    [property: JsonPropertyName("disabled")] int Disabled,
+    [property: JsonPropertyName("publish")] WorkbenchPublishResult? Publish = null);
 
 /// <summary>
 /// 业务配置保存的**显式作用域**（[ADR-033](../../docs/decisions/ADR-033-系统功能目录与模块配置面拆分.md) §6）。
