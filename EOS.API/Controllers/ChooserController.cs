@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using EOS.API.Data;
 using EOS.API.Data.Forms;
 using EOS.API.Errors;
@@ -11,14 +12,52 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// 统一选择器（通用数据源查询）：sourceKey 由服务端注册表解析，权限按数据源定义收紧。
 /// 前端只传 sourceKey + 白名单参数，不传表名/列名/SQL；动态查询全部参数化。
+/// 另承载选择器记忆（按用户 + 目标表记住上次的筛选字段与查询值）。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/chooser")]
 public sealed class ChooserController(
     ChooserRepository repository,
+    ChooserMemoryRepository memoryRepository,
     ModuleRightsRepository rightsRepository,
     FormLayoutRepository formLayouts,
     CurrentUserContext userContext) : ControllerBase
 {
+    private static readonly Regex IdentifierShape = new("^[A-Za-z_][A-Za-z0-9_]{0,199}$", RegexOptions.Compiled);
+
+    /// <summary>读取当前用户对某张目标表的选择器记忆；无记录时返回空值。</summary>
+    [HttpGet("memory")]
+    public async Task<IActionResult> GetMemory([FromQuery] string? tableId, CancellationToken token)
+    {
+        var normalized = tableId?.Trim();
+        if (string.IsNullOrEmpty(normalized) || !IdentifierShape.IsMatch(normalized))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_TABLE", "目标表名不合法。"));
+
+        var memory = await memoryRepository.GetAsync(userContext.UserId, normalized, token);
+        return Ok(new ChooserMemoryResponse(memory?.FilterField, memory?.Keyword));
+    }
+
+    /// <summary>
+    /// 保存当前用户的选择器记忆。只接受标识符形状的字段名；
+    /// 关键字按列宽截断，空串归一为 null（等于"这次没有筛选"）。
+    /// </summary>
+    [HttpPut("memory")]
+    public async Task<IActionResult> SaveMemory([FromBody] ChooserMemoryRequest request, CancellationToken token)
+    {
+        var tableId = request.TableId?.Trim();
+        if (string.IsNullOrEmpty(tableId) || !IdentifierShape.IsMatch(tableId))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_TABLE", "目标表名不合法。"));
+
+        var filterField = string.IsNullOrWhiteSpace(request.FilterField) ? null : request.FilterField.Trim();
+        if (filterField is not null && !IdentifierShape.IsMatch(filterField))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_FIELD", "筛选字段名不合法。"));
+
+        var keyword = string.IsNullOrWhiteSpace(request.Keyword) ? null : request.Keyword.Trim();
+        if (keyword is { Length: > 200 })
+            keyword = keyword[..200];
+
+        await memoryRepository.SaveAsync(userContext.UserId, tableId, filterField, keyword, token);
+        return NoContent();
+    }
     [HttpPost("query")]
     public async Task<IActionResult> Query(UnifiedChooserQueryRequest request, CancellationToken token)
     {

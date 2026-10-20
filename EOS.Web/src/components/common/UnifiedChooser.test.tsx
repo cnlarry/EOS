@@ -222,4 +222,28 @@ describe('UnifiedChooser', () => {
     const headers = screen.getAllByRole('columnheader').map(cell => (cell.textContent ?? '').trim())
     expect(headers).toEqual(['', '客户名称', '客户编号'])
   })
+
+  it('选择器记忆：首次取数拿到目标表后按上次的筛选条件重查', async () => {
+    apiClientMock.get.mockImplementation((path: string) => {
+      if (String(path).includes('/form-chooser/')) {
+        return Promise.resolve({ columns, rows, total: 2, targetTable: 'CLIENT' })
+      }
+      if (path === '/chooser/memory') {
+        return Promise.resolve({ filterField: 'CLIENT_NAME', keyword: '甲' })
+      }
+      return Promise.resolve({ columns, rows, total: 2 })
+    })
+
+    renderChooser({
+      source: { kind: 'formField', moduleId: '1101', fieldKey: 'CLIENT_ID' } as UnifiedChooserSource,
+    })
+
+    await waitFor(() => {
+      const calls = apiClientMock.get.mock.calls.filter(([path]) => String(path).includes('/form-chooser/'))
+      expect(calls.length).toBeGreaterThanOrEqual(2)
+      const lastOptions = calls.at(-1)?.[1] as { query?: Record<string, string> } | undefined
+      expect(lastOptions?.query?.keyword).toBe('甲')
+      expect(lastOptions?.query?.filterField).toBe('CLIENT_NAME')
+    })
+  })
 })

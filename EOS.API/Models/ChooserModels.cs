@@ -27,6 +27,19 @@ public sealed record UnifiedChooserCondition(
     string? ValueTo = null,
     string Logic = "and");
 
+/// <summary>
+/// 选择器记忆写入请求（PUT /api/v1/chooser/memory）：
+/// 按「当前用户 + 目标表」记住上次使用的筛选字段与查询值，打开选择器时预填。
+/// 表名与字段名只做形状校验（标识符规则），不参与动态 SQL 拼接。
+/// </summary>
+public sealed record ChooserMemoryRequest(
+    string? TableId = null,
+    string? FilterField = null,
+    string? Keyword = null);
+
+/// <summary>选择器记忆读取结果；没有记录时两个字段均为 null。</summary>
+public sealed record ChooserMemoryResponse(string? FilterField, string? Keyword);
+
 /// <summary>统一选择器显示列（与前端 UnifiedChooserColumn 对应）。</summary>
 public sealed record UnifiedChooserColumn(string Key, string Label, string DataType, string? Format);
 

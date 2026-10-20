@@ -8,7 +8,7 @@ import { ErrorState, LoadingState } from './AsyncState'
 import { ErpColumnSelector } from './ErpColumnSelector'
 import { ErpTable } from './ErpTable'
 import { emptyQueryCondition, queryOperators, type QueryCondition } from './queryCondition'
-import { loadChooserSource, type UnifiedChooserColumn, type UnifiedChooserData, type UnifiedChooserQuery, type UnifiedChooserRow, type UnifiedChooserSource } from './chooserSource'
+import { loadChooserMemory, loadChooserSource, saveChooserMemory, type UnifiedChooserColumn, type UnifiedChooserData, type UnifiedChooserQuery, type UnifiedChooserRow, type UnifiedChooserSource } from './chooserSource'
 
 export type { UnifiedChooserColumn, UnifiedChooserData, UnifiedChooserQuery, UnifiedChooserRow, UnifiedChooserSource } from './chooserSource'
 
@@ -52,6 +52,11 @@ export interface UnifiedChooserProps<T extends UnifiedChooserRow = UnifiedChoose
    * 而不是靠猜列顺序。
    */
   onColumnsLoaded?: (columns: UnifiedChooserColumn[], defaultKeys: string[] | null) => void
+  /**
+   * 选择器记忆的目标表名（如单据的主表/子表）：传入后按「当前用户 + 该表」记住
+   * 上次的筛选字段与查询值，下次打开自动预填。不传则不记忆。
+   */
+  memoryTable?: string
 }
 
 const PAGE_SIZE = 50
@@ -89,6 +94,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   selectedKeys,
   onSelectedKeysChange,
   onColumnsLoaded,
+  memoryTable,
 }: UnifiedChooserProps<T>) {
   const controlledSelection = Boolean(onSelectedKeysChange)
   const [internalSelected, setInternalSelected] = useState<RowSelectionState>({})
@@ -113,10 +119,14 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  /** 服务端解析出的目标表（formField 数据源），用于选择器记忆 */
+  const [resolvedTable, setResolvedTable] = useState<string | null>(null)
 
   const requestSeq = useRef(0)
   const wasOpen = useRef(false)
   const appliedDefaultsRef = useRef(false)
+  const memorySeq = useRef(0)
+  const memoryLoadedRef = useRef(false)
 
   const load = (query: UnifiedChooserQuery): Promise<UnifiedChooserData> => loadChooserSource(source, query)
 
@@ -158,6 +168,22 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
         appliedDefaultsRef.current = true
         setVisibleColumnKeys(result.defaultKeys?.length ? result.defaultKeys : null)
       }
+      // 首次拿到目标表时补读选择器记忆：命中就带着上次的筛选条件重查一次
+      if (result.targetTable) {
+        setResolvedTable(result.targetTable)
+        if (!memoryTable && !memoryLoadedRef.current) {
+          memoryLoadedRef.current = true
+          void loadChooserMemory(result.targetTable).then(memory => {
+            if (!wasOpen.current) return
+            const nextField = memory?.filterField ?? ''
+            const nextKeyword = memory?.keyword ?? ''
+            if (!nextField && !nextKeyword) return
+            setFilterField(nextField)
+            setKeyword(nextKeyword)
+            void fetchPage(1, sorting, nextKeyword, nextField, conditionsValue)
+          })
+        }
+      }
       onColumnsLoaded?.(result.columns, result.defaultKeys ?? null)
       if (!controlledSelection) setInternalSelected({})
       setPage(targetPage)
@@ -191,19 +217,43 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   useEffect(() => {
     if (open && !wasOpen.current) {
       wasOpen.current = true
-      setKeyword('')
-      setFilterField('')
       setConditions([])
       setVisibleColumnKeys(null)
       appliedDefaultsRef.current = false
       setAdvancedOpen(false)
       setColumnsOpen(false)
-      void fetchPage(1, [], '', '', [])
+      setKeyword('')
+      setFilterField('')
+      setResolvedTable(null)
+      memoryLoadedRef.current = false
+
+      if (!memoryTable) {
+        void fetchPage(1, [], '', '', [])
+      } else {
+        // 记忆是录入加速：先按上次的筛选条件打开，读不到就按空条件打开。
+        const seq = ++memorySeq.current
+        void loadChooserMemory(memoryTable).then(memory => {
+          if (seq !== memorySeq.current || !wasOpen.current) return
+          const nextField = memory?.filterField ?? ''
+          const nextKeyword = memory?.keyword ?? ''
+          setFilterField(nextField)
+          setKeyword(nextKeyword)
+          void fetchPage(1, [], nextKeyword, nextField, [])
+        })
+      }
     } else if (!open) {
       wasOpen.current = false
+      memorySeq.current += 1
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // 用户主动查询时落地记忆（分页与排序不算"这次怎么搜的"）
+  const runSearch = () => {
+    const table = memoryTable ?? resolvedTable
+    if (table) void saveChooserMemory(table, filterField, keyword.trim())
+    void fetchPage(1)
+  }
 
   const handleSortingChange = (next: SortingState) => {
     setSorting(next)
@@ -324,9 +374,9 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
                     value={keyword}
                     placeholder={searchPlaceholder}
                     onChange={event => setKeyword(event.target.value)}
-                    onKeyDown={event => { if (event.key === 'Enter') void fetchPage(1) }}
+                    onKeyDown={event => { if (event.key === 'Enter') runSearch() }}
                   />
-                  <Button variant="primary" loading={loading} onClick={() => void fetchPage(1)}>查询</Button>
+                  <Button variant="primary" loading={loading} onClick={runSearch}>查询</Button>
                 </div>
               ) : null}
               <Button

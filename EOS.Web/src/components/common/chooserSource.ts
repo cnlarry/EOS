@@ -11,7 +11,14 @@ export interface UnifiedChooserColumn {
 }
 
 export interface UnifiedChooserRow { [key: string]: unknown }
-export interface UnifiedChooserData { columns: UnifiedChooserColumn[]; rows: UnifiedChooserRow[]; total: number; defaultKeys?: string[] }
+export interface UnifiedChooserData {
+  columns: UnifiedChooserColumn[]
+  rows: UnifiedChooserRow[]
+  total: number
+  defaultKeys?: string[]
+  /** 选择器实际取数的目标表（formField 数据源由服务端给出），用于筛选条件记忆 */
+  targetTable?: string | null
+}
 
 export interface UnifiedChooserQuery {
   keyword?: string
@@ -79,5 +86,37 @@ export async function loadChooserSource(source: UnifiedChooserSource, query: Uni
     })),
     rows: result.rows ?? [],
     total: result.total ?? 0,
+    targetTable: result.targetTable ?? null,
+  }
+}
+
+/** 选择器记忆：某个用户对某张目标表上次使用的筛选字段与查询值。 */
+export interface UnifiedChooserMemory {
+  filterField: string | null
+  keyword: string | null
+}
+
+/**
+ * 读取选择器记忆（服务端按当前用户隔离，表名只作为查询参数）。
+ * 记忆是录入加速手段，读不到时返回 null，选择器按空条件打开。
+ */
+export async function loadChooserMemory(tableId: string): Promise<UnifiedChooserMemory | null> {
+  try {
+    return await apiClient.get<UnifiedChooserMemory>('/chooser/memory', { query: { tableId } })
+  } catch {
+    return null
+  }
+}
+
+/** 保存选择器记忆；失败不影响本次选择，因此吞掉异常。 */
+export async function saveChooserMemory(tableId: string, filterField: string, keyword: string): Promise<void> {
+  try {
+    await apiClient.put<void>('/chooser/memory', {
+      tableId,
+      filterField: filterField || null,
+      keyword: keyword || null,
+    })
+  } catch {
+    // 记忆写入失败不打断选择流程
   }
 }

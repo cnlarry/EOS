@@ -253,6 +253,7 @@ builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionRegistry>(
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionAuthorization>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionExecutor>();
 builder.Services.AddScoped<ChooserRepository>();
+builder.Services.AddScoped<ChooserMemoryRepository>();
 builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<FlowDefinitionService>();
 builder.Services.Configure<WorkflowSettings>(builder.Configuration.GetSection("Workflow"));
@@ -297,7 +298,7 @@ builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddScoped<AttachmentRepository>();
 builder.Services.AddHttpClient("AssistantModel");
 // 助手配置**一律来自数据库**（ADR-030 §8）：模型与供应商读 dbo.ASSISTANT_MODEL / ASSISTANT_PROVIDER
-// （菜单组 31 / 3102），全局策略读 dbo.SYSSS 的 OWNER_MODULE = 3105（3105 助手设置）。
+// （菜单组 31 / 3102），全局策略读 dbo.SYS_PARAMETER 的 OWNER_MODULE = 3105（3105 助手设置）。
 // appsettings 里**没有** Assistant 段——它是运行期要能改的业务配置，不是部署参数，
 // 混在配置清单里会让"改个模型名要改文件加重启"。密钥仍只走环境变量，库里存的是变量名（§3）。
 // 参数目录（AssistantParameterCatalog）是代码里的唯一真源，解析器读库产出策略对象；
@@ -357,7 +358,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisS
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DiagnoseRecordTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantActionGate>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantRecordActionService>();
-// **不 Bind 配置节**（ADR-030 §8）：阈值住在 3105 助手设置（dbo.SYSSS 的 OWNER_MODULE = 3105），
+// **不 Bind 配置节**（ADR-030 §8）：阈值住在 3105 助手设置（dbo.SYS_PARAMETER 的 OWNER_MODULE = 3105），
 // 配置节里已经没有读取方。留一条 Bind 会造出第二个"看起来配上了、其实没人读"的来源——
 // 参数框架要根除的正是这个形态。这条管线现在只承担一件事：启动时跑红线守卫（ValidateOnStart）。
 // 选项对象的属性初始值就是代码默认值（引用 AssistantActionLimits 的常量），校验器校验的是它们。
@@ -365,7 +366,7 @@ builder.Services.AddOptions<EOS.API.Features.Assistant.Governance.AssistantActio
     .ValidateOnStart();
 builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>,
     EOS.API.Features.Assistant.Governance.AssistantActionLimitsValidator>();
-// ↓ 下面四个域改用**运行期参数视图**：取值来自 dbo.SYSSS 的 3105，不再从配置节绑定（ADR-030 §8）。
+// ↓ 下面四个域改用**运行期参数视图**：取值来自 dbo.SYS_PARAMETER 的 3105，不再从配置节绑定（ADR-030 §8）。
 // 注意注册顺序：这几行在 AddOptions 之后，容器对 IOptions<T> 取**最后一个**注册，
 // 于是 AddOptions 那条管线只承担一件事——启动时跑 AssistantActionLimitsValidator（红线守卫）。
 builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptions<
@@ -592,7 +593,7 @@ app.MapFallbackToFile("index.html").RequireAuthorization();
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
 // 助手运行期配置同样在这里读一次：迁移刚跑完，ASSISTANT_MODEL / ASSISTANT_PROVIDER（3102）
-// 与 dbo.SYSSS 的 OWNER_MODULE = 3105（3105 助手设置）才是可用的
+// 与 dbo.SYS_PARAMETER 的 OWNER_MODULE = 3105（3105 助手设置）才是可用的
 // （照上一行的做法）。读失败不会中断启动——注册表内部会沿用旧值，最终表现为"未配置"，
 // 而助手会以一句**可执行的**文案告诉管理员去哪儿配（不再有"退回 appsettings"的兜底）。
 await app.Services

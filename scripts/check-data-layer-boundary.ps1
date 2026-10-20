@@ -41,6 +41,8 @@ $dataDir = Join-Path $Root 'EOS.API/Data'
 #     它不属于任何一个域，迁进 Data/<域>/ 会造成"精度口径按域各存一份"。
 #   · NumericDisplay.cs —— 数值显示格式化（金额/数量/百分比/汇率），前后端契约的一部分，
 #     被工作台渲染、打印与导出共用，同上无单一归属域。
+#   · ChooserMemoryRepository.cs —— 与 ChooserRepository 成对：一个读选择器数据源、一个读该
+#     数据源的筛选记忆，拆到两个目录会让同一条读取链路的入口分散。
 $allowed = @'
 AmountCalculator.cs
 AssistantQueryBuilder.cs
@@ -57,6 +59,7 @@ ChooserFilterCompiler.cs
 ChooserFilterModel.cs
 ChooserFilterValidator.cs
 ChooserJoinCatalog.cs
+ChooserMemoryRepository.cs
 ChooserModels.cs
 ChooserRepository.cs
 ConditionTemplateParser.cs
