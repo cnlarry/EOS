@@ -1,15 +1,20 @@
+using EOS.API.Models;
+
 namespace EOS.API.Data;
 
 public sealed record FormChooserColumn(string Key, string Label, string DataType, string? DisplayFormat);
 /// <summary>
 /// 表单选择器结果。TargetTable 是选择器实际取数的目标表（如 PRODUCT / CLIENT），
 /// 前端据此做「按用户 + 目标表」的筛选条件记忆；为空表示本次没有解析到目标表。
+/// AppliedMemory 是本次查询按记忆实际套用的筛选条件（未套用为 null），
+/// 前端据此回填查询条，不必为应用记忆再发一次同样条件的查询。
 /// </summary>
 public sealed record FormChooserResult(
     IReadOnlyList<FormChooserColumn> Columns,
     IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows,
     int Total,
-    string? TargetTable = null);
+    string? TargetTable = null,
+    ChooserMemoryResponse? AppliedMemory = null);
 
 internal sealed record FormChooserColumnRow(string Key, string Label, string DataType, bool IsCost, bool IsSecrecy, int OrderIndex, bool IsVisible, string? DisplayFormat);
 

@@ -16,6 +16,13 @@ interface ErpQueryBuilderProps {
   onClose: () => void
 }
 
+/** 值输入框占位：空值运算符无需填写，区间两端分别提示起始/结束。 */
+function valuePlaceholder(operator: string, upper: boolean): string {
+  if (operator === 'empty' || operator === 'notempty') return '无需填写'
+  if (operator === 'between') return upper ? '结束值' : '起始值'
+  return '值'
+}
+
 /**
  * 通用「高级查询」弹窗：结构化条件编辑器（字段 + 运算符 + 值/区间 + AND/OR 逻辑）。
  *
@@ -43,6 +50,7 @@ export function ErpQueryBuilder({
       title={title}
       onClose={onClose}
       size="lg"
+      scrollable
       footer={<>
         <Button onClick={onClear}>清空</Button>
         <Button variant="primary" disabled={!canApply} onClick={onApply}>应用查询</Button>
@@ -93,6 +101,7 @@ export function ErpQueryBuilder({
                     <input
                       className="form-control"
                       aria-label={`条件${index + 1}值`}
+                      placeholder={valuePlaceholder(condition.operator, false)}
                       disabled={condition.operator === 'empty' || condition.operator === 'notempty'}
                       value={condition.value}
                       onChange={(event) => update(index, { value: event.target.value })}
@@ -103,6 +112,7 @@ export function ErpQueryBuilder({
                       <input
                         className="form-control"
                         aria-label={`条件${index + 1}值上限`}
+                        placeholder={valuePlaceholder(condition.operator, true)}
                         value={condition.valueTo}
                         onChange={(event) => update(index, { valueTo: event.target.value })}
                       />

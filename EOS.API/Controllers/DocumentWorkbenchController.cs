@@ -11,7 +11,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, DbConnectionFactory connections, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, DbConnectionFactory connections, ChooserMemoryRepository chooserMemory, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     /// <summary>当前请求的用户号（授权判定与数据装配的主体）。</summary>
     private string? UserId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -245,7 +245,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     }
 
     [HttpGet("form-chooser/{fieldKey}")]
-    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]int? serialNo=null,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? conditions=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
+    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]int? serialNo=null,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? conditions=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]bool applyMemory=false,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
     {
         var access=await policy.AuthorizeFormAsync(UserId,moduleId,"new",token);
         if(!access.Allowed)access=await policy.AuthorizeFormAsync(UserId,moduleId,"edit",token);
@@ -325,9 +325,22 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         {
             return Unauthorized();
         }
+        // 首次打开选择器时由服务端直接套用记忆：目标表在服务端才解析得到，
+        // 前端先空条件查一次再重查会白跑一整轮取数。只在调用方没有显式给筛选条件时套用。
+        ChooserMemoryResponse? appliedMemory=null;
+        if(applyMemory&&string.IsNullOrWhiteSpace(keyword)&&string.IsNullOrWhiteSpace(filterField))
+        {
+            var memory=await chooserMemory.GetAsync(chooserUserId,source.Table,token);
+            if(memory is not null&&(!string.IsNullOrWhiteSpace(memory.FilterField)||!string.IsNullOrWhiteSpace(memory.Keyword)))
+            {
+                keyword=string.IsNullOrWhiteSpace(memory.Keyword)?keyword:memory.Keyword;
+                filterField=string.IsNullOrWhiteSpace(memory.FilterField)?filterField:memory.FilterField;
+                appliedMemory=new ChooserMemoryResponse(memory.FilterField,memory.Keyword);
+            }
+        }
         var result=await chooser.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,moduleId,chooserUserId,token);
-        // TargetTable 供前端做「按用户 + 目标表」的筛选条件记忆
-        return result is null?NotFound():Ok(result with { TargetTable = source.Table });
+        // TargetTable 供前端做「按用户 + 目标表」的筛选条件记忆；AppliedMemory 供前端回填查询条
+        return result is null?NotFound():Ok(result with { TargetTable = source.Table, AppliedMemory = appliedMemory });
     }
 
     /// <summary>

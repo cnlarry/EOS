@@ -1,13 +1,13 @@
-import { IconAdjustmentsHorizontal, IconColumns, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconColumns } from '@tabler/icons-react'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatFieldValue } from '../../features/document-workbench/fieldFormat'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
-import { ErrorState, LoadingState } from './AsyncState'
 import { ErpColumnSelector } from './ErpColumnSelector'
 import { ErpListGrid } from './ErpListGrid'
-import { emptyQueryCondition, queryOperators, type QueryCondition } from './queryCondition'
+import { ErpQueryBuilder } from './ErpQueryBuilder'
+import { emptyQueryCondition, type QueryCondition } from './queryCondition'
 import { loadChooserMemory, loadChooserSource, saveChooserMemory, type UnifiedChooserColumn, type UnifiedChooserData, type UnifiedChooserQuery, type UnifiedChooserRow, type UnifiedChooserSource } from './chooserSource'
 
 export type { UnifiedChooserColumn, UnifiedChooserData, UnifiedChooserQuery, UnifiedChooserRow, UnifiedChooserSource } from './chooserSource'
@@ -108,6 +108,8 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   const [keyword, setKeyword] = useState('')
   const [filterField, setFilterField] = useState('')
   const [conditions, setConditions] = useState<QueryCondition[]>([])
+  /** 高级查询草稿：打开时装入已应用条件，取消不写回、应用才生效 */
+  const [advancedDraft, setAdvancedDraft] = useState<QueryCondition[]>([])
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[] | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -126,7 +128,6 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   const wasOpen = useRef(false)
   const appliedDefaultsRef = useRef(false)
   const memorySeq = useRef(0)
-  const memoryLoadedRef = useRef(false)
 
   const load = (query: UnifiedChooserQuery): Promise<UnifiedChooserData> => loadChooserSource(source, query)
 
@@ -136,6 +137,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
     keywordValue = keyword,
     filterFieldValue = filterField,
     conditionsValue = conditions,
+    applyMemory = false,
   ): UnifiedChooserQuery => ({
     keyword: keywordValue.trim() || undefined,
     filterField: filterFieldValue || undefined,
@@ -144,6 +146,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
     detail: detailValues,
     sortField: sort[0]?.id ?? null,
     sortDirection: sort[0]?.desc ? 'desc' : 'asc',
+    applyMemory: applyMemory || undefined,
     page: targetPage,
     pageSize: PAGE_SIZE,
   })
@@ -154,12 +157,13 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
     keywordValue = keyword,
     filterFieldValue = filterField,
     conditionsValue = conditions,
+    applyMemory = false,
   ) => {
     const seq = ++requestSeq.current
     setLoading(true)
     setError(null)
     try {
-      const result = await load(buildQuery(targetPage, sort, keywordValue, filterFieldValue, conditionsValue))
+      const result = await load(buildQuery(targetPage, sort, keywordValue, filterFieldValue, conditionsValue, applyMemory))
       if (seq !== requestSeq.current) return
       setRows(result.rows as T[])
       setFieldColumns(result.columns)
@@ -168,21 +172,13 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
         appliedDefaultsRef.current = true
         setVisibleColumnKeys(result.defaultKeys?.length ? result.defaultKeys : null)
       }
-      // 首次拿到目标表时补读选择器记忆：命中就带着上次的筛选条件重查一次
-      if (result.targetTable) {
-        setResolvedTable(result.targetTable)
-        if (!memoryTable && !memoryLoadedRef.current) {
-          memoryLoadedRef.current = true
-          void loadChooserMemory(result.targetTable).then(memory => {
-            if (!wasOpen.current) return
-            const nextField = memory?.filterField ?? ''
-            const nextKeyword = memory?.keyword ?? ''
-            if (!nextField && !nextKeyword) return
-            setFilterField(nextField)
-            setKeyword(nextKeyword)
-            void fetchPage(1, sorting, nextKeyword, nextField, conditionsValue)
-          })
-        }
+      if (result.targetTable) setResolvedTable(result.targetTable)
+      // 服务端已在本次查询里套用了记忆：回填查询条即可，不再按同一条件重查一遍
+      if (result.appliedMemory) {
+        const memoryField = result.appliedMemory.filterField ?? ''
+        // 记忆里的筛选列可能已不可见：只回填仍在下拉里的列
+        setFilterField(result.columns.some(column => column.key === memoryField) ? memoryField : '')
+        setKeyword(result.appliedMemory.keyword ?? '')
       }
       onColumnsLoaded?.(result.columns, result.defaultKeys ?? null)
       if (!controlledSelection) setInternalSelected({})
@@ -225,10 +221,10 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
       setKeyword('')
       setFilterField('')
       setResolvedTable(null)
-      memoryLoadedRef.current = false
 
       if (!memoryTable) {
-        void fetchPage(1, [], '', '', [])
+        // 目标表由服务端解析：首查请服务端一并套用记忆，避免"空条件查一次 → 读记忆 → 再重查"
+        void fetchPage(1, [], '', '', [], true)
       } else {
         // 记忆是录入加速：先按上次的筛选条件打开，读不到就按空条件打开。
         const seq = ++memorySeq.current
@@ -258,6 +254,11 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   const handleSortingChange = (next: SortingState) => {
     setSorting(next)
     if (serverPaging) void fetchPage(1, next)
+  }
+
+  // 首查失败时查询条还没被记忆回填，重试仍请服务端套用记忆（仅首页且没有显式条件时）
+  const retry = () => {
+    void fetchPage(page, sorting, keyword, filterField, conditions, page === 1 && !keyword.trim() && !filterField)
   }
 
   const toggleRowSelection = (id: string) => {
@@ -362,85 +363,96 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
           <Button variant="primary" disabled={selectedCount === 0} onClick={confirm}>确认</Button>
         </div>}
       >
-            <div className="erp-chooser-toolbar">
-              {searchable ? (
-                <div className="input-group erp-chooser-query">
-                  <select className="form-select erp-chooser-field" value={filterField} onChange={event => setFilterField(event.target.value)}>
-                    <option value="">全部</option>
-                    {fieldColumns.map(column => <option key={column.key} value={column.key}>{column.label}</option>)}
-                  </select>
-                  <input
-                    className="form-control"
-                    value={keyword}
-                    placeholder={searchPlaceholder}
-                    onChange={event => setKeyword(event.target.value)}
-                    onKeyDown={event => { if (event.key === 'Enter') runSearch() }}
-                  />
-                  <Button variant="primary" loading={loading} onClick={runSearch}>查询</Button>
-                </div>
-              ) : null}
-              <Button
-                className="erp-chooser-icon-btn"
-                icon={<IconAdjustmentsHorizontal size={16} />}
-                title={conditions.length > 0 ? `高级查询（${conditions.length}）` : '高级查询'}
-                aria-label="高级查询"
-                disabled={fieldColumns.length === 0}
-                onClick={() => setAdvancedOpen(true)}
+        {/* 工具行在列表卡之外：卡片只包表格与统计 */}
+        <div className="erp-chooser-toolbar">
+          {searchable ? (
+            <div className="input-group erp-chooser-query">
+              <select className="form-select erp-chooser-field" value={filterField} onChange={event => setFilterField(event.target.value)}>
+                <option value="">全部</option>
+                {fieldColumns.map(column => <option key={column.key} value={column.key}>{column.label}</option>)}
+              </select>
+              <input
+                className="form-control"
+                value={keyword}
+                placeholder={searchPlaceholder}
+                onChange={event => setKeyword(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Enter') runSearch() }}
               />
-              <Button
-                className="erp-chooser-icon-btn"
-                icon={<IconColumns size={16} />}
-                title="选择列"
-                aria-label="选择列"
-                disabled={fieldColumns.length === 0}
-                onClick={() => setColumnsOpen(true)}
-              />
+              <Button variant="primary" loading={loading} onClick={runSearch}>查询</Button>
             </div>
-            {error ? <ErrorState message={error} onRetry={() => void fetchPage(page)} size="compact" /> : null}
-            {!error && loading && rows.length === 0 ? <LoadingState label="正在加载…" size="compact" /> : null}
-            {!error && !loading && rows.length === 0 ? (
-              <div className="text-secondary py-4 text-center">{emptyText}</div>
-            ) : null}
-            {!error && rows.length > 0 ? (
-              <>
-                <div className="erp-chooser-body-table">
-                  <ErpListGrid
-                    plain
-                    listId={storageKey ?? 'unified-chooser'}
-                    columns={columns}
-                    rows={rows}
-                    rowKey={getRowId}
-                    selection={{ value: selected, onChange: commitSelection }}
-                    onRowClick={row => toggleRowSelection(getRowId(row, rows.indexOf(row)))}
-                    empty={null}
-                    tableProps={{
-                      resizable,
-                      responsive: false,
-                      keyboardNavigation: false,
-                      clientSideSorting: clientSorting,
-                      sorting,
-                      onSortingChange: handleSortingChange,
-                      onEndReached: serverPaging ? () => void loadMore() : undefined,
-                      hasMore: serverPaging && rows.length < total,
-                      loadingMore,
-                    }}
-                  />
-                </div>
-                <div className="d-flex align-items-center justify-content-between mt-2">
-                  <span className="text-secondary small">
-                    共 {total} 条{rows.length < total ? `，已加载 ${rows.length} 条` : ''}，已选 {selectedCount} 项
-                  </span>
-                </div>
-              </>
-            ) : null}
-        <div className="erp-chooser-extra">{extra}</div>
+          ) : null}
+          <Button
+            className="erp-chooser-icon-btn"
+            icon={<IconAdjustmentsHorizontal size={16} />}
+            title={conditions.length > 0 ? `高级查询（${conditions.length}）` : '高级查询'}
+            aria-label="高级查询"
+            disabled={fieldColumns.length === 0}
+            onClick={() => {
+              setAdvancedDraft(conditions.length > 0 ? conditions : [emptyQueryCondition()])
+              setAdvancedOpen(true)
+            }}
+          />
+          <Button
+            className="erp-chooser-icon-btn"
+            icon={<IconColumns size={16} />}
+            title="选择列"
+            aria-label="选择列"
+            disabled={fieldColumns.length === 0}
+            onClick={() => setColumnsOpen(true)}
+          />
+        </div>
+        <ErpListGrid
+          listId={storageKey ?? 'unified-chooser'}
+          columns={columns}
+          rows={rows}
+          rowKey={getRowId}
+          loading={loading && rows.length === 0}
+          loadingLabel="正在加载…"
+          error={error}
+          onRetry={retry}
+          empty={<div className="text-secondary py-4 text-center">{emptyText}</div>}
+          selection={{ value: selected, onChange: commitSelection }}
+          onRowClick={row => toggleRowSelection(getRowId(row, rows.indexOf(row)))}
+          regionClassName="erp-chooser-body-table"
+          footer={(
+            <span className="text-secondary small">
+              共 {total} 条{rows.length < total ? `，已加载 ${rows.length} 条` : ''}，已选 {selectedCount} 项
+            </span>
+          )}
+          tableProps={{
+            resizable,
+            responsive: false,
+            keyboardNavigation: false,
+            // 点行选择只走下面的 onRowClick，避免表格内部再改一次选择态
+            rowClickSingleSelect: false,
+            clientSideSorting: clientSorting,
+            sorting,
+            onSortingChange: handleSortingChange,
+            onEndReached: serverPaging ? () => void loadMore() : undefined,
+            hasMore: serverPaging && rows.length < total,
+            loadingMore,
+          }}
+        >
+          <div className="erp-chooser-extra">{extra}</div>
+        </ErpListGrid>
       </Modal>
       {advancedOpen ? (
-        <ChooserAdvancedQuery
+        <ErpQueryBuilder
           open
-          fields={fieldColumns}
-          initial={conditions}
-          onApply={applyAdvanced}
+          title="高级查询"
+          fields={fieldColumns.map(column => ({ key: column.key, label: column.label }))}
+          conditions={advancedDraft}
+          onChange={setAdvancedDraft}
+          onApply={() => {
+            const applied = advancedDraft.filter(item => item.field)
+            setAdvancedOpen(false)
+            applyAdvanced(applied)
+          }}
+          onClear={() => {
+            setAdvancedDraft([emptyQueryCondition()])
+            setAdvancedOpen(false)
+            applyAdvanced([])
+          }}
           onClose={() => setAdvancedOpen(false)}
         />
       ) : null}
@@ -459,116 +471,5 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
         />
       ) : null}
     </>
-  )
-}
-
-/**
- * 高级查询：多条件组合（字段 + 运算符 + 值 + AND/OR），与工作台列头筛选同一套运算符语义。
- * 提交后由选择器按数据源白名单 + 参数化发送服务端执行。
- */
-function ChooserAdvancedQuery({
-  open,
-  fields,
-  initial,
-  onApply,
-  onClose,
-}: {
-  open: boolean
-  fields: UnifiedChooserColumn[]
-  initial: QueryCondition[]
-  onApply: (conditions: QueryCondition[]) => void
-  onClose: () => void
-}) {
-  const [rows, setRows] = useState<QueryCondition[]>([])
-
-  useEffect(() => {
-    if (open) setRows(initial.length > 0 ? initial : [emptyQueryCondition()])
-  }, [open, initial])
-
-  const updateRow = (index: number, patch: Partial<QueryCondition>) => {
-    setRows(current => current.map((row, i) => i === index ? { ...row, ...patch } : row))
-  }
-
-  const apply = () => {
-    onApply(rows.filter(row => row.field))
-    onClose()
-  }
-
-  if (!open) return null
-
-  return (
-    <Modal
-      title="高级查询"
-      onClose={onClose}
-      dialogClassName="erp-dialog-md"
-      footer={<>
-        <Button onClick={onClose}>取消</Button>
-        <Button variant="primary" onClick={apply}>应用</Button>
-      </>}
-    >
-            <div className="erp-filter-rows">
-              {rows.map((row, index) => (
-                <div key={index} className="erp-filter-row d-flex gap-2 align-items-center">
-                  {index > 0 && (
-                    <select
-                      className="form-select form-select-sm erp-filter-logic"
-                      value={row.logic}
-                      onChange={event => updateRow(index, { logic: event.target.value })}
-                      aria-label="条件逻辑"
-                    >
-                      <option value="and">AND</option>
-                      <option value="or">OR</option>
-                    </select>
-                  )}
-                  <select
-                    className="form-select form-select-sm"
-                    value={row.field}
-                    onChange={event => updateRow(index, { field: event.target.value })}
-                    aria-label="条件字段"
-                  >
-                    <option value="">选择字段…</option>
-                    {fields.map(field => <option key={field.key} value={field.key}>{field.label}</option>)}
-                  </select>
-                  <select
-                    className="form-select form-select-sm erp-filter-op"
-                    value={row.operator}
-                    onChange={event => updateRow(index, { operator: event.target.value })}
-                    aria-label="条件运算符"
-                  >
-                    {queryOperators.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <input
-                    className="form-control form-control-sm"
-                    value={row.value}
-                    placeholder="值"
-                    disabled={row.operator === 'empty' || row.operator === 'notempty'}
-                    onChange={event => updateRow(index, { value: event.target.value })}
-                  />
-                  {row.operator === 'between' && (
-                    <input
-                      className="form-control form-control-sm"
-                      value={row.valueTo}
-                      placeholder="至"
-                      onChange={event => updateRow(index, { valueTo: event.target.value })}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="erp-field-mini"
-                    aria-label="删除条件"
-                    onClick={() => setRows(current => current.filter((_, i) => i !== index))}
-                  >
-                    <IconTrash size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2 d-flex gap-2">
-              <Button size="sm" icon={<IconPlus size={14} />} onClick={() => setRows(current => [...current, emptyQueryCondition()])}>
-                添加条件
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => { onApply([]); onClose() }}>清除</Button>
-            </div>
-    </Modal>
   )
 }

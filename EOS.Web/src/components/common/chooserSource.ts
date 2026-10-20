@@ -18,6 +18,8 @@ export interface UnifiedChooserData {
   defaultKeys?: string[]
   /** 选择器实际取数的目标表（formField 数据源由服务端给出），用于筛选条件记忆 */
   targetTable?: string | null
+  /** 本次查询由服务端套用的记忆条件（未套用为 null），用于回填查询条而不是重查 */
+  appliedMemory?: UnifiedChooserMemory | null
 }
 
 export interface UnifiedChooserQuery {
@@ -29,6 +31,11 @@ export interface UnifiedChooserQuery {
   detail?: Record<string, string>
   sortField?: string | null
   sortDirection?: 'asc' | 'desc'
+  /**
+   * 首次打开时请服务端套用选择器记忆（formField 数据源）：
+   * 目标表只有服务端解析得到，前端先空条件查一次再重查会多跑一整轮取数。
+   */
+  applyMemory?: boolean
   page: number
   pageSize: number
 }
@@ -73,6 +80,7 @@ export async function loadChooserSource(source: UnifiedChooserSource, query: Uni
       detail: query.detail ? JSON.stringify(query.detail) : undefined,
       sortField: query.sortField ?? undefined,
       sortDirection: query.sortDirection,
+      applyMemory: query.applyMemory ? 'true' : undefined,
       page: String(query.page),
       pageSize: String(query.pageSize),
     },
@@ -87,6 +95,7 @@ export async function loadChooserSource(source: UnifiedChooserSource, query: Uni
     rows: result.rows ?? [],
     total: result.total ?? 0,
     targetTable: result.targetTable ?? null,
+    appliedMemory: result.appliedMemory ?? null,
   }
 }
 

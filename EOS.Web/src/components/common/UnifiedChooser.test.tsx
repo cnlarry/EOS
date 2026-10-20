@@ -165,6 +165,18 @@ describe('UnifiedChooser', () => {
     })))
   })
 
+  it('关键字输入后回车触发查询', async () => {
+    renderChooser()
+    await waitFor(() => expect(screen.getByText('客户甲')).toBeInTheDocument())
+    const input = screen.getByPlaceholderText('输入查询条件，回车查询')
+    fireEvent.change(input, { target: { value: '乙' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenLastCalledWith('/chooser/query', expect.objectContaining({
+      keyword: '乙',
+      page: 1,
+    })))
+  })
+
   it('服务端分页：滚动到底自动加载下一页并追加行', async () => {
     apiClientMock.post
       .mockResolvedValueOnce({ columns, rows, total: 4 })
@@ -182,18 +194,33 @@ describe('UnifiedChooser', () => {
     expect(screen.queryByText(/正在加载更多/)).not.toBeInTheDocument()
   })
 
-  it('高级查询：添加条件并应用后携带结构化条件重新请求', async () => {
+  it('高级查询：选字段填值后应用，携带结构化条件重新请求', async () => {
     renderChooser()
     await waitFor(() => expect(screen.getByText('客户甲')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '高级查询' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: '高级查询' })).toBeInTheDocument())
-    fireEvent.change(screen.getByLabelText('条件字段'), { target: { value: 'CLIENT_NAME' } })
-    fireEvent.change(screen.getByLabelText('条件运算符'), { target: { value: 'contains' } })
-    fireEvent.change(screen.getByPlaceholderText('值'), { target: { value: '甲' } })
-    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    // 打开时是一行未选字段的条件：不能直接应用（避免提交空条件）
+    expect(screen.getByRole('button', { name: '应用查询' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('条件1字段'), { target: { value: 'CLIENT_NAME' } })
+    fireEvent.change(screen.getByLabelText('条件1运算符'), { target: { value: 'contains' } })
+    fireEvent.change(screen.getByLabelText('条件1值'), { target: { value: '甲' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用查询' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenLastCalledWith('/chooser/query', expect.objectContaining({
       conditions: [{ field: 'CLIENT_NAME', operator: 'contains', value: '甲', valueTo: '', logic: 'and' }],
     })))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '高级查询' })).not.toBeInTheDocument())
+  })
+
+  it('高级查询：清空后按空条件重查并关闭', async () => {
+    renderChooser()
+    await waitFor(() => expect(screen.getByText('客户甲')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '高级查询' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '高级查询' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '清空' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '高级查询' })).not.toBeInTheDocument())
+    const lastQuery = apiClientMock.post.mock.calls.at(-1)?.[1] as { page?: number; conditions?: unknown } | undefined
+    expect(lastQuery?.page).toBe(1)
+    expect(lastQuery?.conditions).toBeUndefined()
   })
 
   it('选择列：保存显示列配置后网格按配置过滤列', async () => {
@@ -223,13 +250,16 @@ describe('UnifiedChooser', () => {
     expect(headers).toEqual(['', '客户名称', '客户编号'])
   })
 
-  it('选择器记忆：首次取数拿到目标表后按上次的筛选条件重查', async () => {
+  it('选择器记忆：首次查询由服务端套用记忆并回填查询条，不再重查', async () => {
     apiClientMock.get.mockImplementation((path: string) => {
       if (String(path).includes('/form-chooser/')) {
-        return Promise.resolve({ columns, rows, total: 2, targetTable: 'CLIENT' })
-      }
-      if (path === '/chooser/memory') {
-        return Promise.resolve({ filterField: 'CLIENT_NAME', keyword: '甲' })
+        return Promise.resolve({
+          columns,
+          rows,
+          total: 2,
+          targetTable: 'CLIENT',
+          appliedMemory: { filterField: 'CLIENT_NAME', keyword: '甲' },
+        })
       }
       return Promise.resolve({ columns, rows, total: 2 })
     })
@@ -239,11 +269,14 @@ describe('UnifiedChooser', () => {
     })
 
     await waitFor(() => {
-      const calls = apiClientMock.get.mock.calls.filter(([path]) => String(path).includes('/form-chooser/'))
-      expect(calls.length).toBeGreaterThanOrEqual(2)
-      const lastOptions = calls.at(-1)?.[1] as { query?: Record<string, string> } | undefined
-      expect(lastOptions?.query?.keyword).toBe('甲')
-      expect(lastOptions?.query?.filterField).toBe('CLIENT_NAME')
+      expect((screen.getByPlaceholderText('输入查询条件，回车查询') as HTMLInputElement).value).toBe('甲')
     })
+    expect((screen.getAllByRole('combobox')[0] as HTMLSelectElement).value).toBe('CLIENT_NAME')
+    const chooserCalls = apiClientMock.get.mock.calls.filter(([path]) => String(path).includes('/form-chooser/'))
+    expect(chooserCalls).toHaveLength(1)
+    const query = (chooserCalls[0][1] as { query?: Record<string, string> }).query
+    expect(query?.applyMemory).toBe('true')
+    // 记忆是本次查询的一部分，不再单独读一次记忆接口
+    expect(apiClientMock.get.mock.calls.some(([path]) => path === '/chooser/memory')).toBe(false)
   })
 })
