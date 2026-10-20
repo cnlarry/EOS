@@ -3,9 +3,8 @@ import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { navigationIcons } from '../../components/layout/navigationIcons'
 import { tabLinkHandler, useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { Button } from '../../components/ui/Button'
@@ -254,22 +253,21 @@ export function DashboardPage() {
           >
             {!canSeeTasks ? (
               <div className="text-center text-secondary py-4">无「我的任务」模块浏览权限，无法展示待办明细。</div>
-            ) : myTasks.isPending ? (
-              <LoadingState label="正在加载待办任务…" />
-            ) : myTasks.isError ? (
-              <ErrorState message={tasksError} onRetry={() => void myTasks.refetch()} />
             ) : (
-              <ErpTable
+              <ErpListGrid
+                plain
+                listId="dashboard-pending"
                 columns={pendingColumns}
-                data={pendingTasks}
-                getRowId={(row) => String(row.moduleId)}
+                rows={pendingTasks}
+                rowKey={(row) => String(row.moduleId)}
+                loading={myTasks.isPending}
+                loadingLabel="正在加载待办任务…"
+                fetching={myTasks.isFetching}
+                error={myTasks.isError ? tasksError : null}
+                onRetry={() => void myTasks.refetch()}
+                sorting={{ mode: 'client' }}
+                selection={{ value: pendingSelection, onChange: setPendingSelection }}
                 empty={<div className="text-center text-secondary py-4">当前无待批核单据</div>}
-                resizable
-                storageKey="dashboard-pending"
-                clientSideSorting
-                rowClickSingleSelect
-                rowSelection={pendingSelection}
-                onRowSelectionChange={setPendingSelection}
               />
             )}
           </ErpListCard>
@@ -306,24 +304,21 @@ export function DashboardPage() {
             actions={<Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => openTab('/my-tasks')}>查看全部</Button>}
             header={<div className="px-3 pt-2 small text-secondary">我发起的在途流程 {startedRows.length} 项</div>}
           >
-            {myStarted.isPending ? (
-              <LoadingState label="正在加载流程…" />
-            ) : myStarted.isError ? (
-              <ErrorState message={describeApiError(myStarted.error, '发生未知错误，请稍后重试。')} onRetry={() => void myStarted.refetch()} />
-            ) : (
-              <ErpTable
-                columns={startedColumns}
-                data={startedRows}
-                getRowId={(row) => String(row.wfId)}
-                empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
-                resizable
-                storageKey="dashboard-started"
-                clientSideSorting
-                rowClickSingleSelect
-                rowSelection={startedSelection}
-                onRowSelectionChange={setStartedSelection}
-              />
-            )}
+            <ErpListGrid
+              plain
+              listId="dashboard-started"
+              columns={startedColumns}
+              rows={startedRows}
+              rowKey={(row) => String(row.wfId)}
+              loading={myStarted.isPending}
+              loadingLabel="正在加载流程…"
+              fetching={myStarted.isFetching}
+              error={myStarted.isError ? describeApiError(myStarted.error, '发生未知错误，请稍后重试。') : null}
+              onRetry={() => void myStarted.refetch()}
+              sorting={{ mode: 'client' }}
+              selection={{ value: startedSelection, onChange: setStartedSelection }}
+              empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
+            />
           </ErpListCard>
         </div>
       )}

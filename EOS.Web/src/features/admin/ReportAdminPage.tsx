@@ -4,10 +4,9 @@ import type { ColumnDef, RowData, RowSelectionState } from '../../lib/tanstackTa
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpFieldChooser } from '../../components/common/ErpFieldChooser'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
 import { Button } from '../../components/ui/Button'
@@ -559,34 +558,27 @@ export function ReportAdminPage() {
 
   return (
     <div className="erp-workbench-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="报表定义查询"
+        listId="report-admin-reports"
+        columns={reportColumns}
+        rows={filteredRows}
+        rowKey={(row: ReportRow) => row.reportId}
+        loading={reports.isPending}
+        loadingLabel="正在加载报表…"
+        error={reports.isError ? reportsError : null}
+        onRetry={() => void reports.refetch()}
+        regionClassName="erp-master-table-region"
+        sorting={{ mode: 'client' }}
+        selection={{ value: reportSelection, onChange: handleReportSelectionChange }}
+        empty={<EmptyState title={keyword.trim() ? '未找到匹配报表' : '暂无报表定义'} description={keyword.trim() ? '换一个关键词试试。' : '点击「新增报表」建立第一条报表定义。'} />}
         search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300} placeholder="搜索报表编号/名称/所属模块" ariaLabel="搜索报表" />}
         actions={<div className="d-flex gap-2 align-items-center">
           <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void reports.refetch()}>刷新</Button>
           <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} onClick={() => setReportEditor({ mode: 'new' })}>新增报表</Button>
         </div>}
         header={reports.data ? <div className="erp-list-header">共 {rows.length} 个报表{keyword.trim() ? `，筛选后 ${filteredRows.length} 个` : ''}；点击行选中报表，下方显示其排序/分组方案。</div> : undefined}
-      >
-        <div className="erp-master-table-region">
-          {reports.isPending ? <LoadingState label="正在加载报表…" /> : reports.isError ? (
-            <ErrorState message={reportsError} onRetry={() => void reports.refetch()} />
-          ) : (
-            <ErpTable
-              columns={reportColumns}
-              data={filteredRows}
-              getRowId={(row: ReportRow) => row.reportId}
-              empty={<EmptyState title={keyword.trim() ? '未找到匹配报表' : '暂无报表定义'} description={keyword.trim() ? '换一个关键词试试。' : '点击「新增报表」建立第一条报表定义。'} />}
-              resizable
-              storageKey="report-admin-reports"
-              clientSideSorting
-              rowClickSingleSelect
-              rowSelection={reportSelection}
-              onRowSelectionChange={handleReportSelectionChange}
-            />
-          )}
-        </div>
-      </ErpListCard>
+      />
       <section className="card erp-detail-card">
         <div className="card-header erp-card-toolbar">
           <span className="small fw-semibold">{selectedReport ? `排序/分组方案（REPORT_SORT）——报表：${selectedReport}` : '排序/分组方案（REPORT_SORT）'}</span>
@@ -597,18 +589,16 @@ export function ReportAdminPage() {
         {selectedReport && sorts.isPending ? <LoadingState label="正在加载排序方案…" /> : sorts.isError ? (
           <ErrorState message={sortsError} onRetry={() => void sorts.refetch()} />
         ) : (
-          <ErpTable
-            loading={sorts.isFetching}
+          <ErpListGrid
+            plain
+            listId="report-admin-sorts"
             columns={sortColumns}
-            data={sortRows}
-            getRowId={(row: SortRow) => String(row.serialNo)}
+            rows={sortRows}
+            rowKey={(row: SortRow) => String(row.serialNo)}
+            fetching={sorts.isFetching}
+            sorting={{ mode: 'client' }}
+            selection={{ value: sortSelection, onChange: setSortSelection }}
             empty={<EmptyState title={selectedReport ? '暂无排序方案' : '未选择报表'} description={selectedReport ? '点击「新增方案」建立排序/分组方案。' : '请先选择上方报表，再维护其排序/分组方案。'} />}
-            resizable
-            storageKey="report-admin-sorts"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={sortSelection}
-            onRowSelectionChange={setSortSelection}
           />
         )}
       </section>

@@ -2,9 +2,8 @@ import { IconRefresh, IconDeviceFloppy, IconPlus, IconPencil, IconTrash, IconArr
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
@@ -365,8 +364,20 @@ export function DepotStockPolicyPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="库存策略"
+        listId="depot-stock-policy"
+        columns={columns}
+        rows={policies.data}
+        rowKey={(row: Policy) => row.depotId}
+        loading={policies.isPending || tiers.isPending}
+        loadingLabel="正在加载库存策略…"
+        error={policies.isError || tiers.isError ? errorMessage : null}
+        onRetry={refreshAll}
+        sorting={{ mode: 'client' }}
+        selection={{ value: rowSelection, onChange: handleRowSelectionChange }}
+        onRowDoubleClick={(row) => openEdit(row)}
+        empty={<EmptyState title="没有策略行" description="库别无策略行时按所有仓库行使。" />}
         actions={(
           <>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={openCreate}>新增</Button>
@@ -385,29 +396,8 @@ export function DepotStockPolicyPage() {
           </>
         )}
       >
-        {policies.isPending || tiers.isPending ? <LoadingState label="正在加载库存策略…" /> : policies.isError || tiers.isError ? (
-          <ErrorState message={errorMessage} onRetry={refreshAll} />
-        ) : (
-          <>
-            {/* 表格区必须是卡片的直接子项（Fragment 不产生 DOM）：卡内滚动靠
-                `.erp-list-card`（flex 列 + overflow:hidden）→ `.erp-table-shell`（flex:1 + min-height:0 + overflow:auto）
-                这条链撑着。中间再套一层容器，那一层会按内容高度撑开、把表格一起顶出卡片，
-                被 overflow:hidden 裁掉——表现成「看不到滚动条、下方内容也露不出来」。
-                归位面板挂在同一层：它高度自适应，不与表格抢剩余高度。 */}
-            <ErpTable
-              columns={columns}
-              data={policies.data ?? []}
-              getRowId={(row: Policy) => row.depotId}
-              empty={<EmptyState title="没有策略行" description="库别无策略行时按所有仓库行使。" />}
-              resizable
-              storageKey="depot-stock-policy"
-              clientSideSorting
-              rowClickSingleSelect
-              rowSelection={rowSelection}
-              onRowSelectionChange={handleRowSelectionChange}
-              onRowDoubleClick={(row) => openEdit(row)}
-            />
-            {selected && selected.depotId !== '*' ? (
+        {/* 归位面板挂在表格同一层：它高度自适应，不与表格抢剩余高度 */}
+        {selected && selected.depotId !== '*' ? (
               <div className="card m-2">
                 <div className="card-body py-2">
                   <div className="fw-semibold small mb-1">哨兵存量归位：{selected.depotId}</div>
@@ -460,10 +450,8 @@ export function DepotStockPolicyPage() {
                   ) : null}
                 </div>
               </div>
-            ) : null}
-          </>
-        )}
-      </ErpListCard>
+        ) : null}
+      </ErpListGrid>
 
       {editor ? (
         <Modal

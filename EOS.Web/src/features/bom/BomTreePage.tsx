@@ -13,7 +13,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpTree, type ErpTreeNode } from '../../components/common/ErpTree'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -327,23 +327,18 @@ export function BomTreePage() {
           (gross.data?.rows ?? []).length === 0 ? (
             <EmptyState description="该料号在这一版下没有子件（或该版次不存在）。" />
           ) : (
-            <ErpTable
+            <ErpListGrid
+              plain
+              listId="bom-gross"
               columns={grossColumns(qty)}
-              data={gross.data?.rows ?? []}
+              rows={gross.data?.rows}
               // 毛需求的行身份是料号（服务端已按料号合并，不会重复）
-              getRowId={row => row.proNo}
-              // 服务端不排序，客户端排：`clientSideSorting` 让 ErpTable 按 accessorFn 排
-              sorting={grossSort}
-              onSortingChange={setGrossSort}
-              clientSideSorting
-              rowSelection={grossSelection}
-              onRowSelectionChange={setGrossSelection}
+              rowKey={row => row.proNo}
+              // 服务端不排序，客户端排
+              sorting={{ mode: 'client', value: grossSort, onChange: setGrossSort }}
+              selection={{ value: grossSelection, onChange: setGrossSelection }}
               activeRowId={grossActive ?? undefined}
               onRowClick={row => { setGrossSelection({ [row.proNo]: true }); setGrossActive(row.proNo) }}
-              copyable
-              keyboardNavigation
-              resizable
-              storageKey="bom-gross"
             />
           )
         ) : !hasRows ? (

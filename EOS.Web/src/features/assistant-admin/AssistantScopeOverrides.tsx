@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
@@ -269,15 +269,15 @@ export function AssistantScopeOverrides() {
             </div>
           )}
 
-          <ErpTable<AssistantScopeOverride>
+          <ErpListGrid<AssistantScopeOverride>
+            plain
+            listId="assistant-scope-overrides"
             columns={columns}
-            data={rows}
-            getRowId={row => `${row.scopeType}|${row.scopeKey}|${row.paramKey}`}
-            storageKey="assistant-scope-overrides"
-            resizable
-            copyable={false}
-            clientSideSorting
+            rows={rows}
+            rowKey={row => `${row.scopeType}|${row.scopeKey}|${row.paramKey}`}
+            sorting={{ mode: 'client' }}
             empty={<div className="p-3 text-secondary">没有任何覆盖——所有模块与用户都按全局值运行。</div>}
+            tableProps={{ copyable: false }}
           />
         </>
       )}

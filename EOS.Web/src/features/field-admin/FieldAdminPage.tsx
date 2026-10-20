@@ -3,11 +3,10 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type { ColumnDef, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
@@ -135,7 +134,7 @@ export function FieldAdminPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="字段维护查询与操作"
         search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }} debounceMs={300} placeholder="搜索字段名或标题" ariaLabel="搜索字段" />}
         actions={<>
@@ -166,23 +165,20 @@ export function FieldAdminPage() {
           </span>
         </div>}
         footer={!fields.isPending && !fields.isError ? <ErpPagination total={fields.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} /> : undefined}
-      >
-        {fields.isPending ? <LoadingState label="正在加载字段列表…" /> : fields.isError ? <ErrorState message={errorMessage} onRetry={() => void fields.refetch()} /> : (
-          <ErpTable
-            loading={fields.isFetching}
-            columns={columns}
-            data={items}
-            getRowId={(row) => `${row.tableId}.${row.fieldId}`}
-            onRowClick={(row) => setSelectedField(`${row.tableId}.${row.fieldId}`)}
-            // 服务端排序：表头菜单直接不渲染（不传这两个 prop 的话），故必须成对传
-            sorting={sorting}
-            onSortingChange={(next) => { setSorting(next); setPage(1) }}
-            resizable
-            storageKey={`field-admin-fields-${tableId}`}
-            empty={<EmptyState title="没有找到字段" description="请调整搜索条件，或点击“新增”创建字段。" />}
-          />
-        )}
-      </ErpListCard>
+        listId={`field-admin-fields-${tableId}`}
+        columns={columns}
+        rows={items}
+        rowKey={(row) => `${row.tableId}.${row.fieldId}`}
+        loading={fields.isPending}
+        loadingLabel="正在加载字段列表…"
+        fetching={fields.isFetching}
+        error={fields.isError ? errorMessage : null}
+        onRetry={() => void fields.refetch()}
+        onRowClick={(row) => setSelectedField(`${row.tableId}.${row.fieldId}`)}
+        // 服务端排序：表头菜单直接不渲染（不传这两个 prop 的话），故必须成对传
+        sorting={{ mode: 'server', value: sorting, onChange: (next) => { setSorting(next); setPage(1) } }}
+        empty={<EmptyState title="没有找到字段" description="请调整搜索条件，或点击“新增”创建字段。" />}
+      />
       {remove.isError && <div className="alert alert-danger">{describeApiError(remove.error, '删除失败。')}</div>}
       {unmanagedOpen && (
         <UnmanagedFieldsModal

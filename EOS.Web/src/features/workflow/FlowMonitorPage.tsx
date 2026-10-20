@@ -4,8 +4,7 @@ import type { ColumnDef } from '../../lib/tanstackTable'
 import { IconEye, IconRefresh } from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
@@ -185,7 +184,7 @@ export function FlowMonitorPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="流程监控"
         search={null}
         actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void list.refetch()}>刷新</Button>}
@@ -210,21 +209,17 @@ export function FlowMonitorPage() {
             </span>
           </div>
         )}
-      >
-        {list.isPending ? <LoadingState label="正在加载流程实例…" /> : list.isError ? (
-          <ErrorState message={errorMessage} onRetry={() => void list.refetch()} />
-        ) : (
-          <ErpTable
-            loading={list.isFetching}
-            columns={columns}
-            data={rows}
-            getRowId={(row) => String(row.wfId)}
-            resizable
-            storageKey="flow-monitor"
-            empty={<div className="text-center text-secondary py-4">当前无流程实例</div>}
-          />
-        )}
-      </ErpListCard>
+        listId="flow-monitor"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => String(row.wfId)}
+        loading={list.isPending}
+        loadingLabel="正在加载流程实例…"
+        fetching={list.isFetching}
+        error={list.isError ? errorMessage : null}
+        onRetry={() => void list.refetch()}
+        empty={<div className="text-center text-secondary py-4">当前无流程实例</div>}
+      />
 
       {selectedWfId != null && (
         <Modal
@@ -257,8 +252,13 @@ export function FlowMonitorPage() {
                     </div>
                     <div>
                       <h3 className="small fw-semibold mb-1">步骤任务</h3>
-                      <ErpTable
-                        loading={detail.isFetching}
+                      <ErpListGrid
+                        plain
+                        listId="flow-monitor-tasks"
+                        fetching={detail.isFetching}
+                        rows={detail.data?.tasks}
+                        rowKey={(task) => String(task.myTaskId)}
+                        empty={<div className="text-center text-secondary py-3">无任务</div>}
                         columns={[
                           { accessorKey: 'step', header: '步骤', cell: (info) => <span className="font-monospace">{String(info.getValue() ?? '')}</span> },
                           { accessorKey: 'stepDesc', header: '步骤名称' },
@@ -295,9 +295,6 @@ export function FlowMonitorPage() {
                             },
                           },
                         ]}
-                        data={detail.data?.tasks ?? []}
-                        getRowId={(task) => String(task.myTaskId)}
-                        empty={<div className="text-center text-secondary py-3">无任务</div>}
                       />
                     </div>
                     <div>

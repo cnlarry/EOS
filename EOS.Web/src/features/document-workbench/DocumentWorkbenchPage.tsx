@@ -3,19 +3,22 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState, LoadingState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
-import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
+import type { RangeSummary } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { moduleReadPermission } from '../auth/modulePermissions'
 import { ApiError } from '../../types/api'
+
+/** 选区摘要的数值格式：最多 4 位小数（数量列常见 4 位），千分位跟随中文习惯 */
+const summaryNumber=new Intl.NumberFormat('zh-CN',{maximumFractionDigits:4})
 import { useAuth } from '../auth/authContext'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
@@ -51,6 +54,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const masterFitRef=useRef<(() => Record<string, number>)|null>(null)
   const detailFitRef=useRef<(() => Record<string, number>)|null>(null)
   const [fitting,setFitting]=useState(false)
+  /** 选区数值摘要（Excel 状态栏的等价物）：选一块单元格后显示合计/平均 */
+  const [rangeSummary,setRangeSummary]=useState<RangeSummary|null>(null)
   const [selected,setSelected]=useState<Record<string,Record<string,unknown>>>({})
   const [activeKey,setActiveKey]=useState<string|null>(null)
   const [sort,setSort]=useState<SortingState>(initialState.sort)
@@ -244,7 +249,13 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     reportSelection([])
   },[])
 
-  const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
+  // 行键身份要稳：ErpTable 拿它当 getRowId（行键去重、区域选择、行组件 memo 都依赖它），
+  // 内联函数每次渲染都是新身份，会让"这份数据要不要重算行键"永远判成要。
+  const masterPkOrder=definition.data?.masterPkOrder
+  const rowKey=useCallback((row:Record<string,unknown>)=>{
+    const keys=(masterPkOrder??[]).map(column=>String(row[column]??''))
+    return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)
+  },[masterPkOrder])
   const active=activeKey?selected[activeKey]??rows.find(row=>rowKey(row)===activeKey)??null:null
   // 明细卡标题摘要：优先取主键列值（用户据此识别“这是哪张单”），无主键值回退首个可查询字段
   const masterDescribe=useMemo(()=>{
@@ -308,6 +319,10 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       return next
     })
   },[])
+  /** 滚动到底加载下一页：ErpTable 的哨兵观察器只在"有没有这个回调"上重建，回调本身必须稳定 */
+  const fetchNextRowsRef=useRef(records.fetchNextPage)
+  fetchNextRowsRef.current=records.fetchNextPage
+  const loadMoreRows=useCallback(()=>{void fetchNextRowsRef.current()},[])
   const handleColumnsReorder=useCallback(async(columnIds:string[])=>{
     if(!definition.data)return
     const master=columnIds.filter(id=>id!=='select')
@@ -322,6 +337,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
   const detailSorting:SortingState=detailSort?[{id:detailSort.field,desc:detailSort.direction==='desc'}]:[]
+  // 排序/筛选/搜索/换模块 = 整批换数据：列表要回到顶部，否则停在旧偏移上看到的是"另一批数据的中段"
+  const listResetKey=`${moduleId}|${keyword}|${JSON.stringify(safeSort)}|${JSON.stringify(safeConditions)}|${groupValue??''}`
   const changeKeyword=(value:string)=>{setKeyword(value)}
   const changeMasterSort=(next:SortingState)=>{setSort(next)}
   const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
@@ -381,8 +398,24 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
   return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
-    <ErpListCard
+    <ErpListGrid
       ariaLabel="单据列表查询与操作"
+      listId={`workbench-${moduleId}-master`}
+      columns={masterColumns}
+      rows={rows}
+      rowKey={rowKey}
+      loading={records.isPending}
+      loadingLabel="正在加载主表数据…"
+      fetching={records.isFetching&&!records.isFetchingNextPage}
+      error={records.isError?recordsError:null}
+      onRetry={()=>void records.refetch()}
+      regionClassName="erp-master-table-region"
+      sorting={{mode:'server',value:safeSort,onChange:changeMasterSort}}
+      selection={{value:rowSelection,onChange:handleRowSelectionChange}}
+      activeRowId={activeKey??undefined}
+      onRowClick={handleRowClick}
+      onRowDoubleClick={openViewFromRow}
+      empty={keyword?<EmptyState title="未找到匹配记录" description={`没有找到与“${keyword}”匹配的${definition.data.title}记录，可尝试其它关键词或清除搜索。`}/>:null}
       search={<ErpSearchBox value={keyword} onChange={changeKeyword} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索" />}
       actions={<>
         <ErpCommandBar items={[
@@ -425,6 +458,12 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       footer={
         <div className="d-flex align-items-center gap-2 w-100">
           <span className="text-secondary small text-nowrap">共 {total} 条{rows.length < total ? `，已加载 ${rows.length} 条` : ''}</span>
+          {rangeSummary&&rangeSummary.numbers>0&&(
+            <span className="text-secondary small text-nowrap" aria-live="polite">
+              已选 {rangeSummary.cells} 格 · 合计 {summaryNumber.format(rangeSummary.sum)}
+              {rangeSummary.numbers>1?` · 平均 ${summaryNumber.format(rangeSummary.average)}`:''}
+            </span>
+          )}
           {rows.length>0&&rows.length<total&&(
             <>
               <div className="erp-load-progress flex-grow-1" role="progressbar" aria-label="已加载进度" aria-valuemin={0} aria-valuemax={total} aria-valuenow={rows.length}>
@@ -437,61 +476,50 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
           )}
         </div>
       }
-    >
-      {groupValue!=null&&(
+      before={groupValue!=null?(
         <div className="erp-active-group-filter">
           <IconZoomScan size={14} aria-hidden="true" />
           <span>分组筛选：{groupValue}</span>
           <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupId');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
         </div>
-      )}
-      <div className={`erp-master-table-region ${records.isFetching && !records.isFetchingNextPage ? 'is-loading' : ''}`}>
-        {records.isPending?<LoadingState label="正在加载主表数据…"/>:records.isError?<ErrorState message={recordsError} onRetry={()=>void records.refetch()}/>:<ErpTable
-          columns={masterColumns}
-          data={rows}
-          getRowId={rowKey}
-          sorting={safeSort}
-          onSortingChange={changeMasterSort}
-          rowSelection={rowSelection}
-          onRowSelectionChange={handleRowSelectionChange}
-          onRowClick={handleRowClick}
-          onRowDoubleClick={openViewFromRow}
-          activeRowId={activeKey??undefined}
-          virtualize
-          resizable
-          fitRef={masterFitRef}
-          storageKey={`workbench-${moduleId}-master`}
-          persistResize={false}
-          onColumnResize={saveMasterWidth}
-          columnFilterValue={columnFilters}
-          onColumnFilterChange={handleColumnFilterChange}
-          onColumnsReorder={handleColumnsReorder}
-          empty={keyword?<EmptyState title="未找到匹配记录" description={`没有找到与“${keyword}”匹配的${definition.data.title}记录，可尝试其它关键词或清除搜索。`}/>:null}
-          onEndReached={()=>void records.fetchNextPage()}
-          hasMore={Boolean(records.hasNextPage)}
-          loadingMore={records.isFetchingNextPage}
-        />}
-      </div>
-    </ErpListCard>
+      ):null}
+      tableProps={{
+        virtualize:true,
+        fitRef:masterFitRef,
+        persistResize:false,
+        onColumnResize:saveMasterWidth,
+        columnFilterValue:columnFilters,
+        onColumnFilterChange:handleColumnFilterChange,
+        onColumnsReorder:handleColumnsReorder,
+        // 电子表格手感：拖选一块单元格 → Ctrl+C 复制成 TSV（不带表头），直接粘进 Excel
+        cellSelection:true,
+        scrollResetKey:listResetKey,
+        onSelectionSummaryChange:setRangeSummary,
+        onEndReached:loadMoreRows,
+        hasMore:Boolean(records.hasNextPage),
+        loadingMore:records.isFetchingNextPage,
+      }}
+    />
     {definition.data.detailTable&&<section className="card erp-detail-card">
       <div className="card-header erp-card-toolbar">
         <span className="small fw-semibold text-secondary text-nowrap">明细</span>
         {active&&masterDescribe?(<div className="small text-truncate" title={masterDescribe}>{masterDescribe}</div>):(<span className="small text-secondary text-nowrap">选择主表行查看明细</span>)}
         {details.isFetching&&<span className="small text-secondary ms-auto text-nowrap">正在加载明细…</span>}
       </div>
-      {details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpTable
-      columns={detailColumns}
-      data={active?details.data?.rows??[]:[]}
-      sorting={detailSorting}
-      onSortingChange={changeDetailSort}
-      resizable
-      fitRef={detailFitRef}
-      storageKey={`workbench-${moduleId}-detail`}
-      persistResize={false}
-      onColumnResize={saveDetailWidth}
-      className="table-sm"
-      empty={null}
-    />}</section>}
+      {details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpListGrid
+        plain
+        listId={`workbench-${moduleId}-detail`}
+        columns={detailColumns}
+        rows={active?details.data?.rows:[]}
+        sorting={{mode:'server',value:detailSorting,onChange:changeDetailSort}}
+        empty={null}
+        tableProps={{
+          className:'table-sm',
+          fitRef:detailFitRef,
+          persistResize:false,
+          onColumnResize:saveDetailWidth,
+        }}
+      />}</section>}
     {columnsOpen&&<ErpColumnSelector
       open
       groups={columnGroups}
@@ -517,7 +545,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         <li><strong>选择 / 浏览：</strong>单击行选中并加载该行明细（首列复选框可多选）；双击行进入浏览页。</li>
         <li><strong>表头：</strong>点击右侧箭头排序或筛选；拖动表头文字调整列顺序；拖动列右边线调整宽度；双击列右边线自动适配列宽。</li>
         <li><strong>复制：</strong>选中行后按 Ctrl+C，或右键单元格选择“复制单元格 / 复制本行 / 复制选中行”（TSV，可直接粘贴进 Excel）。</li>
-        <li><strong>键盘导航：</strong>↑ ↓ / Home / End / PageUp / PageDown 移动活动行，Enter 打开浏览。</li>
+        <li><strong>复制一块区域：</strong>在单元格上按住鼠标拖出一个矩形，或先点一格再 Shift+点另一格，然后 Ctrl+C——复制的是一块数据、不带表头；Esc 取消选区。</li>
+        <li><strong>键盘导航：</strong>↑ ↓ / Home / End / PageUp / PageDown 移动活动行，Enter 打开浏览；有选区时方向键在选区内移动，按住 Shift 扩选。</li>
         <li><strong>加载更多：</strong>滚动到底部自动加载下一页；底部进度条显示已加载占比。</li>
       </ul>
     </Modal>}

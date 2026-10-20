@@ -3,10 +3,9 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type { ColumnDef, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
@@ -150,7 +149,7 @@ export function TableAdminPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="数据表维护查询"
         search={(
           <div className="d-flex gap-2 align-items-center">
@@ -169,23 +168,19 @@ export function TableAdminPage() {
           <Button size="sm" onClick={() => setExprAuditOpen(true)}>表达式审计</Button>
           <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setPickerOpen(true)}>新增</Button>
         </>}
-      >
-        {tables.isPending ? <LoadingState label="正在加载数据表…" /> : tables.isError ? <ErrorState message={errorMessage} onRetry={() => void tables.refetch()} /> : (
-          <ErpTable
-            loading={tables.isFetching}
-            columns={columns}
-            data={filtered}
-            getRowId={(row) => row.tableId}
-            onRowClick={(row) => setSelectedTable(row.tableId)}
-            clientSideSorting
-            sorting={sorting}
-            onSortingChange={setSorting}
-            resizable
-            storageKey="field-admin-tables"
-            empty={<EmptyState title="没有找到数据表" description="请调整搜索条件后重试。" />}
-          />
-        )}
-      </ErpListCard>
+        listId="field-admin-tables"
+        columns={columns}
+        rows={filtered}
+        rowKey={(row) => row.tableId}
+        loading={tables.isPending}
+        loadingLabel="正在加载数据表…"
+        fetching={tables.isFetching}
+        error={tables.isError ? errorMessage : null}
+        onRetry={() => void tables.refetch()}
+        onRowClick={(row) => setSelectedTable(row.tableId)}
+        sorting={{ mode: 'client', value: sorting, onChange: setSorting }}
+        empty={<EmptyState title="没有找到数据表" description="请调整搜索条件后重试。" />}
+      />
       {remove.isError && <div className="alert alert-danger">{describeApiError(remove.error, '删除失败。')}</div>}
       {editor && (
         <TableEditorModal

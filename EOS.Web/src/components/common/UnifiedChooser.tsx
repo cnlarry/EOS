@@ -6,7 +6,7 @@ import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { ErrorState, LoadingState } from './AsyncState'
 import { ErpColumnSelector } from './ErpColumnSelector'
-import { ErpTable } from './ErpTable'
+import { ErpListGrid } from './ErpListGrid'
 import { emptyQueryCondition, queryOperators, type QueryCondition } from './queryCondition'
 import { loadChooserMemory, loadChooserSource, saveChooserMemory, type UnifiedChooserColumn, type UnifiedChooserData, type UnifiedChooserQuery, type UnifiedChooserRow, type UnifiedChooserSource } from './chooserSource'
 
@@ -404,24 +404,26 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
             {!error && rows.length > 0 ? (
               <>
                 <div className="erp-chooser-body-table">
-                  <ErpTable
+                  <ErpListGrid
+                    plain
+                    listId={storageKey ?? 'unified-chooser'}
                     columns={columns}
-                    data={rows}
-                    getRowId={getRowId}
-                    sorting={sorting}
-                    onSortingChange={handleSortingChange}
-                    clientSideSorting={clientSorting}
-                    rowSelection={selected}
-                    onRowSelectionChange={commitSelection}
+                    rows={rows}
+                    rowKey={getRowId}
+                    selection={{ value: selected, onChange: commitSelection }}
                     onRowClick={row => toggleRowSelection(getRowId(row, rows.indexOf(row)))}
-                    resizable={resizable}
-                    storageKey={storageKey}
-                    responsive={false}
-                    keyboardNavigation={false}
                     empty={null}
-                    onEndReached={serverPaging ? () => void loadMore() : undefined}
-                    hasMore={serverPaging && rows.length < total}
-                    loadingMore={loadingMore}
+                    tableProps={{
+                      resizable,
+                      responsive: false,
+                      keyboardNavigation: false,
+                      clientSideSorting: clientSorting,
+                      sorting,
+                      onSortingChange: handleSortingChange,
+                      onEndReached: serverPaging ? () => void loadMore() : undefined,
+                      hasMore: serverPaging && rows.length < total,
+                      loadingMore,
+                    }}
                   />
                 </div>
                 <div className="d-flex align-items-center justify-content-between mt-2">

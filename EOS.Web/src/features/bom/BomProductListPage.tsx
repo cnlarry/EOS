@@ -2,11 +2,10 @@ import { IconCopy, IconEdit, IconPlus, IconRefresh, IconSearch, IconSitemap } fr
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
@@ -301,51 +300,42 @@ export function BomProductListPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
-        search={
-          <ErpSearchBox
-            value={keyword}
-            onChange={setKeyword}
-            placeholder="按料号 / 备注搜索"
-            ariaLabel="搜索产品 BOM"
-          />
-        }
-        actions={<ErpCommandBar items={commands} ariaLabel="产品 BOM 操作" />}
-      >
-        {records.isPending ? (
-          <LoadingState />
-        ) : records.isError ? (
-          <ErrorState message={describeApiError(records.error, '操作失败。')} onRetry={() => { void records.refetch() }} />
-        ) : rows.length === 0 ? (
-          <EmptyState description="还没有 BOM。点「新增」选料号后录入明细。" />
-        ) : (
-          <ErpTable
-            columns={columns}
-            data={rows}
-            getRowId={rowKey}
-            sorting={sorting}
-            onSortingChange={setSorting}
-            rowSelection={rowSelection}
-            onRowSelectionChange={handleRowSelectionChange}
-            // 单击即选中（与统一工作台同口径）：checkbox 与键盘操作都走同一份 rowSelection。
-            // 没有 activeRowId 时表格不会给当前行任何视觉反馈，看起来像"点了没反应"。
-            onRowClick={handleRowClick}
-            activeRowId={activeRow ?? undefined}
-            copyable
-            keyboardNavigation
-            virtualize
+      <ErpListGrid
+          listId="bom-product-list"
+          columns={columns}
+          rows={rows}
+          rowKey={rowKey}
+          loading={records.isPending}
+          fetching={records.isFetching}
+          error={records.isError ? describeApiError(records.error, '操作失败。') : null}
+          onRetry={() => { void records.refetch() }}
+          sorting={{ mode: 'client', value: sorting, onChange: setSorting }}
+          selection={{ value: rowSelection, onChange: handleRowSelectionChange }}
+          // 单击即选中（与统一工作台同口径）：checkbox 与键盘操作都走同一份 rowSelection。
+          // 没有 activeRowId 时表格不会给当前行任何视觉反馈，看起来像"点了没反应"。
+          onRowClick={handleRowClick}
+          activeRowId={activeRow ?? undefined}
+          onRowDoubleClick={openRecord}
+          empty={<EmptyState description="还没有 BOM。点「新增」选料号后录入明细。" />}
+          search={
+            <ErpSearchBox
+              value={keyword}
+              onChange={setKeyword}
+              placeholder="按料号 / 备注搜索"
+              ariaLabel="搜索产品 BOM"
+            />
+          }
+          actions={<ErpCommandBar items={commands} ariaLabel="产品 BOM 操作" />}
+          tableProps={{
+            virtualize: true,
             // 滚到底自动取下一页（统一工作台同款）；`loadingMore` 防重复触发
-            onEndReached={() => { if (records.hasNextPage && !records.isFetchingNextPage) void records.fetchNextPage() }}
-            hasMore={records.hasNextPage}
-            loadingMore={records.isFetchingNextPage}
-            resizable
-            persistResize={false}
-            onColumnResize={(columnKey, width) => { void saveColumnWidth(columnKey, width) }}
-            onRowDoubleClick={openRecord}
-            storageKey="bom-product-list"
-          />
-        )}
-      </ErpListCard>
+            onEndReached: () => { if (records.hasNextPage && !records.isFetchingNextPage) void records.fetchNextPage() },
+            hasMore: records.hasNextPage,
+            loadingMore: records.isFetchingNextPage,
+            persistResize: false,
+            onColumnResize: (columnKey, width) => { void saveColumnWidth(columnKey, width) },
+          }}
+        />
     </div>
   )
 }

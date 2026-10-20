@@ -8,12 +8,13 @@ import {
   IconSearch,
   IconX,
 } from '@tabler/icons-react'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpPagination } from '../../components/common/ErpPagination'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { alignClass, formatFieldValue } from '../document-workbench/fieldFormat'
@@ -591,22 +592,22 @@ export function ReportViewerPage({
       >
         {queryKey === 0 ? (
           <EmptyState title="尚未查询" description="设置查询条件后点击「查询」，结果将显示在这里。" />
-        ) : result.isError ? (
-          <ErrorState message={errorMessage} onRetry={() => void result.refetch()} />
-        ) : result.isPending ? (
-          <LoadingState label="正在查询…" />
-        ) : rowCount === 0 ? (
-          <EmptyState title="没有符合条件的数据" description="请放宽查询条件后重新查询。" />
         ) : (
-          <ErpTable
+          <ErpListGrid
+            plain
+            listId={`report-viewer-${moduleId}`}
             columns={columns}
-            data={result.data?.rows ?? []}
+            rows={result.data?.rows}
             // 报表可能按明细字段排序/分组（主表与明细 1:N 关联），同一条主表主键会重复出现，
             // 拿主键拼行键会撞键。结果是分页快照、本表无行选择语义，下标即唯一。
-            getRowId={(_row, index) => String(index)}
-            columnVisibility={columnVisibility}
-            resizable
-            storageKey={`report-viewer-${moduleId}`}
+            rowKey={(_row, index) => String(index)}
+            loading={result.isPending}
+            loadingLabel="正在查询…"
+            fetching={result.isFetching}
+            error={result.isError ? errorMessage : null}
+            onRetry={() => void result.refetch()}
+            empty={rowCount === 0 ? <EmptyState title="没有符合条件的数据" description="请放宽查询条件后重新查询。" /> : null}
+            tableProps={{ columnVisibility }}
           />
         )}
       </ErpListCard>

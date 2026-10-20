@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { Edge } from '@xyflow/react'
 import { useSearchParams } from 'react-router-dom'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { TabbedPanel, type TabbedPanelTab } from '../../components/common/TabbedPanel'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../../features/auth/authContext'
@@ -429,13 +429,13 @@ export function BusinessFlowPage() {
     <LoadingState label="正在读取表间关系…" />
   ) : inLink ? (
     linkTab === 'list' ? (
-      <ErpTable
+      <ErpListGrid
+        plain
+        listId="business-flow-link-edges"
         columns={linkColumns}
-        data={linkDetailRows}
-        getRowId={(row) => row.id}
-        clientSideSorting
-        resizable
-        storageKey="business-flow-link-edges"
+        rows={linkDetailRows}
+        rowKey={(row) => row.id}
+        sorting={{ mode: 'client' }}
         empty={<div className="erp-state"><span className="text-secondary">这两个业务域之间没有关系。</span></div>}
       />
     ) : graph.nodes.length === 0 ? (

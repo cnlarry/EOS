@@ -1,11 +1,10 @@
 import { useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { useToast } from '../../components/ui/toastContext'
 import { apiClient } from '../../services/api'
 import { copyDiagnostics, currentAppInfo } from '../../lib/diagnostics'
@@ -181,7 +180,7 @@ export function LogAdminPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="运行日志查询"
         search={(
           <div className="d-flex gap-2 align-items-center">
@@ -228,31 +227,24 @@ export function LogAdminPage() {
             <span className="text-secondary small ms-auto text-nowrap">正常请求不落盘，属预期</span>
           </div>
         )}
-      >
-        {logs.isPending ? <LoadingState label="正在读取日志…" /> : logs.isError ? (
-          <ErrorState message={logsError} onRetry={() => void logs.refetch()} />
-        ) : (
-          <ErpTable
-            columns={columns}
-            data={logs.data?.entries ?? []}
-            loading={logs.isFetching}
-            // 行键取快照下标：日志字段组合并不唯一（一次失败请求常落两条时间戳、消息全同、
-            // 只有异常栈不同的记录），而 React 要求兄弟节点键唯一——重复键会让它复用/丢弃
-            // 行节点，窗口化下表现为表格中间大面积空白。下标在同一个快照内天然唯一，
-            // 且本表不跨快照保持行身份（刷新即重取、选择态同时清空）。
-            getRowId={(_row: LogEntryRow, index: number) => String(index)}
-            rowSelection={rowSelection}
-            onRowSelectionChange={setRowSelection}
-            rowClickSingleSelect
-            clientSideSorting
-            virtualize
-            resizable
-            fitRef={fitRef}
-            storageKey="log-admin-entries"
-            empty={<EmptyState title="没有命中日志" description="换个关键字或放宽级别再试；正常请求不落盘，属预期。" />}
-          />
-        )}
-      </ErpListCard>
+        listId="log-admin-entries"
+        columns={columns}
+        rows={logs.data?.entries}
+        // 行键取快照下标：日志字段组合并不唯一（一次失败请求常落两条时间戳、消息全同、
+        // 只有异常栈不同的记录），而 React 要求兄弟节点键唯一——重复键会让它复用/丢弃
+        // 行节点，窗口化下表现为表格中间大面积空白。下标在同一个快照内天然唯一，
+        // 且本表不跨快照保持行身份（刷新即重取、选择态同时清空）。
+        rowKey={(_row: LogEntryRow, index: number) => String(index)}
+        loading={logs.isPending}
+        loadingLabel="正在读取日志…"
+        fetching={logs.isFetching}
+        error={logs.isError ? logsError : null}
+        onRetry={() => void logs.refetch()}
+        sorting={{ mode: 'client' }}
+        selection={{ value: rowSelection, onChange: setRowSelection }}
+        empty={<EmptyState title="没有命中日志" description="换个关键字或放宽级别再试；正常请求不落盘，属预期。" />}
+        tableProps={{ virtualize: true, fitRef }}
+      />
     </div>
   )
 }

@@ -2,9 +2,8 @@ import { IconRefresh } from '@tabler/icons-react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
@@ -79,7 +78,7 @@ export function FieldAuditPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="字段元数据审计"
         search={(
           <div className="d-flex gap-2 align-items-center">
@@ -104,25 +103,19 @@ export function FieldAuditPage() {
             共 {result.data?.total ?? 0} 行{result.data?.limited ? `（仅显示前 ${result.data.rows.length} 行）` : ''}
           </div>
         )}
-      >
-        {result.isPending ? <LoadingState label="正在加载字段审计…" /> : result.isError ? (
-          <ErrorState message={errorMessage} onRetry={() => void result.refetch()} />
-        ) : (
-          <ErpTable
-            columns={columns}
-            data={result.data?.rows ?? []}
-            loading={result.isFetching}
-            getRowId={(row: FieldAuditRow) => `${row.T_ID}.${row.F_ID}`}
-            empty={<EmptyState title="该视图无差异数据" description="物理列与 FIELDS 元数据一致。" />}
-            resizable
-            storageKey="field-audit"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={rowSelection}
-            onRowSelectionChange={setRowSelection}
-          />
-        )}
-      </ErpListCard>
+        listId="field-audit"
+        columns={columns}
+        rows={result.data?.rows}
+        rowKey={(row: FieldAuditRow) => `${row.T_ID}.${row.F_ID}`}
+        loading={result.isPending}
+        loadingLabel="正在加载字段审计…"
+        fetching={result.isFetching}
+        error={result.isError ? errorMessage : null}
+        onRetry={() => void result.refetch()}
+        sorting={{ mode: 'client' }}
+        selection={{ value: rowSelection, onChange: setRowSelection }}
+        empty={<EmptyState title="该视图无差异数据" description="物理列与 FIELDS 元数据一致。" />}
+      />
     </div>
   )
 }

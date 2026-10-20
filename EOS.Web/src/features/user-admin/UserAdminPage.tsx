@@ -3,10 +3,9 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
@@ -282,34 +281,28 @@ export function UserAdminPage() {
   return (
     <div className="erp-full-list-page">
       {groupSaveError && <div className="alert alert-danger py-2 mb-2" role="alert">{groupSaveError}</div>}
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="用户管理查询"
+        listId="user-admin-users"
+        columns={columns}
+        rows={items}
+        rowKey={(row) => row.userId.trim()}
+        loading={users.isPending && page === 1}
+        loadingLabel="正在加载用户…"
+        fetching={users.isFetching}
+        error={users.isError ? errorMessage : null}
+        onRetry={() => void users.refetch()}
+        sorting={{ mode: 'client' }}
+        selection={{ value: rowSelection, onChange: setRowSelection }}
+        empty={<EmptyState title="没有找到用户" description="请调整搜索条件后重试。" />}
         search={<ErpSearchBox value={keyword} onChange={onSearchChange} debounceMs={300} placeholder="搜索用户名、员工号或姓名" ariaLabel="搜索用户" />}
         actions={<div className="d-flex gap-2 align-items-center">
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => { itemsRef.current = []; setItems([]); setPage(1); void users.refetch() }}>刷新</Button>
           <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setNewUserOpen(true)}>新增用户</Button>
         </div>}
         header={users.data ? <div className="erp-list-header">共 {total} 个账号；向下滚动自动加载更多；「新增用户」为员工开户（选择器选员工）；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
-      >
-        {users.isPending && page === 1 ? <LoadingState label="正在加载用户…" /> : users.isError ? <ErrorState message={errorMessage} onRetry={() => void users.refetch()} /> : (
-          <ErpTable
-            loading={users.isFetching}
-            columns={columns}
-            data={items}
-            getRowId={(row) => row.userId.trim()}
-            resizable
-            storageKey="user-admin-users"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={rowSelection}
-            onRowSelectionChange={setRowSelection}
-            onEndReached={loadMore}
-            hasMore={hasMore}
-            loadingMore={loadingMore}
-            empty={<EmptyState title="没有找到用户" description="请调整搜索条件后重试。" />}
-          />
-        )}
-      </ErpListCard>
+        tableProps={{ onEndReached: loadMore, hasMore, loadingMore }}
+      />
       <SetPasswordModal
         user={passwordTarget}
         onClose={() => setPasswordTarget(null)}

@@ -3,7 +3,7 @@ import type { ColumnDef } from '../../lib/tanstackTable'
 import { useMemo } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { describeApiError } from '../../lib/errors'
 import { getMechanism } from './api'
 import type { AssistantActionInfo, AssistantToolInfo } from './api'
@@ -112,12 +112,12 @@ export function MechanismOverviewPage() {
                   <h3 className="h4 mb-2">可代理动作（{actions.length}）</h3>
                   {actions.length === 0 ? <EmptyState title="没有登记任何动作" description="动作目录为空，助手只能读。" />
                     : (
-                      <ErpTable
+                      <ErpListGrid
+                        plain
+                        listId="assistant-mechanism-actions"
                         columns={actionColumns}
-                        data={actions}
-                        getRowId={(row) => row.name}
-                        resizable
-                        storageKey="assistant-mechanism-actions"
+                        rows={actions}
+                        rowKey={(row) => row.name}
                       />
                     )}
                 </section>
@@ -126,12 +126,12 @@ export function MechanismOverviewPage() {
                   <h3 className="h4 mb-2">工具清单（{tools.length}）</h3>
                   {tools.length === 0 ? <EmptyState title="没有登记任何工具" description="工具注册表为空。" />
                     : (
-                      <ErpTable
+                      <ErpListGrid
+                        plain
+                        listId="assistant-mechanism-tools"
                         columns={toolColumns}
-                        data={tools}
-                        getRowId={(row) => row.name}
-                        resizable
-                        storageKey="assistant-mechanism-tools"
+                        rows={tools}
+                        rowKey={(row) => row.name}
                       />
                     )}
                 </section>

@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -518,11 +518,14 @@ export function ModuleActionsPage() {
               onRetry={() => void overview.refetch()}
             />
           ) : overviewMode === 'modules' ? (
-            <ErpTable
-              loading={overview.isFetching}
+            <ErpListGrid
+              plain
+              listId="module-actions-overview-modules"
               columns={summaryColumns}
-              data={summaryRows}
-              getRowId={(row) => String(row.moduleId)}
+              rows={summaryRows}
+              rowKey={(row) => String(row.moduleId)}
+              fetching={overview.isFetching}
+              sorting={{ mode: 'client' }}
               onRowClick={(row) => selectModule(row.moduleId)}
               empty={(
                 <EmptyState
@@ -530,16 +533,16 @@ export function ModuleActionsPage() {
                   description="从左边挑一个模块，为它配效果链动作或校验规则。"
                 />
               )}
-              clientSideSorting
-              resizable
-              storageKey="module-actions-overview-modules"
             />
           ) : overviewMode === 'actions' ? (
-            <ErpTable
-              loading={overview.isFetching}
+            <ErpListGrid
+              plain
+              listId="module-actions-overview-actions"
               columns={actionOverviewColumns}
-              data={filteredActionRows}
-              getRowId={(row) => `${row.moduleId}#${row.eventCode}#${row.seq}`}
+              rows={filteredActionRows}
+              rowKey={(row) => `${row.moduleId}#${row.eventCode}#${row.seq}`}
+              fetching={overview.isFetching}
+              sorting={{ mode: 'client' }}
               onRowClick={(row) => selectModule(row.moduleId)}
               empty={(
                 <EmptyState
@@ -547,16 +550,16 @@ export function ModuleActionsPage() {
                   description="从左边挑一个模块，为它配效果链动作。"
                 />
               )}
-              clientSideSorting
-              resizable
-              storageKey="module-actions-overview-actions"
             />
           ) : (
-            <ErpTable
-              loading={overview.isFetching}
+            <ErpListGrid
+              plain
+              listId="module-actions-overview-rules"
               columns={ruleOverviewColumns}
-              data={filteredRuleRows}
-              getRowId={(row) => `${row.moduleId}#${row.stage}#${row.seq}`}
+              rows={filteredRuleRows}
+              rowKey={(row) => `${row.moduleId}#${row.stage}#${row.seq}`}
+              fetching={overview.isFetching}
+              sorting={{ mode: 'client' }}
               onRowClick={(row) => selectModule(row.moduleId)}
               empty={(
                 <EmptyState
@@ -564,9 +567,6 @@ export function ModuleActionsPage() {
                   description="从左边挑一个模块，为它配校验规则。"
                 />
               )}
-              clientSideSorting
-              resizable
-              storageKey="module-actions-overview-rules"
             />
           )}
         </div>

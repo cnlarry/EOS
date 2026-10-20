@@ -3,9 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
@@ -246,31 +244,27 @@ export function MyTasksPage() {
         </Modal>
       )}
       {flowTasks.length > 0 && (
-        <ErpListCard
+        <ErpListGrid
           ariaLabel="流程审批待办"
-          search={null}
+          listId="my-tasks-flow"
+          columns={flowColumns}
+          rows={flowTasks}
+          rowKey={(row) => String(row.myTaskId)}
+          empty={<div className="text-center text-secondary py-4">当前无流程审批待办</div>}
           actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void result.refetch()}>刷新</Button>}
           header={<div className="px-3 pt-2 small text-secondary">流程审批待办 {flowTasks.length} 项（多级审批链）</div>}
-        >
-          <ErpTable
-            columns={flowColumns}
-            data={flowTasks}
-            getRowId={(row) => String(row.myTaskId)}
-            empty={<div className="text-center text-secondary py-4">当前无流程审批待办</div>}
-            resizable
-            storageKey="my-tasks-flow"
-          />
-        </ErpListCard>
+        />
       )}
       {(started.data?.rows ?? []).length > 0 && (
-        <ErpListCard
+        <ErpListGrid
           ariaLabel="我发起的"
-          search={null}
+          listId="my-started"
+          rows={started.data?.rows ?? []}
+          rowKey={(row) => String(row.wfId)}
+          empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
           actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void started.refetch()}>刷新</Button>}
           header={<div className="px-3 pt-2 small text-secondary">我发起的在途流程 {started.data?.rows.length ?? 0} 项（可撤回后修改重新提交）</div>}
-        >
-          <ErpTable
-            columns={[
+          columns={[
               { accessorKey: 'title', header: '单据类型', cell: (info) => <span className="fw-semibold">{String(info.getValue() ?? '—')}</span> },
               { accessorKey: 'keyValueDesc', header: '单据', cell: (info) => <span className="text-secondary">{String(info.getValue() ?? '—')}</span> },
               {
@@ -302,38 +296,28 @@ export function MyTasksPage() {
                   </Button>
                 ),
               },
-            ]}
-            data={started.data?.rows ?? []}
-            getRowId={(row) => String(row.wfId)}
-            empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
-            resizable
-            storageKey="my-started"
-          />
-        </ErpListCard>
+          ]}
+        />
       )}
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="我的任务"
-        search={null}
+        listId="my-tasks"
+        columns={columns}
+        rows={result.data?.tasks}
+        rowKey={(row) => String(row.moduleId)}
+        loading={result.isPending}
+        loadingLabel="正在加载待办任务…"
+        fetching={result.isFetching}
+        error={result.isError ? errorMessage : null}
+        onRetry={() => void result.refetch()}
+        empty={<div className="text-center text-secondary py-4">当前无待批核单据</div>}
         actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void result.refetch()}>刷新</Button>}
         header={(
           <div className="px-3 pt-2 small text-secondary">
             待办总数 {totalPending} · {result.data?.note ?? ''}
           </div>
         )}
-      >
-        {result.isPending ? <LoadingState label="正在加载待办任务…" /> : result.isError ? (
-          <ErrorState message={errorMessage} onRetry={() => void result.refetch()} />
-        ) : (
-          <ErpTable
-            columns={columns}
-            data={result.data?.tasks ?? []}
-            getRowId={(row) => String(row.moduleId)}
-            empty={<div className="text-center text-secondary py-4">当前无待批核单据</div>}
-            resizable
-            storageKey="my-tasks"
-          />
-        )}
-      </ErpListCard>
+      />
     </div>
   )
 }

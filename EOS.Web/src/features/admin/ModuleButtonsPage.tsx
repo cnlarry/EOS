@@ -4,10 +4,9 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -526,7 +525,7 @@ export function ModuleButtonsPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="自定义按钮"
         search={(
           <ErpSearchBox
@@ -557,41 +556,29 @@ export function ModuleButtonsPage() {
             ) : null}
           </>
         )}
-      >
-        {/* 表格区必须是卡片的直接子项：卡内滚动（表格区内部滚、表头吸顶）靠
-            `.erp-list-card`（flex 列 + overflow:hidden）→ `.erp-table-shell`（flex:1 + overflow:auto）
-            这条链撑着。中间再套一层容器，那一层会按内容高度撑开、把表格一起顶出卡片，
-            被 overflow:hidden 裁掉——表现成"看不到滚动条、下方内容也露不出来"。 */}
-        {overview.isPending || meta.isPending ? (
-          <LoadingState label="正在加载自定义按钮…" />
-        ) : overview.isError || meta.isError ? (
-          <ErrorState message={errorMessage} onRetry={refreshAll} />
-        ) : (
-          <ErpTable
-            loading={overview.isFetching || meta.isFetching}
-            columns={columns}
-            data={rows}
-            getRowId={(row) => `${row.moduleId}#${row.seq}`}
-            empty={(
-              <EmptyState
-                title="系统里还没有自定义按钮"
-                description="点右上角「新增」加一个——没配按钮的模块，单据面上不出现任何自定义按钮。"
-              />
-            )}
-            // 分块线只在"没按列排序"时出现：一按列重排，同模块的行就散开了，线反而误导
-            rowClassName={(row) => (sorting.length === 0 && row.blockStart ? 'erp-module-block-start' : undefined)}
-            sorting={sorting}
-            onSortingChange={setSorting}
-            resizable
-            storageKey="module-buttons"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={rowSelection}
-            onRowSelectionChange={handleRowSelectionChange}
-            onRowDoubleClick={(row) => openEdit(row)}
+        listId="module-buttons"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => `${row.moduleId}#${row.seq}`}
+        loading={overview.isPending || meta.isPending}
+        loadingLabel="正在加载自定义按钮…"
+        fetching={overview.isFetching || meta.isFetching}
+        error={overview.isError || meta.isError ? errorMessage : null}
+        onRetry={refreshAll}
+        sorting={{ mode: 'client', value: sorting, onChange: setSorting }}
+        selection={{ value: rowSelection, onChange: handleRowSelectionChange }}
+        onRowDoubleClick={(row) => openEdit(row)}
+        empty={(
+          <EmptyState
+            title="系统里还没有自定义按钮"
+            description="点右上角「新增」加一个——没配按钮的模块，单据面上不出现任何自定义按钮。"
           />
         )}
-      </ErpListCard>
+        tableProps={{
+          // 分块线只在"没按列排序"时出现：一按列重排，同模块的行就散开了，线反而误导
+          rowClassName: (row: PlacedButtonRow) => (sorting.length === 0 && row.blockStart ? 'erp-module-block-start' : undefined),
+        }}
+      />
 
       {editor ? (
         <Modal

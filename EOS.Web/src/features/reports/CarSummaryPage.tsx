@@ -2,9 +2,8 @@ import { IconRefresh } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useMemo, useState } from 'react'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
@@ -78,19 +77,19 @@ export function CarSummaryPage() {
           </div>
         )}
       >
-        {queryKey === 0 ? <div className="text-center text-secondary py-4">设置车牌与月份范围后点击「查询汇总」。</div> : result.isPending ? (
-          <LoadingState label="正在汇总车辆数据…" />
-        ) : result.isError ? (
-          <ErrorState message={errorMessage} onRetry={runQuery} />
-        ) : (
-          <ErpTable
-            loading={result.isFetching}
+        {queryKey === 0 ? <div className="text-center text-secondary py-4">设置车牌与月份范围后点击「查询汇总」。</div> : (
+          <ErpListGrid
+            plain
+            listId="car-summary"
             columns={columns}
-            data={result.data?.rows ?? []}
-            getRowId={(row) => `${String(row.CAR_ID ?? '')}.${String(row.YM_RPT ?? '')}`}
+            rows={result.data?.rows}
+            rowKey={(row) => `${String(row.CAR_ID ?? '')}.${String(row.YM_RPT ?? '')}`}
+            loading={result.isPending}
+            loadingLabel="正在汇总车辆数据…"
+            fetching={result.isFetching}
+            error={result.isError ? errorMessage : null}
+            onRetry={runQuery}
             empty={<div className="text-center text-secondary py-4">该范围内无车辆汇总数据</div>}
-            resizable
-            storageKey="car-summary"
           />
         )}
       </ErpListCard>

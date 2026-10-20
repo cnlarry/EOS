@@ -3,9 +3,8 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
@@ -183,8 +182,20 @@ export function GroupMembersPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="组成员管理"
+        listId={`user-group-members-${id}`}
+        columns={columns}
+        rows={draftMembers}
+        rowKey={(row) => row.userId}
+        loading={members.isPending}
+        loadingLabel="正在加载组成员…"
+        fetching={members.isFetching}
+        error={members.isError ? describeApiError(members.error, '加载失败。') : null}
+        onRetry={() => void members.refetch()}
+        sorting={{ mode: 'client' }}
+        selection={{ value: removeSelection, onChange: setRemoveSelection }}
+        empty={<EmptyState title="该组暂无成员" description="点击「添加成员」通过选择器加入用户。" />}
         actions={<div className="d-flex gap-2 align-items-center">
           <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={() => navigate('/admin/groups')}>返回用户组</Button>
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void members.refetch()}>刷新</Button>
@@ -197,25 +208,7 @@ export function GroupMembersPage() {
             当前成员 {draftMembers.length} 人{dirty ? `（含 ${draftMembers.length} 人未保存变更，点「保存」按组全量替换生效）` : ''}；添加成员通过选择器按用户搜索。
           </div>
         )}
-      >
-        {members.isPending ? <LoadingState label="正在加载组成员…" /> : members.isError ? (
-          <ErrorState message={describeApiError(members.error, '加载失败。')} onRetry={() => void members.refetch()} />
-        ) : (
-          <ErpTable
-            loading={members.isFetching}
-            columns={columns}
-            data={draftMembers}
-            getRowId={(row) => row.userId}
-            resizable
-            storageKey={`user-group-members-${id}`}
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={removeSelection}
-            onRowSelectionChange={setRemoveSelection}
-            empty={<EmptyState title="该组暂无成员" description="点击「添加成员」通过选择器加入用户。" />}
-          />
-        )}
-      </ErpListCard>
+      />
       {saveMembers.isError && (
         <div className="alert alert-danger mb-0" role="alert">
           {describeApiError(saveMembers.error, '保存失败，请稍后重试。')}

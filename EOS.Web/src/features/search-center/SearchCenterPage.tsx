@@ -2,9 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpPagination } from '../../components/common/ErpPagination'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { formatFieldValue } from '../document-workbench/fieldFormat'
@@ -71,15 +69,26 @@ export function SearchCenterPage() {
 
   return (
     <div className="d-grid erp-search-center-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="通用查询"
+        listId="search-center"
         search={null}
         actions={<>
           <Button size="sm" onClick={runQuery} disabled={!activeModule}>查询</Button>
         </>}
-        footer={<ErpPagination total={result.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[50, 100, 200]} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />}
-      >
-        <div className="card mb-2">
+        pagination={{ total: result.data?.total ?? 0, page, pageSize, onPageChange: setPage, pageSizes: [50, 100, 200], onPageSizeChange: (size) => { setPageSize(size); setPage(1) } }}
+        columns={columns}
+        rows={result.data?.rows}
+        // 查询结果是跨模块的任意列：前两列的值既可能重复（空值/同日期/同状态），
+        // 也可能整行都空，拿内容拼键会把多行并成同一 React 键。分页快照内下标即唯一。
+        rowKey={(_row, index) => String(index)}
+        loading={result.isPending}
+        loadingLabel="正在查询…"
+        fetching={result.isFetching}
+        error={result.isError ? describeApiError(result.error, '查询失败。') : null}
+        onRetry={() => void result.refetch()}
+        empty={<div className="text-center text-secondary py-4">{activeModule ? '点击「查询」开始搜索' : '请先选择查询模块'}</div>}
+        before={<div className="card mb-2">
           <div className="card-body py-2">
             <div className="row g-2 align-items-end">
               <div className="col-md-3">
@@ -115,19 +124,8 @@ export function SearchCenterPage() {
               </div>
             </div>
           </div>
-        </div>
-        {result.isPending ? <LoadingState label="正在查询…" /> : result.isError ? <ErrorState message={describeApiError(result.error, '查询失败。')} onRetry={() => void result.refetch()} /> : (
-          <ErpTable
-            loading={result.isFetching}
-            columns={columns}
-            data={result.data?.rows ?? []}
-            // 查询结果是跨模块的任意列：前两列的值既可能重复（空值/同日期/同状态），
-            // 也可能整行都空，拿内容拼键会把多行并成同一 React 键。分页快照内下标即唯一。
-            getRowId={(_row, index) => String(index)}
-            empty={<div className="text-center text-secondary py-4">{activeModule ? '点击「查询」开始搜索' : '请先选择查询模块'}</div>}
-          />
-        )}
-      </ErpListCard>
+        </div>}
+      />
     </div>
   )
 }

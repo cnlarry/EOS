@@ -8,7 +8,7 @@ import {
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { BusinessActionSheet } from './BusinessActionSheet'
 import { MANUAL_EVENT } from './documentActionConfig'
@@ -184,21 +184,22 @@ export function ActionsView({
         <div className="erp-config-hint">点一行选中，编辑 / 复制 / 排序 / 删除会出现在这一行上方；双击行可直接编辑。</div>
       )}
 
-      <ErpTable
+      <ErpListGrid
+        plain
+        listId="business-actions"
         columns={columns}
-        data={actions}
-        getRowId={(row) => actionKey(row)}
+        rows={actions}
+        rowKey={(row) => actionKey(row)}
         activeRowId={selectedKey ?? undefined}
         onRowClick={(row) => onSelect(actionKey(row))}
         onRowDoubleClick={canWrite ? () => onEdit() : undefined}
-        rowClickSingleSelect
-        clientSideSorting
-        copyable={false}
+        sorting={{ mode: 'client' }}
         empty={(
           <div className="p-3 text-secondary">
             尚未配置业务动作，点「新增」开始；也可以从其它模块克隆一套。
           </div>
         )}
+        tableProps={{ copyable: false }}
       />
     </section>
   )
@@ -354,16 +355,17 @@ function OpTable({
   ], [labels, names])
 
   return (
-    <ErpTable
+    <ErpListGrid
+      plain
+      listId="business-action-ops"
       columns={columns}
-      data={ops}
-      getRowId={(row) => `${row.opSeq}`}
+      rows={ops}
+      rowKey={(row) => `${row.opSeq}`}
       activeRowId={selectedOpSeq == null ? undefined : `${selectedOpSeq}`}
       onRowClick={(row) => onSelect(row.opSeq)}
-      rowClickSingleSelect
-      clientSideSorting
-      copyable={false}
+      sorting={{ mode: 'client' }}
       empty={<div className="p-3 text-secondary">该动作没有字段级步骤（参数型效果在动作的参数里）。</div>}
+      tableProps={{ copyable: false }}
     />
   )
 }
@@ -440,21 +442,22 @@ export function RulesView({
         <div className="erp-config-hint">点一行选中，编辑 / 删除会出现在这一行上方；双击行可直接编辑。</div>
       )}
 
-      <ErpTable
+      <ErpListGrid
+        plain
+        listId="business-action-rules"
         columns={columns}
-        data={rules}
-        getRowId={(row) => ruleKey(row)}
+        rows={rules}
+        rowKey={(row) => ruleKey(row)}
         activeRowId={selectedRuleId ?? undefined}
         onRowClick={(row) => onSelect(ruleKey(row))}
         onRowDoubleClick={canWrite ? () => onEdit() : undefined}
-        rowClickSingleSelect
-        clientSideSorting
-        copyable={false}
+        sorting={{ mode: 'client' }}
         empty={(
           <div className="p-3 text-secondary">
             尚未配置模块校验规则（核心默认校验为代码内建，不在此表），点「新增规则」加一条。
           </div>
         )}
+        tableProps={{ copyable: false }}
       />
     </section>
   )
@@ -590,20 +593,21 @@ export function ManualButtonsView({
           <Button size="sm" variant="ghost" className="text-danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!canWrite || !canEdit}>删除</Button>
         </div>
       </div>
-      <ErpTable
+      <ErpListGrid
+        plain
+        listId="manual-buttons"
         columns={columns}
-        data={actions}
-        getRowId={(row) => actionKey(row)}
+        rows={actions}
+        rowKey={(row) => actionKey(row)}
         activeRowId={selectedKey ?? undefined}
         onRowClick={(row) => onSelect(actionKey(row))}
-        rowClickSingleSelect
-        clientSideSorting
-        copyable={false}
+        sorting={{ mode: 'client' }}
         empty={(
           <div className="p-3 text-secondary">
             尚未配置自定义按钮，点「新增」从操作注册表挑一个按钮键。
           </div>
         )}
+        tableProps={{ copyable: false }}
       />
       {actions.length > 0 ? (
         <div className="alert alert-secondary py-2 px-3 mb-2 mt-2" role="status">

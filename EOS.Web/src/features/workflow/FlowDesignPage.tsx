@@ -10,11 +10,10 @@ import {
   IconUsers,
 } from '@tabler/icons-react'
 import type { ColumnDef } from '../../lib/tanstackTable'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { describeApiError } from '../../lib/errors'
 
 interface FlowSummary {
@@ -446,21 +445,21 @@ export function FlowDesignPage() {
             <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void list.refetch()}>刷新</Button>
           </div>
           <div className="card-body p-0 overflow-auto" style={{ flex: 1, minHeight: 0 }}>
-            {list.isPending ? <LoadingState label="正在加载模块…" /> : list.isError ? (
-              <ErrorState message={errorMessage} onRetry={() => void list.refetch()} />
-            ) : (
-              <ErpTable
-                columns={columns}
-                data={moduleRows}
-                getRowId={(row) => String(row.moduleId)}
-                clientSideSorting
-                resizable
-                storageKey="flow-design-modules"
-                rowClickSingleSelect
-                empty={<div className="text-center text-secondary py-4">无具备批核能力的模块</div>}
-                onRowClick={(row) => setSelectedModuleId(Number(row.moduleId))}
-              />
-            )}
+            <ErpListGrid
+              plain
+              listId="flow-design-modules"
+              columns={columns}
+              rows={moduleRows}
+              rowKey={(row) => String(row.moduleId)}
+              loading={list.isPending}
+              loadingLabel="正在加载模块…"
+              fetching={list.isFetching}
+              error={list.isError ? errorMessage : null}
+              onRetry={() => void list.refetch()}
+              sorting={{ mode: 'client' }}
+              empty={<div className="text-center text-secondary py-4">无具备批核能力的模块</div>}
+              onRowClick={(row) => setSelectedModuleId(Number(row.moduleId))}
+            />
           </div>
         </div>
         <div className="card d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>

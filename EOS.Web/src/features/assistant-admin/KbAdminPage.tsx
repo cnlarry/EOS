@@ -2,10 +2,10 @@ import { IconRefresh, IconTrash } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
@@ -171,16 +171,18 @@ export function KbAdminPage() {
         </div>
         {!activeCollection ? (
           <EmptyState title="没有可选的集合" description="知识库还没有建任何集合。" />
-        ) : documents.isPending ? <LoadingState label="正在加载知识库文档…" /> : documents.isError ? (
-          <ErrorState message={errorMessage} onRetry={() => void documents.refetch()} />
         ) : (
-          <ErpTable
-            loading={documents.isFetching}
+          <ErpListGrid
+            plain
+            listId="assistant-admin-kb-documents"
             columns={columns}
-            data={items}
-            getRowId={(row) => row.docId}
-            resizable
-            storageKey="assistant-admin-kb-documents"
+            rows={items}
+            rowKey={(row) => row.docId}
+            loading={documents.isPending}
+            loadingLabel="正在加载知识库文档…"
+            fetching={documents.isFetching}
+            error={documents.isError ? errorMessage : null}
+            onRetry={() => void documents.refetch()}
             empty={<EmptyState title="这个集合里还没有文档"
               description={includeDeleted ? '连墓碑也没有。' : '试试打开「显示墓碑」，或等嵌入接线后同步入库。'} />}
           />

@@ -23,7 +23,7 @@ import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { Modal } from '../../components/ui/Modal'
@@ -1492,14 +1492,16 @@ export function MenuAdminPage() {
           {versions.isPending ? <LoadingState label="正在加载版本…" /> : versions.isError ? (
             <ErrorState message={describeApiError(versions.error, '加载版本历史失败。')} onRetry={() => void versions.refetch()} />
           ) : (
-            <ErpTable
-              loading={versions.isFetching}
+            <ErpListGrid
+              plain
+              listId="menu-admin-versions"
               columns={versionColumns}
-              data={versions.data ?? []}
-              getRowId={(row) => String(row.version)}
-              clientSideSorting
-              copyable={false}
+              rows={versions.data}
+              rowKey={(row) => String(row.version)}
+              fetching={versions.isFetching}
+              sorting={{ mode: 'client' }}
               empty={<div className="p-3 text-secondary">该模块尚未发布过定义快照。</div>}
+              tableProps={{ copyable: false }}
             />
           )}
         </Modal>

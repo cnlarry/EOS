@@ -2,8 +2,8 @@ import { IconArrowLeft, IconDownload, IconMailOpened, IconPlus, IconTrash, IconX
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpTable } from '../../components/common/ErpTable'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
@@ -198,20 +198,20 @@ export function ReportInboxPage() {
                 共 {inbox.data?.length ?? 0} 份，未读 {unreadCount} 份
               </span>
             </div>
-            {inbox.isPending ? (
-              <LoadingState label="正在加载收件箱…" />
-            ) : inbox.isError ? (
-              <ErrorState message={describeApiError(inbox.error, '收件箱加载失败。')} onRetry={() => void inbox.refetch()} />
-            ) : (
-              <ErpTable
-                loading={inbox.isFetching}
-                columns={inboxColumns}
-                data={inbox.data ?? []}
-                getRowId={(row) => String(row.id)}
-                clientSideSorting
-                empty={<EmptyState title="收件箱为空" description="订阅的报表将在到点后自动生成到这里。" />}
-              />
-            )}
+            <ErpListGrid
+              plain
+              listId="report-inbox"
+              columns={inboxColumns}
+              rows={inbox.data}
+              rowKey={(row) => String(row.id)}
+              loading={inbox.isPending}
+              loadingLabel="正在加载收件箱…"
+              fetching={inbox.isFetching}
+              error={inbox.isError ? describeApiError(inbox.error, '收件箱加载失败。') : null}
+              onRetry={() => void inbox.refetch()}
+              sorting={{ mode: 'client' }}
+              empty={<EmptyState title="收件箱为空" description="订阅的报表将在到点后自动生成到这里。" />}
+            />
           </>
         ) : (
           <>
@@ -276,20 +276,20 @@ export function ReportInboxPage() {
                 {formError && <div className="alert alert-danger py-1 px-2 small mt-2 mb-0">{formError}</div>}
               </div>
             )}
-            {subscriptions.isPending ? (
-              <LoadingState label="正在加载订阅…" />
-            ) : subscriptions.isError ? (
-              <ErrorState message={describeApiError(subscriptions.error, '订阅加载失败。')} onRetry={() => void subscriptions.refetch()} />
-            ) : (
-              <ErpTable
-                loading={subscriptions.isFetching}
-                columns={subscriptionColumns}
-                data={subscriptions.data ?? []}
-                getRowId={(row) => String(row.id)}
-                clientSideSorting
-                empty={<EmptyState title="暂无订阅" description="点击「新增订阅」按周期自动生成报表。" />}
-              />
-            )}
+            <ErpListGrid
+              plain
+              listId="report-subscriptions"
+              columns={subscriptionColumns}
+              rows={subscriptions.data}
+              rowKey={(row) => String(row.id)}
+              loading={subscriptions.isPending}
+              loadingLabel="正在加载订阅…"
+              fetching={subscriptions.isFetching}
+              error={subscriptions.isError ? describeApiError(subscriptions.error, '订阅加载失败。') : null}
+              onRetry={() => void subscriptions.refetch()}
+              sorting={{ mode: 'client' }}
+              empty={<EmptyState title="暂无订阅" description="点击「新增订阅」按周期自动生成报表。" />}
+            />
           </>
         )}
       </TabbedPanel>

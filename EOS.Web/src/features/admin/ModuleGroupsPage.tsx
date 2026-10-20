@@ -4,10 +4,9 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -386,7 +385,7 @@ export function ModuleGroupsPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="模块分组"
         search={(
           <ErpSearchBox
@@ -413,37 +412,29 @@ export function ModuleGroupsPage() {
             {pageError ? <div className="px-3 pt-2"><div className="alert alert-danger py-2 mb-0" role="alert">{pageError}</div></div> : null}
           </>
         )}
-      >
-        {overview.isPending ? (
-          <LoadingState label="正在加载模块分组…" />
-        ) : overview.isError ? (
-          <ErrorState message={errorMessage} onRetry={refreshAll} />
-        ) : (
-          <ErpTable
-            loading={overview.isFetching}
-            columns={columns}
-            data={rows}
-            getRowId={(row) => String(row.groupId)}
-            // 分块线只在"没按列排序"时出现：一按列重排，同模块的行就散开了，线反而误导
-            rowClassName={(row) => (sorting.length === 0 && row.blockStart ? 'erp-module-block-start' : undefined)}
-            empty={(
-              <EmptyState
-                title="系统里还没有模块分组"
-                description="点右上角「新增」加一条——没配分组的模块，列表右上角不出现分组下拉。"
-              />
-            )}
-            sorting={sorting}
-            onSortingChange={setSorting}
-            clientSideSorting
-            resizable
-            storageKey="module-groups"
-            rowClickSingleSelect
-            rowSelection={rowSelection}
-            onRowSelectionChange={handleRowSelectionChange}
-            onRowDoubleClick={(row) => openEdit(row)}
+        listId="module-groups"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => String(row.groupId)}
+        loading={overview.isPending}
+        loadingLabel="正在加载模块分组…"
+        fetching={overview.isFetching}
+        error={overview.isError ? errorMessage : null}
+        onRetry={refreshAll}
+        sorting={{ mode: 'client', value: sorting, onChange: setSorting }}
+        selection={{ value: rowSelection, onChange: handleRowSelectionChange }}
+        onRowDoubleClick={(row) => openEdit(row)}
+        empty={(
+          <EmptyState
+            title="系统里还没有模块分组"
+            description="点右上角「新增」加一条——没配分组的模块，列表右上角不出现分组下拉。"
           />
         )}
-      </ErpListCard>
+        tableProps={{
+          // 分块线只在"没按列排序"时出现：一按列重排，同模块的行就散开了，线反而误导
+          rowClassName: (row: PlacedGroupRow) => (sorting.length === 0 && row.blockStart ? 'erp-module-block-start' : undefined),
+        }}
+      />
 
       {editor ? (
         <Modal

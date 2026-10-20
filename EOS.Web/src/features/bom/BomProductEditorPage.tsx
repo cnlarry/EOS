@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { useNavigate, useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -419,12 +419,13 @@ export function BomProductEditorPage() {
           {detailRows.length === 0 ? (
             <div className="text-muted py-3">还没有明细。点「新增行」后选子件、填用量。</div>
           ) : (
-            <ErpTable
+            <ErpListGrid
+              plain
+              listId="bom-detail-edit"
               columns={detailColumns}
-              data={detailGridRows}
-              className="table-sm"
-              resizable
-              storageKey="bom-detail-edit"
+              rows={detailGridRows}
+              rowKey={(_row, index) => String(index)}
+              tableProps={{ className: 'table-sm' }}
             />
           )}
           <div className="text-muted mt-2 d-flex align-items-center gap-1">

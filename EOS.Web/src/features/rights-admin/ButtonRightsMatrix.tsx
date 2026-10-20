@@ -4,7 +4,7 @@ import type { ColumnDef } from '../../lib/tanstackTable'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
@@ -197,14 +197,14 @@ export function ButtonRightsMatrix({ open, mode, targetId, title, onClose, onSav
       ) : filteredRows.length === 0 ? (
         <EmptyState title="没有匹配的按钮" description="取消「仅显示已授权」或调整搜索关键字后重试。" />
       ) : (
-        <ErpTable
-          loading={matrix.isFetching}
+        <ErpListGrid
+          plain
+          listId={`button-rights-${mode}-${targetId.trim()}`}
           columns={columns}
-          data={filteredRows}
-          getRowId={(row) => rowKey(row)}
-          resizable
-          storageKey={`button-rights-${mode}-${targetId.trim()}`}
-          clientSideSorting
+          rows={filteredRows}
+          rowKey={(row) => rowKey(row)}
+          fetching={matrix.isFetching}
+          sorting={{ mode: 'client' }}
           empty={<EmptyState title="当前可见模块下没有配置自定义按钮" />}
         />
       )}

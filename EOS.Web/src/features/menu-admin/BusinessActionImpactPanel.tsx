@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { analyzeImpact, type ImpactAction, type ImpactMatchEdge, type ImpactRule, type ImpactTable } from './businessActionImpact'
@@ -203,13 +203,15 @@ export function BusinessActionImpact({
               {report.tables.length === 0 ? (
                 <div className="text-secondary small">当前没有字段级写入（可能全是参数型效果）。</div>
               ) : (
-                <ErpTable
+                <ErpListGrid
+                  plain
+                  listId="business-action-impact"
                   columns={columns}
-                  data={report.tables}
-                  getRowId={(row) => row.table}
-                  clientSideSorting
-                  copyable={false}
+                  rows={report.tables}
+                  rowKey={(row) => row.table}
+                  sorting={{ mode: 'client' }}
                   empty={<div className="p-3 text-secondary">没有字段级写入。</div>}
+                  tableProps={{ copyable: false }}
                 />
               )}
               {report.switchKeys.length > 0 ? (

@@ -13,7 +13,7 @@ import type { ColumnDef } from '../../lib/tanstackTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { describeApiError } from '../../lib/errors'
@@ -680,15 +680,15 @@ export function ImportPage() {
               {step === 1 && (
                 <>
                   <div className="erp-import-scroll">
-                    <ErpTable
+                    <ErpListGrid
+                      plain
+                      listId="import-targets"
                       columns={targetColumns}
-                      data={filteredTargets}
-                      getRowId={(row) => String(row.moduleId)}
+                      rows={filteredTargets}
+                      rowKey={(row) => String(row.moduleId)}
                       activeRowId={selectedTargetId ?? undefined}
                       onRowClick={pickTarget}
-                      clientSideSorting
-                      resizable
-                      storageKey="import-targets"
+                      sorting={{ mode: 'client' }}
                       empty={keyword.trim().length > 0
                         ? <EmptyState title="没有匹配的模块" description={`模块号 / 模块名 / 主表里都没有「${keyword.trim()}」，换个词试试。`} />
                         : <EmptyState title="没有可导入的模块" description="候选 = 统一表单写名单里的统一工作台模块。" />}
@@ -761,12 +761,12 @@ export function ImportPage() {
               {step === 3 && fileData && (
                 <>
                   <div className="erp-import-scroll">
-                    <ErpTable
+                    <ErpListGrid
+                      plain
+                      listId="import-mapping"
                       columns={mappingColumns}
-                      data={fileData.columns.map((column, index) => ({ index, source: column }))}
-                      getRowId={(row) => String(row.index)}
-                      resizable
-                      storageKey="import-mapping"
+                      rows={fileData.columns.map((column, index) => ({ index, source: column }))}
+                      rowKey={(row) => String(row.index)}
                       empty={<EmptyState title="文件没有列" description="请确认第一行是列名。" />}
                     />
                   </div>
@@ -807,14 +807,16 @@ export function ImportPage() {
                     </select>
                   </div>
                   <div className="erp-import-scroll">
-                    <ErpTable
+                    <ErpListGrid
+                      plain
+                      listId="import-grid"
                       columns={gridColumns}
-                      data={gridRows}
-                      getRowId={(row) => row.rowKey}
-                      rowClassName={(row) => (rowStates[row.index]?.status === 'failed' ? 'erp-import-row-bad' : undefined)}
-                      resizable
-                      storageKey="import-grid"
+                      rows={gridRows}
+                      rowKey={(row) => row.rowKey}
                       empty={<EmptyState title="没有符合当前筛选的行" description="把显示范围切回「显示全部」看看。" />}
+                      tableProps={{
+                        rowClassName: (row) => (rowStates[row.index]?.status === 'failed' ? 'erp-import-row-bad' : undefined),
+                      }}
                     />
                   </div>
                   {preview != null && preview.failed > 0 && (

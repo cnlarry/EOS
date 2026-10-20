@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import type { RowSelectionState } from '../../lib/tanstackTable'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -163,15 +163,16 @@ export function CloneActionsModal({
               「自定义按钮」页签里给具体用户/组发放授权。
             </div>
           ) : null}
-          <ErpTable
+          <ErpListGrid
+            plain
+            listId="clone-actions"
             columns={columns}
-            data={rows}
-            getRowId={(row) => `${row.eventCode}|${row.seq}`}
-            rowSelection={selection}
-            onRowSelectionChange={setSelection}
-            clientSideSorting
-            copyable={false}
+            rows={rows}
+            rowKey={(row) => `${row.eventCode}|${row.seq}`}
+            sorting={{ mode: 'client' }}
+            selection={{ value: selection, onChange: setSelection }}
             empty={<div className="p-3 text-secondary">该模块没有可复制的业务动作（自定义按钮不参与克隆）。</div>}
+            tableProps={{ copyable: false }}
           />
         </>
       )}

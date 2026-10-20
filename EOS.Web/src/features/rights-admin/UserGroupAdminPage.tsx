@@ -3,10 +3,9 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { GroupEditorModal } from './GroupEditorModal'
@@ -123,32 +122,28 @@ export function UserGroupAdminPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="用户组管理查询"
+        listId="user-group-admin-groups"
+        columns={columns}
+        rows={filtered}
+        rowKey={(row) => row.groupId.trim()}
+        loading={groups.isPending}
+        loadingLabel="正在加载用户组…"
+        fetching={groups.isFetching}
+        error={groups.isError ? errorMessage : null}
+        onRetry={() => void groups.refetch()}
+        sorting={{ mode: 'client' }}
+        selection={{ value: rowSelection, onChange: setRowSelection }}
+        onRowDoubleClick={(row) => setEditor({ mode: 'edit', group: row })}
+        empty={<EmptyState title="没有用户组" description="点击「新增」建立第一个用户组。" />}
         search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300} placeholder="搜索组ID或组描述" ariaLabel="搜索用户组" />}
         actions={<div className="d-flex gap-2 align-items-center">
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void groups.refetch()}>刷新</Button>
           <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>
         </div>}
         header={groups.data ? <div className="erp-list-header">共 {groups.data.length} 个用户组{keyword.trim() ? `，筛选后 ${filtered.length} 个` : ''}；操作列提供组权限/成员/编辑/删除，双击行也可编辑。</div> : undefined}
-      >
-        {groups.isPending ? <LoadingState label="正在加载用户组…" /> : groups.isError ? <ErrorState message={errorMessage} onRetry={() => void groups.refetch()} /> : (
-          <ErpTable
-            loading={groups.isFetching}
-            columns={columns}
-            data={filtered}
-            getRowId={(row) => row.groupId.trim()}
-            resizable
-            storageKey="user-group-admin-groups"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={rowSelection}
-            onRowSelectionChange={setRowSelection}
-            onRowDoubleClick={(row) => setEditor({ mode: 'edit', group: row })}
-            empty={<EmptyState title="没有用户组" description="点击「新增」建立第一个用户组。" />}
-          />
-        )}
-      </ErpListCard>
+      />
       {remove.isError && (
         <div className="alert alert-danger mb-0" role="alert">
           {describeApiError(remove.error, '删除失败，请稍后重试。')}

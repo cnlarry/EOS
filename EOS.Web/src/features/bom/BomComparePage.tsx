@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { describeApiError } from '../../lib/errors'
 import { compareBom, type BomComparisonRow } from './bomApi'
@@ -139,14 +139,13 @@ export function BomComparePage() {
       ) : rows.length === 0 ? (
         <EmptyState description="两个版次都没有明细，没有可对比的内容。" />
       ) : (
-        <ErpTable
+        <ErpListGrid
+          plain
+          listId="bom-compare"
           columns={columns}
-          data={rows}
-          resizable
-          copyable
-          keyboardNavigation
-          storageKey="bom-compare"
-          rowClassName={row => STATUS_CLASS[row.status]}
+          rows={rows}
+          rowKey={(row) => `${row.proNo}#${row.serialNoA ?? ''}#${row.serialNoB ?? ''}`}
+          tableProps={{ rowClassName: (row) => STATUS_CLASS[row.status] }}
         />
       )}
     </ErpListCard>

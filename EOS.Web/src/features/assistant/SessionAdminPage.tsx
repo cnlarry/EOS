@@ -2,11 +2,10 @@ import { IconArchive, IconArchiveOff, IconEdit, IconExternalLink, IconRefresh, I
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
-import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
+import { EmptyState } from '../../components/common/AsyncState'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/toastContext'
@@ -197,7 +196,7 @@ export function SessionAdminPage() {
 
   return (
     <div className="erp-full-list-page">
-      <ErpListCard
+      <ErpListGrid
         ariaLabel="会话管理查询与操作"
         search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }}
           debounceMs={300} placeholder="搜索会话标题" ariaLabel="搜索会话" />}
@@ -216,22 +215,18 @@ export function SessionAdminPage() {
         footer={!sessions.isPending && !sessions.isError
           ? <ErpPagination total={total} page={page} pageSize={pageSize} onPageChange={setPage} />
           : undefined}
-      >
-        {sessions.isPending ? <LoadingState label="正在加载会话…" /> : sessions.isError ? (
-          <ErrorState message={errorMessage} onRetry={() => void sessions.refetch()} />
-        ) : (
-          <ErpTable
-            loading={sessions.isFetching}
-            columns={columns}
-            data={items}
-            getRowId={(row) => row.id}
-            resizable
-            storageKey="assistant-sessions"
-            empty={<EmptyState title="没有找到会话"
-              description={view === 'archived' ? '还没有已归档的会话。' : '换个关键词，或直接开始一次新的对话。'} />}
-          />
-        )}
-      </ErpListCard>
+        listId="assistant-sessions"
+        columns={columns}
+        rows={items}
+        rowKey={(row) => row.id}
+        loading={sessions.isPending}
+        loadingLabel="正在加载会话…"
+        fetching={sessions.isFetching}
+        error={sessions.isError ? errorMessage : null}
+        onRetry={() => void sessions.refetch()}
+        empty={<EmptyState title="没有找到会话"
+          description={view === 'archived' ? '还没有已归档的会话。' : '换个关键词，或直接开始一次新的对话。'} />}
+      />
 
       {renaming && (
         <Modal

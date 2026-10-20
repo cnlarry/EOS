@@ -6,7 +6,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/common/As
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import type { ColumnDef } from '../../lib/tanstackTable'
@@ -99,8 +99,13 @@ export function BomWhereUsedPage() {
         ) : rows.length === 0 ? (
           <EmptyState description="没有找到使用该料号的 BOM —— 它可能只作为成品存在，或已停用。" />
         ) : (
-          // resizable + storageKey：列宽拖拽后写 localStorage（persistResize 默认开）
-          <ErpTable columns={columns} data={rows} resizable copyable keyboardNavigation storageKey="bom-where-used" />
+          <ErpListGrid
+            plain
+            listId="bom-where-used"
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => `${row.parentNo}#${row.parentEdition}#${row.serialNo}`}
+          />
         )}
       </ErpListCard>
 

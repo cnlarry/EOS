@@ -7,7 +7,7 @@ import type { ColumnDef, RowSelectionState } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import type { TabbedPanelTab } from '../../components/common/TabbedPanel'
 import { Button } from '../../components/ui/Button'
@@ -563,16 +563,17 @@ export function ModelAdminPage() {
                   <EmptyState title="还没有供应商"
                     description="点上方「添加供应商」从预设目录选一家，或选「自定义」自己填端点。" />
                 ) : (
-                  <ErpTable loading={providers.isFetching} columns={providerColumns} data={items}
-                    getRowId={(row) => String(row.providerId)}
+                  <ErpListGrid
+                    plain
+                    listId="assistant-admin-providers"
+                    columns={providerColumns}
+                    rows={items}
+                    rowKey={(row) => String(row.providerId)}
+                    fetching={providers.isFetching}
+                    sorting={{ mode: 'client' }}
+                    selection={{ value: providerSelection, onChange: handleProviderSelectionChange }}
                     empty={<EmptyState title="还没有供应商" description="点「添加供应商」建立第一个接入点。" />}
-                    resizable storageKey="assistant-admin-providers"
-                    // 电子表默认能力：排序（本地）+ 列宽拖拽 + 复制 + 键盘导航 + 吸顶表头。
-                    // 排序不传 clientSideSorting 就没有表头菜单——数据全在这一页，本地排即可
-                    clientSideSorting
-                    rowClickSingleSelect
-                    rowSelection={providerSelection}
-                    onRowSelectionChange={handleProviderSelectionChange} />
+                  />
                 )}
               </div>
             </ErpListCard>
@@ -604,8 +605,13 @@ export function ModelAdminPage() {
                 </span>
               </div>
               {selectedProvider ? (
-                <ErpTable columns={modelColumnsByKind[kind]} data={detailModels}
-                  getRowId={(row) => String(row.modelId)}
+                <ErpListGrid
+                  plain
+                  listId={`assistant-admin-models-${kind}-${selectedProvider.providerId}`}
+                  columns={modelColumnsByKind[kind]}
+                  rows={detailModels}
+                  rowKey={(row) => String(row.modelId)}
+                  sorting={{ mode: 'client' }}
                   empty={<EmptyState
                     title={kind === 'CHAT' ? '这家还没有对话模型' : '这家还没有嵌入模型'}
                     // 空态只说"去哪儿点"：型号与参数下个对话框里都看得见，
@@ -613,8 +619,7 @@ export function ModelAdminPage() {
                     description={kind === 'CHAT'
                       ? '点上方「添加模型」，从这家的型号里选。'
                       : '嵌入模型供知识库使用：点上方「添加模型」，嵌入型号带着维度。'} />}
-                  resizable clientSideSorting
-                  storageKey={`assistant-admin-models-${kind}-${selectedProvider.providerId}`} />
+                />
               ) : (
                 <EmptyState title="还没有供应商" description="先在上表添加供应商，再维护它的模型。" />
               )}
@@ -714,9 +719,15 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
           ) : models.length === 0 ? (
             <EmptyState title="这段时间还没有模型调用记录" description="有回复之后这里会出现按模型的用量。" />
           ) : (
-            <ErpTable loading={usage.isFetching} columns={USAGE_COLUMNS} data={models}
-              getRowId={(row) => row.modelName} resizable clientSideSorting
-              storageKey="assistant-admin-usage-models" />
+            <ErpListGrid
+              plain
+              listId="assistant-admin-usage-models"
+              columns={USAGE_COLUMNS}
+              rows={models}
+              rowKey={(row) => row.modelName}
+              fetching={usage.isFetching}
+              sorting={{ mode: 'client' }}
+            />
           )}
         </div>
       </ErpListCard>
@@ -729,9 +740,15 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
           <EmptyState title="这段时间还没有调用记录" description="有回复之后这里会出现每日趋势。" />
         ) : (
           // 倒序：最近的一天在上面（按天的表默认是升序，读的人第一眼想看今天）
-          <ErpTable loading={usage.isFetching} columns={TREND_COLUMNS} data={[...trend].reverse()}
-            getRowId={(row) => row.day} resizable clientSideSorting
-            storageKey="assistant-admin-usage-trend" />
+          <ErpListGrid
+            plain
+            listId="assistant-admin-usage-trend"
+            columns={TREND_COLUMNS}
+            rows={[...trend].reverse()}
+            rowKey={(row) => row.day}
+            fetching={usage.isFetching}
+            sorting={{ mode: 'client' }}
+          />
         )}
       </section>
     </div>
