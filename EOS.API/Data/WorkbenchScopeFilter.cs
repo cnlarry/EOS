@@ -44,7 +44,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
     }
 
     /// <summary>
-    /// 应用用户数据范围（SYSDD/SYSDH 权限 DATA_FILTER；个人覆盖组、组 OR 已由
+    /// 应用用户数据范围（SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION 权限 DATA_FILTER；个人覆盖组、组 OR 已由
     /// RightsAdminRepository 组合为生效值）。与模块 FILTER 同边界：白名单主表字段 +
     /// 受限解析 + 参数化；参数名重命名避免与模块 FILTER 的 @dfN 冲突。
     /// </summary>

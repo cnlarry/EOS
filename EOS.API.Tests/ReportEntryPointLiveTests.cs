@@ -95,11 +95,11 @@ public sealed class ReportEntryPointLiveTests
         var offenders = Collect("""
             SELECT TOP 10 CONCAT(CAST(m.M_IDX AS varchar(20)), '|', LTRIM(RTRIM(ISNULL(m.M_DESC, ''))),
                                   '|报表=', CAST((SELECT COUNT(*) FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX = m.M_IDX) AS varchar(10)),
-                                  '|条件=', CAST((SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT d WITH (NOLOCK) WHERE d.M_IDX = m.M_IDX) AS varchar(10)))
+                                  '|条件=', CAST((SELECT COUNT(*) FROM dbo.SYS_REPORT_PARAMETER d WITH (NOLOCK) WHERE d.M_IDX = m.M_IDX) AS varchar(10)))
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE m.M_URL = '/reports'
               AND (EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX = m.M_IDX)
-                OR EXISTS (SELECT 1 FROM dbo.SYSQR_DEFAULT d WITH (NOLOCK) WHERE d.M_IDX = m.M_IDX))
+                OR EXISTS (SELECT 1 FROM dbo.SYS_REPORT_PARAMETER d WITH (NOLOCK) WHERE d.M_IDX = m.M_IDX))
             ORDER BY m.M_IDX;
             """);
 

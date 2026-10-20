@@ -158,7 +158,7 @@ public sealed class AssistantParameterIntegrationTests
         // 拿不到就当场红。写成 return 会让"根本没跑到断言"与"断言通过"长得一模一样——
         // 这条用例的第一次运行就是靠手工查库才确认它真的跑了。
         Assert.True(module.HasValue, "库里应当有带名字的模块（MODULES.M_DESC 非空）。");
-        Assert.True(user.HasValue, "库里应当有登记了姓名的账号（SYSDN.EMP_NAME 非空）。");
+        Assert.True(user.HasValue, "库里应当有登记了姓名的账号（SYS_EMPLOYEE.EMP_NAME 非空）。");
 
         var moduleKey = module.Value.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var ghostModuleKey = Random.Shared.Next(9_000_000, 9_999_999)
@@ -214,8 +214,8 @@ public sealed class AssistantParameterIntegrationTests
         await connection.OpenAsync();
         await using var command = new SqlCommand("""
             SELECT TOP 1 LTRIM(RTRIM(l.USER_ID)), LTRIM(RTRIM(n.EMP_NAME))
-            FROM dbo.SYSDL l WITH (NOLOCK)
-            JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+            FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
+            JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             WHERE LTRIM(RTRIM(ISNULL(n.EMP_NAME, N''))) <> N''
             ORDER BY l.USER_ID;
             """, connection);
@@ -308,7 +308,7 @@ public sealed class AssistantParameterIntegrationTests
         const string sql = """
             SELECT PARAM_KEY, PARAM_VALUE, VALUE_TYPE, DEFAULT_VALUE, GROUP_CODE, GROUP_LABEL,
                    GROUP_SEQ, SEQ_NO, EFFECT_SCOPE, DESC_TEXT
-            FROM dbo.SYSSS WHERE OWNER_MODULE = @Owner ORDER BY PARAM_KEY;
+            FROM dbo.SYS_PARAMETER WHERE OWNER_MODULE = @Owner ORDER BY PARAM_KEY;
             """;
         var items = new List<StoredParameter>();
         await using var connection = new SqlConnection(ConnectionString.Value);
@@ -352,7 +352,7 @@ public sealed class AssistantParameterIntegrationTests
         foreach (var descriptor in AssistantParameterCatalog.All)
         {
             Assert.True(byKey.ContainsKey(descriptor.Key),
-                $"参数 {descriptor.Key} 在 dbo.SYSSS（OWNER_MODULE = {AssistantParameterCatalog.OwnerModule}）里没有行。");
+                $"参数 {descriptor.Key} 在 dbo.SYS_PARAMETER（OWNER_MODULE = {AssistantParameterCatalog.OwnerModule}）里没有行。");
 
             var row = byKey[descriptor.Key];
             var group = AssistantParameterCatalog.FindGroup(descriptor.Group)!;
@@ -387,7 +387,7 @@ public sealed class AssistantParameterIntegrationTests
         foreach (var row in rows)
         {
             Assert.True(AssistantParameterCatalog.Find(row.Key) is not null,
-                $"dbo.SYSSS 里有目录之外的助手参数键：{row.Key}（参数下线后应当一并清理）。");
+                $"dbo.SYS_PARAMETER 里有目录之外的助手参数键：{row.Key}（参数下线后应当一并清理）。");
         }
     }
 
@@ -404,7 +404,7 @@ public sealed class AssistantParameterIntegrationTests
     {
         if (ConnectionString.Value is null) return;
 
-        const string sql = "SELECT OWNER_MODULE, PARAM_KEY FROM dbo.SYSSS;";
+        const string sql = "SELECT OWNER_MODULE, PARAM_KEY FROM dbo.SYS_PARAMETER;";
         var offenders = new List<string>();
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
@@ -442,7 +442,7 @@ public sealed class AssistantParameterIntegrationTests
         var result = await command.ExecuteScalarAsync();
 
         Assert.True(result is null or DBNull,
-            "dbo.ASSISTANT_SETTING 仍然存在：助手参数应当只在 dbo.SYSSS 里（ADR-030 §6.3）。");
+            "dbo.ASSISTANT_SETTING 仍然存在：助手参数应当只在 dbo.SYS_PARAMETER 里（ADR-030 §6.3）。");
     }
 
     /// <summary>

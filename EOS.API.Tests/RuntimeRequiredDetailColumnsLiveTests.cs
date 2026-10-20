@@ -129,7 +129,7 @@ public sealed class RuntimeRequiredDetailColumnsLiveTests
         for (var index = 0; index < candidates.Count; index++)
         {
             await using var insert = new SqlCommand(
-                "INSERT INTO dbo.SYSQL_FIELDS (USER_ID,T_ID,T_ID_R,F_ID,F_IDX) VALUES (@UserId,@Master,@Detail,@Field,@Index);",
+                "INSERT INTO dbo.SYS_USER_COLUMN (USER_ID,T_ID,T_ID_R,F_ID,F_IDX) VALUES (@UserId,@Master,@Detail,@Field,@Index);",
                 connection);
             insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = TestUserId;
             insert.Parameters.Add("@Master", SqlDbType.VarChar, 100).Value = MasterTable;
@@ -144,7 +144,7 @@ public sealed class RuntimeRequiredDetailColumnsLiveTests
     private static async Task ClearColumnConfigAsync(SqlConnection connection)
     {
         await using var command = new SqlCommand(
-            "DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@Master AND T_ID_R=@Detail;", connection);
+            "DELETE FROM dbo.SYS_USER_COLUMN WHERE USER_ID=@UserId AND T_ID=@Master AND T_ID_R=@Detail;", connection);
         command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = TestUserId;
         command.Parameters.Add("@Master", SqlDbType.VarChar, 100).Value = MasterTable;
         command.Parameters.Add("@Detail", SqlDbType.VarChar, 100).Value = DetailTable;

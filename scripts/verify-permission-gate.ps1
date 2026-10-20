@@ -20,7 +20,7 @@
     1. **受试账号本就无权限**（默认）：零数据改动，就是生产形态。传 -SubjectUser。
        若该账号实际拿到了 200，脚本**不会**含糊地报"期望 403 实得 200"，而是查出
        **是谁给的权限**（哪几个组的哪一行、有没有个人行）——账号"看起来无权限"最常见的原因
-       就是被加进了某个有权组，而个人权限表里一行都没有，光看 SYSDD 会误判。
+       就是被加进了某个有权组，而个人权限表里一行都没有，光看 SYS_USER_MODULE_PERMISSION 会误判。
 
     2. **-DeriveUnprivileged**：受试账号有权限时，在**一个永不提交的事务**里临时让它失去权限
        （脱离全部组 + 把受试模块的个人行置为拒绝）。权限读取带 `WITH (NOLOCK)`，
@@ -197,12 +197,12 @@ function Get-AccessSource {
     $sql = @"
 SET NOCOUNT ON;
 SELECT 'personal:' + LTRIM(RTRIM(EXEC_TAG)) + '/' + CAST(ISNULL(SETUP_TAG,0) AS varchar(1))
-FROM dbo.SYSDD WITH (NOLOCK)
+FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
 WHERE LTRIM(RTRIM(USER_ID))=@u AND M_IDX=@m
 UNION ALL
 SELECT 'group ' + LTRIM(RTRIM(h.G_IDX)) + ':' + LTRIM(RTRIM(ISNULL(h.EXEC_TAG,'A'))) + '/' + CAST(ISNULL(h.SETUP_TAG,0) AS varchar(1))
-FROM dbo.SYSDH h WITH (NOLOCK)
-JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
+FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
 WHERE LTRIM(RTRIM(gu.USER_ID))=@u AND h.M_IDX=@m;
 "@
     $cmd = $Connection.CreateCommand()
@@ -278,8 +278,8 @@ try {
         try {
             $deny = $connection.CreateCommand()
             $deny.Transaction = $transaction
-            $deny.CommandText = "DELETE FROM dbo.SYSDG_USER WHERE LTRIM(RTRIM(USER_ID))=@u; " +
-                                "UPDATE dbo.SYSDD SET EXEC_TAG='A', SETUP_TAG=0 WHERE LTRIM(RTRIM(USER_ID))=@u AND M_IDX=@m;"
+            $deny.CommandText = "DELETE FROM dbo.SYS_USER_GROUP_MEMBER WHERE LTRIM(RTRIM(USER_ID))=@u; " +
+                                "UPDATE dbo.SYS_USER_MODULE_PERMISSION SET EXEC_TAG='A', SETUP_TAG=0 WHERE LTRIM(RTRIM(USER_ID))=@u AND M_IDX=@m;"
             [void]$deny.Parameters.AddWithValue('@u', $SubjectUser)
             [void]$deny.Parameters.AddWithValue('@m', $probe.Module)
             [void]$deny.ExecuteNonQuery()
@@ -327,7 +327,7 @@ try {
     # ---------- 还原核对 ----------
     if ($DeriveUnprivileged) {
         $verify = $connection.CreateCommand()
-        $verify.CommandText = "SELECT COUNT(*) FROM dbo.SYSDG_USER WHERE LTRIM(RTRIM(USER_ID))=@u"
+        $verify.CommandText = "SELECT COUNT(*) FROM dbo.SYS_USER_GROUP_MEMBER WHERE LTRIM(RTRIM(USER_ID))=@u"
         [void]$verify.Parameters.AddWithValue('@u', $SubjectUser)
         $groups = [int]$verify.ExecuteScalar()
         $verify.Dispose()

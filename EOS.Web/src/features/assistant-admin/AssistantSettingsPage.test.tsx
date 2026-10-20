@@ -21,7 +21,7 @@ function jsonResponse(body: unknown): Response {
 /**
  * 缺行 = 代码默认值：value 为 null 的项就是"没改过"。
  *
- * 键用 SYSSS 里的**大写键**（`USER_DAILY_CAP_YUAN`），与参数目录同名——界面按它做少数几处特判
+ * 键用 SYS_PARAMETER 里的**大写键**（`USER_DAILY_CAP_YUAN`），与参数目录同名——界面按它做少数几处特判
  * （如提示词渲染成多行框），用旧的小驼峰键会让那些分支静默走不到。
  */
 function settingItem(overrides: Partial<Record<string, unknown>> = {}) {
@@ -241,7 +241,7 @@ describe('AssistantSettingsPage', () => {
     await waitFor(() => expect(
       harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/MEM_ENABLE_AUTO_DISTILL')),
     ).toBe(true))
-    // 关掉 = 写 '0'（SYSSS 的 bit 就是 1/0，不是 true/false）
+    // 关掉 = 写 '0'（SYS_PARAMETER 的 bit 就是 1/0，不是 true/false）
     const body = harness.calls.find(call => call.method === 'PUT')?.body ?? ''
     expect((JSON.parse(body) as { value: string }).value).toBe('0')
   })

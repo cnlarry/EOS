@@ -37,7 +37,7 @@ public static class ModuleIds
     /// <summary>车辆汇总分析表（199901）。</summary>
     public const int CarSummary = 199901;
 
-    /// <summary>单行参数表设置 SYSSS（110111）。</summary>
+    /// <summary>单行参数表设置 SYS_PARAMETER（110111）。</summary>
     public const int SystemSettings = 110111;
 
     /// <summary>单行参数表设置 HR_SETUP（180213）。</summary>

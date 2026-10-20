@@ -61,7 +61,7 @@ public sealed class AssistantEvalRunnerTests
     }
 
     private static WorkbenchDefinition Definition() => new(
-        2306, "用户权限", "SYSDL", null,
+        2306, "用户权限", "SYS_USER_ACCOUNT", null,
         MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: false, HasEdit: false,
         DetailNoSave: false, MasterPkOrder: ["USER_ID"], DetailNoFields: string.Empty,
         HasWorkflow: false);

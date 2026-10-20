@@ -180,7 +180,6 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             return;
         }
 
-        var marker = $"ZZ_FA_{Random.Shared.Next(1000, 9999)}";
         var table = "COMPANY";
         var field = $"ZZ_FA_F_{Random.Shared.Next(100000, 999999)}";
         var fIdx = await NextFreeFIdxAsync(table);
@@ -188,11 +187,9 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         var sql = $"""
             INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES (N'{table}',N'{field}',N'联动清理测试','nvarchar',1,1,0,'IT',GETDATE());
-            INSERT INTO dbo.SYSQL_DEFAULT (T_ID,T_ID_R,F_IDX,F_ID)
+            INSERT INTO dbo.SYS_DEFAULT_COLUMN (T_ID,T_ID_R,F_IDX,F_ID)
             VALUES (N'{table}',N'{table}',{fIdx},N'{field}');
-            INSERT INTO dbo.SYSQL_CONDITION (USER_ID,T_ID,T_ID_R,F_ID,F_DESC,IS_USE)
-            VALUES (N'{marker}',N'{table}',N'{table}',N'{field}',N'联动清理测试',1);
-            INSERT INTO dbo.SYSQR_DEFAULT (M_IDX,SERIAL_NO,F_ID,F_TYPE,F_DESC,F_VALUE)
+            INSERT INTO dbo.SYS_REPORT_PARAMETER (M_IDX,SERIAL_NO,F_ID,F_TYPE,F_DESC,F_VALUE)
             VALUES ({reportModuleId},1,N'{table}.{field}',N'C',N'联动清理测试',N'1');
             """;
 
@@ -210,20 +207,17 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
                 """
                 SELECT
                   (SELECT COUNT(*) FROM dbo.FIELDS WHERE T_ID=@Table AND LTRIM(RTRIM(F_ID))=@Field),
-                  (SELECT COUNT(*) FROM dbo.SYSQL_DEFAULT WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table)),
-                  (SELECT COUNT(*) FROM dbo.SYSQL_CONDITION WHERE F_ID=@Field AND USER_ID=@Marker),
-                  (SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField);
+                  (SELECT COUNT(*) FROM dbo.SYS_DEFAULT_COLUMN WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table)),
+                  (SELECT COUNT(*) FROM dbo.SYS_REPORT_PARAMETER WHERE F_ID=@TableDotField);
                 """, check);
             command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
             command.Parameters.Add("@Field", SqlDbType.NVarChar, 100).Value = field;
-            command.Parameters.Add("@Marker", SqlDbType.NChar, 20).Value = marker;
             command.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{table}.{field}";
             await using var reader = await command.ExecuteReaderAsync();
             Assert.True(await reader.ReadAsync());
             Assert.Equal(0, reader.GetInt32(0));
             Assert.Equal(0, reader.GetInt32(1));
             Assert.Equal(0, reader.GetInt32(2));
-            Assert.Equal(0, reader.GetInt32(3));
         }
         finally
         {
@@ -581,7 +575,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "SELECT ISNULL(MAX(F_IDX),0)+1 FROM dbo.SYSQL_DEFAULT WITH (NOLOCK) WHERE T_ID=@Table;", connection);
+            "SELECT ISNULL(MAX(F_IDX),0)+1 FROM dbo.SYS_DEFAULT_COLUMN WITH (NOLOCK) WHERE T_ID=@Table;", connection);
         command.Parameters.Add("@Table", SqlDbType.VarChar, 50).Value = table;
         var value = await command.ExecuteScalarAsync();
         return value is null ? 1 : Convert.ToInt32(value);
@@ -609,13 +603,10 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             await using var delete = new SqlCommand(
                 """
                 DELETE FROM dbo.FIELDS WHERE T_ID=@Table AND LTRIM(RTRIM(F_ID))=@Field;
-                DELETE FROM dbo.SYSQL_DEFAULT WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
-                DELETE FROM dbo.SYSQL_FIELDS WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
-                DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
-                DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
-                DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
-                DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
-                DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
+                DELETE FROM dbo.SYS_DEFAULT_COLUMN WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
+                DELETE FROM dbo.SYS_USER_COLUMN WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
+                DELETE FROM dbo.SYS_USER_CHOOSER_MEMORY WHERE F_ID=@TableDotField;
+                DELETE FROM dbo.SYS_REPORT_PARAMETER WHERE F_ID=@TableDotField;
                 """, connection);
             delete.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
             delete.Parameters.Add("@Field", SqlDbType.NVarChar, 100).Value = field;
@@ -639,11 +630,8 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         {
             await using var delete = new SqlCommand(
                 """
-                DELETE FROM dbo.SYSQL_DEFAULT WHERE T_ID=@Table OR T_ID_R=@Table;
-                DELETE FROM dbo.SYSQL_FIELDS WHERE T_ID=@Table OR T_ID_R=@Table;
-                DELETE FROM dbo.SYSQL_CONDITION WHERE T_ID=@Table OR T_ID_R=@Table;
-                DELETE FROM dbo.SYSQL_COND_DFT WHERE T_ID=@Table OR T_ID_R=@Table;
-                DELETE FROM dbo.SYSQD_CONDITION WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.SYS_DEFAULT_COLUMN WHERE T_ID=@Table OR T_ID_R=@Table;
+                DELETE FROM dbo.SYS_USER_COLUMN WHERE T_ID=@Table OR T_ID_R=@Table;
                 DELETE FROM dbo.FIELDS WHERE T_ID=@Table;
                 DELETE FROM dbo.TABLES WHERE T_ID=@Table;
                 """, connection);

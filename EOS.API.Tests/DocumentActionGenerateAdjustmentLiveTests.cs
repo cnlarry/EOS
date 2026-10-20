@@ -149,16 +149,16 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         // 按钮授权（fail-closed 名单）+ 下游模块的新增权限（处理器按同一把尺子复核）
         await ExecAsync(connection,
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", GenerateAdjustmentHandler.ActionKey));
         // 成本/保密位要给：调整单明细的单价属成本列，无权限时表单不会下发该列（与手工新建一致）。
         await ExecAsync(connection,
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDD WHERE USER_ID=@user AND M_IDX=@module)
-                INSERT INTO dbo.SYSDD (USER_ID,M_IDX,ADDNEW_TAG,EDIT_TAG,DELETE_TAG,COST_TAG,SECRECY_TAG,EXEC_TAG)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID=@user AND M_IDX=@module)
+                INSERT INTO dbo.SYS_USER_MODULE_PERMISSION (USER_ID,M_IDX,ADDNEW_TAG,EDIT_TAG,DELETE_TAG,COST_TAG,SECRECY_TAG,EXEC_TAG)
                 VALUES (@user,@module,1,1,1,1,1,N'Z');
             """,
             ("@user", TestUser), ("@module", TargetModuleId));
@@ -204,14 +204,14 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@depot;
             """,
             ("@depot", TestDepot));
-        await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
-        await ExecAsync(connection, "DELETE FROM dbo.SYSDD WHERE USER_ID=@user;", ("@user", TestUser));
+        await ExecAsync(connection, "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user;", ("@user", TestUser));
+        await ExecAsync(connection, "DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX IN (@a,@b) AND ACTION=N'ACTION';",
             ("@a", ModuleId), ("@b", TargetModuleId));
     }
 
-    // ===== 装配（与 Program.cs 同源：真实服务，只有"按钮授权"以外的权限读取走真库 SYSDD）=====
+    // ===== 装配（与 Program.cs 同源：真实服务，只有"按钮授权"以外的权限读取走真库 SYS_USER_MODULE_PERMISSION）=====
 
     private GenerateAdjustmentHandler Handler()
     {

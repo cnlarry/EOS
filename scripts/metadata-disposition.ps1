@@ -155,7 +155,7 @@ WHERE LTRIM(RTRIM(T_ID))='$($ex.Table)' AND LTRIM(RTRIM(F_ID))='$($ex.Column)' A
         'AUTOINC_MARKED_NOT' {
             $row.Status = 'CONFIRMED_TECHDEBT'
             $row.Action = '不改库'
-            $row.Note = '用户确认（2026-08-09）：保留 IS_AUTOINC 并登记服务端生成语义技术债（M64 SYSDG.G_IDX 先例）'
+            $row.Note = '用户确认（2026-08-09）：保留 IS_AUTOINC 并登记服务端生成语义技术债（M64 SYS_USER_GROUP.G_IDX 先例）'
         }
         default {
             $row.Note = '未分类项，人工复核'

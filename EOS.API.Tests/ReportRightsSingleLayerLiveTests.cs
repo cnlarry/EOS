@@ -6,7 +6,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 报表权限只剩一层：**归属模块的 `REPORT_TAG`**（个人 `SYSDD` 优先，否则组 `SYSDH` 取或）。
+/// 报表权限只剩一层：**归属模块的 `REPORT_TAG`**（个人 `SYS_USER_MODULE_PERMISSION` 优先，否则组 `SYS_GROUP_MODULE_PERMISSION` 取或）。
 ///
 /// <para>
 /// 从前的第二层是逐报表例外行（报表级三列勾选 + 逐报表行级过滤，例外表已随迁移 277 退役），
@@ -41,7 +41,7 @@ public sealed class ReportRightsSingleLayerLiveTests
         connection.Open();
         using var command = new SqlCommand("""
             SELECT TOP 1 LTRIM(RTRIM(d.USER_ID)), d.M_IDX
-            FROM dbo.SYSDD d WITH (NOLOCK)
+            FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK)
             WHERE ISNULL(d.REPORT_TAG, 0) = 1
               AND EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX = d.M_IDX)
             ORDER BY d.USER_ID, d.M_IDX;
@@ -61,7 +61,7 @@ public sealed class ReportRightsSingleLayerLiveTests
         connection.Open();
         using var command = new SqlCommand("""
             SELECT TOP 1 LTRIM(RTRIM(d.USER_ID)), d.M_IDX
-            FROM dbo.SYSDD d WITH (NOLOCK)
+            FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK)
             WHERE ISNULL(d.REPORT_TAG, 0) = 0
               AND EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX = d.M_IDX)
             ORDER BY d.USER_ID, d.M_IDX;

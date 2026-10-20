@@ -44,8 +44,8 @@ public sealed class UserAdminRepository(
                        CAST(CASE WHEN LEN(ISNULL(l.USER_PWD,'')) > 0 THEN 1 ELSE 0 END AS bit) HAS_PASSWORD,
                        LTRIM(RTRIM(ISNULL(l.LAST_UPDATE_BY,''))) LAST_UPDATE_BY,
                        l.LAST_UPDATE_DATE
-                FROM dbo.SYSDL l WITH (NOLOCK)
-                LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+                FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
+                LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             )
             SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,CI,ACTIVE_TAG,HAS_PASSWORD,
                    LAST_UPDATE_BY,LAST_UPDATE_DATE,
@@ -55,8 +55,8 @@ public sealed class UserAdminRepository(
             OUTER APPLY (
                 SELECT STUFF((
                     SELECT N'、' + LTRIM(RTRIM(ISNULL(g.G_DESC,'')))
-                    FROM dbo.SYSDG_USER ug
-                    INNER JOIN dbo.SYSDG g ON ug.G_IDX=g.G_IDX
+                    FROM dbo.SYS_USER_GROUP_MEMBER ug
+                    INNER JOIN dbo.SYS_USER_GROUP g ON ug.G_IDX=g.G_IDX
                     WHERE LTRIM(RTRIM(ug.USER_ID))=LTRIM(RTRIM(base.USER_ID))
                     ORDER BY g.G_IDX
                     FOR XML PATH('')), 1, 1, N'') AS GROUPS
@@ -94,7 +94,7 @@ public sealed class UserAdminRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            UPDATE dbo.SYSDL
+            UPDATE dbo.SYS_USER_ACCOUNT
             SET USER_PWD=@Hash, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;
@@ -113,7 +113,7 @@ public sealed class UserAdminRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            UPDATE dbo.SYSDL
+            UPDATE dbo.SYS_USER_ACCOUNT
             SET ACTIVE_TAG=@Active, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;
@@ -127,9 +127,9 @@ public sealed class UserAdminRepository(
     }
 
     /// <summary>
-    /// 新增用户（开户，2306）：SYSDL 建号 + 初始密码（现代哈希）+ 可选所属组（可多组）。
+    /// 新增用户（开户，2306）：SYS_USER_ACCOUNT 建号 + 初始密码（现代哈希）+ 可选所属组（可多组）。
     /// 校验：用户名格式（1-10 位字母数字下划线连字符）、初始密码策略、用户名唯一、
-    /// 员工必须存在于 SYSDN 且尚未开户、所选用户组存在；写 AUDIT_EVENT 审计。
+    /// 员工必须存在于 SYS_EMPLOYEE 且尚未开户、所选用户组存在；写 AUDIT_EVENT 审计。
     /// </summary>
     public async Task CreateUserAsync(
         string userId, string employeeId, string password, IReadOnlyList<string>? groupIds,
@@ -155,7 +155,7 @@ public sealed class UserAdminRepository(
         {
             // 用户名唯一（UPDLOCK/HOLDLOCK 防并发重复开户）
             await using (var exists = new SqlCommand(
-                "SELECT COUNT(1) FROM dbo.SYSDL WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(USER_ID))=@UserId;",
+                "SELECT COUNT(1) FROM dbo.SYS_USER_ACCOUNT WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(USER_ID))=@UserId;",
                 connection, transaction))
             {
                 exists.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;
@@ -165,7 +165,7 @@ public sealed class UserAdminRepository(
             // 员工存在且未开户（fail-closed：一个员工一个账号）
             await using (var empCheck = new SqlCommand(
                 """
-                SELECT COUNT(1) FROM dbo.SYSDN WITH (NOLOCK) WHERE LTRIM(RTRIM(EMP_ID))=@Emp;
+                SELECT COUNT(1) FROM dbo.SYS_EMPLOYEE WITH (NOLOCK) WHERE LTRIM(RTRIM(EMP_ID))=@Emp;
                 """, connection, transaction))
             {
                 empCheck.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = emp;
@@ -173,7 +173,7 @@ public sealed class UserAdminRepository(
                     throw new KeyNotFoundException($"员工 {emp} 不存在。");
             }
             await using (var accountCheck = new SqlCommand(
-                "SELECT COUNT(1) FROM dbo.SYSDL WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(EMP_ID))=@Emp;",
+                "SELECT COUNT(1) FROM dbo.SYS_USER_ACCOUNT WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(EMP_ID))=@Emp;",
                 connection, transaction))
             {
                 accountCheck.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = emp;
@@ -183,7 +183,7 @@ public sealed class UserAdminRepository(
             foreach (var group in groups)
             {
                 await using var groupCheck = new SqlCommand(
-                    "SELECT COUNT(1) FROM dbo.SYSDG WITH (NOLOCK) WHERE LTRIM(RTRIM(G_IDX))=@GroupId;",
+                    "SELECT COUNT(1) FROM dbo.SYS_USER_GROUP WITH (NOLOCK) WHERE LTRIM(RTRIM(G_IDX))=@GroupId;",
                     connection, transaction);
                 groupCheck.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = group;
                 if (Convert.ToInt32(await groupCheck.ExecuteScalarAsync(token)) == 0)
@@ -192,7 +192,7 @@ public sealed class UserAdminRepository(
 
             await using var insert = new SqlCommand(
                 """
-                INSERT INTO dbo.SYSDL (USER_ID,EMP_ID,USER_PWD,ACTIVE_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,USER_PWD,ACTIVE_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@UserId,@Emp,@Hash,1,@By,GETDATE(),@By,GETDATE());
                 """, connection, transaction);
             insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;
@@ -201,11 +201,11 @@ public sealed class UserAdminRepository(
             insert.Parameters.Add("@By", SqlDbType.NChar, 40).Value = adminName;
             await insert.ExecuteNonQueryAsync(token);
 
-            // 用户与用户组是多对多关系，唯一落在 SYSDG_USER；用户表不再保存所属组
+            // 用户与用户组是多对多关系，唯一落在 SYS_USER_GROUP_MEMBER；用户表不再保存所属组
             foreach (var group in groups)
             {
                 await using var link = new SqlCommand(
-                    "INSERT INTO dbo.SYSDG_USER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);",
+                    "INSERT INTO dbo.SYS_USER_GROUP_MEMBER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);",
                     connection, transaction);
                 link.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = group;
                 link.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;

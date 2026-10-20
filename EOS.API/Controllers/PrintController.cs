@@ -48,7 +48,7 @@ public sealed class PrintController(
         if (!reportRights.CanPrint) return Forbid();
 
         // 抬头取值优先级：
-        // 用户本次选择/记忆（request.HeaderId / SYSQR）→ 客户默认（CLIENT.HEADER_ID，
+        // 用户本次选择/记忆（request.HeaderId / SYS_USER_REPORT_PRINT）→ 客户默认（CLIENT.HEADER_ID，
         // 未来由 REPORT_FORM_BINDING.HEADER_ID 按单据类型 × 客户细化）→ 报表默认（REPORT.HEADER_ID）。
         var headerId = !string.IsNullOrWhiteSpace(request.HeaderId)
             ? request.HeaderId.Trim()

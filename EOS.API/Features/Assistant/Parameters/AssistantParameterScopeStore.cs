@@ -30,7 +30,7 @@ public sealed class AssistantParameterScopeStore(
     /// <para>
     /// 库里存的是模块号与登录账号，光看号认不出是谁——"1401"与"wangwu"对操作者同样是天书，
     /// 而这一页的用途正是"看谁被单独设过什么"。名字来自两张主档表的 JOIN（模块 → `MODULES.M_DESC`、
-    /// 用户 → `SYSDN.EMP_NAME`），**解析不到就留空**（模块已删、账号没登记姓名），
+    /// 用户 → `SYS_EMPLOYEE.EMP_NAME`），**解析不到就留空**（模块已删、账号没登记姓名），
     /// 而不是回落成键名：把号当名字显示，等于假装解析成功了。
     /// </para>
     ///
@@ -54,9 +54,9 @@ public sealed class AssistantParameterScopeStore(
             FROM dbo.ASSISTANT_PARAM_SCOPE s WITH (NOLOCK)
             LEFT JOIN dbo.MODULES m WITH (NOLOCK)
                    ON s.SCOPE_TYPE = N'MODULE' AND m.M_IDX = TRY_CONVERT(int, s.SCOPE_KEY)
-            LEFT JOIN dbo.SYSDL l WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
                    ON s.SCOPE_TYPE = N'USER' AND LTRIM(RTRIM(l.USER_ID)) = s.SCOPE_KEY
-            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+            LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             ORDER BY s.SCOPE_TYPE, s.SCOPE_KEY, s.PARAM_KEY;
             """;
         return await ReadAsync(sql, null, token);
@@ -182,7 +182,7 @@ public sealed class AssistantParameterScopeStore(
     }
 
     /// <summary>
-    /// 作用域键是否存在（模块号在 <c>MODULES</c>、用户名在 <c>SYSDL</c>）。
+    /// 作用域键是否存在（模块号在 <c>MODULES</c>、用户名在 <c>SYS_USER_ACCOUNT</c>）。
     ///
     /// <para>
     /// 之所以要查：写错一个模块号或用户名，那一行**永远匹配不上任何请求**——
@@ -194,7 +194,7 @@ public sealed class AssistantParameterScopeStore(
         var isModule = string.Equals(scopeType, AssistantParameterScopeRules.Module, StringComparison.OrdinalIgnoreCase);
         var sql = isModule
             ? "SELECT COUNT(1) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX = @Key;"
-            : "SELECT COUNT(1) FROM dbo.SYSDL WITH (NOLOCK) WHERE LTRIM(RTRIM(USER_ID)) = @Key;";
+            : "SELECT COUNT(1) FROM dbo.SYS_USER_ACCOUNT WITH (NOLOCK) WHERE LTRIM(RTRIM(USER_ID)) = @Key;";
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);

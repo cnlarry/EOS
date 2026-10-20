@@ -108,12 +108,12 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
         AssistantSessionSort sort, bool ascending, CancellationToken token)
     {
         // 与个人侧同构，只有一处刻意不同：**没有 s.USER_ID = @UserId**，换成可选的 @Owner 过滤。
-        // 两个 LEFT JOIN 取归属用户姓名（USER_ID → SYSDL.EMP_ID → SYSDN.EMP_NAME）：都是 1:1，
-        // 不会放大行数，COUNT 也照样准；账号不在 SYSDL 里（如测试账号）时姓名为 null，界面回落显示账号。
+        // 两个 LEFT JOIN 取归属用户姓名（USER_ID → SYS_USER_ACCOUNT.EMP_ID → SYS_EMPLOYEE.EMP_NAME）：都是 1:1，
+        // 不会放大行数，COUNT 也照样准；账号不在 SYS_USER_ACCOUNT 里（如测试账号）时姓名为 null，界面回落显示账号。
         const string filter = """
             FROM dbo.ASSISTANT_SESSION s WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDL d WITH (NOLOCK) ON d.USER_ID = s.USER_ID
-            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = d.EMP_ID
+            LEFT JOIN dbo.SYS_USER_ACCOUNT d WITH (NOLOCK) ON d.USER_ID = s.USER_ID
+            LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON n.EMP_ID = d.EMP_ID
             WHERE ((@State = 0 AND s.ARCHIVED_AT IS NULL)
                 OR (@State = 1 AND s.ARCHIVED_AT IS NOT NULL)
                 OR @State = 2)

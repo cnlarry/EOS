@@ -97,7 +97,7 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
         var headerText = header?.HeaderText;
         var profile = data.ClientProfile;
         // 页头公司名 = 开单方主体（REPORT_LAYOUT KIND='HEADER' 字典条目，经
-        // CLIENT.HEADER_ID → SYSQR.HEADER_ID → REPORT.HEADER_ID 链解析）。
+        // CLIENT.HEADER_ID → SYS_USER_REPORT_PRINT.HEADER_ID → REPORT.HEADER_ID 链解析）。
         // 客户/厂商资料（FULL_NAME_CN/EN、地址、联系人）只进正文，不得覆盖页头
         // 。
         var document = Document.Create(container =>

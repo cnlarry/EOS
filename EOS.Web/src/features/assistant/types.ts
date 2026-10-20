@@ -19,7 +19,7 @@ export interface AssistantSession {
   /** 该会话累计消耗的 token（prompt + completion 之和，只有管理侧列表会算）。 */
   messageTokens?: number
   /**
-   * 归属用户的姓名（管理侧列表经 SYSDL/SYSDN 取出）。`userId` 是账号/编号，
+   * 归属用户的姓名（管理侧列表经 SYS_USER_ACCOUNT/SYS_EMPLOYEE 取出）。`userId` 是账号/编号，
    * 看列表的人要的是"这是谁的会话"；取不到时为 null，界面回落显示账号。
    */
   employeeName?: string | null

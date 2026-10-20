@@ -153,7 +153,7 @@ export function BomProductListPage() {
     }
   }, [cellText, creatingRef, navigate, toast])
 
-  /** 列宽写个人层（`SYSQL_FIELDS.F_WIDTH`）：与工作台同一端点、同一语义。失败不打断操作。 */
+  /** 列宽写个人层（`SYS_USER_COLUMN.F_WIDTH`）：与工作台同一端点、同一语义。失败不打断操作。 */
   const saveColumnWidth = useCallback(async (columnKey: string, width: number) => {
     try {
       await apiClient.put<void>(`/document-workbench/${MODULE_ID}/column-widths`, {

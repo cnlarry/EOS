@@ -120,8 +120,8 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
             ("@atype", "ZZAP"), ("@ano", "ZZAP00001"));
         await ExecAsync(connection,
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", ProduceCalcMaterialsHandler.ActionKey));
@@ -144,7 +144,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"DELETE FROM dbo.{BomTable} WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
-        await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
+        await ExecAsync(connection, "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }

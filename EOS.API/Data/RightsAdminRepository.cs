@@ -8,7 +8,7 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 权限管理写白名单（服务端固定列集合）。
-/// SYSDD / SYSDH 共用同一组列；所有写入列必须来自本集合，不接受任意列名。
+/// SYS_USER_MODULE_PERMISSION / SYS_GROUP_MODULE_PERMISSION 共用同一组列；所有写入列必须来自本集合，不接受任意列名。
 /// </summary>
 public static class RightsColumnWhitelist
 {
@@ -214,7 +214,7 @@ public sealed class RightsAdminRepository(
             .ToList();
     }
 
-    /// <summary>组模块权限矩阵：该组 SYSDH 行（无个人概念，生效值 = 本组行）。</summary>
+    /// <summary>组模块权限矩阵：该组 SYS_GROUP_MODULE_PERMISSION 行（无个人概念，生效值 = 本组行）。</summary>
     public async Task<IReadOnlyList<ModuleRightsRow>> GetGroupModuleMatrixAsync(
         string adminUserId, string groupId, CancellationToken token)
     {
@@ -247,7 +247,7 @@ public sealed class RightsAdminRepository(
             foreach (var item in items)
             {
                 validation.Validate(item);
-                await SaveModuleRowAsync(connection, transaction, "SYSDD", "USER_ID", targetUserId, item, token);
+                await SaveModuleRowAsync(connection, transaction, "SYS_USER_MODULE_PERMISSION", "USER_ID", targetUserId, item, token);
             }
             await WriteAuditAsync(connection, transaction, targetUserId,
                 $"保存用户 {targetUserId} 个人模块权限（{items.Count} 行）", adminName, token);
@@ -263,7 +263,7 @@ public sealed class RightsAdminRepository(
         }
     }
 
-    /// <summary>批量保存组模块权限（同语义，SYSDH）。</summary>
+    /// <summary>批量保存组模块权限（同语义，SYS_GROUP_MODULE_PERMISSION）。</summary>
     public async Task SaveGroupModuleRightsAsync(
         string groupId, IReadOnlyList<ModuleRightsInput> items,
         string adminUserId, string adminName, CancellationToken token)
@@ -278,7 +278,7 @@ public sealed class RightsAdminRepository(
             foreach (var item in items)
             {
                 validation.Validate(item);
-                await SaveModuleRowAsync(connection, transaction, "SYSDH", "G_IDX", groupId, item, token);
+                await SaveModuleRowAsync(connection, transaction, "SYS_GROUP_MODULE_PERMISSION", "G_IDX", groupId, item, token);
             }
             await WriteAuditAsync(connection, transaction, groupId,
                 $"保存用户组 {groupId} 模块权限（{items.Count} 行）", adminName, token);
@@ -304,7 +304,7 @@ public sealed class RightsAdminRepository(
         await EnsureUserExistsAsync(targetUserId, token);
         var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
         var moduleTitles = modules.ToDictionary(module => module.Id, module => module.Label);
-        var personal = await ReadButtonRightKeysAsync("SYSDD_BUTTON", "USER_ID", targetUserId, token);
+        var personal = await ReadButtonRightKeysAsync("SYS_USER_BUTTON_PERMISSION", "USER_ID", targetUserId, token);
         var groups = await ReadUserGroupButtonKeysAsync(targetUserId, token);
         return (await ReadConfiguredButtonsAsync(moduleTitles.Keys, token))
             .Select(button => new DocumentActionRightsRow(
@@ -325,7 +325,7 @@ public sealed class RightsAdminRepository(
         await EnsureGroupExistsAsync(groupId, token);
         var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
         var moduleTitles = modules.ToDictionary(module => module.Id, module => module.Label);
-        var personal = await ReadButtonRightKeysAsync("SYSDH_BUTTON", "G_IDX", groupId, token);
+        var personal = await ReadButtonRightKeysAsync("SYS_GROUP_BUTTON_PERMISSION", "G_IDX", groupId, token);
         return (await ReadConfiguredButtonsAsync(moduleTitles.Keys, token))
             .Select(button => new DocumentActionRightsRow(
                 button.ModuleId,
@@ -343,15 +343,15 @@ public sealed class RightsAdminRepository(
         string targetUserId, IReadOnlyList<DocumentActionRightsInput> items, string adminName, CancellationToken token)
     {
         await EnsureUserExistsAsync(targetUserId, token);
-        await SaveButtonRightsAsync("SYSDD_BUTTON", "USER_ID", targetUserId, items, adminName, token);
+        await SaveButtonRightsAsync("SYS_USER_BUTTON_PERMISSION", "USER_ID", targetUserId, items, adminName, token);
     }
 
-    /// <summary>保存组按钮权限：同一语义写给 SYSDH_BUTTON。</summary>
+    /// <summary>保存组按钮权限：同一语义写给 SYS_GROUP_BUTTON_PERMISSION。</summary>
     public async Task SaveGroupButtonRightsAsync(
         string groupId, IReadOnlyList<DocumentActionRightsInput> items, string adminName, CancellationToken token)
     {
         await EnsureGroupExistsAsync(groupId, token);
-        await SaveButtonRightsAsync("SYSDH_BUTTON", "G_IDX", groupId, items, adminName, token);
+        await SaveButtonRightsAsync("SYS_GROUP_BUTTON_PERMISSION", "G_IDX", groupId, items, adminName, token);
     }
 
     private static readonly IReadOnlySet<string> EmptyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -501,8 +501,8 @@ public sealed class RightsAdminRepository(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(
             """
-            SELECT b.M_IDX, b.BUTTON_KEY FROM dbo.SYSDH_BUTTON b WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER u WITH (NOLOCK) ON u.G_IDX=b.G_IDX
+            SELECT b.M_IDX, b.BUTTON_KEY FROM dbo.SYS_GROUP_BUTTON_PERMISSION b WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER u WITH (NOLOCK) ON u.G_IDX=b.G_IDX
             WHERE u.USER_ID=@UserId AND b.ALLOW_TAG=1;
             """, connection);
         command.Parameters.Add("@UserId", SqlDbType.NVarChar, 20).Value = userId.Trim();
@@ -529,8 +529,8 @@ public sealed class RightsAdminRepository(
         const string sql = """
             SELECT LTRIM(RTRIM(g.G_IDX)),LTRIM(RTRIM(g.G_DESC)),COUNT(u.USER_ID),
                    LTRIM(RTRIM(ISNULL(g.REMARK,'')))
-            FROM dbo.SYSDG g WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDG_USER u WITH (NOLOCK) ON u.G_IDX=g.G_IDX
+            FROM dbo.SYS_USER_GROUP g WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_USER_GROUP_MEMBER u WITH (NOLOCK) ON u.G_IDX=g.G_IDX
             GROUP BY g.G_IDX,g.G_DESC,g.REMARK
             ORDER BY g.G_IDX;
             """;
@@ -553,8 +553,8 @@ public sealed class RightsAdminRepository(
         await connection.OpenAsync(token);
         const string sql = """
             SELECT LTRIM(RTRIM(g.G_IDX)),LTRIM(RTRIM(g.G_DESC))
-            FROM dbo.SYSDG g WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER u WITH (NOLOCK) ON u.G_IDX=g.G_IDX
+            FROM dbo.SYS_USER_GROUP g WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER u WITH (NOLOCK) ON u.G_IDX=g.G_IDX
             WHERE u.USER_ID=@UserId
             ORDER BY g.G_IDX;
             """;
@@ -567,7 +567,7 @@ public sealed class RightsAdminRepository(
         return result;
     }
 
-    /// <summary>设置用户所属组（PUT，SYSDG_USER 按用户全量替换，事务内）。</summary>
+    /// <summary>设置用户所属组（PUT，SYS_USER_GROUP_MEMBER 按用户全量替换，事务内）。</summary>
     public async Task SaveUserGroupsAsync(
         string userId, IReadOnlyList<string> groupIds,
         string adminName, CancellationToken token)
@@ -581,7 +581,7 @@ public sealed class RightsAdminRepository(
         {
             foreach (var groupId in distinct)
                 await EnsureGroupExistsAsync(connection, transaction, groupId, token);
-            await using (var delete = new SqlCommand("DELETE FROM dbo.SYSDG_USER WHERE USER_ID=@UserId;", connection, transaction))
+            await using (var delete = new SqlCommand("DELETE FROM dbo.SYS_USER_GROUP_MEMBER WHERE USER_ID=@UserId;", connection, transaction))
             {
                 delete.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
                 await delete.ExecuteNonQueryAsync(token);
@@ -589,7 +589,7 @@ public sealed class RightsAdminRepository(
             foreach (var groupId in distinct)
             {
                 await using var insert = new SqlCommand(
-                    "INSERT INTO dbo.SYSDG_USER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);", connection, transaction);
+                    "INSERT INTO dbo.SYS_USER_GROUP_MEMBER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);", connection, transaction);
                 insert.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = groupId;
                 insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
                 await insert.ExecuteNonQueryAsync(token);
@@ -618,9 +618,9 @@ public sealed class RightsAdminRepository(
             SELECT LTRIM(RTRIM(u.USER_ID)),
                    LTRIM(RTRIM(ISNULL(l.EMP_ID,''))),
                    COALESCE(NULLIF(LTRIM(RTRIM(n.EMP_NAME)),''),LTRIM(RTRIM(u.USER_ID)))
-            FROM dbo.SYSDG_USER u WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDL l WITH (NOLOCK) ON LTRIM(RTRIM(l.USER_ID))=LTRIM(RTRIM(u.USER_ID))
-            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID=n.EMP_ID
+            FROM dbo.SYS_USER_GROUP_MEMBER u WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_USER_ACCOUNT l WITH (NOLOCK) ON LTRIM(RTRIM(l.USER_ID))=LTRIM(RTRIM(u.USER_ID))
+            LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID=n.EMP_ID
             WHERE u.G_IDX=@GroupId
             ORDER BY u.USER_ID;
             """;
@@ -633,7 +633,7 @@ public sealed class RightsAdminRepository(
         return result;
     }
 
-    /// <summary>设置组成员（PUT，SYSDG_USER 按组全量替换，事务内）。</summary>
+    /// <summary>设置组成员（PUT，SYS_USER_GROUP_MEMBER 按组全量替换，事务内）。</summary>
     public async Task SaveGroupMembersAsync(
         string groupId, IReadOnlyList<string> userIds,
         string adminName, CancellationToken token)
@@ -647,7 +647,7 @@ public sealed class RightsAdminRepository(
         {
             foreach (var userId in distinct)
                 await EnsureUserExistsAsync(connection, transaction, userId, token);
-            await using (var delete = new SqlCommand("DELETE FROM dbo.SYSDG_USER WHERE G_IDX=@GroupId;", connection, transaction))
+            await using (var delete = new SqlCommand("DELETE FROM dbo.SYS_USER_GROUP_MEMBER WHERE G_IDX=@GroupId;", connection, transaction))
             {
                 delete.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = groupId.Trim();
                 await delete.ExecuteNonQueryAsync(token);
@@ -655,7 +655,7 @@ public sealed class RightsAdminRepository(
             foreach (var userId in distinct)
             {
                 await using var insert = new SqlCommand(
-                    "INSERT INTO dbo.SYSDG_USER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);", connection, transaction);
+                    "INSERT INTO dbo.SYS_USER_GROUP_MEMBER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);", connection, transaction);
                 insert.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = groupId.Trim();
                 insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
                 await insert.ExecuteNonQueryAsync(token);
@@ -691,7 +691,7 @@ public sealed class RightsAdminRepository(
         try
         {
             await using (var exists = new SqlCommand(
-                "SELECT COUNT(1) FROM dbo.SYSDG WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(G_IDX))=@Id;",
+                "SELECT COUNT(1) FROM dbo.SYS_USER_GROUP WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(G_IDX))=@Id;",
                 connection, transaction))
             {
                 exists.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
@@ -700,7 +700,7 @@ public sealed class RightsAdminRepository(
             }
             await using var insert = new SqlCommand(
                 """
-                INSERT INTO dbo.SYSDG (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@Id,@Desc,@Remark,@By,GETDATE(),@By,GETDATE());
                 """, connection, transaction);
             insert.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
@@ -737,7 +737,7 @@ public sealed class RightsAdminRepository(
             await EnsureGroupExistsAsync(connection, transaction, id, token);
             await using var update = new SqlCommand(
                 """
-                UPDATE dbo.SYSDG
+                UPDATE dbo.SYS_USER_GROUP
                 SET G_DESC=@Desc,REMARK=@Remark,LAST_UPDATE_BY=@By,LAST_UPDATE_DATE=GETDATE()
                 WHERE LTRIM(RTRIM(G_IDX))=@Id;
                 """, connection, transaction);
@@ -760,8 +760,8 @@ public sealed class RightsAdminRepository(
     }
 
 /// <summary>
-    /// Deletes a user group. Unlike the original toolbar (which deleted SYSDG + SYSDH but left
-    /// SYSDG_USER orphan rows intact), the new system refuses deletion if the group still
+    /// Deletes a user group. Unlike the original toolbar (which deleted SYS_USER_GROUP + SYS_GROUP_MODULE_PERMISSION but left
+    /// SYS_USER_GROUP_MEMBER orphan rows intact), the new system refuses deletion if the group still
     /// has members. Module permissions cascade on delete (same transaction); the retired
     /// per-report exception layer is gone with migration 277, so there is nothing else to clean.
     /// </summary>
@@ -775,7 +775,7 @@ public sealed class RightsAdminRepository(
         {
             await EnsureGroupExistsAsync(connection, transaction, id, token);
             await using (var memberCount = new SqlCommand(
-                "SELECT COUNT(1) FROM dbo.SYSDG_USER WITH (UPDLOCK,HOLDLOCK) WHERE G_IDX=@Id;",
+                "SELECT COUNT(1) FROM dbo.SYS_USER_GROUP_MEMBER WITH (UPDLOCK,HOLDLOCK) WHERE G_IDX=@Id;",
                 connection, transaction))
             {
                 memberCount.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
@@ -786,19 +786,19 @@ public sealed class RightsAdminRepository(
                         nameof(groupId));
             }
             await using (var deleteButtons = new SqlCommand(
-                "DELETE FROM dbo.SYSDH_BUTTON WHERE G_IDX=@Id;", connection, transaction))
+                "DELETE FROM dbo.SYS_GROUP_BUTTON_PERMISSION WHERE G_IDX=@Id;", connection, transaction))
             {
                 deleteButtons.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
                 await deleteButtons.ExecuteNonQueryAsync(token);
             }
             await using (var deleteRights = new SqlCommand(
-                "DELETE FROM dbo.SYSDH WHERE G_IDX=@Id;", connection, transaction))
+                "DELETE FROM dbo.SYS_GROUP_MODULE_PERMISSION WHERE G_IDX=@Id;", connection, transaction))
             {
                 deleteRights.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
                 await deleteRights.ExecuteNonQueryAsync(token);
             }
             await using (var deleteGroup = new SqlCommand(
-                "DELETE FROM dbo.SYSDG WHERE LTRIM(RTRIM(G_IDX))=@Id;", connection, transaction))
+                "DELETE FROM dbo.SYS_USER_GROUP WHERE LTRIM(RTRIM(G_IDX))=@Id;", connection, transaction))
             {
                 deleteGroup.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
                 await deleteGroup.ExecuteNonQueryAsync(token);
@@ -821,7 +821,7 @@ public sealed class RightsAdminRepository(
         var id = (groupId ?? string.Empty).Trim();
         if (id.Length == 0)
             throw new ArgumentException("组ID不能为空。", nameof(groupId));
-        // SYSDG.G_IDX 为 nchar(10)（sys.columns.max_length=20 字节 ÷2）
+        // SYS_USER_GROUP.G_IDX 为 nchar(10)（sys.columns.max_length=20 字节 ÷2）
         if (id.Length > 10)
             throw new ArgumentException("组ID不能超过 10 个字符。", nameof(groupId));
         return id;
@@ -879,10 +879,10 @@ public sealed class RightsAdminRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.SYSDD WITH (NOLOCK)
+            SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
                         WHERE USER_ID=@UserId AND M_IDX=@ModuleId) THEN 1 ELSE 0 END AS bit),
-                   CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.SYSDH h WITH (NOLOCK)
-                        INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
+                   CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+                        INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
                         WHERE gu.USER_ID=@UserId AND h.M_IDX=@ModuleId) THEN 1 ELSE 0 END AS bit);
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -962,7 +962,7 @@ public sealed class RightsAdminRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var sql = $"SELECT {string.Join(',', ModuleRowColumns)} FROM dbo.SYSDD WITH (NOLOCK) WHERE USER_ID=@Id;";
+        var sql = $"SELECT {string.Join(',', ModuleRowColumns)} FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK) WHERE USER_ID=@Id;";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = userId.Trim();
         return await ReadModuleRowsAsync(command, token);
@@ -974,8 +974,8 @@ public sealed class RightsAdminRepository(
         await connection.OpenAsync(token);
         var sql = $"""
             SELECT h.{string.Join(",h.", ModuleRowColumns)}
-            FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
+            FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
             WHERE gu.USER_ID=@Id;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -987,7 +987,7 @@ public sealed class RightsAdminRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var sql = $"SELECT {string.Join(',', ModuleRowColumns)} FROM dbo.SYSDH WITH (NOLOCK) WHERE G_IDX=@Id;";
+        var sql = $"SELECT {string.Join(',', ModuleRowColumns)} FROM dbo.SYS_GROUP_MODULE_PERMISSION WITH (NOLOCK) WHERE G_IDX=@Id;";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = groupId.Trim();
         return await ReadModuleRowsAsync(command, token);
@@ -1213,7 +1213,7 @@ public sealed class RightsAdminRepository(
         SqlConnection connection, SqlTransaction? transaction, string userId, CancellationToken token)
     {
         await using var command = new SqlCommand(
-            "SELECT COUNT(1) FROM dbo.SYSDL WITH (NOLOCK) WHERE LTRIM(RTRIM(USER_ID))=@Id;", connection, transaction);
+            "SELECT COUNT(1) FROM dbo.SYS_USER_ACCOUNT WITH (NOLOCK) WHERE LTRIM(RTRIM(USER_ID))=@Id;", connection, transaction);
         command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = userId.Trim();
         var count = Convert.ToInt32(await command.ExecuteScalarAsync(token));
         if (count == 0) throw new KeyNotFoundException($"用户 {userId.Trim()} 不存在。");
@@ -1230,7 +1230,7 @@ public sealed class RightsAdminRepository(
         SqlConnection connection, SqlTransaction? transaction, string groupId, CancellationToken token)
     {
         await using var command = new SqlCommand(
-            "SELECT COUNT(1) FROM dbo.SYSDG WITH (NOLOCK) WHERE G_IDX=@Id;", connection, transaction);
+            "SELECT COUNT(1) FROM dbo.SYS_USER_GROUP WITH (NOLOCK) WHERE G_IDX=@Id;", connection, transaction);
         command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = groupId.Trim();
         var count = Convert.ToInt32(await command.ExecuteScalarAsync(token));
         if (count == 0) throw new KeyNotFoundException($"用户组 {groupId.Trim()} 不存在。");

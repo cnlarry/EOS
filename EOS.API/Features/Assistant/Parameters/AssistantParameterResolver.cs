@@ -83,7 +83,7 @@ public sealed record AssistantParameterSet(
 }
 
 /// <summary>
-/// 把 <c>dbo.SYSSS</c> 里 <c>OWNER_MODULE = 3105</c> 的参数行解析成强类型策略对象。
+/// 把 <c>dbo.SYS_PARAMETER</c> 里 <c>OWNER_MODULE = 3105</c> 的参数行解析成强类型策略对象。
 ///
 /// <para>
 /// 解析口径只有一条：**<c>PARAM_VALUE</c> 为空 = 用 <c>DEFAULT_VALUE</c>；再为空 = 用代码默认值**。

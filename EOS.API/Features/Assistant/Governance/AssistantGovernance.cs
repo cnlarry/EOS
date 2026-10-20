@@ -57,7 +57,7 @@ public static class AssistantCost
 ///
 /// <para>
 /// 阈值与冷却**按需读取**（<paramref name="policy"/>）而不是构造期固定：它们来自 3105 的参数
-/// （<c>dbo.SYSSS</c>，<c>OWNER_MODULE = 3105</c>），管理员改完应当**立即**生效——把阈值钉在构造期，
+/// （<c>dbo.SYS_PARAMETER</c>，<c>OWNER_MODULE = 3105</c>），管理员改完应当**立即**生效——把阈值钉在构造期，
 /// 会让"阈值改小了却还在按旧值熔断"变成一处无从解释的怪现象，而这个单例活得和进程一样长。
 /// </para>
 /// </summary>

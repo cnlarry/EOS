@@ -47,7 +47,7 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> QtyDimensionKeys = KeySet("thisQty", "usage", "limit", "offset");
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect", "gates");
     private static readonly IReadOnlySet<string> QtyGateKeys = KeySet("scope", "key", "expect");
-    private static readonly IReadOnlySet<string> QtyGateScopes = KeySet("SYSSS", "MODULE");
+    private static readonly IReadOnlySet<string> QtyGateScopes = KeySet("SYS_PARAMETER", "MODULE");
     private static readonly IReadOnlySet<string> QtyDiagnosticKeys = KeySet("scope", "field", "agg", "dimension");
     private static readonly IReadOnlySet<string> QtyDiagnosticAggregates = KeySet("MAX", "MIN", "SUM", "DISTINCT");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "assert", "message", "diagnosticFields");
@@ -546,9 +546,9 @@ public static class ValidationRuleRegistry
         var hasSingle = element.TryGetProperty("key", out _);
         var hasList = element.TryGetProperty("gates", out var gates) && gates.ValueKind == JsonValueKind.Array;
         if (!hasSingle && !hasList)
-            issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYSSS 开关列名）");
+            issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYS_PARAMETER 开关列名）");
         if (hasSingle && string.IsNullOrWhiteSpace(GetString(element, "key")))
-            issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYSSS 开关列名）");
+            issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYS_PARAMETER 开关列名）");
         if (element.TryGetProperty("expect", out var expect) && expect.ValueKind != JsonValueKind.Number)
             issues.Add($"校验规则 {Label(rule)}：{where}.expect 必须是数字（0/1）");
         if (!hasList)
@@ -572,7 +572,7 @@ public static class ValidationRuleRegistry
             {
                 var text = scope.ValueKind == JsonValueKind.String ? scope.GetString()!.Trim() : string.Empty;
                 if (!QtyGateScopes.Contains(text))
-                    issues.Add($"校验规则 {Label(rule)}：{gateWhere}.scope 仅支持 SYSSS / MODULE");
+                    issues.Add($"校验规则 {Label(rule)}：{gateWhere}.scope 仅支持 SYS_PARAMETER / MODULE");
             }
             if (item.TryGetProperty("expect", out var gateExpect) && gateExpect.ValueKind != JsonValueKind.Number)
                 issues.Add($"校验规则 {Label(rule)}：{gateWhere}.expect 必须是数字（0/1）");

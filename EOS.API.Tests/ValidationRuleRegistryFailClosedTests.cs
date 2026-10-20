@@ -884,7 +884,7 @@ public class ValidationRuleRegistryFailClosedTests
                "usage":{"scope":"TARGET","fields":["X"]},
                "limit":{"scope":"TARGET","fields":["Y"]},
                "switch":{"gates":[{"scope":"MODULE","key":"ERROR_NO_SAVE","expect":1},
-                                  {"scope":"SYSSS","key":"FITOUT_TAG","expect":1}]}}]}
+                                  {"scope":"SYS_PARAMETER","key":"FITOUT_TAG","expect":1}]}}]}
             """));
 
         Assert.DoesNotContain(issues, issue => issue.Contains("switch") || issue.Contains("未知参数键"));
@@ -899,10 +899,10 @@ public class ValidationRuleRegistryFailClosedTests
                "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
                "usage":{"scope":"TARGET","fields":["X"]},
                "limit":{"scope":"TARGET","fields":["Y"]},
-               "switch":{"gates":[{"scope":"SYSDD","key":"ERROR_NO_SAVE","expect":1}]}}]}
+               "switch":{"gates":[{"scope":"SYS_USER_MODULE_PERMISSION","key":"ERROR_NO_SAVE","expect":1}]}}]}
             """));
 
-        Assert.Contains(issues, issue => issue.Contains("scope 仅支持 SYSSS / MODULE"));
+        Assert.Contains(issues, issue => issue.Contains("scope 仅支持 SYS_PARAMETER / MODULE"));
     }
 
     [Fact]

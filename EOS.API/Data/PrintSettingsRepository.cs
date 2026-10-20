@@ -10,7 +10,7 @@ namespace EOS.API.Data;
 /// - 报表清单只过模块闸门（归属模块 REPORT_TAG）：报表级例外层已退场，清单/目录/打印同一条判据；
 /// - 页头/表尾来自 REPORT_LAYOUT；
 /// - 排序/分组方案来自 REPORT_SORT（字段串仅服务端消费，白名单校验后进入查询）；
-/// - 用户最近设置读写 SYSQR（IS_LAST=1），字段值全部参数化。
+/// - 用户最近设置读写 SYS_USER_REPORT_PRINT（IS_LAST=1），字段值全部参数化。
 /// </summary>
 public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILogger<PrintSettingsRepository> logger)
 {
@@ -29,7 +29,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         return new ReportPrintSettings(moduleId, reports, headers, tails, sortSchemes, userSettings);
     }
 
-    /// <summary>保存最近一次打印设置（SYSQR upsert，IS_LAST=1 语义）。</summary>
+    /// <summary>保存最近一次打印设置（SYS_USER_REPORT_PRINT upsert，IS_LAST=1 语义）。</summary>
     public async Task SaveAsync(int moduleId, string userId, ReportPrintSettingsRequest request, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(request.ReportId))
@@ -38,14 +38,14 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         await connection.OpenAsync(token);
         // R_M_IDX 列名沿用历史命名，取值是**报表归属模块**（与 REPORT.M_IDX 同口径）
         const string sql = """
-            UPDATE dbo.SYSQR SET IS_LAST=0 WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId;
-            IF EXISTS (SELECT 1 FROM dbo.SYSQR WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId AND REPORT_ID=@ReportId)
-                UPDATE dbo.SYSQR
+            UPDATE dbo.SYS_USER_REPORT_PRINT SET IS_LAST=0 WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId;
+            IF EXISTS (SELECT 1 FROM dbo.SYS_USER_REPORT_PRINT WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId AND REPORT_ID=@ReportId)
+                UPDATE dbo.SYS_USER_REPORT_PRINT
                 SET HEADER_ID=@HeaderId,TAIL_ID=@TailId,LAST_SORT=@LastSort,SORT_ASC=@SortAsc,
                     SHOW_GROUP=@ShowGroup,SHOW_DETAIL=@ShowDetail,IS_LAST=1
                 WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId AND REPORT_ID=@ReportId;
             ELSE
-                INSERT INTO dbo.SYSQR
+                INSERT INTO dbo.SYS_USER_REPORT_PRINT
                     (USER_ID,R_M_IDX,REPORT_ID,HEADER_ID,TAIL_ID,LAST_SORT,SORT_ASC,SHOW_GROUP,SHOW_DETAIL,IS_LAST,PRINTER_NAME,PAPER_SIZE)
                 VALUES
                     (@UserId,@ModuleId,@ReportId,@HeaderId,@TailId,@LastSort,@SortAsc,@ShowGroup,@ShowDetail,1,'','');
@@ -62,9 +62,9 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         command.Parameters.Add("@ShowDetail", SqlDbType.Bit).Value = request.ShowDetail;
         await command.ExecuteNonQueryAsync(token);
 
-        // 用户条件记忆（SYSQR_USER）：范围条件存 "from☆to"，其余存单值；F_TAG=1
+        // 用户条件记忆（SYS_USER_REPORT_PARAMETER）：范围条件存 "from☆to"，其余存单值；F_TAG=1
         await using (var deleteConditions = new SqlCommand(
-            "DELETE FROM dbo.SYSQR_USER WHERE USER_ID=@UserId AND M_IDX=@ModuleId;", connection))
+            "DELETE FROM dbo.SYS_USER_REPORT_PARAMETER WHERE USER_ID=@UserId AND M_IDX=@ModuleId;", connection))
         {
             deleteConditions.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
             deleteConditions.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -79,7 +79,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             if (fromValue.Length == 0 && toValue.Length == 0) continue;
             var storedValue = toValue.Length > 0 ? $"{fromValue}☆{toValue}" : fromValue;
             await using var insertCondition = new SqlCommand(
-                "INSERT INTO dbo.SYSQR_USER (USER_ID,M_IDX,SERIAL_NO,F_VALUE,F_TAG) VALUES (@UserId,@ModuleId,@SerialNo,@FValue,1);", connection);
+                "INSERT INTO dbo.SYS_USER_REPORT_PARAMETER (USER_ID,M_IDX,SERIAL_NO,F_VALUE,F_TAG) VALUES (@UserId,@ModuleId,@SerialNo,@FValue,1);", connection);
             insertCondition.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
             insertCondition.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
             insertCondition.Parameters.Add("@SerialNo", SqlDbType.Int).Value = serial;
@@ -206,12 +206,12 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         return result;
     }
 
-    /// <summary>模块级报表可见性唯一真源：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
+    /// <summary>模块级报表可见性唯一真源：SYS_USER_MODULE_PERMISSION.REPORT_TAG 个人优先，否则 SYS_GROUP_MODULE_PERMISSION.REPORT_TAG 组 OR。</summary>
     private static async Task<bool> GetModuleReportTagAsync(
         SqlConnection connection, string userId, int moduleId, CancellationToken token)
     {
         const string personalSql = """
-            SELECT ISNULL(REPORT_TAG,0) FROM dbo.SYSDD WITH (NOLOCK)
+            SELECT ISNULL(REPORT_TAG,0) FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
             WHERE USER_ID=@UserId AND M_IDX=@ModuleId;
             """;
         await using (var personalCommand = new SqlCommand(personalSql, connection))
@@ -226,8 +226,8 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         }
 
         const string groupSql = """
-            SELECT TOP 1 1 FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
+            SELECT TOP 1 1 FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
             WHERE gu.USER_ID=@UserId AND h.M_IDX=@ModuleId AND ISNULL(h.REPORT_TAG,0)=1;
             """;
         await using var groupCommand = new SqlCommand(groupSql, connection);
@@ -350,7 +350,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
     {
         const string sql = """
             SELECT TOP 1 REPORT_ID,HEADER_ID,TAIL_ID,LAST_SORT,ISNULL(SORT_ASC,1),ISNULL(SHOW_GROUP,1),ISNULL(SHOW_DETAIL,1)
-            FROM dbo.SYSQR WITH (NOLOCK)
+            FROM dbo.SYS_USER_REPORT_PRINT WITH (NOLOCK)
             -- 列名沿用历史命名，取值是**报表归属模块**（与 REPORT.M_IDX 同口径）
             WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId AND IS_LAST=1;
             """;

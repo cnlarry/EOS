@@ -34,7 +34,7 @@ public sealed record DocumentActionAuthorizationCount(int Users, int Groups);
 /// Button-level authorization for document actions, fail-closed: once a button is configured and
 /// published, nobody can press it until an administrator grants it explicitly. Structure and
 /// aggregation follow the report override tables (personal / group dual channel, aggregated through
-/// SYSDG_USER), with one deliberate difference: a report with no override row falls back to the
+/// SYS_USER_GROUP_MEMBER), with one deliberate difference: a report with no override row falls back to the
 /// module's REPORT_TAG (open), a button with no override row is denied. There is no exemption —
 /// an administrator has to grant the button to themselves like anybody else.
 ///
@@ -95,8 +95,8 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
         }
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var users = await ReadCountsAsync(connection, "SYSDD_BUTTON", "USER_ID", moduleId, token);
-        var groups = await ReadCountsAsync(connection, "SYSDH_BUTTON", "G_IDX", moduleId, token);
+        var users = await ReadCountsAsync(connection, "SYS_USER_BUTTON_PERMISSION", "USER_ID", moduleId, token);
+        var groups = await ReadCountsAsync(connection, "SYS_GROUP_BUTTON_PERMISSION", "G_IDX", moduleId, token);
         foreach (var key in result.Keys.ToList())
         {
             result[key] = new DocumentActionAuthorizationCount(
@@ -142,7 +142,7 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
     {
         await using var command = new SqlCommand(
             """
-            SELECT BUTTON_KEY, ALLOW_TAG FROM dbo.SYSDD_BUTTON
+            SELECT BUTTON_KEY, ALLOW_TAG FROM dbo.SYS_USER_BUTTON_PERMISSION
             WHERE M_IDX=@ModuleId AND USER_ID=@Owner;
             """, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -157,7 +157,7 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
     }
 
     /// <summary>
-    /// Group channel: the groups the user belongs to, joined through SYSDG_USER so "which groups is
+    /// Group channel: the groups the user belongs to, joined through SYS_USER_GROUP_MEMBER so "which groups is
     /// this user in" stays the same question the existing rights aggregation asks.
     /// </summary>
     private static async Task<IReadOnlySet<string>> ReadGroupAsync(
@@ -167,8 +167,8 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
         CancellationToken token) =>
         await ReadKeysAsync(connection,
             """
-            SELECT b.BUTTON_KEY FROM dbo.SYSDH_BUTTON b
-            INNER JOIN dbo.SYSDG_USER u ON u.G_IDX=b.G_IDX
+            SELECT b.BUTTON_KEY FROM dbo.SYS_GROUP_BUTTON_PERMISSION b
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER u ON u.G_IDX=b.G_IDX
             WHERE b.M_IDX=@ModuleId AND b.ALLOW_TAG=1 AND u.USER_ID=@Owner;
             """, userId, moduleId, token);
 

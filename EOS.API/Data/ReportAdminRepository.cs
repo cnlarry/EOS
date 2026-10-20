@@ -140,7 +140,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         [
             // REPORT_USER_STATE：迁移 336 由 SYSDD_REPORT 改名而来（该表只承载用户状态：
             // 收藏/排序/最近使用，权限语义已随 ADR-024 的 R7 退役）。
-            "REPORT_SORT", "REPORT_INBOX", "REPORT_SUBSCRIPTION", "REPORT_USER_STATE", "SYSQR",
+            "REPORT_SORT", "REPORT_INBOX", "REPORT_SUBSCRIPTION", "REPORT_USER_STATE", "SYS_USER_REPORT_PRINT",
         ];
         await using var connection = connections.Create();
         await connection.OpenAsync(token);

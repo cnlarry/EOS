@@ -155,7 +155,7 @@ public sealed record FieldHistoryEvent(
     string Action,
     string? Summary,
     IReadOnlyList<FieldHistoryChange> Changes,
-    /// <summary>操作人姓名（SYSDN.EMP_NAME 对照解析；无对应员工时回退 ActorUserId）。</summary>
+    /// <summary>操作人姓名（SYS_EMPLOYEE.EMP_NAME 对照解析；无对应员工时回退 ActorUserId）。</summary>
     string ActorName);
 
 /// <summary>

@@ -142,7 +142,7 @@ public sealed class WorkbenchChooserService(
                 joins.Add(joinClause);
             }
         }
-        // 显示列：回填映射列优先（保证主键/名称可见），其余按 SYSQL_DEFAULT 顺序，
+        // 显示列：回填映射列优先（保证主键/名称可见），其余按 SYS_DEFAULT_COLUMN 顺序，
         // 保留审计/状态列
         var preferred = (returnItems ?? [])
             .Select(pair => pair.Column.Trim())
@@ -164,7 +164,7 @@ public sealed class WorkbenchChooserService(
         // 过滤字段白名单校验：不在显示列内则忽略（回退为跨列模糊搜索）
         if(!string.IsNullOrWhiteSpace(filterField) && !columns.Any(column=>column.Key.Equals(filterField,StringComparison.OrdinalIgnoreCase)))
             filterField=null;
-        // Virtual columns referenced by the return mapping (e.g. CLIENT.SALES_NAME=SYSDN.EMP_NAME)
+        // Virtual columns referenced by the return mapping (e.g. CLIENT.SALES_NAME=SYS_EMPLOYEE.EMP_NAME)
         // are resolved through the controlled VirtualColumnResolver (QUERY_RELATION whitelist JOIN),
         // so selecting a row also brings back display names, not just the code.
         string? virtualSelect=null;
@@ -365,7 +365,7 @@ public sealed class WorkbenchChooserService(
                    f.DISPLAY_FORMAT
             FROM dbo.FIELDS f WITH (NOLOCK)
             LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
-                       FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
+                       FROM dbo.SYS_DEFAULT_COLUMN WITH (NOLOCK)
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@Table AND d.T_ID_R=@Table AND d.F_ID=LTRIM(RTRIM(f.F_ID))
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=0

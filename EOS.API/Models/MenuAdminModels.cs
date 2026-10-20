@@ -137,7 +137,7 @@ public sealed record MenuAdminFieldInfo(
     [property: JsonPropertyName("IS_VIRTUAL")] bool IsVirtual,
     [property: JsonPropertyName("IS_QUERY")] bool IsQuery);
 
-/// <summary>菜单默认查询列（SYSQL_DEFAULT）候选字段。Table 为 master/detail 之一。</summary>
+/// <summary>菜单默认查询列（SYS_DEFAULT_COLUMN）候选字段。Table 为 master/detail 之一。</summary>
 public sealed record MenuDefaultColumn(string Key, string Label, bool IsSelected, int Order);
 
 public sealed record MenuDefaultColumns(string Table, string TableKind, IReadOnlyList<MenuDefaultColumn> Fields);

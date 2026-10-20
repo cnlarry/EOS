@@ -277,13 +277,10 @@ public sealed class FieldAdminRepository(
                 WHERE @TableId IN (LTRIM(RTRIM(ISNULL(t2.FK_T_ID_1,''))),LTRIM(RTRIM(ISNULL(t2.FK_T_ID_2,''))),
                                    LTRIM(RTRIM(ISNULL(t2.FK_T_ID_3,''))),LTRIM(RTRIM(ISNULL(t2.FK_T_ID_4,''))),
                                    LTRIM(RTRIM(ISNULL(t2.FK_T_ID_5,''))))) AS FkReferences,
-              (SELECT COUNT(*) FROM dbo.SYSQL_DEFAULT WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlDefault,
-              (SELECT COUNT(*) FROM dbo.SYSQL_FIELDS WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlFields,
-              (SELECT COUNT(*) FROM dbo.SYSQL_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlCondition,
-              (SELECT COUNT(*) FROM dbo.SYSQL_COND_DFT WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlCondDft,
-              (SELECT COUNT(*) FROM dbo.SYSQD_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqdCondition,
-              (SELECT COUNT(*) FROM dbo.SYSQQ WITH (NOLOCK) WHERE T_ID=@TableId) AS Sysqq,
-              (SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT WITH (NOLOCK) WHERE F_ID=@TableDot OR F_ID LIKE @Pattern) AS SysqrDefault;
+              (SELECT COUNT(*) FROM dbo.SYS_DEFAULT_COLUMN WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS DefaultColumn,
+              (SELECT COUNT(*) FROM dbo.SYS_USER_COLUMN WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS UserColumn,
+              (SELECT COUNT(*) FROM dbo.SYS_USER_CHOOSER_MEMORY WITH (NOLOCK) WHERE T_ID=@TableId) AS ChooserMemory,
+              (SELECT COUNT(*) FROM dbo.SYS_REPORT_PARAMETER WITH (NOLOCK) WHERE F_ID=@TableDot OR F_ID LIKE @Pattern) AS ReportParameter;
             """;
         await using var refs = new SqlCommand(refsSql, connection, transaction);
         refs.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
@@ -299,8 +296,8 @@ public sealed class FieldAdminRepository(
             ("关联表引用", refsReader.GetInt32(2)),
             ("默认列配置", refsReader.GetInt32(3)),
             ("用户列配置", refsReader.GetInt32(4)),
-            ("查询条件记忆", refsReader.GetInt32(5) + refsReader.GetInt32(6) + refsReader.GetInt32(7)),
-            ("报表条件引用", refsReader.GetInt32(8) + refsReader.GetInt32(9)),
+            ("选择器记忆", refsReader.GetInt32(5)),
+            ("报表条件引用", refsReader.GetInt32(6)),
         };
         await refsReader.CloseAsync();
         var blocked = counts.Where(item => item.Count > 0).ToList();
@@ -731,7 +728,7 @@ public sealed class FieldAdminRepository(
                    ev.ACTION, ev.SUMMARY,
                    fc.FIELD_NAME, fc.OLD_VALUE, fc.NEW_VALUE
             FROM ev
-            LEFT JOIN dbo.SYSDN dn WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_EMPLOYEE dn WITH (NOLOCK)
               ON LTRIM(RTRIM(dn.EMP_ID)) = LTRIM(RTRIM(ev.ACTOR_USER_ID))
             LEFT JOIN dbo.AUDIT_FIELD_CHANGE fc WITH (NOLOCK)
               ON fc.EVENT_ID = ev.EVENT_ID
@@ -1786,15 +1783,12 @@ public sealed class FieldAdminRepository(
         delete.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
         delete.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
         if (await delete.ExecuteNonQueryAsync(token) != 1) return 0;
-        // 引用清理清单与字段删除同源：用户列配置、默认列、查询条件记忆、报表条件引用一并收口
+        // 引用清理清单与字段删除同源：用户列配置、默认列、选择器记忆、报表条件引用一并收口
         const string cleanSql = """
-            DELETE FROM dbo.SYSQL_FIELDS WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQL_DEFAULT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
-            DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
+            DELETE FROM dbo.SYS_USER_COLUMN WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYS_DEFAULT_COLUMN WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYS_USER_CHOOSER_MEMORY WHERE F_ID=@TableDotField;
+            DELETE FROM dbo.SYS_REPORT_PARAMETER WHERE F_ID=@TableDotField;
             """;
         await using var clean = new SqlCommand(cleanSql, connection, transaction);
         clean.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;

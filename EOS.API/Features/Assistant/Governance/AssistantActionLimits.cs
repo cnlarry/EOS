@@ -46,7 +46,7 @@ public static class AssistantActionLimits
 }
 
 /// <summary>
-/// 可调阈值。**取值来自 3105 助手设置**（<c>dbo.SYSSS</c> 的 <c>OWNER_MODULE = 3105</c>，
+/// 可调阈值。**取值来自 3105 助手设置**（<c>dbo.SYS_PARAMETER</c> 的 <c>OWNER_MODULE = 3105</c>，
 /// 键 <c>ACTION_MAX_*</c>，见 ADR-030 §5.3.5），不再从配置节绑定。
 ///
 /// <para>
@@ -94,7 +94,7 @@ public static class AssistantActionLimitsSnapshot
 /// 阈值的启动期校验：**配置层的覆盖尝试一律启动即失败**，不静默忽略。
 ///
 /// <para>
-/// 阈值搬进 <c>dbo.SYSSS</c> 之后，配置节已经**没有任何读取方**——于是判定从两条收紧为一条：
+/// 阈值搬进 <c>dbo.SYS_PARAMETER</c> 之后，配置节已经**没有任何读取方**——于是判定从两条收紧为一条：
 /// **这个节里出现任何键都是覆盖尝试**。上一版只拦红线键与未登记的键，放行四个已知阈值键；
 /// 那是按"配置文件仍是来源之一"写的。现在放行它们等于告诉填表的人"配上了"，
 /// 而实际上一个字节都不会被读——**一个"配了但没人读"的开关比配错更危险**。
@@ -106,7 +106,7 @@ public static class AssistantActionLimitsSnapshot
 /// </para>
 ///
 /// <para>
-/// 另外两处（<c>SYSSS</c> 的 <c>OWNER_MODULE = 3105</c>、<c>ASSISTANT_PARAM_SCOPE</c>）里的红线键
+/// 另外两处（<c>SYS_PARAMETER</c> 的 <c>OWNER_MODULE = 3105</c>、<c>ASSISTANT_PARAM_SCOPE</c>）里的红线键
 /// 由参数解析器与门禁拦住：解析器把它们作为**问题**记进快照（3105 页面与日志可见）并忽略取值。
 /// 之所以不在这里"启动失败"：那是库里的一行，而库里的行要能在应用里改——
 /// 让一行坏数据把整个进程卡在启动阶段，管理员连修的机会都没有。
@@ -134,7 +134,7 @@ public sealed class AssistantActionLimitsValidator(IConfiguration configuration)
                 ? $"助手动作红线不可覆盖：配置项 {AssistantActionLimitsOptions.SectionName}:{child.Key} "
                   + "试图关掉一条恒为开的红线（预演 / 幂等 / 越权上限 / 批核族不可达）。"
                 : $"配置项 {AssistantActionLimitsOptions.SectionName}:{child.Key} 不会生效："
-                  + "助手动作阈值现在住在 3105 助手设置（dbo.SYSSS 的 OWNER_MODULE = 3105，键 ACTION_MAX_*），"
+                  + "助手动作阈值现在住在 3105 助手设置（dbo.SYS_PARAMETER 的 OWNER_MODULE = 3105，键 ACTION_MAX_*），"
                   + "配置文件里的同名键没有任何读取方。请到管理界面改，或删掉这一行。");
         }
 

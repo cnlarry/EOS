@@ -168,13 +168,13 @@ public sealed class AuditModuleGovernanceLiveTests
         }
 
         // 默认列两侧同口径：FIELDS.IS_DEFAULT_FIELDS 决定列表初始列，
-        // SYSQL_DEFAULT 是"选择列"弹窗与默认列配置面的读数来源；不一致时两处对不上。
+        // SYS_DEFAULT_COLUMN 是"选择列"弹窗与默认列配置面的读数来源；不一致时两处对不上。
         var fieldDefaults = await ReadSetAsync(connection, """
             SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WITH (NOLOCK)
              WHERE LTRIM(RTRIM(T_ID)) = @Table AND COALESCE(IS_DEFAULT_FIELDS, 0) = 1;
             """, MasterTable);
         var sqlDefaults = await ReadSetAsync(connection, """
-            SELECT LTRIM(RTRIM(F_ID)) FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
+            SELECT LTRIM(RTRIM(F_ID)) FROM dbo.SYS_DEFAULT_COLUMN WITH (NOLOCK)
              WHERE T_ID = @Table AND T_ID_R = @Table;
             """, MasterTable);
         Assert.Equal(10, fieldDefaults.Count);
@@ -182,7 +182,7 @@ public sealed class AuditModuleGovernanceLiveTests
 
         // 子表也要有默认列（字段级变更：字段 / 原值 / 新值）
         var detailDefaults = await ReadSetAsync(connection, """
-            SELECT LTRIM(RTRIM(F_ID)) FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
+            SELECT LTRIM(RTRIM(F_ID)) FROM dbo.SYS_DEFAULT_COLUMN WITH (NOLOCK)
              WHERE T_ID = @Table AND T_ID_R = @Detail;
             """, MasterTable, DetailTable);
         Assert.Equal(["FIELD_NAME", "NEW_VALUE", "OLD_VALUE"], detailDefaults.OrderBy(x => x));

@@ -7,7 +7,7 @@ using EOS.API.Features.Assistant.Situation;
 namespace EOS.API.Features.Assistant.Parameters;
 
 /// <summary>
-/// 一个参数域（页面分组）。<see cref="Seq"/> 是 <b>组间顺序</b>（SYSSS 的 <c>GROUP_SEQ</c>）：
+/// 一个参数域（页面分组）。<see cref="Seq"/> 是 <b>组间顺序</b>（SYS_PARAMETER 的 <c>GROUP_SEQ</c>）：
 /// 它按 §5.3 一次性占号，**先占号不建行**——后批落库时不必重排已有分组。
 /// </summary>
 public sealed record AssistantParameterGroup(string Code, string Label, int Seq);
@@ -86,7 +86,7 @@ public sealed record AssistantParameterDescriptor(
 /// </para>
 ///
 /// <para>
-/// 目录与库（<c>dbo.SYSSS</c>，<c>OWNER_MODULE = 3105</c>）**按批同步生长**：一次把目标态的 106 项
+/// 目录与库（<c>dbo.SYS_PARAMETER</c>，<c>OWNER_MODULE = 3105</c>）**按批同步生长**：一次把目标态的 106 项
 /// 全部落库，会让其中绝大多数在消费改造完成前处于"配了没人读"状态。所以每批交付的是
 /// "目录条目 + 库行 + 消费改造 + 门禁"四件套，本类当前只声明首批 9 项。
 /// </para>
@@ -99,7 +99,7 @@ public static class AssistantParameterCatalog
     /// <summary>审计里的作用域令牌（<c>AUDIT_EVENT</c> 的作用域），让留痕可读。</summary>
     public const string ScopeToken = "assistant";
 
-    /// <summary>协议类型白名单：与 <c>dbo.SYSSS.VALUE_TYPE</c> 的 CHECK 约束同源。</summary>
+    /// <summary>协议类型白名单：与 <c>dbo.SYS_PARAMETER.VALUE_TYPE</c> 的 CHECK 约束同源。</summary>
     public static readonly IReadOnlySet<string> ValueTypes =
         new HashSet<string>(StringComparer.Ordinal)
         {

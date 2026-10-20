@@ -25,7 +25,7 @@ const allGroups = [
   { groupId: 'CG', groupDescription: '采购', memberCount: 2, remark: null },
   { groupId: 'CW', groupDescription: '财务', memberCount: 0, remark: null },
 ]
-// 统一选择器 sourceKey 响应：列键来自 110104（SYSDN）字段元数据（大写 F_ID）
+// 统一选择器 sourceKey 响应：列键来自 110104（SYS_EMPLOYEE）字段元数据（大写 F_ID）
 const employeeChooserData = {
   columns: [
     { key: 'EMP_ID', label: '员工号', dataType: 'string' },

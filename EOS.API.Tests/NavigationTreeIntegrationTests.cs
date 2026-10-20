@@ -104,11 +104,11 @@ public sealed class NavigationTreeIntegrationTests
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand("""
-            DELETE FROM dbo.SYSDD WHERE M_IDX = @id;
+            DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE M_IDX = @id;
             DELETE FROM dbo.MODULES WHERE M_IDX = @id;
             INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_URL, M_TAG, M_P_IDX, SORT_IDX)
             VALUES (@id, N'ZZNAV 导航用例样本', N'/zz-nav-test', @tag, 0, 9999);
-            INSERT INTO dbo.SYSDD (USER_ID, M_IDX, EXEC_TAG) VALUES (@user, @id, N'Z');
+            INSERT INTO dbo.SYS_USER_MODULE_PERMISSION (USER_ID, M_IDX, EXEC_TAG) VALUES (@user, @id, N'Z');
             """, connection);
         command.Parameters.Add("@id", System.Data.SqlDbType.Int).Value = moduleId;
         command.Parameters.Add("@tag", System.Data.SqlDbType.Bit).Value = !hidden;
@@ -132,7 +132,7 @@ public sealed class NavigationTreeIntegrationTests
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand("""
-            DELETE FROM dbo.SYSDD WHERE M_IDX = @id;
+            DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE M_IDX = @id;
             DELETE FROM dbo.MODULES WHERE M_IDX = @id;
             """, connection);
         command.Parameters.Add("@id", System.Data.SqlDbType.Int).Value = moduleId;

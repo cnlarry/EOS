@@ -93,8 +93,8 @@ internal static class CheckSupport
     /// <summary>
     /// Optional per-check gate (closed operator, same semantics as the condition compiler
     /// switch): the check only applies while every declared gate matches. Two shapes are
-    /// accepted — the baseline single gate <c>{"key":"&lt;SYSSS column&gt;","expect":1}</c> and
-    /// the list form <c>{"gates":[{"scope":"SYSSS|MODULE","key":"...","expect":1}, …]}</c>
+    /// accepted — the baseline single gate <c>{"key":"&lt;SYS_PARAMETER column&gt;","expect":1}</c> and
+    /// the list form <c>{"gates":[{"scope":"SYS_PARAMETER|MODULE","key":"...","expect":1}, …]}</c>
     /// (all gates must hold). The MODULE scope reads the current module's own column
     /// (e.g. ERROR_NO_SAVE), which is how the baseline per-module validation switch is
     /// carried over without making the switch inert: flag on = rule applies, flag off =
@@ -148,11 +148,11 @@ internal static class CheckSupport
             : 1;
         var scope = entry.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
             ? scopeElement.GetString()!.Trim().ToUpperInvariant()
-            : "SYSSS";
+            : "SYS_PARAMETER";
         var column = EffectConditionCompiler.Identifier(key);
         string sql;
         SqlCommand command;
-        if (scope == "SYSSS")
+        if (scope == "SYS_PARAMETER")
         {
             // System switches are looked up by parameter key against the parameter table
             // (owner 110111). The key travels as a parameter; an unregistered or empty
@@ -169,7 +169,7 @@ internal static class CheckSupport
         }
         else
         {
-            throw new EffectConfigException($"校验 switch 门控来源域 '{scope}' 不支持（仅 SYSSS / MODULE）。");
+            throw new EffectConfigException($"校验 switch 门控来源域 '{scope}' 不支持（仅 SYS_PARAMETER / MODULE）。");
         }
         await using (command)
         {

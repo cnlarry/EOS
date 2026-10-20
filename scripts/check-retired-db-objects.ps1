@@ -6,7 +6,7 @@
     库对象退役（DROP COLUMN / DROP FUNCTION）和代码改动是两件独立的事，编译、单测、
     迁移干跑都不会把二者联系起来：列删掉之后，漏改的 SELECT 只在**运行时**炸成 500。
 
-    实例（2026-09-19）：迁移 191 删掉 SYSDL.G_IDX 后，AuthenticationRepository 仍在
+    实例（2026-09-19）：迁移 191 删掉 SYS_USER_ACCOUNT.G_IDX 后，AuthenticationRepository 仍在
     SELECT l.G_IDX，登录接口立刻 500，所有需要登录的接口不可用——当时编译 0 错误、
     单测全绿、迁移干跑 PASS，三道关卡都没拦住。
 
@@ -35,17 +35,17 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # 退役清单：每项含对象名与退役依据。
-# SYSDL.G_IDX 走 Get-RetiredHit 里的别名分析（要看清"哪个别名绑定了 SYSDL 又访问 .G_IDX"，
-# 否则会把"账号表 SYSDL 与关联表列 SYSDG_USER.G_IDX 同段出现"的正常代码误判）；
+# SYS_USER_ACCOUNT.G_IDX 走 Get-RetiredHit 里的别名分析（要看清"哪个别名绑定了 SYS_USER_ACCOUNT 又访问 .G_IDX"，
+# 否则会把"账号表 SYS_USER_ACCOUNT 与关联表列 SYS_USER_GROUP_MEMBER.G_IDX 同段出现"的正常代码误判）；
 # 其余条目用 Pattern 正则匹配。
 $retiredObjects = @(
     [pscustomobject]@{
-        Name    = 'SYSDL.G_IDX'
-        Reason  = '用户组关系唯一来源是 SYSDG_USER；见 Migrations/191_drop_sysdl_group_idx.sql'
+        Name    = 'SYS_USER_ACCOUNT.G_IDX'
+        Reason  = '用户组关系唯一来源是 SYS_USER_GROUP_MEMBER；见 Migrations/191_drop_sysdl_group_idx.sql'
     }
     [pscustomobject]@{
         Name    = 'dbo.f_get_user_gidx'
-        Reason  = '直接 SELECT SYSDL.G_IDX 的遗留函数，已被迁移 191 删除且无调用方'
+        Reason  = '直接 SELECT SYS_USER_ACCOUNT.G_IDX 的遗留函数，已被迁移 191 删除且无调用方'
         Pattern = 'f_get_user_gidx'
     }
     # 字段级排布配置退役（迁移 243）：排布改由 MODULE_FORM_LAYOUT / MODULE_FORM_TAB 承载。
@@ -102,7 +102,7 @@ $retiredObjects = @(
     # 历史基线语句写作小写 `update TASK set ...`（无 dbo.），正因如此不会被判成引用。
     [pscustomobject]@{
         Name          = 'SYSTEMP'
-        Reason        = '旧「组 × 模块」权限副本已退役删表（现代真源是 SYSDH / SYSDH_BUTTON），见 Migrations/322_retire_dead_tables.sql'
+        Reason        = '旧「组 × 模块」权限副本已退役删表（现代真源是 SYS_GROUP_MODULE_PERMISSION / SYS_GROUP_BUTTON_PERMISSION），见 Migrations/322_retire_dead_tables.sql'
         Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.SYSTEMP\b'
     }
     [pscustomobject]@{
@@ -112,13 +112,13 @@ $retiredObjects = @(
     }
     # 版式「微调」权限位退役（迁移 248）：版式设计权只保留完整设计一档。
     [pscustomobject]@{
-        Name          = 'SYSDD/SYSDH 版式微调权限位'
-        Reason        = 'SYSDD.FORM_ADJUST_TAG/SYSDH.FORM_ADJUST_TAG 已退役（版式设计权只保留 FORM_DESIGN_TAG 一档），见 Migrations/248_retire_form_adjust_tag.sql'
+        Name          = 'SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION 版式微调权限位'
+        Reason        = 'SYS_USER_MODULE_PERMISSION.FORM_ADJUST_TAG/SYS_GROUP_MODULE_PERMISSION.FORM_ADJUST_TAG 已退役（版式设计权只保留 FORM_DESIGN_TAG 一档），见 Migrations/248_retire_form_adjust_tag.sql'
         Pattern       = '\.\s*FORM_ADJUST_TAG\b'
         CaseSensitive = $true
     }
     # 模块 ID 外键列改名（迁移 249）：10 张表的 MODULE_ID 统一为 M_IDX，与 MODULES.M_IDX 及
-    # SYSDD/SYSDH/SYSDF/SYSTEMP/TASK/WF_APPROVE 等既有口径一致。
+    # SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION/SYSDF/SYSTEMP/TASK/WF_APPROVE 等既有口径一致。
     # 覆盖不到的形态（已知缺口，登记在案）：裸列名——审计查询按契约把该列投影成 `M_IDX AS MODULE_ID`
     # （对外属性名不随库列名变），故只判"点号修饰"这一种真实炸库的写法。
     [pscustomobject]@{
@@ -160,7 +160,7 @@ $retiredObjects = @(
     # CI 这些名字在业务主表上到处都是（合同、考勤、生产单自己就有批核位），裸名匹配会满仓误报。
     # REMARK 没在退役之列（它是保留下来写备注的那一列）。
     # 覆盖不到的形态（已知缺口，登记在案）：别名写法（`FROM dbo.MODULES m ... m.CONFIRM_TAG`）——
-    # 本仓 SQL 一律写 `MODULES.<列>`（不别名），别名形态若要判需要像 SYSDL.G_IDX 那样的别名分析，
+    # 本仓 SQL 一律写 `MODULES.<列>`（不别名），别名形态若要判需要像 SYS_USER_ACCOUNT.G_IDX 那样的别名分析，
     # 收益不抵复杂度；真写出来也会在运行时立刻报"列名无效"，不会静默。
     [pscustomobject]@{
         Name          = 'MODULES 八列旧系统遗产'
@@ -168,14 +168,14 @@ $retiredObjects = @(
         Pattern       = '(?i)MODULES\s*\.\s*(?:CONFIRM_TAG|CONFIRM_PERSON|CONFIRM_DATE|OWNER_G|OWNER|CI|CREATE_PERSON|CREATE_DATE)\b'
     }
     # 行归属三列退役（迁移 334）：CI / OWNER / OWNER_G 从全库物理删列
-    # （DEPT.CI / SYSDN.CI 保留——那是部门/员工的公司归属，不是行归属；WF_APPROVE.OWNER 是
+    # （DEPT.CI / SYS_EMPLOYEE.CI 保留——那是部门/员工的公司归属，不是行归属；WF_APPROVE.OWNER 是
     # 同名列，语义为审批待办人，也保留）。判据只用**方括号写法**：动态 SQL 对列的引用一律写成
-    # [列名]，这正是退役掉的执行范围谓词的唯一形态。点号写法（`SYSDN n ... n.CI`）无法与保留列
-    # 区分——别名 `n` 不等于 `SYSDN`，按点号判会把合法的公司归属引用一起判死。
+    # [列名]，这正是退役掉的执行范围谓词的唯一形态。点号写法（`SYS_EMPLOYEE n ... n.CI`）无法与保留列
+    # 区分——别名 `n` 不等于 `SYS_EMPLOYEE`，按点号判会把合法的公司归属引用一起判死。
     # 前置断言 `(?<![\w\]])` 用来排除 C# 的数组索引形态（`arr[ci]`）。
     [pscustomobject]@{
         Name    = '行归属三列 CI/OWNER/OWNER_G'
-        Reason  = 'CI / OWNER / OWNER_G 已退役并物理删列（DEPT.CI / SYSDN.CI 与 WF_APPROVE.OWNER 保留），见 Migrations/334_drop_row_ownership_columns.sql'
+        Reason  = 'CI / OWNER / OWNER_G 已退役并物理删列（DEPT.CI / SYS_EMPLOYEE.CI 与 WF_APPROVE.OWNER 保留），见 Migrations/334_drop_row_ownership_columns.sql'
         Pattern = '(?<![\w\]])\[(?:OWNER_G|OWNER|CI)\]'
     }
     # 死模块与随行表退役（迁移 325）：2205 报表过滤条件设置 + 它的主表 SYSQR_DA；
@@ -184,7 +184,7 @@ $retiredObjects = @(
     # 存在性探针是**合法用法**（退役测试正是这么写的），不该被判成引用。
     [pscustomobject]@{
         Name          = 'SYSQR_DA'
-        Reason        = '旧报表条件定义表已随模块 2205 退役删表（真源是 SYSQR_DEFAULT.FILTER_TEMPLATE），见 Migrations/325_retire_dead_modules_and_tables.sql'
+        Reason        = '旧报表条件定义表已随模块 2205 退役删表（真源是 SYS_REPORT_PARAMETER.FILTER_TEMPLATE），见 Migrations/325_retire_dead_modules_and_tables.sql'
         Pattern       = '(?i)(?:FROM|JOIN|INTO|UPDATE)\s+dbo\.SYSQR_DA\b'
     }
     [pscustomobject]@{
@@ -200,7 +200,7 @@ $retiredObjects = @(
     # 报表权限例外层结构退役（迁移 277）：整表 SYSDH_REPORT + SYSDD_REPORT 的三列勾选。
     # 判据用裸名 + 词边界：这两个名字不会与其它标识符混淆，命中即说明有人重新引用了已退役的结构
     # （迁移脚本本身在扫描范围之外，必然出现旧名）。
-    # 边界：`DATA_FILTER` **不在**退役之列——它是模块权限（SYSDD/SYSDH）的活列，报表链路仍在 AND 合并它；
+    # 边界：`DATA_FILTER` **不在**退役之列——它是模块权限（SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION）的活列，报表链路仍在 AND 合并它；
     # 而 `SYSDD_REPORT` 表本身也仍在（承载收藏/排序/最近使用），退役的只是它那三列勾选。
     [pscustomobject]@{
         Name    = 'SYSDH_REPORT'
@@ -237,7 +237,7 @@ $retiredObjects = @(
     }
     [pscustomobject]@{
         Name    = 'SYSDL_Backup_ADR004'
-        Reason  = 'ADR-004 迁移前对 SYSDL 的快照，见 Migrations/315_drop_legacy_backup_tables.sql'
+        Reason  = 'ADR-004 迁移前对 SYS_USER_ACCOUNT 的快照，见 Migrations/315_drop_legacy_backup_tables.sql'
         Pattern = '\bSYSDL_Backup_ADR004\b'
     }
     # 坏死遗留函数退役（迁移 316）：三个函数引用改名前的老列，调用即报「列名无效」。
@@ -264,26 +264,26 @@ function Get-RetiredHit {
 
     $found = New-Object System.Collections.Generic.List[string]
 
-    # SYSDL.G_IDX 的三种真实写法（避免"账号表 SYSDL 与关联表列 G_IDX 同段出现"这类误报）：
-    #   1) 别名绑定了 SYSDL，又用该别名访问 .G_IDX（旧 AuthenticationRepository 的形态）；
-    #   2) 显式写 SYSDL.G_IDX / dbo.SYSDL.G_IDX；
-    #   3) INSERT INTO SYSDL (...) / UPDATE SYSDL SET ... 的列清单里含 G_IDX。
-    $aliasPattern = '(?:FROM|JOIN|INTO|UPDATE)\s+(?:dbo\.)?SYSDL\s+(?:WITH\s*\([^)]*\)\s*)?(?<alias>[A-Za-z_]\w*)'
+    # SYS_USER_ACCOUNT.G_IDX 的三种真实写法（避免"账号表 SYS_USER_ACCOUNT 与关联表列 G_IDX 同段出现"这类误报）：
+    #   1) 别名绑定了 SYS_USER_ACCOUNT，又用该别名访问 .G_IDX（旧 AuthenticationRepository 的形态）；
+    #   2) 显式写 SYS_USER_ACCOUNT.G_IDX / dbo.SYS_USER_ACCOUNT.G_IDX；
+    #   3) INSERT INTO SYS_USER_ACCOUNT (...) / UPDATE SYS_USER_ACCOUNT SET ... 的列清单里含 G_IDX。
+    $aliasPattern = '(?:FROM|JOIN|INTO|UPDATE)\s+(?:dbo\.)?SYS_USER_ACCOUNT\s+(?:WITH\s*\([^)]*\)\s*)?(?<alias>[A-Za-z_]\w*)'
     foreach ($match in [regex]::Matches($Text, $aliasPattern, 'IgnoreCase')) {
         $alias = $match.Groups['alias'].Value
         if ($alias -ieq 'WITH' -or $alias -ieq 'SET') { continue }
         if ([regex]::IsMatch($Text, [regex]::Escape($alias) + '\s*\.\s*G_IDX', 'IgnoreCase')) {
-            $found.Add('SYSDL.G_IDX')
+            $found.Add('SYS_USER_ACCOUNT.G_IDX')
             break
         }
     }
-    if ([regex]::IsMatch($Text, '(?:dbo\.)?SYSDL\s*\.\s*G_IDX', 'IgnoreCase')) { $found.Add('SYSDL.G_IDX') }
-    foreach ($match in [regex]::Matches($Text, '(?:INSERT\s+INTO|UPDATE)\s+(?:dbo\.)?SYSDL\s*\((?<cols>[^)]*)\)', 'IgnoreCase')) {
-        if ($match.Groups['cols'].Value -match '\bG_IDX\b') { $found.Add('SYSDL.G_IDX'); break }
+    if ([regex]::IsMatch($Text, '(?:dbo\.)?SYS_USER_ACCOUNT\s*\.\s*G_IDX', 'IgnoreCase')) { $found.Add('SYS_USER_ACCOUNT.G_IDX') }
+    foreach ($match in [regex]::Matches($Text, '(?:INSERT\s+INTO|UPDATE)\s+(?:dbo\.)?SYS_USER_ACCOUNT\s*\((?<cols>[^)]*)\)', 'IgnoreCase')) {
+        if ($match.Groups['cols'].Value -match '\bG_IDX\b') { $found.Add('SYS_USER_ACCOUNT.G_IDX'); break }
     }
 
     foreach ($entry in $retiredObjects) {
-        if ($entry.Name -eq 'SYSDL.G_IDX') { continue }
+        if ($entry.Name -eq 'SYS_USER_ACCOUNT.G_IDX') { continue }
         $caseSensitive = $entry.PSObject.Properties['CaseSensitive'] -and $entry.CaseSensitive
         $options = if ($caseSensitive) { 'None' } else { 'IgnoreCase' }
         if ([regex]::IsMatch($Text, $entry.Pattern, $options)) { $found.Add($entry.Name) }
@@ -295,8 +295,8 @@ if ($SelfTest) {
     $failures = New-Object System.Collections.Generic.List[string]
 
     $dirty = @(
-        'SELECT l.USER_ID, l.G_IDX FROM dbo.SYSDL l WHERE l.USER_ID=@Id;',
-        'INSERT INTO dbo.SYSDL (USER_ID,EMP_ID,G_IDX,USER_PWD) VALUES (@Id,@Emp,@Group,@Hash);',
+        'SELECT l.USER_ID, l.G_IDX FROM dbo.SYS_USER_ACCOUNT l WHERE l.USER_ID=@Id;',
+        'INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,G_IDX,USER_PWD) VALUES (@Id,@Emp,@Group,@Hash);',
         'SELECT dbo.f_get_user_gidx(@UserId);',
         # 退役列的真实炸库写法：别名点号取值
         'SELECT f.F_ID, f.FORM_ORDER FROM dbo.FIELDS f ORDER BY f.FORM_ORDER;',
@@ -318,7 +318,7 @@ if ($SelfTest) {
         'SELECT W.WORK_NO FROM dbo.SYS_WORK_TASK W WHERE W.W_M_IDX=@Id;',
         # 退役的行归属三列（迁移 334）：方括号写法是动态 SQL 的真实形态
         'SELECT 1 FROM dbo.CLIENT WHERE [OWNER]=@UserId;',
-        'SELECT 1 FROM dbo.CLIENT WHERE [OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER);',
+        'SELECT 1 FROM dbo.CLIENT WHERE [OWNER_G] IN (SELECT G_IDX FROM dbo.SYS_USER_GROUP_MEMBER);',
         'SELECT [CI] FROM dbo.DEPOT;'
     )
     foreach ($sample in $dirty) {
@@ -328,11 +328,11 @@ if ($SelfTest) {
     }
 
     $clean = @(
-        'SELECT gu.G_IDX FROM dbo.SYSDG_USER gu WHERE gu.USER_ID=@Id;',
-        'SELECT G_IDX, G_DESC FROM dbo.SYSDG;',
-        'SELECT * FROM dbo.SYSDL l INNER JOIN dbo.SYSDN n ON n.EMP_ID=l.EMP_ID;',
+        'SELECT gu.G_IDX FROM dbo.SYS_USER_GROUP_MEMBER gu WHERE gu.USER_ID=@Id;',
+        'SELECT G_IDX, G_DESC FROM dbo.SYS_USER_GROUP;',
+        'SELECT * FROM dbo.SYS_USER_ACCOUNT l INNER JOIN dbo.SYS_EMPLOYEE n ON n.EMP_ID=l.EMP_ID;',
         # 迁移 191 之后的正确形态：账号表取用户，组取自关联表
-        'SELECT l.USER_ID, (SELECT TOP 1 gu.G_IDX FROM dbo.SYSDG_USER gu WHERE gu.USER_ID=l.USER_ID) AS G_IDX FROM dbo.SYSDL l;',
+        'SELECT l.USER_ID, (SELECT TOP 1 gu.G_IDX FROM dbo.SYS_USER_GROUP_MEMBER gu WHERE gu.USER_ID=l.USER_ID) AS G_IDX FROM dbo.SYS_USER_ACCOUNT l;',
         # 原位占位别名（退役列删掉后仍在模型/仓储里保留的写法）不算引用
         'SELECT NULL AS FORM_TABS, NULL AS FORM_COLUMNS, CAST(1 AS int) AS FORM_TAB_NO FROM dbo.MODULES;',
         # C# 模型同名属性是 PascalCase：不区分大小写会把这两行误判
@@ -354,9 +354,9 @@ if ($SelfTest) {
         # 退役对象的**存在性探针**是合法用法（退役测试就是这么断言的），只判 SQL 上下文
         'SELECT OBJECT_ID(''dbo.SYSDF'',''U'') AS O;',
         'SELECT OBJECT_ID(''dbo.SYS_WORK_TASK'',''U'') AS O;',
-        # 保留列不算引用：DEPT/SYSDN 的公司归属列（点号写法，别名无法与退役列区分）与
+        # 保留列不算引用：DEPT/SYS_EMPLOYEE 的公司归属列（点号写法，别名无法与退役列区分）与
         # WF_APPROVE 的同名列 OWNER
-        'SELECT n.CI, d.CI FROM dbo.SYSDN n INNER JOIN dbo.DEPT d ON d.DEPT_ID=n.DEPT_ID;',
+        'SELECT n.CI, d.CI FROM dbo.SYS_EMPLOYEE n INNER JOIN dbo.DEPT d ON d.DEPT_ID=n.DEPT_ID;',
         'SELECT a.OWNER FROM dbo.WF_APPROVE a WHERE a.M_IDX=@Id;'
     )
     foreach ($sample in $clean) {

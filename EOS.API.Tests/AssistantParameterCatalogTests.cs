@@ -20,7 +20,7 @@ namespace EOS.API.Tests;
 /// </para>
 ///
 /// <para>
-/// 与库有关的那一半（目录 ↔ <c>dbo.SYSSS</c> 的行一致）在 <c>scripts/check-assistant-params.ps1</c>，
+/// 与库有关的那一半（目录 ↔ <c>dbo.SYS_PARAMETER</c> 的行一致）在 <c>scripts/check-assistant-params.ps1</c>，
 /// 因为"库里的定义与目录一致"必须先连上库才能判。
 /// </para>
 /// </summary>

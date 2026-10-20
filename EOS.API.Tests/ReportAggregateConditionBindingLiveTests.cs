@@ -50,7 +50,7 @@ public sealed class ReportAggregateConditionBindingLiveTests
             foreach (var parameter in parameters)
             {
                 await using var command = new SqlCommand("""
-                    SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT WITH (NOLOCK)
+                    SELECT COUNT(*) FROM dbo.SYS_REPORT_PARAMETER WITH (NOLOCK)
                     WHERE M_IDX = @ModuleId AND SERIAL_NO = @SerialNo;
                     """, connection);
                 command.Parameters.AddWithValue("@ModuleId", moduleId);

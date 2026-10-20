@@ -89,8 +89,8 @@ public sealed class ReportVisibilityAnchorLiveTests
     /// </summary>
     private static readonly Dictionary<string, string[]> KnownOrphans = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["SYSQR_DEFAULT"] = ["99000001|1"],
-        ["SYSQR_USER"] = [],
+        ["SYS_REPORT_PARAMETER"] = ["99000001|1"],
+        ["SYS_USER_REPORT_PARAMETER"] = [],
     };
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class ReportVisibilityAnchorLiveTests
         // 承载页列与承载页行都已退役，"留在承载页"已无从表达；这里钉一条更耐久的等价不变量——
         // 条件行的模块号必须指向存在的模块。悬空条件与"留在承载页"后果一样：
         // 取数范围变大（或变小）而无人察觉。
-        foreach (var (table, label) in new[] { ("SYSQR_DEFAULT", "条件行"), ("SYSQR_USER", "用户填值") })
+        foreach (var (table, label) in new[] { ("SYS_REPORT_PARAMETER", "条件行"), ("SYS_USER_REPORT_PARAMETER", "用户填值") })
         {
             var offenders = Collect($"""
                 SELECT TOP 10 CONCAT(CAST(x.M_IDX AS varchar(20)), '|', CAST(x.SERIAL_NO AS varchar(10)))

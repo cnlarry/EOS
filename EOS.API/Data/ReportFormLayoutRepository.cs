@@ -10,8 +10,8 @@ namespace EOS.API.Data;
 /// - copy-on-write：首次"自定义"复制内置格式包 layout.json → REPORT_FORM_LAYOUT，
 /// 绑定写 REPORT_FORM_BINDING（FORM_TYPE × CLIENT_ID，空 CLIENT_ID = 单据类型默认）；
 /// - 生效布局优先级：(FORM_TYPE, CLIENT_ID) → (FORM_TYPE, '') → 内置格式包；
-/// - 权限门：SYSDD.FORM_DESIGN_TAG 个人覆盖组（组布尔 OR），
-/// 无个人行时取组位，与既有 SYSDD/SYSDH 权限语义一致。
+/// - 权限门：SYS_USER_MODULE_PERMISSION.FORM_DESIGN_TAG 个人覆盖组（组布尔 OR），
+/// 无个人行时取组位，与既有 SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION 权限语义一致。
 /// 绑定行 HEADER_ID / TAIL_ID / PRINT_PRICE 供未来打印解析（S2 绑定优先级命中）。
 /// </summary>
 public sealed class ReportFormLayoutRepository(

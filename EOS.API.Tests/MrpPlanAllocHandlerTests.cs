@@ -273,7 +273,7 @@ public class MrpPlanAllocHandlerTests
         try
         {
             await using (var gate = new SqlCommand(
-                "UPDATE dbo.SYSSS SET PARAM_VALUE=N'0' WHERE OWNER_MODULE=110111 AND PARAM_KEY=N'PRO_MRP'",
+                "UPDATE dbo.SYS_PARAMETER SET PARAM_VALUE=N'0' WHERE OWNER_MODULE=110111 AND PARAM_KEY=N'PRO_MRP'",
                 connection, transaction))
             {
                 await gate.ExecuteNonQueryAsync();

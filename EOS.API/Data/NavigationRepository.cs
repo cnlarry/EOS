@@ -28,14 +28,14 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
         const string sql = """
             WITH UserModules AS (
                 SELECT d.M_IDX
-                FROM dbo.SYSDD d WITH (NOLOCK)
+                FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK)
                 WHERE d.USER_ID=@UserId AND ISNULL(d.EXEC_TAG,'A') <> 'A'
                 UNION
                 SELECT h.M_IDX
-                FROM dbo.SYSDH h WITH (NOLOCK)
-                INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
+                FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+                INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
                 WHERE gu.USER_ID=@UserId AND ISNULL(h.EXEC_TAG,'A') <> 'A'
-                  AND NOT EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK) WHERE d.USER_ID=@UserId AND d.M_IDX=h.M_IDX)
+                  AND NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK) WHERE d.USER_ID=@UserId AND d.M_IDX=h.M_IDX)
             ), Included AS (
                 SELECT m.M_IDX FROM dbo.MODULES m WITH (NOLOCK) INNER JOIN UserModules u ON u.M_IDX=m.M_IDX
                 UNION

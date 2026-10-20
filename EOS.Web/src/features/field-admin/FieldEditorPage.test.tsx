@@ -123,7 +123,7 @@ describe('FieldEditorRoute', () => {
     fireEvent.click(screen.getByRole('tab', { name: '变更历史' }))
     await waitFor(() => expect(screen.getByText('修改')).toBeInTheDocument())
     expect(screen.getByText('原标题')).toBeInTheDocument()
-    // 操作人显示姓名（SYSDN 解析）
+    // 操作人显示姓名（SYS_EMPLOYEE 解析）
     expect(screen.getByText(/管理员/)).toBeInTheDocument()
   })
 

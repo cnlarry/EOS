@@ -17,7 +17,7 @@ public sealed class EffectPhysicalColumns
 
     /// <summary>
     /// Whitelist used by configuration validators: physical dbo tables/columns **plus** the
-    /// registered system parameter keys written as "&lt;scope&gt;.&lt;KEY&gt;" (SYSSS.SEND_TAG …).
+    /// registered system parameter keys written as "&lt;scope&gt;.&lt;KEY&gt;" (SYS_PARAMETER.SEND_TAG …).
     /// Switches live in the parameter table rather than in a column, so folding them into the same
     /// set keeps "the switch exists" and "the column exists" one judgement in one place.
     /// </summary>

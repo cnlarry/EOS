@@ -11,7 +11,7 @@ namespace EOS.API.Data;
 /// - 只允许给"具备批核能力"的工作台模块配置流程（WorkflowStates.HasApproveCapability：
 /// 静态登记批核过程 / MODULES.UPDATE_SP 非空 / 效果引擎接管 / 自动批核 / 已配置流程，
 /// 且主表有 CONFIRM_TAG 物理列）；
-/// - EXEC_PERSON/权限串/必签名单全部按 SYSDL 真实用户校验（禁止写入不存在的审批人）；
+/// - EXEC_PERSON/权限串/必签名单全部按 SYS_USER_ACCOUNT 真实用户校验（禁止写入不存在的审批人）；
 /// - EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION 保存前经 DataFilterParser 按主表
 /// 物理列白名单预解析（不可解析即拒绝保存，与引擎启动时同源护栏，绝不拼接 SQL）；
 /// - 已存在在途流程实例（WF_MONITOR WF_STATE='0'）时禁止删除定义（防孤儿实例）。
@@ -306,7 +306,7 @@ public sealed class FlowDefinitionService(
             normalized.Add((sortNo, step));
         }
 
-        // 审批人/权限串/必签名单真实存在性（SYSDL），一次性批量校验
+        // 审批人/权限串/必签名单真实存在性（SYS_USER_ACCOUNT），一次性批量校验
         var allPeople = normalized
             .SelectMany(pair => pair.Step.People)
             .Concat(normalized.SelectMany(pair => pair.Step.ApprovePowers ?? Array.Empty<string>()))
@@ -320,7 +320,7 @@ public sealed class FlowDefinitionService(
         var unknown = allPeople.Where(person => !knownUsers.Contains(person, StringComparer.OrdinalIgnoreCase)).ToArray();
         if (unknown.Length > 0)
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "UNKNOWN_PERSON",
-                $"以下审批人不存在（SYSDL）：{string.Join("、", unknown)}。");
+                $"以下审批人不存在（SYS_USER_ACCOUNT）：{string.Join("、", unknown)}。");
 
         // 每步条件预解析（EXEC/PERSON/AUTO），主表物理列白名单，不可解析即拒绝保存
         var masterColumns = await LoadMasterColumnsAsync(connection, masterTable, token);
@@ -488,7 +488,7 @@ public sealed class FlowDefinitionService(
         return RecordSaveResult.Success([moduleId.ToString()]);
     }
 
-    /// <summary>活跃用户检索（设计器人员选择数据源；SYSDL 启用账号 + SYSDN 姓名）。</summary>
+    /// <summary>活跃用户检索（设计器人员选择数据源；SYS_USER_ACCOUNT 启用账号 + SYS_EMPLOYEE 姓名）。</summary>
     public async Task<IReadOnlyList<object>> GetPeopleAsync(string? keyword, CancellationToken token)
     {
         var kw = (keyword ?? string.Empty).Trim();
@@ -498,8 +498,8 @@ public sealed class FlowDefinitionService(
         await using var command = new SqlCommand("""
             SELECT TOP 200 LTRIM(RTRIM(S.USER_ID)), LTRIM(RTRIM(ISNULL(N.EMP_NAME,''))),
                    LTRIM(RTRIM(ISNULL(N.DEPT_ID,''))), S.ACTIVE_TAG
-            FROM dbo.SYSDL S WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDN N WITH (NOLOCK) ON N.EMP_ID=S.EMP_ID
+            FROM dbo.SYS_USER_ACCOUNT S WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_EMPLOYEE N WITH (NOLOCK) ON N.EMP_ID=S.EMP_ID
             WHERE S.ACTIVE_TAG=1
               AND (@Kw=N'' OR S.USER_ID LIKE @Like OR N.EMP_NAME LIKE @Like)
             ORDER BY S.USER_ID;
@@ -542,7 +542,7 @@ public sealed class FlowDefinitionService(
             var batch = users.Skip(offset).Take(chunk).ToArray();
             var inClause = string.Join(",", batch.Select((_, index) => $"@u{index}"));
             await using var command = new SqlCommand(
-                $"SELECT LTRIM(RTRIM(USER_ID)) FROM dbo.SYSDL WITH (NOLOCK) WHERE USER_ID IN ({inClause});", connection);
+                $"SELECT LTRIM(RTRIM(USER_ID)) FROM dbo.SYS_USER_ACCOUNT WITH (NOLOCK) WHERE USER_ID IN ({inClause});", connection);
             for (var i = 0; i < batch.Length; i++)
                 command.Parameters.Add($"@u{i}", SqlDbType.NVarChar, 50).Value = batch[i];
             await using var reader = await command.ExecuteReaderAsync(token);

@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 2d8ab1547d43e8b2 -->
+<!-- code-map-fingerprint: 95d418e6e608fd48 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 41 个、方法级路由属性 289 处、解析出 289 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 41 个、方法级路由属性 291 处、解析出 291 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -180,6 +180,8 @@
 | POST | `api/v1/bom/new-version` | NewVersion | `BomController.cs` |
 | GET | `api/v1/bom/where-used` | WhereUsed | `BomController.cs` |
 | GET | `api/v1/car-summary` | Query | `CarSummaryController.cs` |
+| GET | `api/v1/chooser/memory` | GetMemory | `ChooserController.cs` |
+| PUT | `api/v1/chooser/memory` | SaveMemory | `ChooserController.cs` |
 | POST | `api/v1/chooser/query` | Query | `ChooserController.cs` |
 | POST | `api/v1/client-errors` | Report | `ClientErrorController.cs` |
 | POST | `api/v1/document-workbench/{moduleId:int}/action/{actionKey}` | RunAction | `DocumentWorkbenchController.cs` |

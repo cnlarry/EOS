@@ -267,7 +267,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   // 多槽队列：自适应列宽一次入队多列，逐列串行写回；单槽会被同步循环覆盖导致只保存最后一列
   const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}[]>([])
   const widthSaveRunning=useRef(false)
-  // 列宽是操作习惯：写个人层（SYSQL_FIELDS.F_WIDTH，与"选择列"同一批行），有模块浏览权即可；字段元数据里的宽度是所有人的
+  // 列宽是操作习惯：写个人层（SYS_USER_COLUMN.F_WIDTH，与"选择列"同一批行），有模块浏览权即可；字段元数据里的宽度是所有人的
   // 默认值，只在字段设置面改，不随拖拽变动。
   const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
     widthSaveQueue.current.push({detail:detailTable,fieldKey,width})

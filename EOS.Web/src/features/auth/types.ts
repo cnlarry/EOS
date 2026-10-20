@@ -5,7 +5,7 @@ export interface AuthUser {
   employeeId: string
   avatarText: string
   avatarUrl: string | null
-  /** 所属用户组描述（SYSDG.G_DESC，多组用顿号连接）：这套权限模型里没有独立的"角色"概念，用户组即是角色。 */
+  /** 所属用户组描述（SYS_USER_GROUP.G_DESC，多组用顿号连接）：这套权限模型里没有独立的"角色"概念，用户组即是角色。 */
   groupNames: string
   organization: { id: string; name: string }
 }

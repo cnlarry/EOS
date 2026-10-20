@@ -149,7 +149,7 @@ public sealed class AssistantAdminRepositoryIntegrationTests : IDisposable
         // token 聚合：prompt 100 + completion 50
         Assert.Equal(150, mine.MessageTokens);
 
-        // 姓名：测试账号不在 SYSDL 里，取不到就该是 null（界面回落显示账号），而不是空串或抛错
+        // 姓名：测试账号不在 SYS_USER_ACCOUNT 里，取不到就该是 null（界面回落显示账号），而不是空串或抛错
         Assert.Null(mine.EmployeeName);
 
         // 归档后：默认视图看不到它，已归档视图看得到，且该视图里每一行都是已归档

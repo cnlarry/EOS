@@ -81,7 +81,7 @@ export function ReportAdminRoute() {
 }
 
 /** 报表过滤条件设置（2205）已随  下线：参数定义并入报表定义资产，
- *  用户填值 SYSQR_USER 保留为运行态，管理写侧退役。 */
+ *  用户填值 SYS_USER_REPORT_PARAMETER 保留为运行态，管理写侧退役。 */
 
 /**
  * 老模块地址 `/reports/:moduleId`：**跳转段**，不再直接渲染查看器。

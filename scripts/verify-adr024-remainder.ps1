@@ -62,7 +62,7 @@ Check 'M_IDX 注释不再是"权限ID"' (-not (Has $columnComment '权限ID')) (
 Write-Output ''
 Write-Output '== ③ 重复条件 =='
 $dupTargets = @(Invoke-EosSqlQuery -Query @"
-SELECT CONCAT(M_IDX, ':', COUNT(*)) FROM dbo.SYSQR_DEFAULT WITH (NOLOCK)
+SELECT CONCAT(M_IDX, ':', COUNT(*)) FROM dbo.SYS_REPORT_PARAMETER WITH (NOLOCK)
 WHERE M_IDX IN (180102, 180105, 1803091) AND ISNULL(F_ID, '') <> ''
 GROUP BY M_IDX, F_ID, FILTER_TEMPLATE HAVING COUNT(*) > 1;
 "@)
@@ -70,7 +70,7 @@ Check '目标模块无重复条件' (@($dupTargets | Where-Object { $_.Trim() })
 
 # 范围外模块必须一行未动（1405/1502/180214 的条件总数）
 $outside = @(Invoke-EosSqlQuery -Query @"
-SELECT CONCAT(M_IDX, '=', COUNT(*)) FROM dbo.SYSQR_DEFAULT WITH (NOLOCK)
+SELECT CONCAT(M_IDX, '=', COUNT(*)) FROM dbo.SYS_REPORT_PARAMETER WITH (NOLOCK)
 WHERE M_IDX IN (1405, 1502, 180214) GROUP BY M_IDX ORDER BY M_IDX;
 "@)
 Write-Output ("INFO 范围外模块条件行数：{0}（本批未动）" -f ($outside -join ', '))

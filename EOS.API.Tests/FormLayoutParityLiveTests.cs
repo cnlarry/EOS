@@ -212,7 +212,7 @@ public sealed class FormLayoutParityLiveTests
         await connection.OpenAsync();
         const string personalSql = """
             SELECT TOP 1 CAST(ISNULL(COST_TAG, 0) AS int), CAST(ISNULL(SECRECY_TAG, 0) AS int)
-            FROM dbo.SYSDD WITH (NOLOCK) WHERE USER_ID = @UserId AND M_IDX = @ModuleId;
+            FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK) WHERE USER_ID = @UserId AND M_IDX = @ModuleId;
             """;
         await using (var command = new Microsoft.Data.SqlClient.SqlCommand(personalSql, connection))
         {
@@ -226,8 +226,8 @@ public sealed class FormLayoutParityLiveTests
         }
         const string groupSql = """
             SELECT ISNULL(MAX(CAST(h.COST_TAG AS INT)), 0), ISNULL(MAX(CAST(h.SECRECY_TAG AS INT)), 0)
-            FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
+            FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
             WHERE gu.USER_ID = @UserId AND h.M_IDX = @ModuleId;
             """;
         await using var groupCommand = new Microsoft.Data.SqlClient.SqlCommand(groupSql, connection);

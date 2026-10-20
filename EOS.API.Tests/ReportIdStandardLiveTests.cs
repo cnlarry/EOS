@@ -60,7 +60,7 @@ public sealed class ReportIdStandardLiveTests
     }
 
     /// <summary>
-    /// 存量孤儿（报表已不存在、引用行还在）的登记数：`REPORT_SORT` 119 / `SYSQR` 70，其余表为 0。
+    /// 存量孤儿（报表已不存在、引用行还在）的登记数：`REPORT_SORT` 119 / `SYS_USER_REPORT_PRINT` 70，其余表为 0。
     ///
     /// <para>
     /// 这些是历史数据（旧报表删过但没级联），与本次编号规范化无关；本轮只修"删除路径本身不再制造孤儿"，
@@ -71,7 +71,7 @@ public sealed class ReportIdStandardLiveTests
     private static readonly Dictionary<string, int> KnownOrphanCounts = new(StringComparer.OrdinalIgnoreCase)
     {
         ["REPORT_SORT"] = 119,
-        ["SYSQR"] = 70,
+        ["SYS_USER_REPORT_PRINT"] = 70,
         ["REPORT_USER_STATE"] = 0,
         ["REPORT_INBOX"] = 0,
         ["REPORT_SUBSCRIPTION"] = 0,

@@ -18,7 +18,7 @@ public static class ModuleBusinessMap
         new Dictionary<int, ModuleBusinessRule>
         {
             // 1201 产品/料件基本资料（1206/1210/1211 已合并至此）：批核为纯状态翻转（旧 P_WF_PRODUCT 已退役，
-            // 其版次递增逻辑受 SYSSS.PRO_EDITION_TAG 门控，该开关打开时需另配效果）；PRO_NO 手工编号。
+            // 其版次递增逻辑受 SYS_PARAMETER.PRO_EDITION_TAG 门控，该开关打开时需另配效果）；PRO_NO 手工编号。
             [1201] = new(1201, false, null, null),
             // 1404 报价单：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_COP_QUOTE 已退役），保留自动单号。
             [1404] = new(1404, true, "QUOTE_NO", "QUOTE_TYPE"),

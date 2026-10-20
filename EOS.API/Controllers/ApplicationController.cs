@@ -21,7 +21,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             employeeId = User.FindFirstValue("employee_id") ?? "",
             avatarText = GetAvatarText(displayName),
             avatarUrl = (string?)null,
-            // 界面上显示的"角色"就是用户组（SYSDG.G_DESC，登录时解析进票据，多组顿号连接）；
+            // 界面上显示的"角色"就是用户组（SYS_USER_GROUP.G_DESC，登录时解析进票据，多组顿号连接）；
             // 这套权限模型里没有独立的角色表，也没有可写死的固定角色。
             groupNames = User.FindFirstValue("group_names") ?? "",
             organization = new { id = User.FindFirstValue("department_id") ?? "", name = User.FindFirstValue("department_name") ?? "" }

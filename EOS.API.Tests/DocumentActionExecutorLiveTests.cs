@@ -44,7 +44,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
     }
 
     /// <summary>用例经办人：按钮授权是 fail-closed 名单，整类的每个用例先给它授权、结束收回。
-    /// 授权表的目标列与 SYSDD/SYSDH 同宽（NCHAR(10)），故用例账号也取同宽。</summary>
+    /// 授权表的目标列与 SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION 同宽（NCHAR(10)），故用例账号也取同宽。</summary>
     private const string TestUserId = "ZZLIVE0001";
 
     public Task InitializeAsync() =>
@@ -91,8 +91,8 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
         {
             await using var command = new SqlCommand(
                 """
-                DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
-                INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@User,@ModuleId,@Key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
                 """, connection);
             command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;
@@ -106,7 +106,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
     {
         await using var connection = await OpenAsync();
         await using var command = new SqlCommand(
-            "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@User AND M_IDX=@ModuleId;", connection);
+            "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@User AND M_IDX=@ModuleId;", connection);
         command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
         await command.ExecuteNonQueryAsync();

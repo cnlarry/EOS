@@ -9,7 +9,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// One-off tool (no-op by default): deterministically converts baseline SYSQR_DEFAULT
+/// One-off tool (no-op by default): deterministically converts baseline SYS_REPORT_PARAMETER
 /// F_TYPE/F_EXPR condition DSL rows into FILTER_TEMPLATE JSON
 /// (reusing the same conversion pipeline used for structured chooser conditions).
 ///
@@ -58,7 +58,7 @@ public sealed class ReportConditionTemplateBackfillTool
             SELECT M_IDX, CONVERT(INT,SERIAL_NO), COALESCE(TRY_CONVERT(INT,F_TYPE),0),
                    LTRIM(RTRIM(ISNULL(F_ID,''))),LTRIM(RTRIM(ISNULL(F_EXPR,''))),
                    LTRIM(RTRIM(ISNULL(F_VALUE,''))),LTRIM(RTRIM(ISNULL(PARA_NAME,'')))
-            FROM dbo.SYSQR_DEFAULT WITH (NOLOCK)
+            FROM dbo.SYS_REPORT_PARAMETER WITH (NOLOCK)
             ORDER BY M_IDX, SERIAL_NO;
             """;
         var converted = new List<ConvertedRow>();
@@ -85,7 +85,7 @@ public sealed class ReportConditionTemplateBackfillTool
     private static string BuildMigrationSql(List<ConvertedRow> converted)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("-- SYSQR_DEFAULT 存量 F_TYPE/F_EXPR DSL → FILTER_TEMPLATE 转换（工具生成）");
+        builder.AppendLine("-- SYS_REPORT_PARAMETER 存量 F_TYPE/F_EXPR DSL → FILTER_TEMPLATE 转换（工具生成）");
         builder.AppendLine($"--       本迁移由 ReportConditionTemplateBackfillTool 生成（{converted.Count} 行自动转换），");
         builder.AppendLine("--       失败行保持 FILTER_TEMPLATE=NULL（运行期 fail-closed），入 logs/report-condition-migration/manual-list.csv。");
         builder.AppendLine("-- 漂移守卫：LEGACY 原文一致且 FILTER_TEMPLATE 仍为 NULL 才落，不覆盖已人工配置值。");
@@ -98,9 +98,9 @@ public sealed class ReportConditionTemplateBackfillTool
         builder.AppendLine();
         builder.AppendLine("BEGIN TRANSACTION;");
         builder.AppendLine();
-        builder.AppendLine("-- 1. SYSQR_DEFAULT 加 FILTER_TEMPLATE 列");
-        builder.AppendLine("IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND name = 'FILTER_TEMPLATE')");
-        builder.AppendLine("    ALTER TABLE dbo.SYSQR_DEFAULT ADD [FILTER_TEMPLATE] NVARCHAR(MAX) NULL;");
+        builder.AppendLine("-- 1. SYS_REPORT_PARAMETER 加 FILTER_TEMPLATE 列");
+        builder.AppendLine("IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYS_REPORT_PARAMETER') AND name = 'FILTER_TEMPLATE')");
+        builder.AppendLine("    ALTER TABLE dbo.SYS_REPORT_PARAMETER ADD [FILTER_TEMPLATE] NVARCHAR(MAX) NULL;");
         builder.AppendLine();
         builder.AppendLine("-- 2. 存量转换（漂移守卫：LEGACY 原文一致且 FILTER_TEMPLATE 仍为 NULL 才落）");
         builder.AppendLine("CREATE TABLE #TEMPLATE (M_IDX INT NOT NULL, SERIAL_NO INT NOT NULL, LEGACY NVARCHAR(MAX) NOT NULL, TEMPLATE NVARCHAR(MAX) NOT NULL);");
@@ -112,9 +112,9 @@ public sealed class ReportConditionTemplateBackfillTool
             builder.AppendLine($"  ({c.Row.ModuleId}, {c.Row.SerialNo}, N'{SqlEscape(c.SourceDsl)}', N'{SqlEscape(c.Template)}'){comma}");
         }
         builder.AppendLine();
-        builder.AppendLine("UPDATE dbo.SYSQR_DEFAULT");
+        builder.AppendLine("UPDATE dbo.SYS_REPORT_PARAMETER");
         builder.AppendLine("SET FILTER_TEMPLATE = t.TEMPLATE");
-        builder.AppendLine("FROM dbo.SYSQR_DEFAULT d");
+        builder.AppendLine("FROM dbo.SYS_REPORT_PARAMETER d");
         builder.AppendLine("INNER JOIN #TEMPLATE t ON t.M_IDX = d.M_IDX AND t.SERIAL_NO = d.SERIAL_NO");
         builder.AppendLine("WHERE d.FILTER_TEMPLATE IS NULL");
         builder.AppendLine("  AND LTRIM(RTRIM(ISNULL(CAST(d.F_TYPE AS NVARCHAR(10)),''))) + '|' + LTRIM(RTRIM(ISNULL(d.F_EXPR,''))) = t.LEGACY;");
@@ -122,8 +122,8 @@ public sealed class ReportConditionTemplateBackfillTool
         builder.AppendLine("DROP TABLE #TEMPLATE;");
         builder.AppendLine();
         builder.AppendLine("-- 3. 扩展属性");
-        builder.AppendLine("IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND name = 'FILTER_TEMPLATE'))");
-        builder.AppendLine("    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'结构化参数定义（FILTER_TEMPLATE JSON，复用 FILTER_STRUCT 契约 + {p.X} 参数占位符）', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSQR_DEFAULT', @level2type = N'COLUMN', @level2name = N'FILTER_TEMPLATE';");
+        builder.AppendLine("IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYS_REPORT_PARAMETER') AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYS_REPORT_PARAMETER') AND name = 'FILTER_TEMPLATE'))");
+        builder.AppendLine("    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'结构化参数定义（FILTER_TEMPLATE JSON，复用 FILTER_STRUCT 契约 + {p.X} 参数占位符）', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYS_REPORT_PARAMETER', @level2type = N'COLUMN', @level2name = N'FILTER_TEMPLATE';");
         builder.AppendLine();
         builder.AppendLine("COMMIT TRANSACTION;");
         return builder.ToString();

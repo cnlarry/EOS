@@ -10,7 +10,7 @@ public static class PermissionModules
 
     /// <summary>
     /// 工作助手管理（菜单组 31）下的模块号。见 ADR-030：新开根组而不是挂 23，
-    /// 权限门沿用 SYSDH/SYSDD（镜像 2306），不新造角色。
+    /// 权限门沿用 SYS_GROUP_MODULE_PERMISSION/SYS_USER_MODULE_PERMISSION（镜像 2306），不新造角色。
     /// </summary>
     public static class AssistantAdmin
     {

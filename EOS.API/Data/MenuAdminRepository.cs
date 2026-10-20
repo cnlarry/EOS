@@ -124,7 +124,7 @@ public sealed class MenuAdminRepository(
 
     /// <summary>
     /// 菜单默认查询列：
-    /// 返回主表/副表全部可见物理字段及当前 SYSQL_DEFAULT 勾选顺序。
+    /// 返回主表/副表全部可见物理字段及当前 SYS_DEFAULT_COLUMN 勾选顺序。
     /// </summary>
     public async Task<MenuDefaultColumns> GetDefaultColumnsAsync(int moduleId, string tableKind, CancellationToken token)
     {
@@ -136,7 +136,7 @@ public sealed class MenuAdminRepository(
                    CAST(CASE WHEN d.F_ID IS NULL THEN 0 ELSE 1 END AS bit),
                    COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999))
             FROM dbo.FIELDS f WITH (NOLOCK)
-            LEFT JOIN dbo.SYSQL_DEFAULT d WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_DEFAULT_COLUMN d WITH (NOLOCK)
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND LTRIM(RTRIM(d.F_ID))=LTRIM(RTRIM(f.F_ID))
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM sys.columns c
@@ -164,7 +164,7 @@ public sealed class MenuAdminRepository(
     }
 
     /// <summary>
-    /// 保存菜单默认查询列（SYSQL_DEFAULT，先删后插、事务、参数化）。
+    /// 保存菜单默认查询列（SYS_DEFAULT_COLUMN，先删后插、事务、参数化）。
     /// 语义：T_ID=模块主表，T_ID_R=目标表。
     /// </summary>
     public async Task SaveDefaultColumnsAsync(int moduleId, SaveMenuDefaultColumns request, CancellationToken token)
@@ -177,7 +177,7 @@ public sealed class MenuAdminRepository(
         {
             await SaveDefaultColumnsScopedAsync(connection, transaction, masterTable, detailTable, request, token);
             await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, "SYSTEM", token);
-            // 默认列存在 SYSQL_DEFAULT、读的时候按 (T_ID=主表, T_ID_R=目标表) 取：主表相同的**其它模块**
+            // 默认列存在 SYS_DEFAULT_COLUMN、读的时候按 (T_ID=主表, T_ID_R=目标表) 取：主表相同的**其它模块**
             // 读的是同一组默认列，定义也会跟着变，因此按表再标一次（只标本模块会漏掉它们）。
             if (!string.IsNullOrWhiteSpace(masterTable))
                 await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, masterTable, "SYSTEM", token);
@@ -217,7 +217,7 @@ public sealed class MenuAdminRepository(
         if (request.FieldIds.Any(field => !allowed.Contains(field)))
             throw new ArgumentException("默认查询列包含无效字段。");
 
-        await using (var delete = new SqlCommand("DELETE FROM dbo.SYSQL_DEFAULT WHERE T_ID=@MasterTable AND T_ID_R=@TargetTable;", connection, transaction))
+        await using (var delete = new SqlCommand("DELETE FROM dbo.SYS_DEFAULT_COLUMN WHERE T_ID=@MasterTable AND T_ID_R=@TargetTable;", connection, transaction))
         {
             delete.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
             delete.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 100).Value = targetTable;
@@ -226,7 +226,7 @@ public sealed class MenuAdminRepository(
         for (var i = 0; i < request.FieldIds.Count; i++)
         {
             await using var insert = new SqlCommand(
-                "INSERT INTO dbo.SYSQL_DEFAULT (T_ID,T_ID_R,F_ID,F_IDX) VALUES (@MasterTable,@TargetTable,@FieldId,@Position);",
+                "INSERT INTO dbo.SYS_DEFAULT_COLUMN (T_ID,T_ID_R,F_ID,F_IDX) VALUES (@MasterTable,@TargetTable,@FieldId,@Position);",
                 connection, transaction);
             insert.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
             insert.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 100).Value = targetTable;
@@ -643,7 +643,7 @@ public sealed class MenuAdminRepository(
 
     /// <summary>
     /// 删除菜单节点：有下级菜单、或主/副表已产生业务数据时拒绝（新保护，为递归删除且无校验）；
-    /// 通过保护后删除节点并清理 SYSDD/SYSDH 权限引用。
+    /// 通过保护后删除节点并清理 SYS_USER_MODULE_PERMISSION/SYS_GROUP_MODULE_PERMISSION 权限引用。
     /// </summary>
     public async Task DeleteAsync(int id, CancellationToken token)
     {
@@ -676,8 +676,8 @@ public sealed class MenuAdminRepository(
             }
             await using (var rights = new SqlCommand(
                 // 按钮授权行按模块清理：模块没了，它的按钮名单也不能留在库里（与模块/报表权限同处清理）。
-                "DELETE FROM dbo.SYSDD WHERE M_IDX=@Id; DELETE FROM dbo.SYSDH WHERE M_IDX=@Id;"
-                + " DELETE FROM dbo.SYSDD_BUTTON WHERE M_IDX=@Id; DELETE FROM dbo.SYSDH_BUTTON WHERE M_IDX=@Id;",
+                "DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE M_IDX=@Id; DELETE FROM dbo.SYS_GROUP_MODULE_PERMISSION WHERE M_IDX=@Id;"
+                + " DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE M_IDX=@Id; DELETE FROM dbo.SYS_GROUP_BUTTON_PERMISSION WHERE M_IDX=@Id;",
                 connection, transaction))
             {
                 rights.Parameters.Add("@Id", SqlDbType.Int).Value = id;
@@ -1240,10 +1240,10 @@ public sealed class MenuAdminRepository(
         UPDATE dbo.MODULES SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         UPDATE dbo.MODULES SET M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX;
         UPDATE dbo.MODULES SET M_ROOT_IDX=@NEW_IDX WHERE M_ROOT_IDX=@OLD_IDX;
-        UPDATE dbo.SYSDD SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.SYS_USER_MODULE_PERMISSION SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
         UPDATE dbo.REPORT_USER_STATE SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
-        UPDATE dbo.SYSDH SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
-        UPDATE dbo.SYSQR SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX;
+        UPDATE dbo.SYS_GROUP_MODULE_PERMISSION SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.SYS_USER_REPORT_PRINT SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX;
         UPDATE dbo.FIELDS SET BROWSE_M_IDX=@NEW_IDX WHERE BROWSE_M_IDX=@OLD_IDX;
         UPDATE dbo.FIELD_DATASOURCE SET SOURCE_M_IDX=@NEW_IDX WHERE SOURCE_M_IDX=@OLD_IDX;
         UPDATE dbo.WFFORM SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;

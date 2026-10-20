@@ -11,7 +11,7 @@ namespace EOS.API.Data.Forms;
 public sealed record FormDesignMode(bool CanDesign);
 
 /// <summary>
-/// 版式设计权限的**唯一**判定入口：个人权限（SYSDD）覆盖组权限——某模块只要有个人权限记录，
+/// 版式设计权限的**唯一**判定入口：个人权限（SYS_USER_MODULE_PERMISSION）覆盖组权限——某模块只要有个人权限记录，
 /// 就完全采用个人记录，不合并组记录；无个人记录时取该用户所属各组该位的布尔 OR。
 ///
 /// 表单版式与报表版式共用本实现：同一安全语义写成两份，两侧的兜底分支迟早会漂移
@@ -24,7 +24,7 @@ public static class FormDesignPermissionResolver
     {
         const string personalSql = """
             SELECT ISNULL(FORM_DESIGN_TAG, 0) AS CAN_DESIGN
-            FROM dbo.SYSDD WITH (NOLOCK)
+            FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
             WHERE USER_ID = @UserId AND M_IDX = @ModuleId;
             """;
         await using (var command = new SqlCommand(personalSql, connection))
@@ -40,8 +40,8 @@ public static class FormDesignPermissionResolver
 
         const string groupSql = """
             SELECT ISNULL(MAX(CAST(FORM_DESIGN_TAG AS INT)), 0) AS CAN_DESIGN
-            FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
+            FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
             WHERE gu.USER_ID = @UserId AND h.M_IDX = @ModuleId;
             """;
         await using var groupCommand = new SqlCommand(groupSql, connection);
@@ -59,7 +59,7 @@ public static class FormDesignPermissionResolver
     public static async Task<bool> HasAnyAsync(SqlConnection connection, string userId, CancellationToken token)
     {
         const string personalSql = """
-            SELECT TOP 1 1 FROM dbo.SYSDD WITH (NOLOCK)
+            SELECT TOP 1 1 FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
             WHERE USER_ID = @UserId AND ISNULL(FORM_DESIGN_TAG, 0) = 1;
             """;
         await using (var personalCommand = new SqlCommand(personalSql, connection))
@@ -70,8 +70,8 @@ public static class FormDesignPermissionResolver
 
         const string groupSql = """
             SELECT TOP 1 1
-            FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
+            FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
             WHERE gu.USER_ID = @UserId AND ISNULL(h.FORM_DESIGN_TAG, 0) = 1;
             """;
         await using var groupCommand = new SqlCommand(groupSql, connection);

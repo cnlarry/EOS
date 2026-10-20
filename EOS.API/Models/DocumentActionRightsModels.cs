@@ -5,7 +5,7 @@ namespace EOS.API.Models;
 /// <summary>
 /// 自定义按钮授权的矩阵行（用户/组权限页的「按钮权限」页签）。
 /// 授权是 fail-closed 名单：没有名单行即不可点；个人名单行一旦存在，该模块整个个人通道接管组通道
-/// （与模块/报表权限同款：个人覆盖组，多组经 SYSDG_USER 落到人后取 OR）。
+/// （与模块/报表权限同款：个人覆盖组，多组经 SYS_USER_GROUP_MEMBER 落到人后取 OR）。
 /// </summary>
 public sealed record DocumentActionRightsRow(
     [property: JsonPropertyName("moduleId")] int ModuleId,

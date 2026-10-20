@@ -28,7 +28,7 @@ public sealed class WorkbenchCommandHandlerVirtualFieldTests
         {
             Field("ORDER_NO", isVirtual: false),
             Field("CLIENT_NAME", isVirtual: true, "CLIENT.CLIENT_NAME"),
-            Field("SALES_NAME", isVirtual: true, "SYSDN.EMP_NAME"),
+            Field("SALES_NAME", isVirtual: true, "SYS_EMPLOYEE.EMP_NAME"),
             // 定义侧有、但没排进这张表单：不该跟着查
             Field("PRO_NAME", isVirtual: true, "PRODUCT.PRO_NAME"),
         };

@@ -47,7 +47,7 @@ public interface IAssistantMemoryStore
     Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token);
 }
 
-/// <summary>推导画像：所属组（SYSDG_USER）+ 常用模块（AUDIT_EVENT 近期行为）。</summary>
+/// <summary>推导画像：所属组（SYS_USER_GROUP_MEMBER）+ 常用模块（AUDIT_EVENT 近期行为）。</summary>
 public sealed record DerivedProfile(
     IReadOnlyList<string> Groups, IReadOnlyList<(int ModuleId, string Title)> FrequentModules);
 
@@ -314,8 +314,8 @@ public sealed class AssistantMemoryStore(
         await using (var command = new SqlCommand(
             """
             SELECT DISTINCT LTRIM(RTRIM(ISNULL(g.G_DESC, '')))
-            FROM dbo.SYSDG_USER u WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDG g WITH (NOLOCK) ON g.G_IDX = u.G_IDX
+            FROM dbo.SYS_USER_GROUP_MEMBER u WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_USER_GROUP g WITH (NOLOCK) ON g.G_IDX = u.G_IDX
             WHERE u.USER_ID = @UserId;
             """, connection))
         {

@@ -100,7 +100,7 @@ public sealed class ReportFormLayoutRepositoryIntegrationTests : IDisposable
         await connection.OpenAsync();
         await using (var insert = new SqlCommand(
             """
-            INSERT INTO dbo.SYSDD (USER_ID, M_IDX, FORM_DESIGN_TAG)
+            INSERT INTO dbo.SYS_USER_MODULE_PERMISSION (USER_ID, M_IDX, FORM_DESIGN_TAG)
             VALUES (@User, @Module, 1);
             """, connection))
         {
@@ -116,7 +116,7 @@ public sealed class ReportFormLayoutRepositoryIntegrationTests : IDisposable
         finally
         {
             await using var cleanup = new SqlCommand(
-                "DELETE FROM dbo.SYSDD WHERE USER_ID=@User AND M_IDX=@Module AND EXEC_TAG='A';", connection);
+                "DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID=@User AND M_IDX=@Module AND EXEC_TAG='A';", connection);
             cleanup.Parameters.Add("@User", SqlDbType.NChar, 10).Value = TestUser;
             cleanup.Parameters.Add("@Module", SqlDbType.Int).Value = TestModule;
             await cleanup.ExecuteNonQueryAsync();

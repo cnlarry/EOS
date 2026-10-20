@@ -109,7 +109,7 @@ public sealed class BatchExpiryReportLiveTests
         foreach (var parameter in aggregate!.Parameters.Where(item => item.SerialNo > 0))
         {
             await using var condition = new SqlCommand("""
-                SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT
+                SELECT COUNT(*) FROM dbo.SYS_REPORT_PARAMETER
                 WHERE M_IDX = @ModuleId AND SERIAL_NO = @SerialNo AND PARA_NAME = @ParaName;
                 """, connection);
             condition.Parameters.AddWithValue("@ModuleId", Module);
@@ -218,7 +218,7 @@ public sealed class BatchExpiryReportLiveTests
             new HashSet<string>(StringComparer.OrdinalIgnoreCase), ReportId, CancellationToken.None);
         Assert.NotNull(definition);
         Assert.Equal("aggregate", definition!.DataSource);
-        // 条件序号取自归属模块上的条件行（SYSQR_DEFAULT 的 5/6 号），与注册表登记一致
+        // 条件序号取自归属模块上的条件行（SYS_REPORT_PARAMETER 的 5/6 号），与注册表登记一致
         var request = new ReportQueryRequest(
             new Dictionary<int, string?> { [5] = includeExpired, [6] = unmanagedOnly },
             new Dictionary<int, string?>());
@@ -231,7 +231,7 @@ public sealed class BatchExpiryReportLiveTests
         await using var connection = new SqlConnection(RequireConnection());
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "SELECT ISNULL(PARAM_VALUE, N'') FROM dbo.SYSSS WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @Key;",
+            "SELECT ISNULL(PARAM_VALUE, N'') FROM dbo.SYS_PARAMETER WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @Key;",
             connection);
         command.Parameters.AddWithValue("@Key", ExpiryDaysKey);
         return int.Parse((string)(await command.ExecuteScalarAsync())!);
@@ -242,7 +242,7 @@ public sealed class BatchExpiryReportLiveTests
         await using var connection = new SqlConnection(RequireConnection());
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "UPDATE dbo.SYSSS SET PARAM_VALUE = @Value WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @Key;",
+            "UPDATE dbo.SYS_PARAMETER SET PARAM_VALUE = @Value WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @Key;",
             connection);
         command.Parameters.AddWithValue("@Value", days.ToString(System.Globalization.CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("@Key", ExpiryDaysKey);

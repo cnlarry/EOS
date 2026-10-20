@@ -17,7 +17,7 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 按钮级授权的真库验收（fail-closed 名单）：无名单行即拒绝、个人行接管组通道、组通道经
-/// SYSDG_USER 落到人、授权镜子给出 N 用户 / M 组，以及端点在无授权时 403 且留痕。
+/// SYS_USER_GROUP_MEMBER 落到人、授权镜子给出 N 用户 / M 组，以及端点在无授权时 403 且留痕。
 /// 用例只写自己造的合成用户/组（ZZ 前缀），按钮配置行也临时插入并在 finally 清理。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
@@ -60,8 +60,8 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using var connection = await OpenAsync();
         await using (var group = new SqlCommand(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDG WHERE G_IDX=@Id)
-                INSERT INTO dbo.SYSDG (G_IDX,G_DESC,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_GROUP WHERE G_IDX=@Id)
+                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
                 VALUES (@Id,N'按钮授权用例组',N'DbUp',SYSDATETIME(),0);
             """, connection))
         {
@@ -70,8 +70,8 @@ public sealed class DocumentActionAuthorizationLiveTests
         }
         await using (var member = new SqlCommand(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDG_USER WHERE G_IDX=@Id AND USER_ID=@User)
-                INSERT INTO dbo.SYSDG_USER (G_IDX,USER_ID) VALUES (@Id,@User);
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_GROUP_MEMBER WHERE G_IDX=@Id AND USER_ID=@User)
+                INSERT INTO dbo.SYS_USER_GROUP_MEMBER (G_IDX,USER_ID) VALUES (@Id,@User);
             """, connection))
         {
             member.Parameters.Add("@Id", SqlDbType.NVarChar, 20).Value = GroupId;
@@ -100,10 +100,10 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using var connection = await OpenAsync();
         foreach (var sql in new[]
         {
-            "DELETE FROM dbo.SYSDD_BUTTON WHERE BUTTON_KEY=@Key AND USER_ID IN (@User1,@User2);",
-            "DELETE FROM dbo.SYSDH_BUTTON WHERE BUTTON_KEY=@Key AND G_IDX=@Group;",
-            "DELETE FROM dbo.SYSDG_USER WHERE G_IDX=@Group;",
-            "DELETE FROM dbo.SYSDG WHERE G_IDX=@Group;",
+            "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE BUTTON_KEY=@Key AND USER_ID IN (@User1,@User2);",
+            "DELETE FROM dbo.SYS_GROUP_BUTTON_PERMISSION WHERE BUTTON_KEY=@Key AND G_IDX=@Group;",
+            "DELETE FROM dbo.SYS_USER_GROUP_MEMBER WHERE G_IDX=@Group;",
+            "DELETE FROM dbo.SYS_USER_GROUP WHERE G_IDX=@Group;",
             "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE M_IDX=@ModuleId AND EVENT_CODE=N'MANUAL' AND EFFECT_KEY=@Key;",
         })
         {
@@ -122,8 +122,8 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using var connection = await OpenAsync();
         await using var command = new SqlCommand(
             """
-            DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
-            INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
+            INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES (@User,@ModuleId,@Key,@Allow,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """, connection);
         command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;
@@ -138,8 +138,8 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using var connection = await OpenAsync();
         await using var command = new SqlCommand(
             """
-            DELETE FROM dbo.SYSDH_BUTTON WHERE G_IDX=@Group AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
-            INSERT INTO dbo.SYSDH_BUTTON (G_IDX,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            DELETE FROM dbo.SYS_GROUP_BUTTON_PERMISSION WHERE G_IDX=@Group AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
+            INSERT INTO dbo.SYS_GROUP_BUTTON_PERMISSION (G_IDX,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES (@Group,@ModuleId,@Key,@Allow,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """, connection);
         command.Parameters.Add("@Group", SqlDbType.NVarChar, 20).Value = GroupId;

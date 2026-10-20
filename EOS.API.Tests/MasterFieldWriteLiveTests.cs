@@ -21,7 +21,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 批次 / 库存主档**受控写入口**的真库验收（D2 / WS-17）。
 ///
-/// 走生产路径：`DocumentActionExecutor`（按钮授权 = fail-closed 的 `SYSDD_BUTTON`/`SYSDH_BUTTON`）
+/// 走生产路径：`DocumentActionExecutor`（按钮授权 = fail-closed 的 `SYS_USER_BUTTON_PERMISSION`/`SYS_GROUP_BUTTON_PERMISSION`）
 /// → `MasterFieldWriteHandler` → **统一保存路径** `WorkbenchCommandHandler.UpdateRecordAsync`
 /// （校验 / 只读判定 / 审计前后值 / 幂等全在那里）。夹具 `ZZMFW` 前缀，`IAsyncLifetime` 收尾即删。
 ///
@@ -69,7 +69,7 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
             """, ("@batch", BatchNo), ("@pro", TestProduct), ("@effect", OriginalEffectDate), ("@inSum", OriginalInSum));
         // 按钮级授权是 fail-closed：不插这一行，连"能按按钮"都谈不上（但那正是它的设计）
         await ExecAsync(connection,
-            "INSERT INTO dbo.SYSDD_BUTTON (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG) VALUES (@user, @module, @key, 1);",
+            "INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG) VALUES (@user, @module, @key, 1);",
             ("@user", TestUser), ("@module", ModuleId), ("@key", MasterFieldWriteHandler.ActionKey));
     }
 
@@ -84,7 +84,7 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
     {
         await ExecAsync(connection, "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';",
             ("@module", ModuleId));
-        await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;", ("@user", TestUser));
+        await ExecAsync(connection, "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID = @user;", ("@user", TestUser));
         await ExecAsync(connection, "DELETE FROM dbo.INV_BATCH_M WHERE BATCH_NO = @batch AND PRO_NO = @pro;",
             ("@batch", BatchNo), ("@pro", TestProduct));
         await ExecAsync(connection, "DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;", ("@pro", TestProduct));

@@ -7,9 +7,9 @@ namespace EOS.API.Tests.Tools;
 
 /// <summary>
 /// 离线迁移工具（仅 EOS.API.Tests 的迁移生成器与单测调用；EOS.API 运行时程序集不含此类型）。
-/// SYSQR_DEFAULT F_TYPE/F_EXPR DSL → FILTER_TEMPLATE JSON 转换器。
+/// SYS_REPORT_PARAMETER F_TYPE/F_EXPR DSL → FILTER_TEMPLATE JSON 转换器。
 /// 报表条件模板（FILTER_TEMPLATE）与 FIELD_DATASOURCE 的 FILTER_STRUCT 同构，新增 {p.X} 参数占位符表示用户填值。
-/// 运行时：{p.X} 从 SYSQR_USER 取用户值参数化绑定。
+/// 运行时：{p.X} 从 SYS_USER_REPORT_PARAMETER 取用户值参数化绑定。
 /// 关键区分：选择器过滤是固定条件，报表条件是用户填值的参数。
 /// </summary>
 internal static class ConditionTemplateDslConverter

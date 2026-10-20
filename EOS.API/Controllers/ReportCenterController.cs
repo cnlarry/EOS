@@ -34,7 +34,7 @@ public sealed class ReportCenterController(
         await connection.OpenAsync(token);
 
         // 报表按**归属模块**（业务模块）分组与鉴权：r.M_IDX 指向业务模块，不再是承载页。
-        // 模块级报表可见性真源：个人 SYSDD.REPORT_TAG 优先，否则组 SYSDH.REPORT_TAG OR
+        // 模块级报表可见性真源：个人 SYS_USER_MODULE_PERMISSION.REPORT_TAG 优先，否则组 SYS_GROUP_MODULE_PERMISSION.REPORT_TAG OR
         // （与 ModuleRightsRepository.GetModuleReportTagAsync 同口径）。
         // 业务域取归属模块的上级菜单分组（历史实现取的是承载页的 XX98 目录，归位后那层已不存在）。
         const string catalogSql = """
@@ -51,12 +51,12 @@ public sealed class ReportCenterController(
             LEFT JOIN dbo.MODULES dom WITH (NOLOCK) ON dom.M_IDX = m.M_P_IDX
             LEFT JOIN dbo.REPORT_USER_STATE p WITH (NOLOCK) ON p.USER_ID = @UserId AND p.M_IDX = r.M_IDX AND p.REPORT_ID = r.REPORT_ID
             WHERE (
-                EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK)
+                EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK)
                         WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX AND ISNULL(d.REPORT_TAG, 0) = 1)
                 OR (
-                  NOT EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK) WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX)
-                  AND EXISTS (SELECT 1 FROM dbo.SYSDH h WITH (NOLOCK)
-                              INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
+                  NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK) WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX)
+                  AND EXISTS (SELECT 1 FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+                              INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
                               WHERE gu.USER_ID = @UserId AND h.M_IDX = r.M_IDX AND ISNULL(h.REPORT_TAG, 0) = 1)
                 )
               )

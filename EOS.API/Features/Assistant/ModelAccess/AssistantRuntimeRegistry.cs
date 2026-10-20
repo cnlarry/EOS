@@ -26,7 +26,7 @@ public sealed record ResolvedAssistantModel(
 public sealed record AssistantRuntimeSnapshot(ResolvedAssistantModel? Model, AssistantSettings Settings)
 {
     /// <summary>
-    /// 全局参数行（<c>dbo.SYSSS</c> 的 <c>OWNER_MODULE = 3105</c>）。
+    /// 全局参数行（<c>dbo.SYS_PARAMETER</c> 的 <c>OWNER_MODULE = 3105</c>）。
     ///
     /// <para>
     /// 快照里连**原始行**一起留着，是为了让作用域覆盖能在它之上叠加
@@ -69,7 +69,7 @@ public interface IAssistantRuntimeConfig
 /// <para>
 /// 此前是**启动期单例绑配置**（<c>AddSingleton&lt;IChatModel, DeepSeekChatModel&gt;</c> +
 /// <c>IOptions&lt;AssistantSettings&gt;</c>），进程跑起来就改不了。现在两块都来自数据库：
-/// 模型来自 <c>dbo.ASSISTANT_MODEL/PROVIDER</c>（3102），全局策略来自 <c>dbo.SYSSS</c> 的
+/// 模型来自 <c>dbo.ASSISTANT_MODEL/PROVIDER</c>（3102），全局策略来自 <c>dbo.SYS_PARAMETER</c> 的
 /// <c>OWNER_MODULE = 3105</c>（3105 助手设置，解析见 <see cref="AssistantParameterResolver"/>）。
 /// </para>
 ///

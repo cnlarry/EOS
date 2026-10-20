@@ -145,7 +145,7 @@ export interface FieldHistoryChange {
 export interface FieldHistoryEvent {
   occurredAt: string
   actorUserId: string
-  /** 操作人姓名（后端对照 SYSDN.Emp_Name 解析，缺省回退 user id）。 */
+  /** 操作人姓名（后端对照 SYS_EMPLOYEE.Emp_Name 解析，缺省回退 user id）。 */
   actorName?: string
   action: string
   summary: string | null

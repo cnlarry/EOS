@@ -33,8 +33,8 @@ public sealed record AssistantSessionDto(
     /// <summary>该会话累计消耗的 token（prompt + completion 之和）。同上，只有列表查询会算。</summary>
     long MessageTokens = 0,
     /// <summary>
-    /// 归属用户的**姓名**（经 SYSDL.EMP_ID → SYSDN.EMP_NAME 取）。只有管理侧列表会带出来：
-    /// `USER_ID` 是账号/编号，看列表的人需要的是"这是谁的会话"。取不到（账号不在 SYSDL 里，
+    /// 归属用户的**姓名**（经 SYS_USER_ACCOUNT.EMP_ID → SYS_EMPLOYEE.EMP_NAME 取）。只有管理侧列表会带出来：
+    /// `USER_ID` 是账号/编号，看列表的人需要的是"这是谁的会话"。取不到（账号不在 SYS_USER_ACCOUNT 里，
     /// 例如测试账号）就为 null，界面回落显示账号本身。
     /// </summary>
     string? EmployeeName = null);

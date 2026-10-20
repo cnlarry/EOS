@@ -35,7 +35,7 @@ export type SettingsForm = Record<string, string>
 
 /** 历史表名/URL 片段 → 页面范围段，保证既有菜单与书签继续可用。 */
 const SCOPE_ALIASES: Record<string, string> = {
-  SYSSS: 'system',
+  SYS_PARAMETER: 'system',
   'HR-SETUP': 'hr-setup',
   HR_SETUP: 'hr-setup',
   'HRM-SETUP': 'hrm-setup',

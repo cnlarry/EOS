@@ -122,15 +122,15 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         // 子单走统一创建路径：测试用户需要 1502 的新增权（与处理器复核的是同一把尺子）
         await ExecAsync(connection,
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDD WHERE USER_ID=@user AND M_IDX=@module)
-                INSERT INTO dbo.SYSDD (USER_ID,M_IDX,ADDNEW_TAG,EDIT_TAG,DELETE_TAG,COST_TAG,SECRECY_TAG,EXEC_TAG)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID=@user AND M_IDX=@module)
+                INSERT INTO dbo.SYS_USER_MODULE_PERMISSION (USER_ID,M_IDX,ADDNEW_TAG,EDIT_TAG,DELETE_TAG,COST_TAG,SECRECY_TAG,EXEC_TAG)
                 VALUES (@user,@module,1,1,1,1,1,N'Z');
             """,
             ("@user", TestUser), ("@module", ModuleId));
         await ExecAsync(connection,
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", ProduceGenSubHandler.ActionKey));
@@ -156,8 +156,8 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
             "DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO)) IN (@a,@b,@c,@d);",
             ("@a", ElementWithChild), ("@b", ElementLeaf), ("@c", GrandChild), ("@d", GreatGrandChild));
         await ExecAsync(connection,
-            "DELETE FROM dbo.SYSDD WHERE USER_ID=@user;", ("@user", TestUser));
-        await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
+            "DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID=@user;", ("@user", TestUser));
+        await ExecAsync(connection, "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }

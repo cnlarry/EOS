@@ -10,7 +10,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 送货单（1406，原 `cop-send` C#）入校验目录后的真库验证：
 /// 保存期 `custom-validation` → 注册实现 `cop-send-check` 的五条判据
-/// （批号必填 / 送货日期超 30 天 / 库别存在 / 出库数量不超库存 / 批号出库不超批号库存，后三条受 `SYSSS.SEND_TAG` 门控），
+/// （批号必填 / 送货日期超 30 天 / 库别存在 / 出库数量不超库存 / 批号出库不超批号库存，后三条受 `SYS_PARAMETER.SEND_TAG` 门控），
 /// 以及 SAVE 期 `cop-send-mo-flag` 的包装标记写入（每品号客户订单号最大的一行）。
 /// 造数用 `ADR12CS` 前缀，事务结束回滚。
 /// </summary>
@@ -185,7 +185,7 @@ public sealed class CopSendCatalogLiveTests
             DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.PRODUCT WHERE PRO_NO=@Pro;
-            UPDATE dbo.SYSSS SET PARAM_VALUE=CONVERT(nvarchar(4000), @SendTag)
+            UPDATE dbo.SYS_PARAMETER SET PARAM_VALUE=CONVERT(nvarchar(4000), @SendTag)
                 WHERE OWNER_MODULE=110111 AND PARAM_KEY=N'SEND_TAG';
             """, ("@Type", Type), ("@Pro", Pro), ("@Depot", Depot), ("@SendTag", sendTag));
         if (depotExists)

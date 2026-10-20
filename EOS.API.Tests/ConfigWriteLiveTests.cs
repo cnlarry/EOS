@@ -462,7 +462,7 @@ public sealed class ConfigWriteLiveTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            SELECT (SELECT COUNT(*) FROM dbo.SYSDH_BUTTON) + (SELECT COUNT(*) FROM dbo.SYSDD_BUTTON);
+            SELECT (SELECT COUNT(*) FROM dbo.SYS_GROUP_BUTTON_PERMISSION) + (SELECT COUNT(*) FROM dbo.SYS_USER_BUTTON_PERMISSION);
             """, connection);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }

@@ -6,7 +6,7 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// Maps workbench field metadata and column settings: field-maintenance summaries and details,
-/// personal column widths (SYSQL_FIELDS.F_WIDTH), and user (SYSQL_FIELDS) vs system default (SYSQL_DEFAULT)
+/// personal column widths (SYS_USER_COLUMN.F_WIDTH), and user (SYS_USER_COLUMN) vs system default (SYS_DEFAULT_COLUMN)
 /// column configuration. Field keys pass module-definition/registry whitelists, widths and counts
 /// are bounded, and values are parameterized.
 /// </summary>
@@ -88,7 +88,7 @@ public sealed class WorkbenchFieldMetaMapper(
     }
 
     /// <summary>
-    /// 个人列宽写回：列宽是操作习惯，与"选择列"同属个人配置，故宽度挂在 SYSQL_FIELDS.F_WIDTH 上
+    /// 个人列宽写回：列宽是操作习惯，与"选择列"同属个人配置，故宽度挂在 SYS_USER_COLUMN.F_WIDTH 上
     /// （迁移 352）。它不写 FIELDS、不标脏、不审计——动的是个人偏好，不是共用元数据，也不需要重发布。
     /// 字段元数据的 DISPLAY_LENGTH 是所有人的默认宽度，只在字段设置面改（设置权限）。
     /// </summary>
@@ -129,7 +129,7 @@ public sealed class WorkbenchFieldMetaMapper(
     /// </summary>
     private static async Task EnsureColumnRowsAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,IReadOnlyList<WorkbenchColumn> columns,CancellationToken token)
     {
-        await using(var probe=new SqlCommand("SELECT COUNT(*) FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction))
+        await using(var probe=new SqlCommand("SELECT COUNT(*) FROM dbo.SYS_USER_COLUMN WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction))
         {
             probe.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
             probe.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
@@ -142,7 +142,7 @@ public sealed class WorkbenchFieldMetaMapper(
 
     private static async Task UpdatePersonalWidthAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,int width,CancellationToken token)
     {
-        await using var command=new SqlCommand("UPDATE dbo.SYSQL_FIELDS SET F_WIDTH=@Width WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@FieldId",connection,transaction);
+        await using var command=new SqlCommand("UPDATE dbo.SYS_USER_COLUMN SET F_WIDTH=@Width WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@FieldId",connection,transaction);
         command.Parameters.Add("@Width",SqlDbType.Int).Value=width;
         command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
         command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
@@ -201,7 +201,7 @@ public sealed class WorkbenchFieldMetaMapper(
     public async Task ResetColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
     {
         await using var connection=CreateConnection();await connection.OpenAsync(token);
-        await using var command=new SqlCommand("DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable",connection);
+        await using var command=new SqlCommand("DELETE FROM dbo.SYS_USER_COLUMN WHERE USER_ID=@UserId AND T_ID=@MasterTable",connection);
         command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=definition.MasterTable;await command.ExecuteNonQueryAsync(token);
         logger.LogInformation("重置列配置 userId={UserId} module={ModuleId} master={Master}", userId,definition.ModuleId,definition.MasterTable);
     }
@@ -210,7 +210,7 @@ public sealed class WorkbenchFieldMetaMapper(
     {
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),CAST(CASE WHEN d.F_ID IS NULL THEN 0 ELSE 1 END AS bit),COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit)
-            FROM dbo.FIELDS f WITH (NOLOCK) LEFT JOIN dbo.SYSQL_DEFAULT d WITH (NOLOCK) ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND LTRIM(RTRIM(d.F_ID))=LTRIM(RTRIM(f.F_ID))
+            FROM dbo.FIELDS f WITH (NOLOCK) LEFT JOIN dbo.SYS_DEFAULT_COLUMN d WITH (NOLOCK) ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND LTRIM(RTRIM(d.F_ID))=LTRIM(RTRIM(f.F_ID))
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_COST,0)=0 AND COALESCE(f.IS_SECRECY,0)=0 ORDER BY CASE WHEN d.F_ID IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
@@ -227,7 +227,7 @@ public sealed class WorkbenchFieldMetaMapper(
     private static async Task<IReadOnlyList<WorkbenchColumn>> ReadColumnSettings(SqlConnection connection,string userId,string masterTable,string targetTable,CancellationToken token,bool defaultsOnly=false)
     {
         const string sql="""
-            WITH UserFields AS (SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX FROM dbo.SYSQL_FIELDS WITH (NOLOCK) WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable),
+            WITH UserFields AS (SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX FROM dbo.SYS_USER_COLUMN WITH (NOLOCK) WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable),
             HasConfig AS (SELECT CASE WHEN EXISTS(SELECT 1 FROM UserFields) THEN 1 ELSE 0 END Value)
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),CAST(CASE WHEN (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1) THEN 1 ELSE 0 END AS bit),COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=LTRIM(RTRIM(f.F_ID))
@@ -307,7 +307,7 @@ public sealed class WorkbenchFieldMetaMapper(
 
     private static async Task<Dictionary<string,int>> ReadExistingColumnOrderAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,CancellationToken token)
     {
-        await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)),F_IDX FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction);
+        await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)),F_IDX FROM dbo.SYS_USER_COLUMN WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable",connection,transaction);
         command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
         command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
         command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
@@ -319,7 +319,7 @@ public sealed class WorkbenchFieldMetaMapper(
 
     private static async Task InsertColumnRowAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,int order,CancellationToken token)
     {
-        await using var insert=new SqlCommand("INSERT INTO dbo.SYSQL_FIELDS (USER_ID,T_ID,T_ID_R,F_ID,F_IDX) VALUES (@UserId,@MasterTable,@TargetTable,@Field,@Index)",connection,transaction);
+        await using var insert=new SqlCommand("INSERT INTO dbo.SYS_USER_COLUMN (USER_ID,T_ID,T_ID_R,F_ID,F_IDX) VALUES (@UserId,@MasterTable,@TargetTable,@Field,@Index)",connection,transaction);
         insert.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
         insert.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
         insert.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
@@ -330,7 +330,7 @@ public sealed class WorkbenchFieldMetaMapper(
 
     private static async Task UpdateColumnOrderAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,int order,CancellationToken token)
     {
-        await using var update=new SqlCommand("UPDATE dbo.SYSQL_FIELDS SET F_IDX=@Index WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@Field",connection,transaction);
+        await using var update=new SqlCommand("UPDATE dbo.SYS_USER_COLUMN SET F_IDX=@Index WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@Field",connection,transaction);
         update.Parameters.Add("@Index",SqlDbType.Int).Value=order;
         update.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
         update.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
@@ -341,7 +341,7 @@ public sealed class WorkbenchFieldMetaMapper(
 
     private static async Task DeleteColumnRowAsync(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,string fieldKey,CancellationToken token)
     {
-        await using var delete=new SqlCommand("DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@Field",connection,transaction);
+        await using var delete=new SqlCommand("DELETE FROM dbo.SYS_USER_COLUMN WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable AND LTRIM(RTRIM(F_ID))=@Field",connection,transaction);
         delete.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
         delete.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
         delete.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;

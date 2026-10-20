@@ -18,20 +18,20 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
             SELECT l.USER_ID,
                    -- 主组取自用户-组关联表（G_IDX 最小者）。
                    -- 用户与用户组是多对多关系，账号表不承载"那个组"，只有关联表是它的唯一存储。
-                   (SELECT TOP 1 LTRIM(RTRIM(gu.G_IDX)) FROM dbo.SYSDG_USER gu WITH (NOLOCK)
+                   (SELECT TOP 1 LTRIM(RTRIM(gu.G_IDX)) FROM dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(gu.USER_ID))=LTRIM(RTRIM(l.USER_ID)) ORDER BY gu.G_IDX) AS G_IDX,
                    -- 所属用户组描述（多组顿号连接）：界面上的"角色"就是用户组，与 2306 用户管理的
-                   -- "所属组"同一事实源；账号表与 SYSDN 都不承载组信息。
+                   -- "所属组"同一事实源；账号表与 SYS_EMPLOYEE 都不承载组信息。
                    (SELECT STUFF((SELECT N'、' + LTRIM(RTRIM(ISNULL(g.G_DESC,N'')))
-                                  FROM dbo.SYSDG_USER gu WITH (NOLOCK)
-                                  INNER JOIN dbo.SYSDG g WITH (NOLOCK) ON g.G_IDX=gu.G_IDX
+                                  FROM dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK)
+                                  INNER JOIN dbo.SYS_USER_GROUP g WITH (NOLOCK) ON g.G_IDX=gu.G_IDX
                                   WHERE LTRIM(RTRIM(gu.USER_ID))=LTRIM(RTRIM(l.USER_ID))
                                   ORDER BY g.G_IDX
                                   FOR XML PATH('')),1,1,N'')) AS GROUP_NAMES,
                    l.USER_PWD,l.EMP_ID,n.EMP_NAME,n.DEPT_ID,
                    dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC,n.CI,l.ACTIVE_TAG
-            FROM dbo.SYSDL l WITH (NOLOCK)
-            INNER JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID=n.EMP_ID
+            FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
+            INNER JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID=n.EMP_ID
             WHERE l.USER_ID=@UserId;
             """;
         await using var connection = connections.Create();
@@ -77,7 +77,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
     {
         const string selectSql = """
             SELECT USER_PWD
-            FROM dbo.SYSDL WITH (NOLOCK)
+            FROM dbo.SYS_USER_ACCOUNT WITH (NOLOCK)
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;
         await using var connection = connections.Create();
@@ -102,7 +102,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
 
         var hash = PasswordHasher.Hash(newPassword);
         const string updateSql = """
-            UPDATE dbo.SYSDL
+            UPDATE dbo.SYS_USER_ACCOUNT
             SET USER_PWD=@Hash, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;

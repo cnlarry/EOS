@@ -739,7 +739,7 @@ public sealed class EffectValidationLiveDataTests
             // 订单口径：数量量纲命中（已备货 80 + 本单 30 > 订单 100），七列诊断逐字一致
             await using (var gate = new SqlCommand(
                 "UPDATE dbo.MODULES SET ERROR_NO_SAVE = 1 WHERE M_IDX = 1411;"
-                + " UPDATE dbo.SYSSS SET PARAM_VALUE = N'1' WHERE OWNER_MODULE = 110111 AND PARAM_KEY = N'FITOUT_ORDER_TAG';",
+                + " UPDATE dbo.SYS_PARAMETER SET PARAM_VALUE = N'1' WHERE OWNER_MODULE = 110111 AND PARAM_KEY = N'FITOUT_ORDER_TAG';",
                 connection, transaction))
             {
                 await gate.ExecuteNonQueryAsync(token);
@@ -765,7 +765,7 @@ public sealed class EffectValidationLiveDataTests
             // 切到工单口径（本单 15 备品 vs 工单已备货 40 + 15 > 完工备品 60？→ 55 ≤ 60 不超；数量 80+5 ≤ 200 不超）
             // 故此处先把工单完工备品降到 50 以命中工单口径
             await using (var produceGate = new SqlCommand("""
-                UPDATE dbo.SYSSS
+                UPDATE dbo.SYS_PARAMETER
                 SET PARAM_VALUE = CASE PARAM_KEY WHEN N'FITOUT_ORDER_TAG' THEN N'0' ELSE N'1' END
                 WHERE OWNER_MODULE = 110111 AND PARAM_KEY IN (N'FITOUT_ORDER_TAG', N'FITOUT_PRODUCE_TAG');
                 UPDATE dbo.MOC_PRODUCE_M SET FINISHED_SPARE_QTY = 50
@@ -1258,7 +1258,7 @@ public sealed class EffectValidationLiveDataTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try
         {
-            // 制令单：订单可出库 10、已出库 9；本单出库 5 ⇒ 9+5 > 10 超量（当前 SYSSS.FITOUT_TAG=0 走"订单"分支）
+            // 制令单：订单可出库 10、已出库 9；本单出库 5 ⇒ 9+5 > 10 超量（当前 SYS_PARAMETER.FITOUT_TAG=0 走"订单"分支）
             await using (var seed = new SqlCommand("""
                 INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, QTY, FINISHED_SEND_QTY, FINISHED_SPARE_QTY)
                 VALUES (N'ZZ', N'ZZT2609PRD02', 10, 9, 0);

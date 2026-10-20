@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 /// </para>
 ///
 /// <para>
-/// **阈值搬进 dbo.SYSSS（ADR-030 批 C）之后，配置节失去了读取方**，于是判定收紧为一条：
+/// **阈值搬进 dbo.SYS_PARAMETER（ADR-030 批 C）之后，配置节失去了读取方**，于是判定收紧为一条：
 /// 那个节里出现**任何**键都是覆盖尝试。上一版放行四个已知阈值键——那是按"配置文件仍是来源之一"写的；
 /// 现在放行它们等于告诉填表的人"配上了"，而实际一个字节都不会被读。
 /// </para>
@@ -111,7 +111,7 @@ public sealed class AssistantActionLimitsTests
     public void 配置节里的已知阈值键同样不生效()
     {
         // 这一条是本次收紧的核心：MaxRowsPerAction 曾经是"允许被配置文件覆盖"的键，
-        // 而它的读取方（AssistantRecordActionArguments.MaxRows）现在走 SYSSS。
+        // 而它的读取方（AssistantRecordActionArguments.MaxRows）现在走 SYS_PARAMETER。
         // 放行它 = 让填表的人以为配上了，实际不会被读。
         var result = Validate(new Dictionary<string, string?>
         {

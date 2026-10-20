@@ -298,7 +298,7 @@ public sealed class ChooserRepositoryIntegrationTests
         Assert.NotEmpty(result!.Columns);
         Assert.Contains(result.Columns, column => column.Key.Equals("EMP_ID", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(result.Columns, column => column.Key.Equals("EMP_NAME", StringComparison.OrdinalIgnoreCase));
-        // 默认列串联 110104 SYSQL_DEFAULT
+        // 默认列串联 110104 SYS_DEFAULT_COLUMN
         Assert.NotNull(result.DefaultKeys);
         Assert.NotEmpty(result.DefaultKeys);
         Assert.Contains(result.DefaultKeys!, key => key.Equals("EMP_ID", StringComparison.OrdinalIgnoreCase));

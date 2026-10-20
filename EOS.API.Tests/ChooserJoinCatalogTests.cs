@@ -52,12 +52,12 @@ public sealed class ChooserJoinCatalogTests
     public void BuildJoinClause_ConstantCondition_ReturnsJoin()
     {
         var catalog = Catalog(new VirtualJoin(
-            "SYSDL", "SYSDL", [],
-            new[] { new VirtualJoinConstant("SYSDL", "ACTIVE_TAG", "1", false) }));
+            "SYS_USER_ACCOUNT", "SYS_USER_ACCOUNT", [],
+            new[] { new VirtualJoinConstant("SYS_USER_ACCOUNT", "ACTIVE_TAG", "1", false) }));
         var clause = ChooserJoinCatalog.BuildJoinClause(
-            catalog, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SYSDL" });
+            catalog, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SYS_USER_ACCOUNT" });
         Assert.NotNull(clause);
-        Assert.Contains("[SYSDL].[ACTIVE_TAG]=1", clause);
+        Assert.Contains("[SYS_USER_ACCOUNT].[ACTIVE_TAG]=1", clause);
     }
 
     [Fact]

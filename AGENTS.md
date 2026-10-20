@@ -113,10 +113,10 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
 
 ### 元数据与权限的既有约定
 
-- 用户的自定义列配置存 `SYSQL_FIELDS`，系统默认列存 `SYSQL_DEFAULT`，
+- 用户的自定义列配置存 `SYS_USER_COLUMN`，系统默认列存 `SYS_DEFAULT_COLUMN`，
   全局字段显示名在 `FIELDS.F_DESC`。
-- **个人权限覆盖组权限**：某模块只要有个人权限记录（`SYSDD`），就完全采用个人权限，
-  不合并组权限（`SYSDH`）。
+- **个人权限覆盖组权限**：某模块只要有个人权限记录（`SYS_USER_MODULE_PERMISSION`），就完全采用个人权限，
+  不合并组权限（`SYS_GROUP_MODULE_PERMISSION`）。
 - **组权限聚合**：多组布尔授权位取 OR；`EXEC_TAG` 从 `A` 起按字符串比较取最大值；
   禁止字段取各组的**交集**（不是并集）。
 
@@ -130,10 +130,10 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
    行级权限、模块功能权限。`REPORT` 不得关联 `TABLES`，跨表聚合的唯一出口是 `ReportAggregateRegistry`。
 3. **报表不进菜单**：发现途径是报表中心目录、搜索、深链与情境入口（统一表单工具条的「报表」动作）。
    `/reports/{M_IDX}` 只是"按归属模块列报表"的跳转端点，不是入口解析器。
-4. **可见性唯一真源 = 归属模块的 `REPORT_TAG`**（个人 `SYSDD` 优先，否则组 `SYSDH` 取或），
+4. **可见性唯一真源 = 归属模块的 `REPORT_TAG`**（个人 `SYS_USER_MODULE_PERMISSION` 优先，否则组 `SYS_GROUP_MODULE_PERMISSION` 取或），
    **没有报表级 override**：`SYSDD_REPORT` 只承载报表中心的用户状态（收藏/排序/最近使用）。
    任何"逐报表再配一次权限"的设计都是在造第二处真源，不要加。
-5. **条件随模块**：`SYSQR_DEFAULT` / `SYSQR_USER` / `SYSQR_DA` 的 `M_IDX` 指向归属模块；
+5. **条件随模块**：`SYS_REPORT_PARAMETER` / `SYS_USER_REPORT_PARAMETER` 的 `M_IDX` 指向归属模块；
    报表打印走版式资产 + 解释层（`layout.json`，`kind: document|list`），不新增命令式渲染旁路。
 
 ### 变更取舍
@@ -200,7 +200,7 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
 
 - **所有列表一律使用 `EOS.Web/src/components/common/ErpTable`（统一电子表格）**，禁止手写 `<table>`；
   首列选择控件、表头排序、列宽拖拽、Ctrl+C / 右键复制、键盘导航、吸顶表头是默认能力。
-- **列宽是个人层，只在 DocumentWorkbench 落服务端**（挂在"选择列"那批行上，`SYSQL_FIELDS.F_WIDTH`；
+- **列宽是个人层，只在 DocumentWorkbench 落服务端**（挂在"选择列"那批行上，`SYS_USER_COLUMN.F_WIDTH`；
   没有个人值时回落 `FIELDS.DISPLAY_LENGTH`，那是**所有人的默认宽度**，只在字段设置面改、需 CanSetup）；
   其余列表列宽一律本地持久化（`localStorage`），不得新增写回服务端字段宽度的逻辑。
   保存选择列按**差异**增删改序、不整表先删后插——否则每次保存列都会把列宽抹平。
@@ -235,7 +235,7 @@ EOS 是一套面向离散制造业的 ERP 系统：ASP.NET Core / .NET 10 后端
   **必须使用 `EOS.Web/src/components/common/UnifiedChooser`**，禁止页面内自建选择弹窗或手写选择表格。
 - **数据源只允许两种**：`formField`（复用 `CHOOSE_*` 表单字段元数据）或 `sourceKey`
   （服务端注册数据源，`POST /api/chooser/query`）；`loader` 仅存量过渡，**新代码不得新增**。
-- **列与默认列必须来自服务端**（`FIELDS` + `SYSQL_DEFAULT` 元数据或受控虚拟查找白名单），
+- **列与默认列必须来自服务端**（`FIELDS` + `SYS_DEFAULT_COLUMN` 元数据或受控虚拟查找白名单），
   前端禁止硬编码列清单；行键/回填字段按元数据键大小写不敏感取值。
 - **新增数据源在 `EOS.API/Data/ChooserRepository.cs` 注册**：可排序列/关键字/列表达式白名单
   + 权限门（moduleId）+ 参数化查询；表名/列名只来自注册表，不信任前端提交。

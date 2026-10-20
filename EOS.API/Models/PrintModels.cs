@@ -7,7 +7,7 @@ public sealed record PrintField(string Key, string Label, string? DisplayFormat 
 /// 语义：单据页头 Title = 开单方主体（页头字典引用），不是往来单位名称；
 /// 客户/厂商的公司名（FULL_NAME_CN/EN）与地址/联系人只进正文。
 /// HEADER_ID 是该往来单位默认使用哪个开单方页头， 优先级：
-/// CLIENT.HEADER_ID → SYSQR.HEADER_ID → REPORT.HEADER_ID。
+/// CLIENT.HEADER_ID → SYS_USER_REPORT_PRINT.HEADER_ID → REPORT.HEADER_ID。
 /// CLIENT.PRINT_PRICE 启用前需审计取值分布（338 家 0 / 1 家 1，不得假设存量可信）。
 /// </summary>
 public sealed record ClientPrintProfile(

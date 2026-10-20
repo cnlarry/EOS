@@ -84,7 +84,7 @@ internal static class CopOrderCheck
         var tradeDaysSql = $"""
             SELECT TOP 1 1 FROM dbo.{master} m
             CROSS JOIN (SELECT TOP 1 TRY_CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int) AS V
-                        FROM dbo.SYSSS
+                        FROM dbo.SYS_PARAMETER
                         WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @TradeDaysKey) s
             JOIN dbo.{client} c ON c.{Q(config.Client.KeyField)}=m.{Q(config.Master.ClientField)}
             WHERE {keyScope} AND s.V IS NOT NULL
@@ -133,7 +133,7 @@ internal static class CopOrderCheck
             JOIN dbo.{client} c ON c.{Q(config.Client.KeyField)}=m.{Q(config.Master.ClientField)}
             JOIN dbo.{product} p ON p.{Q(config.Product.KeyField)}=o.{Q(config.Detail.ProductField)}
             CROSS JOIN (SELECT TOP 1 TRY_CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int) AS V
-                        FROM dbo.SYSSS
+                        FROM dbo.SYS_PARAMETER
                         WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @ProductDaysKey) s
             WHERE {detailScope} AND s.V IS NOT NULL
               AND c.{Q(config.Client.LastTradeDateField)} IS NOT NULL

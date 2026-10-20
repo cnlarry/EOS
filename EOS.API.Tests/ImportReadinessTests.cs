@@ -16,9 +16,9 @@ public sealed class ImportReadinessTests
     public void 只报空表_有数据的来源不提醒()
     {
         var items = ImportService.SelectEmptySources(
-            [Item("CURR_ID", "CURR", 28), Item("SALES_ID", "SYSDN", 0)], "CLIENT");
+            [Item("CURR_ID", "CURR", 28), Item("SALES_ID", "SYS_EMPLOYEE", 0)], "CLIENT");
 
-        Assert.Equal(["SYSDN"], items.Select(item => item.SourceTable));
+        Assert.Equal(["SYS_EMPLOYEE"], items.Select(item => item.SourceTable));
     }
 
     [Fact]

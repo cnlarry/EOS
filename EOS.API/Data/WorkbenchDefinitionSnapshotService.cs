@@ -73,7 +73,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
     /// 否则会出现"发布说复用、检测说落后"的自相矛盾。**只读**：不写快照、不动脏标记。
     ///
     /// **重建必须用快照记录的发布者身份**（<c>PUBLISHED_BY</c>）：字段清单是**按用户**解析的
-    /// （`WorkbenchDefinitionBuilder.ReadFields` 读 `SYSQL_FIELDS` 里该用户保存的选择列），
+    /// （`WorkbenchDefinitionBuilder.ReadFields` 读 `SYS_USER_COLUMN` 里该用户保存的选择列），
     /// 拿另一个身份去重建，字段集合与顺序必然不同 ⇒ 对每个有列偏好的用户都会误报"落后"。
     /// 用发布者身份重建，检测器的结论才与"该用户现在点一次发布会不会产生新版本"一致。
     ///

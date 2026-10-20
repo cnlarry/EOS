@@ -12,7 +12,7 @@ namespace EOS.API.Data.Effects;
 /// 判据来源旧过程 `P_COP_SEND_After_Save`）。按旧顺序执行：
 ///   ① 批管品必填批号（无门控）；
 ///   ② 送货日期不得早于建立日期 30 天；
-///   ③ 受 `SYSSS.SEND_TAG=1` 门控的三条：库别存在、出库数量不超库存（**按产品单位折算**）、
+///   ③ 受 `SYS_PARAMETER.SEND_TAG=1` 门控的三条：库别存在、出库数量不超库存（**按产品单位折算**）、
 ///      批号出库数量不超批号库存（同样按单位折算）。
 /// 这些判据含多单位换算 CASE 与跨表聚合比较，现有模板表达不了 ⇒ 走 `custom-validation`（注册代码），
 /// 命中返回文案、全部通过返回 null。参数闭合：各表与列名分组声明，全部校验为物理列。
@@ -76,7 +76,7 @@ internal static class CopSendCheck
         if (await ExistsAsync(context, dateTooOldSql, type, no, config.MaxDays, token))
             return config.Messages.DateTooOld;
 
-        // ③ 库存与批号库存（受 SYSSS 开关门控）
+        // ③ 库存与批号库存（受 SYS_PARAMETER 开关门控）
         if (await SysssFlagAsync(context, config.GateFlag, token))
         {
             var depotMissingSql = $"""
@@ -281,7 +281,7 @@ internal static class CopSendCheck
     private static string Str(SqlDataReader reader, int index)
         => reader.IsDBNull(index) ? string.Empty : EffectCellText.Format(reader.GetValue(index));
 
-    /// <summary>参数解析（fail-closed：各表列名必须物理存在，文案非空，门控列只能是 SYSSS 上的列）。</summary>
+    /// <summary>参数解析（fail-closed：各表列名必须物理存在，文案非空，门控列只能是 SYS_PARAMETER 上的列）。</summary>
     internal static CopSendCheckConfig Parse(JsonElement root, string masterTable, ISet<string> columns)
     {
         const string label = "cop-send-check";
@@ -347,7 +347,7 @@ internal static class CopSendCheck
                      (config.BatchStock.Table, config.BatchStock.ProductField),
                      (config.BatchStock.Table, config.BatchStock.InField),
                      (config.BatchStock.Table, config.BatchStock.OutField),
-                     ("SYSSS", config.GateFlag),
+                     ("SYS_PARAMETER", config.GateFlag),
                  };
         if (config.Detail.LocationField is { } detailLocation)
         {

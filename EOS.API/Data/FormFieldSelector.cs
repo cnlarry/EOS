@@ -3,7 +3,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// FIELDS 表单字段原始行（自 f.T_ID=目标表的物理列，已含 SYSQL_DEFAULT 顺序与主键标记）。
+/// FIELDS 表单字段原始行（自 f.T_ID=目标表的物理列，已含 SYS_DEFAULT_COLUMN 顺序与主键标记）。
 /// 不含高危表达式内容（CHOOSE_FILTER 等）——普通用户响应不返回这些内容。
 /// </summary>
 internal sealed record FormFieldRow(
@@ -57,8 +57,8 @@ internal sealed record FormChooserRow(
 /// - 权限过滤：成本/保密（无权限剔除）、DENY_VIEW 剔除；mode=new 剔 DENY_NEW，mode=edit 剔 DENY_MODI；
 /// - 虚拟字段保留标记 isVirtual 且强制只读；
 /// - 必填且只读/隐藏的字段标记 serverFilled（服务端填充），隐藏且非必填的字段不进表单；
-/// - 输入行顺序即表单顺序：主表行由 SQL 按 SYSQL_DEFAULT.F_IDX 排序；
-/// 明细行由调用方按 DocumentWorkbench 子表列配置（用户 SYSQL_FIELDS → 系统默认）对齐后传入。
+/// - 输入行顺序即表单顺序：主表行由 SQL 按 SYS_DEFAULT_COLUMN.F_IDX 排序；
+/// 明细行由调用方按 DocumentWorkbench 子表列配置（用户 SYS_USER_COLUMN → 系统默认）对齐后传入。
 /// </summary>
 internal static class FormFieldSelector
 {

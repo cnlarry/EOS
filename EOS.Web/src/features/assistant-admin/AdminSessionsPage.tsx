@@ -211,7 +211,7 @@ export function AdminSessionsPage() {
       enableSorting: false,
       meta: { className: 'text-nowrap', minWidth: 130 },
       // 显示**姓名**、账号作为次行小字：`USER_ID` 是账号/编号，看列表的人要的是"这是谁的会话"，
-      // 但排查时又要留得住那个编号。账号不在 SYSDL 里（例如测试账号）时明确标出来，不假装它有姓名。
+      // 但排查时又要留得住那个编号。账号不在 SYS_USER_ACCOUNT 里（例如测试账号）时明确标出来，不假装它有姓名。
       cell: (info) => (
         <span className="d-flex flex-column">
           <span>{info.row.original.employeeName ?? <span className="text-secondary">（未登记用户）</span>}</span>

@@ -312,8 +312,8 @@ public sealed class WorkbenchDefinitionBuilder(
     /// Builds the unified form definition (entry field view filtered by the current user's rights).
     /// mode supports new/edit/view (validated by the controller); no high-risk expressions are
     /// evaluated here. Detail fields stay aligned with the DocumentWorkbench child-table columns:
-    /// the column set and order come from the same workbench source (user SYSQL_FIELDS, then
-    /// SYSQL_DEFAULT, then FIELDS.IS_DEFAULT_FIELDS) so add pages and child tables share one column
+    /// the column set and order come from the same workbench source (user SYS_USER_COLUMN, then
+    /// SYS_DEFAULT_COLUMN, then FIELDS.IS_DEFAULT_FIELDS) so add pages and child tables share one column
     /// configuration.
     /// </summary>
     public async Task<FormDefinition?> GetFormDefinitionAsync(
@@ -662,7 +662,7 @@ public sealed class WorkbenchDefinitionBuilder(
                    CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
             FROM dbo.FIELDS f WITH (NOLOCK)
             LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
-                       FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
+                       FROM dbo.SYS_DEFAULT_COLUMN WITH (NOLOCK)
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
             /* 精度/小数位必须取 c.precision / c.scale（**列**的实际声明），
@@ -864,9 +864,9 @@ public sealed class WorkbenchDefinitionBuilder(
     }
 
     /// <summary>
-    /// 读取用户可见列（显示列）：列集合与顺序完全由「选择列」配置决定——有用户配置（SYSQL_FIELDS）
+    /// 读取用户可见列（显示列）：列集合与顺序完全由「选择列」配置决定——有用户配置（SYS_USER_COLUMN）
     /// 时取其列与 F_IDX 顺序，否则取系统默认列（FIELDS.IS_DEFAULT_FIELDS）按 VERIFY_INDEX 排序。
-    /// 列宽同理按个人层：有个人值（SYSQL_FIELDS.F_WIDTH，与"选择列"同一批行）取其值，否则回落字段元数据的 DISPLAY_LENGTH
+    /// 列宽同理按个人层：有个人值（SYS_USER_COLUMN.F_WIDTH，与"选择列"同一批行）取其值，否则回落字段元数据的 DISPLAY_LENGTH
     /// （后者是所有用户的默认值，由字段设置面维护）。
     /// 主键列不在此处补入：用户未勾选的主键列只用于行标识/子表关联，由查询层单独并入投影，
     /// 不参与渲染（行键与显示列元数据分离）。
@@ -875,7 +875,7 @@ public sealed class WorkbenchDefinitionBuilder(
     {
         const string sql="""
             WITH UserFields AS (
-              SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX,F_WIDTH FROM dbo.SYSQL_FIELDS WITH (NOLOCK)
+              SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX,F_WIDTH FROM dbo.SYS_USER_COLUMN WITH (NOLOCK)
               WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable
             ), HasConfig AS (SELECT CASE WHEN EXISTS(SELECT 1 FROM UserFields) THEN 1 ELSE 0 END Value)
             SELECT f.F_ID,COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),COALESCE(f.F_TYPE,'nvarchar'),

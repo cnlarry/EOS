@@ -90,7 +90,7 @@ $Rules = @(
         Match   = '^EOS\.API/Security/'
         Actions = @(
             '权限判定是服务端唯一真源，前端判断只改善体验，不得据此放行'
-            '个人权限（SYSDD）存在即完全覆盖组权限（SYSDH），不合并'
+            '个人权限（SYS_USER_MODULE_PERMISSION）存在即完全覆盖组权限（SYS_GROUP_MODULE_PERMISSION），不合并'
             '组权限聚合：布尔位取 OR、EXEC_TAG 取最大值、禁止字段取交集'
         )
         Gates   = @('scripts/verify-permission-gate.ps1')

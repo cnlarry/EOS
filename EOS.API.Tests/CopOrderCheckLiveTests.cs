@@ -143,7 +143,7 @@ public sealed class CopOrderCheckLiveTests
             DELETE FROM dbo.CLIENT_PRICE_D WHERE CLIENT_ID=@Client;
             DELETE FROM dbo.PRODUCT WHERE PRO_NO IN (@Pro1, @Pro2);
             DELETE FROM dbo.CLIENT WHERE CLIENT_ID=@Client;
-            UPDATE dbo.SYSSS
+            UPDATE dbo.SYS_PARAMETER
             SET PARAM_VALUE = CONVERT(nvarchar(4000), CASE PARAM_KEY WHEN N'CLIENT_DAYS' THEN @ClientDays ELSE @ProductDays END)
             WHERE OWNER_MODULE=110111 AND PARAM_KEY IN (N'CLIENT_DAYS', N'PRODUCT_DAYS');
             """,

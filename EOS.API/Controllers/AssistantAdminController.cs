@@ -976,7 +976,7 @@ public sealed class AssistantAdminController(
 
     // ==================================================================
     // 3105 助手设置（见 ADR-030 §8）：全局策略参数。
-    // 参数的**声明**在代码（AssistantParameterCatalog），**取值**在 dbo.SYSSS 的 OWNER_MODULE = 3105；
+    // 参数的**声明**在代码（AssistantParameterCatalog），**取值**在 dbo.SYS_PARAMETER 的 OWNER_MODULE = 3105；
     // 两者按批同步生长。读写都经 SystemParameterService —— 参数只有一个存储、一套类型校验与审计路径
     // （§4.3：端点仍挂在 3105 自己这里，写门是 CanSetup，不走通用设置端点那条 CanEdit 的通道）。
     // ==================================================================

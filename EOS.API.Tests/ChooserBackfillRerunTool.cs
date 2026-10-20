@@ -15,7 +15,7 @@ namespace EOS.API.Tests;
 ///
 /// Background: the earlier offline pipeline could misattribute the source table per row,
 /// so some MANUAL rows are actually self-references with an explicit source-table prefix
-/// (e.g. OWNER on SYSDL with condition ISNULL(SYSDL.ACTIVE_TAG,0)=1) and were misjudged as
+/// (e.g. OWNER on SYS_USER_ACCOUNT with condition ISNULL(SYS_USER_ACCOUNT.ACTIVE_TAG,0)=1) and were misjudged as
 /// cross-table dead configs, leaving FILTER_STRUCT=NULL (fail-closed empty at runtime).
 /// The committed ChooserFilterDslConverter / ChooserFilterCompiler handle self-table
 /// references correctly (ResolveColumn has an "explicit table == source table" branch);

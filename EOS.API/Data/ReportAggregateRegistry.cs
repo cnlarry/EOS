@@ -477,7 +477,7 @@ public static class ReportAggregateRegistry
             // 阈值来自系统参数（键形态「归属模块|参数键」，与源码引用登记同格式）；
             // 缺失时按 30 天兜底，见 ReportRepository.DefaultSystemParameterValue
             new ReportAggregateParameter("alert_days", "int", 10, SystemParameterKey: "110111|EXPIRY_ALERT_DAYS"),
-            // 序号与服务端的查询条件行（SYSQR_DEFAULT 的 5/6 号）一一对应：条件行按模块读，
+            // 序号与服务端的查询条件行（SYS_REPORT_PARAMETER 的 5/6 号）一一对应：条件行按模块读，
             // 错位就等于"筛选项和查询参数对不上"，改这里必须同步改条件行
             new ReportAggregateParameter("include_expired", "string", 1, SerialNo: 5),
             new ReportAggregateParameter("unmanaged_only", "string", 1, SerialNo: 6),

@@ -15,7 +15,7 @@ import { AssistantScopeOverrides } from './AssistantScopeOverrides'
  *
  * <para>
  * 这一页是**助手参数目录的视图**（ADR-030 §5）：参数的声明在服务端代码
- * （`AssistantParameterCatalog`），取值在 `dbo.SYSSS` 的 `OWNER_MODULE = 3105`。页面按**域**分组
+ * （`AssistantParameterCatalog`），取值在 `dbo.SYS_PARAMETER` 的 `OWNER_MODULE = 3105`。页面按**域**分组
  * （提示词 / 成本与熔断 / 记忆 / …），每一节由服务端返回的分组顺序决定，前端不写死分组清单。
  * </para>
  *

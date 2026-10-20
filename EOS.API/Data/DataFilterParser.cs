@@ -65,9 +65,9 @@ internal static class DataFilterParser
             // 受控子查询只读该列，用于"未建样品的成品资料"这类反向清单。
             ["SAMPLE_PRO"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
             ["SUPPLIER_PRICE_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO", "SUPPLIER_ID" },
-            ["SYSDD"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "M_IDX", "USER_ID" },
-            ["SYSDG_USER"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "USER_ID" },
-            ["SYSDH"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "M_IDX" },
+            ["SYS_USER_MODULE_PERMISSION"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "M_IDX", "USER_ID" },
+            ["SYS_USER_GROUP_MEMBER"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "USER_ID" },
+            ["SYS_GROUP_MODULE_PERMISSION"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "M_IDX" },
         };
 
     public static bool TryParse(

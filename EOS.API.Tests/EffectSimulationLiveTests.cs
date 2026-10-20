@@ -683,7 +683,7 @@ public sealed class EffectSimulationLiveTests
     {
         await using var command = new SqlCommand(
             """
-            SELECT TOP 1 LTRIM(RTRIM(USER_ID)) FROM dbo.SYSDD WITH (NOLOCK)
+            SELECT TOP 1 LTRIM(RTRIM(USER_ID)) FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
             WHERE M_IDX=230101 AND ISNULL(SETUP_TAG,0)=1 AND ISNULL(MODULE_CONFIG_TAG,0)=1
             ORDER BY USER_ID;
             """, connection);

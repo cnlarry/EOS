@@ -905,7 +905,7 @@ describe('MenuAdminPage', () => {
           ...moduleNode(2306, '用户权限设定', null),
           NODE_KIND: 'CUSTOMPAGE',
           M_URL: '/admin/users',
-          MASTER_TABLE: 'SYSDL',
+          MASTER_TABLE: 'SYS_USER_ACCOUNT',
         },
       ],
     })
@@ -921,7 +921,7 @@ describe('MenuAdminPage', () => {
     enterEdit()
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     // 数据源锚点由开发团队定义：只读，且没有选择/清除/默认列入口
-    expect(screen.getByLabelText('数据源主表名')).toHaveValue('SYSDL')
+    expect(screen.getByLabelText('数据源主表名')).toHaveValue('SYS_USER_ACCOUNT')
     expect(screen.getByLabelText('数据源主表名')).toHaveAttribute('readonly')
     expect(screen.queryByRole('button', { name: '选择…' })).toBeNull()
     expect(screen.queryByRole('button', { name: '默认列' })).toBeNull()

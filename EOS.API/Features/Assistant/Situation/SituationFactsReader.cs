@@ -58,8 +58,8 @@ public sealed class SituationFactsReader(
         var workGroups = new List<string>();
         await using (var command = new SqlCommand("""
             SELECT LTRIM(RTRIM(ISNULL(l.SIR_ID, ''))), LTRIM(RTRIM(ISNULL(s.EMP_ID, ''))), LTRIM(RTRIM(ISNULL(e.EMP_NAME, '')))
-            FROM dbo.SYSDL l WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDL s WITH (NOLOCK) ON LTRIM(RTRIM(s.USER_ID)) = LTRIM(RTRIM(l.SIR_ID))
+            FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_USER_ACCOUNT s WITH (NOLOCK) ON LTRIM(RTRIM(s.USER_ID)) = LTRIM(RTRIM(l.SIR_ID))
             LEFT JOIN dbo.HR_EMPLOYEE e WITH (NOLOCK) ON LTRIM(RTRIM(e.EMP_ID)) = LTRIM(RTRIM(s.EMP_ID))
             WHERE LTRIM(RTRIM(l.USER_ID)) = @UserId;
             """, connection))
@@ -74,8 +74,8 @@ public sealed class SituationFactsReader(
 
         await using (var command = new SqlCommand("""
             SELECT LTRIM(RTRIM(ISNULL(g.G_DESC, '')))
-            FROM dbo.SYSDG_USER u WITH (NOLOCK)
-            JOIN dbo.SYSDG g WITH (NOLOCK) ON LTRIM(RTRIM(g.G_IDX)) = LTRIM(RTRIM(u.G_IDX))
+            FROM dbo.SYS_USER_GROUP_MEMBER u WITH (NOLOCK)
+            JOIN dbo.SYS_USER_GROUP g WITH (NOLOCK) ON LTRIM(RTRIM(g.G_IDX)) = LTRIM(RTRIM(u.G_IDX))
             WHERE LTRIM(RTRIM(u.USER_ID)) = @UserId
             ORDER BY g.G_IDX;
             """, connection))

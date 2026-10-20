@@ -2,7 +2,7 @@ namespace EOS.API.Models;
 
 /// <summary>
 /// 模块权限输入（写白名单， 固定列集合）。
-/// 个人（SYSDD）/组（SYSDH）共用同一形状；所有列由服务端固定白名单校验，
+/// 个人（SYS_USER_MODULE_PERMISSION）/组（SYS_GROUP_MODULE_PERMISSION）共用同一形状；所有列由服务端固定白名单校验，
 /// 不接受任意列名；EXEC_TAG 允许 A~Z 单字符（A=禁止执行），DENY_* 逗号/分号分隔，
 /// DATA_FILTER 走受控表达式校验。
 /// </summary>
@@ -40,7 +40,7 @@ public sealed record ModuleRightsInput(
 
 /// <summary>
 /// 模块权限矩阵行：moduleId/title/groupPath 定位，权限位为「可编辑值」
-/// （用户 = 个人 SYSDD 值或默认空；组 = 该组 SYSDH 值或默认空），
+/// （用户 = 个人 SYS_USER_MODULE_PERMISSION 值或默认空；组 = 该组 SYS_GROUP_MODULE_PERMISSION 值或默认空），
 /// hasPersonal 决定是否「完全采用」，effective 为按引擎规则计算出的生效值。
 /// </summary>
 public sealed record ModuleRightsRow(
@@ -120,10 +120,10 @@ public sealed record EffectiveModuleRights(
     string DataFilter,
     bool FormDesign = false);
 
-/// <summary>用户组列表行（SYSDG + 成员数 + 备注）。</summary>
+/// <summary>用户组列表行（SYS_USER_GROUP + 成员数 + 备注）。</summary>
 public sealed record UserGroupSummary(string GroupId, string GroupDescription, int MemberCount, string? Remark);
 
-/// <summary>组成员行（SYSDG_USER JOIN SYSDL/SYSDN）。</summary>
+/// <summary>组成员行（SYS_USER_GROUP_MEMBER JOIN SYS_USER_ACCOUNT/SYS_EMPLOYEE）。</summary>
 public sealed record GroupMemberSummary(string UserId, string EmployeeId, string EmployeeName);
 
 /// <summary>用户所属组行。</summary>
@@ -160,7 +160,7 @@ public sealed record EffectiveRightsDetail(
 public sealed record SaveModuleRightsRequest(IReadOnlyList<ModuleRightsInput> Items);
 public sealed record SaveMembersRequest(IReadOnlyList<string> Ids);
 
-/// <summary>用户组新增请求（2305 定制页主档，SYSDG）。</summary>
+/// <summary>用户组新增请求（2305 定制页主档，SYS_USER_GROUP）。</summary>
 public sealed record CreateGroupRequest(string? GroupId, string? GroupDescription, string? Remark);
 
 /// <summary>用户组编辑请求（G_IDX 不可修改）。</summary>

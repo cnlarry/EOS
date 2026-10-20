@@ -10,7 +10,7 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        var personal = await ReadRowsAsync(connection, "SYSDD", "USER_ID", userId, moduleId, cancellationToken);
+        var personal = await ReadRowsAsync(connection, "SYS_USER_MODULE_PERMISSION", "USER_ID", userId, moduleId, cancellationToken);
         if (personal.Count > 0)
         {
             var personalRights = RightsAggregator.FromPersonal(personal[0]);
@@ -24,9 +24,9 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
                    h.COST_TAG,h.SECRECY_TAG,h.SETUP_TAG,h.MODULE_CONFIG_TAG,
                    h.DENY_VIEW_FIELD_MASTER,h.DENY_VIEW_FIELD_DETAIL,h.DENY_NEW_FIELD_MASTER,h.DENY_NEW_FIELD_DETAIL,
                    h.DENY_MODI_FIELD_MASTER,h.DENY_MODI_FIELD_DETAIL,h.DATA_FILTER
-            FROM dbo.SYSDH h WITH (NOLOCK)
+            FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
             WHERE h.M_IDX=@ModuleId AND h.G_IDX IN
-              (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@UserId);
+              (SELECT G_IDX FROM dbo.SYS_USER_GROUP_MEMBER WITH (NOLOCK) WHERE USER_ID=@UserId);
             """;
         await using var command = new SqlCommand(groupSql, connection);
         AddParameters(command, userId, moduleId);
@@ -39,7 +39,7 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
     }
 
     /// <summary>
-    /// 报表级权限：**只看归属模块的 `REPORT_TAG`**（个人 `SYSDD` 优先，否则组 `SYSDH` 取或）。
+    /// 报表级权限：**只看归属模块的 `REPORT_TAG`**（个人 `SYS_USER_MODULE_PERMISSION` 优先，否则组 `SYS_GROUP_MODULE_PERMISSION` 取或）。
     ///
     /// <para>
     /// 原先这里还有第二层：模块闸门通过后再查逐报表的例外行（两张例外表已随迁移 277 退役），
@@ -123,12 +123,12 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
         command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
     }
 
-    /// <summary>模块级报表可见性唯一真源：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
+    /// <summary>模块级报表可见性唯一真源：SYS_USER_MODULE_PERMISSION.REPORT_TAG 个人优先，否则 SYS_GROUP_MODULE_PERMISSION.REPORT_TAG 组 OR。</summary>
     private static async Task<bool> GetModuleReportTagAsync(
         SqlConnection connection, string userId, int moduleId, CancellationToken token)
     {
         const string personalSql = """
-            SELECT ISNULL(REPORT_TAG,0) FROM dbo.SYSDD WITH (NOLOCK)
+            SELECT ISNULL(REPORT_TAG,0) FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
             WHERE USER_ID=@UserId AND M_IDX=@ModuleId;
             """;
         await using (var personalCommand = new SqlCommand(personalSql, connection))
@@ -142,8 +142,8 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
         }
 
         const string groupSql = """
-            SELECT TOP 1 1 FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
+            SELECT TOP 1 1 FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
+            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
             WHERE gu.USER_ID=@UserId AND h.M_IDX=@ModuleId AND ISNULL(h.REPORT_TAG,0)=1;
             """;
         await using var groupCommand = new SqlCommand(groupSql, connection);

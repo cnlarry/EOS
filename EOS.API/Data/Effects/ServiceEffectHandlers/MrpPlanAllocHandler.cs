@@ -11,7 +11,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// material-provide (produce order): recomputes DEPOT_QTY on this document's
 /// material lines as min(MRP_QTY, NEED_QTY), correcting the baseline global update.
 /// Approve and deapprove share the same recompute statement (reverse kind
-/// recompute reads current stock). Gated by SYSSS.PRO_MRP; off means zero rows.
+/// recompute reads current stock). Gated by SYS_PARAMETER.PRO_MRP; off means zero rows.
 /// All identifiers come from closed configuration checked against physical
 /// columns; only key values travel as parameters.
 /// </summary>

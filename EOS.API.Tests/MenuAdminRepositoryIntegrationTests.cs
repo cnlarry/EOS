@@ -423,7 +423,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         {
             await seed.OpenAsync();
             await using var command = new SqlCommand(
-                "INSERT INTO dbo.SYSDD (USER_ID, M_IDX) VALUES ('MENU_IT', @Id);", seed);
+                "INSERT INTO dbo.SYS_USER_MODULE_PERMISSION (USER_ID, M_IDX) VALUES ('MENU_IT', @Id);", seed);
             command.Parameters.Add("@Id", SqlDbType.Int).Value = id;
             await command.ExecuteNonQueryAsync();
         }
@@ -440,7 +440,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             nodeCommand.Parameters.Add("@Id", SqlDbType.Int).Value = id;
             Assert.Equal(0, (int)(await nodeCommand.ExecuteScalarAsync() ?? 0));
             await using var rightCommand = new SqlCommand(
-                "SELECT COUNT(*) FROM dbo.SYSDD WHERE USER_ID='MENU_IT' AND M_IDX=@Id;", check);
+                "SELECT COUNT(*) FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID='MENU_IT' AND M_IDX=@Id;", check);
             rightCommand.Parameters.Add("@Id", SqlDbType.Int).Value = id;
             Assert.Equal(0, (int)(await rightCommand.ExecuteScalarAsync() ?? 0));
         }
@@ -450,7 +450,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             await using var cleanup = new SqlConnection(ConnectionString.Value);
             await cleanup.OpenAsync();
             await using var command = new SqlCommand(
-                "DELETE FROM dbo.SYSDD WHERE USER_ID='MENU_IT'; DELETE FROM dbo.MODULES WHERE M_IDX=@Id;", cleanup);
+                "DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID='MENU_IT'; DELETE FROM dbo.MODULES WHERE M_IDX=@Id;", cleanup);
             command.Parameters.Add("@Id", SqlDbType.Int).Value = id;
             await command.ExecuteNonQueryAsync();
         }

@@ -44,7 +44,7 @@ public sealed class RightsAdminController(
     /// <summary>
     /// 个人自定义按钮授权矩阵（fail-closed 名单）：可见模块里配置好的按钮 × 该用户的名单行。
     /// 缺省相反——不授权即不可点。这里**没有**报表权限：报表的可见性只有一个真源，
-    /// 就是归属模块上的 `REPORT_TAG`（个人 `SYSDD` 优先、否则组 `SYSDH` 取或）。
+    /// 就是归属模块上的 `REPORT_TAG`（个人 `SYS_USER_MODULE_PERMISSION` 优先、否则组 `SYS_GROUP_MODULE_PERMISSION` 取或）。
     /// </summary>
     [HttpGet("users/{userId}/button-rights")]
     public async Task<IActionResult> UserButtonRights(string userId, CancellationToken token)

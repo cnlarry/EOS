@@ -73,7 +73,7 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
                 VALUES (@pro, @depot, @location, @batch, @qty, @qty, @qty, 3, @qty * 3);
             INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED_TAG)
                 VALUES (N'ZZRSV', N'ZZRSV-MO1', 0);
-            INSERT INTO dbo.SYSDD_BUTTON (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG)
+            INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG)
                 VALUES (@user, @module, N'inventory-reserve', 1), (@user, @module, N'inventory-release', 1);
             """, ("@pro", Product), ("@depot", Depot), ("@location", Location), ("@batch", Batch), ("@qty", StockQty),
             ("@user", TestUser), ("@module", StockModule));
@@ -93,7 +93,7 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
             DELETE FROM dbo.INV_RESERVE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.MOC_PRODUCE_M WHERE PRODUCE_TYPE = N'ZZRSV';
-            DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;
+            DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID = @user;
             DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             """, ("@module", StockModule), ("@pro", Product), ("@user", TestUser));
     }

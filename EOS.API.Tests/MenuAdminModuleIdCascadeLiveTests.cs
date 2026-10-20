@@ -33,7 +33,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     /// 而这里需要的偏偏是**逐字保留的历史基线**——它的存在正是"现状比基线少一条"的依据。
     /// 运行时拼出的值与原名逐字一致，比较不受影响。
     /// </remarks>
-    private const string RetiredGroupTable = "SYSDH" + "_REPORT";
+    private const string RetiredGroupTable = "SYS_GROUP_MODULE_PERMISSION" + "_REPORT";
 
     /// <summary>
     /// 级联覆盖的 14 个（表.列）目标。
@@ -46,8 +46,8 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     private static readonly string[] Targets =
     [
         "MODULES.M_IDX", "MODULES.M_P_IDX", "MODULES.M_ROOT_IDX",
-        "SYSDD.M_IDX", "REPORT_USER_STATE.M_IDX", "SYSDH.M_IDX",
-        "SYSQR.R_M_IDX",
+        "SYS_USER_MODULE_PERMISSION.M_IDX", "REPORT_USER_STATE.M_IDX", "SYS_GROUP_MODULE_PERMISSION.M_IDX",
+        "SYS_USER_REPORT_PRINT.R_M_IDX",
         "FIELDS.BROWSE_M_IDX", "FIELD_DATASOURCE.SOURCE_M_IDX",
         "WFFORM.WF_M_IDX", "WFFORM_FLOW.WF_M_IDX", "WF_MONITOR.WF_M_IDX",
         "BILLKIND.B_M_IDX", "MODULE_GROUPS.M_IDX",
@@ -82,13 +82,13 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         "update MODULES set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update MODULES set M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX",
         "update MODULES set M_ROOT_IDX=@NEW_IDX WHERE M_ROOT_IDX=@OLD_IDX",
-        "update SYSDD set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
+        "update SYS_USER_MODULE_PERMISSION set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update REPORT_USER_STATE set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
-        "update SYSDH set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
+        "update SYS_GROUP_MODULE_PERMISSION set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         $"update {RetiredGroupTable} set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update REPORT set R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
         "update REPORT set Q_M_IDX=@NEW_IDX WHERE Q_M_IDX=@OLD_IDX",
-        "update SYSQR set R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
+        "update SYS_USER_REPORT_PRINT set R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
         "update FIELDS set BROWSE_M_IDX=@NEW_IDX WHERE BROWSE_M_IDX=@OLD_IDX",
         "update FIELDS_CHOOSER set SOURCE_M_IDX=@NEW_IDX WHERE SOURCE_M_IDX=@OLD_IDX",
         "update WFFORM set WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX",
@@ -244,12 +244,12 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_ROOT_IDX) VALUES (@Old, N'级联测试-本节点', @Old);
             INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_P_IDX) VALUES (99903, N'级联测试-子节点', @Old);
             INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_ROOT_IDX) VALUES (99904, N'级联测试-根引用', @Old);
-            INSERT INTO dbo.SYSDD (USER_ID, M_IDX) VALUES (N'ADR12CAST', @Old);
+            INSERT INTO dbo.SYS_USER_MODULE_PERMISSION (USER_ID, M_IDX) VALUES (N'ADR12CAST', @Old);
             INSERT INTO dbo.REPORT_USER_STATE (USER_ID, M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
-            INSERT INTO dbo.SYSDH (G_IDX, M_IDX) VALUES (99901, @Old);
+            INSERT INTO dbo.SYS_GROUP_MODULE_PERMISSION (G_IDX, M_IDX) VALUES (99901, @Old);
             INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORT', @Old);
             INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORTQ', @Old);
-            INSERT INTO dbo.SYSQR (USER_ID, R_M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
+            INSERT INTO dbo.SYS_USER_REPORT_PRINT (USER_ID, R_M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
             INSERT INTO dbo.FIELDS (T_ID, F_ID, BROWSE_M_IDX) VALUES (N'ADR12CAST', N'F_CAST', @Old);
             INSERT INTO dbo.FIELD_DATASOURCE (T_ID, F_ID, SERIAL_NO, ACTIVE_TAG, SOURCE_T_ID, SOURCE_M_IDX, CREATE_DATE)
                 VALUES (N'ADR12CAST', N'F_CAST', 1, 1, N'CAST_SRC', @Old, SYSDATETIME());

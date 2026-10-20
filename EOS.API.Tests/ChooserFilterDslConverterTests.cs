@@ -34,17 +34,17 @@ public sealed class ChooserFilterDslConverterTests
     public void Convert_SelfTableQualifiedReference_Tier1()
     {
         // 回归：018 离线管线把「源表名前缀自引用」误判为跨表死配置（148 处 OWNER 过滤挂起）
-        var result = ChooserFilterDslConverter.Convert("ISNULL(SYSDL.ACTIVE_TAG,0) = 1", "SYSDL");
+        var result = ChooserFilterDslConverter.Convert("ISNULL(SYS_USER_ACCOUNT.ACTIVE_TAG,0) = 1", "SYS_USER_ACCOUNT");
         Assert.Equal(1, result.Tier);
         Assert.NotNull(result.Struct);
-        Assert.Equal("SYSDL.ACTIVE_TAG", result.Struct!.Items[0].Field);
+        Assert.Equal("SYS_USER_ACCOUNT.ACTIVE_TAG", result.Struct!.Items[0].Field);
         Assert.Equal("EQ", result.Struct.Items[0].Operator);
         Assert.Equal("ZERO", result.Struct.Items[0].NullSafe);
         Assert.Equal("1", result.Struct.Items[0].Value);
 
-        var compile = ChooserFilterCompiler.Compile(result.Struct, "SYSDL", null, null);
+        var compile = ChooserFilterCompiler.Compile(result.Struct, "SYS_USER_ACCOUNT", null, null);
         Assert.NotNull(compile);
-        Assert.Contains("ISNULL([SYSDL].[ACTIVE_TAG],0)", compile!.Predicate);
+        Assert.Contains("ISNULL([SYS_USER_ACCOUNT].[ACTIVE_TAG],0)", compile!.Predicate);
     }
 
     [Fact]

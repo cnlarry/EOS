@@ -63,7 +63,7 @@ export function HeaderManagerModal({
       footer={<Button variant="secondary" size="sm" onClick={onClose}>关闭</Button>}
     >
           <div className="mb-3">
-            <div className="text-secondary small mb-1">本版式使用的页头（打印时按 CLIENT → SYSQR → REPORT 链解析）</div>
+            <div className="text-secondary small mb-1">本版式使用的页头（打印时按 CLIENT → SYS_USER_REPORT_PRINT → REPORT 链解析）</div>
             <div className="d-flex gap-2">
               <select
                 className="form-select"

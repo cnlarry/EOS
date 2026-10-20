@@ -14,7 +14,7 @@ namespace EOS.API.Features.Assistant.Tools;
 ///
 /// <para>
 /// 可见性不另写一套判定：直接用打印设置仓储的同一份清单——它已按**归属模块的 REPORT_TAG**
-/// 过滤（个人 <c>SYSDD</c> 优先，没有个人记录时取组 <c>SYSDH</c> 的或）。报表可见性只有这一处真源，
+/// 过滤（个人 <c>SYS_USER_MODULE_PERMISSION</c> 优先，没有个人记录时取组 <c>SYS_GROUP_MODULE_PERMISSION</c> 的或）。报表可见性只有这一处真源，
 /// 助手侧复制一份就会漂移。
 /// </para>
 ///

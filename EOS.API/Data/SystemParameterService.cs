@@ -40,7 +40,7 @@ public sealed record SystemParameterList(int OwnerModule, string Scope, IReadOnl
 public sealed record SystemParameterSaveResult(int Updated, IReadOnlyList<string> Errors);
 
 /// <summary>
-/// The single read/write entry point of system parameters (table dbo.SYSSS, one row per parameter).
+/// The single read/write entry point of system parameters (table dbo.SYS_PARAMETER, one row per parameter).
 ///
 /// Rows are owned by the module that presents them (OWNER_MODULE): 110111 system parameters,
 /// 180213 / 180662 attendance parameters. Reads and writes are always scoped by that owner, so the
@@ -64,12 +64,12 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
 
     /// <summary>
     /// Baseline table names still used as scope tokens inside stored configuration
-    /// (<c>{"scope":"SYSSS","key":…}</c>, <c>{"table":"HR_SETUP","flagField":…}</c>): the names are
+    /// (<c>{"scope":"SYS_PARAMETER","key":…}</c>, <c>{"table":"HR_SETUP","flagField":…}</c>): the names are
     /// kept so runtime configuration needs no change, but they resolve to the same owner modules.
     /// </summary>
     private static readonly Dictionary<string, int> ConfigScopes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["SYSSS"] = ModuleIds.SystemSettings,
+        ["SYS_PARAMETER"] = ModuleIds.SystemSettings,
         ["HR_SETUP"] = ModuleIds.HrSetup,
         ["HRM_SETUP"] = ModuleIds.HrmSetup,
     };
@@ -101,7 +101,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
         : AuditOnlyScopeTokens.TryGetValue(ownerModule, out var auditOnly) ? auditOnly
         : ownerModule.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Stored-configuration scope token of an owner module (the "<c>SYSSS</c>" form).</summary>
+    /// <summary>Stored-configuration scope token of an owner module (the "<c>SYS_PARAMETER</c>" form).</summary>
     public static string ConfigScopeToken(int ownerModule) =>
         ConfigTokens.TryGetValue(ownerModule, out var token) ? token : ownerModule.ToString(CultureInfo.InvariantCulture);
 
@@ -129,7 +129,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     private static bool IsCodeReferenced(int ownerModule, string key) =>
         CodeReferencedKeys.Contains($"{ownerModule.ToString(CultureInfo.InvariantCulture)}|{key}");
 
-    /// <summary>Owner module behind the stored-configuration scope token <c>SYSSS</c> (system switches).</summary>
+    /// <summary>Owner module behind the stored-configuration scope token <c>SYS_PARAMETER</c> (system switches).</summary>
     public static int SystemOwner => ModuleIds.SystemSettings;
 
     /// <summary>Owner module behind the stored-configuration scope token <c>HR_SETUP</c>.</summary>
@@ -166,7 +166,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     /// </summary>
     public static string BoolSwitchSql(int ownerModule, string parameterName) =>
         $"""
-        COALESCE((SELECT MAX(CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int)) FROM dbo.SYSSS WITH (NOLOCK)
+        COALESCE((SELECT MAX(CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int)) FROM dbo.SYS_PARAMETER WITH (NOLOCK)
                   WHERE OWNER_MODULE = {ownerModule.ToString(CultureInfo.InvariantCulture)} AND PARAM_KEY = {parameterName}), 0)
         """;
 
@@ -258,7 +258,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
         const string sql = """
             SELECT PARAM_KEY, PARAM_VALUE, VALUE_TYPE, DEFAULT_VALUE, GROUP_CODE, GROUP_LABEL,
                    DESC_TEXT, EFFECT_SCOPE, SEQ_NO, OPTIONS, LAST_UPDATE_BY, LAST_UPDATE_DATE
-            FROM dbo.SYSSS WITH (NOLOCK)
+            FROM dbo.SYS_PARAMETER WITH (NOLOCK)
             WHERE OWNER_MODULE = @Owner
             ORDER BY GROUP_SEQ, SEQ_NO, PARAM_KEY;
             """;
@@ -302,7 +302,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     {
         const string sql = """
             SELECT k.PARAM_KEY
-            FROM (SELECT PARAM_KEY FROM dbo.SYSSS WITH (NOLOCK) WHERE OWNER_MODULE = @Owner) k
+            FROM (SELECT PARAM_KEY FROM dbo.SYS_PARAMETER WITH (NOLOCK) WHERE OWNER_MODULE = @Owner) k
             WHERE EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE r WITH (NOLOCK)
                           WHERE CHARINDEX(N'"' + k.PARAM_KEY + N'"', CAST(r.PARAM_STRUCT AS nvarchar(max))) > 0)
                OR EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
@@ -339,7 +339,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
         string? quickSearchAll = null;
 
         await using (var read = new SqlCommand(
-            "SELECT PARAM_KEY, PARAM_VALUE, VALUE_TYPE, DEFAULT_VALUE FROM dbo.SYSSS WITH (UPDLOCK) WHERE OWNER_MODULE = @Owner;",
+            "SELECT PARAM_KEY, PARAM_VALUE, VALUE_TYPE, DEFAULT_VALUE FROM dbo.SYS_PARAMETER WITH (UPDLOCK) WHERE OWNER_MODULE = @Owner;",
             connection))
         {
             read.Parameters.Add("@Owner", SqlDbType.Int).Value = ownerModule;
@@ -379,7 +379,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
             {
                 await using var update = new SqlCommand(
                     """
-                    UPDATE dbo.SYSSS
+                    UPDATE dbo.SYS_PARAMETER
                     SET PARAM_VALUE = @Value, LAST_UPDATE_BY = @User, LAST_UPDATE_DATE = GETDATE()
                     WHERE OWNER_MODULE = @Owner AND PARAM_KEY = @Key;
                     """, connection, transaction);
@@ -411,7 +411,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
             if (quickSearchAll is not null && !IsTruthy(quickSearchAll))
             {
                 await using var sideEffect = new SqlCommand(
-                    "DELETE FROM dbo.SYSQQ WHERE F_ID = @FieldId;", connection, transaction);
+                    "DELETE FROM dbo.SYS_USER_CHOOSER_MEMORY WHERE F_ID = @FieldId;", connection, transaction);
                 sideEffect.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = "all";
                 await sideEffect.ExecuteNonQueryAsync(token);
             }
@@ -428,14 +428,14 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
 
     /// <summary>
     /// Qualified parameter keys in the "<c>&lt;config scope&gt;.&lt;KEY&gt;</c>" form
-    /// (e.g. <c>SYSSS.SEND_TAG</c>, <c>HR_SETUP.REQUIRE_ENACTMENT</c>). Configuration validators
+    /// (e.g. <c>SYS_PARAMETER.SEND_TAG</c>, <c>HR_SETUP.REQUIRE_ENACTMENT</c>). Configuration validators
     /// check every referenced table/column against one whitelist; folding the parameter keys into
     /// that same whitelist keeps "the switch exists" and "the column exists" a single judgement.
     /// </summary>
     public static async Task<ISet<string>> LoadQualifiedKeysAsync(
         SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
     {
-        const string sql = "SELECT OWNER_MODULE, PARAM_KEY FROM dbo.SYSSS WITH (NOLOCK);";
+        const string sql = "SELECT OWNER_MODULE, PARAM_KEY FROM dbo.SYS_PARAMETER WITH (NOLOCK);";
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var wasOpen = connection.State == ConnectionState.Open;
         if (!wasOpen) await connection.OpenAsync(token);
@@ -458,7 +458,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     {
         await using var command = new SqlCommand(
             """
-            SELECT TOP 1 ISNULL(PARAM_VALUE, DEFAULT_VALUE) FROM dbo.SYSSS WITH (NOLOCK)
+            SELECT TOP 1 ISNULL(PARAM_VALUE, DEFAULT_VALUE) FROM dbo.SYS_PARAMETER WITH (NOLOCK)
             WHERE OWNER_MODULE = @Owner AND PARAM_KEY = @Key;
             """, connection, transaction);
         command.Parameters.Add("@Owner", SqlDbType.Int).Value = ownerModule;
@@ -512,7 +512,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
         SqlConnection connection, SqlTransaction? transaction, int ownerModule, CancellationToken token)
     {
         await using var command = new SqlCommand(
-            "SELECT PARAM_KEY FROM dbo.SYSSS WITH (NOLOCK) WHERE OWNER_MODULE = @Owner;", connection, transaction);
+            "SELECT PARAM_KEY FROM dbo.SYS_PARAMETER WITH (NOLOCK) WHERE OWNER_MODULE = @Owner;", connection, transaction);
         command.Parameters.Add("@Owner", SqlDbType.Int).Value = ownerModule;
         await using var reader = await command.ExecuteReaderAsync(token);
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

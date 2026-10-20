@@ -63,10 +63,10 @@ public sealed class ChooserRepository(
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
             ["report-admin.modules"] = ["M_IDX", "M_DESC"],
-            // 权限复制来源（C11）：SYSDL 用户账号 / SYSDG 用户组
+            // 权限复制来源（C11）：SYS_USER_ACCOUNT 用户账号 / SYS_USER_GROUP 用户组
             ["rights-admin.users"] = ["USER_ID", "EMP_NAME"],
             ["rights-admin.groups"] = ["G_IDX", "G_DESC"],
-            // 员工源显示列/可排序列来自 110104（SYSDN）字段元数据，运行时动态解析，这里仅登记默认排序列
+            // 员工源显示列/可排序列来自 110104（SYS_EMPLOYEE）字段元数据，运行时动态解析，这里仅登记默认排序列
             ["user-admin.employees"] = ["EMP_ID"],
             // 单据源：列与排序按模块主表的主键在运行时解析（每个模块的主表不同），故这里不登记列
             ["menu-admin.records"] = [],
@@ -1331,7 +1331,7 @@ public sealed class ChooserRepository(
             total);
     }
 
-    /// <summary>权限复制来源用户源（rights-admin.users，C11）：SYSDL 账号 + SYSDN 姓名。</summary>
+    /// <summary>权限复制来源用户源（rights-admin.users，C11）：SYS_USER_ACCOUNT 账号 + SYS_EMPLOYEE 姓名。</summary>
     private async Task<UnifiedChooserResult> QueryUsersAsync(UnifiedChooserQueryRequest request, CancellationToken token)
     {
         const string sourceKey = "rights-admin.users";
@@ -1347,8 +1347,8 @@ public sealed class ChooserRepository(
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
         const string fromSql = """
-            FROM dbo.SYSDL l WITH (NOLOCK)
-            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+            FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             """;
         var sql = $"""
             SELECT COUNT_BIG(1)
@@ -1379,7 +1379,7 @@ public sealed class ChooserRepository(
             total);
     }
 
-    /// <summary>权限复制来源组源（rights-admin.groups，C11）：SYSDG 用户组。</summary>
+    /// <summary>权限复制来源组源（rights-admin.groups，C11）：SYS_USER_GROUP 用户组。</summary>
     private async Task<UnifiedChooserResult> QueryGroupsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
     {
         const string sourceKey = "rights-admin.groups";
@@ -1395,10 +1395,10 @@ public sealed class ChooserRepository(
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
         var sql = $"""
-            SELECT COUNT_BIG(1) FROM dbo.SYSDG WITH (NOLOCK)
+            SELECT COUNT_BIG(1) FROM dbo.SYS_USER_GROUP WITH (NOLOCK)
             WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql};
             SELECT LTRIM(RTRIM(G_IDX)) AS G_IDX, LTRIM(RTRIM(ISNULL(G_DESC,''))) AS G_DESC
-            FROM dbo.SYSDG WITH (NOLOCK)
+            FROM dbo.SYS_USER_GROUP WITH (NOLOCK)
             WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}
             {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
@@ -1560,8 +1560,8 @@ public sealed class ChooserRepository(
     }
 
     /// <summary>
-    /// 开户选择器员工源（user-admin.employees）：SYSDN 中尚未开户的员工。
-    /// 显示列与默认列集串联 110104（系统员工资料）字段元数据（FIELDS + SYSQL_DEFAULT），
+    /// 开户选择器员工源（user-admin.employees）：SYS_EMPLOYEE 中尚未开户的员工。
+    /// 显示列与默认列集串联 110104（系统员工资料）字段元数据（FIELDS + SYS_DEFAULT_COLUMN），
     /// 关键字/过滤/排序/高级查询全部落在元数据白名单上（服务端构造，不信任前端提交）。
     /// </summary>
     private async Task<UnifiedChooserResult?> QueryEmployeesAsync(UnifiedChooserQueryRequest request, CancellationToken token)
@@ -1575,11 +1575,11 @@ public sealed class ChooserRepository(
         await using var command = new SqlCommand { Connection = connection };
         AddCommonParameters(command, keyword, page, pageSize);
 
-        // 1) 110104（SYSDN）字段元数据：可见、非虚拟（或受控虚拟查找）、非成本/保密；SYSQL_DEFAULT 默认列优先
+        // 1) 110104（SYS_EMPLOYEE）字段元数据：可见、非虚拟（或受控虚拟查找）、非成本/保密；SYS_DEFAULT_COLUMN 默认列优先
         var columns = await LoadSysdnColumnsAsync(connection, token);
         if (columns.Count == 0)
         {
-            logger.LogWarning("统一选择器员工源缺少 SYSDN 可见字段元数据");
+            logger.LogWarning("统一选择器员工源缺少 SYS_EMPLOYEE 可见字段元数据");
             return null;
         }
 
@@ -1612,9 +1612,9 @@ public sealed class ChooserRepository(
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, columnExpressions, command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
         var fromSql = $"""
-            FROM dbo.SYSDN n WITH (NOLOCK)
+            FROM dbo.SYS_EMPLOYEE n WITH (NOLOCK)
             {joinSql}
-            WHERE NOT EXISTS (SELECT 1 FROM dbo.SYSDL l WITH (NOLOCK)
+            WHERE NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
                               WHERE LTRIM(RTRIM(l.EMP_ID))=LTRIM(RTRIM(n.EMP_ID)))
             """;
         var sql = $"""
@@ -1780,7 +1780,7 @@ public sealed class ChooserRepository(
         return columns;
     }
 
-    /// <summary>SYSDN 虚拟查找列白名单（F_ID → JOIN 与选择表达式），员工选择器受控呈现名称类列。</summary>
+    /// <summary>SYS_EMPLOYEE 虚拟查找列白名单（F_ID → JOIN 与选择表达式），员工选择器受控呈现名称类列。</summary>
     private static readonly Dictionary<string, (string Join, string Select)> SysdnVirtualLookups = new(StringComparer.OrdinalIgnoreCase)
     {
         ["DEPT_NAME"] = ("LEFT JOIN dbo.DEPT dd WITH (NOLOCK) ON dd.DEPT_ID = n.DEPT_ID", "[dd].[DEPT_NAME]"),
@@ -1791,7 +1791,7 @@ public sealed class ChooserRepository(
     private sealed record SysdnColumn(
         string Key, string Label, string DataType, bool IsDefault, string SelectExpression, string? JoinClause);
 
-    /// <summary>读取 SYSDN 字段元数据（FIELDS + SYSQL_DEFAULT），返回受控列集合。</summary>
+    /// <summary>读取 SYS_EMPLOYEE 字段元数据（FIELDS + SYS_DEFAULT_COLUMN），返回受控列集合。</summary>
     private static async Task<List<SysdnColumn>> LoadSysdnColumnsAsync(SqlConnection connection, CancellationToken token)
     {
         var columns = new List<SysdnColumn>();
@@ -1802,14 +1802,14 @@ public sealed class ChooserRepository(
                    COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),
                    CAST(COALESCE(f.IS_VIRTUAL,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK)
-            LEFT JOIN dbo.SYSQL_DEFAULT d WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_DEFAULT_COLUMN d WITH (NOLOCK)
                    ON d.T_ID=@Table AND d.T_ID_R=@Table AND LTRIM(RTRIM(d.F_ID))=LTRIM(RTRIM(f.F_ID))
             WHERE LTRIM(RTRIM(f.T_ID))=@Table
               AND COALESCE(f.IS_COST,0)=0 AND COALESCE(f.IS_SECRECY,0)=0 AND COALESCE(f.IS_VISIBLE,1)=1
             ORDER BY CASE WHEN d.F_ID IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var meta = new SqlCommand(metaSql, connection);
-        meta.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = "SYSDN";
+        meta.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = "SYS_EMPLOYEE";
         await using var metaReader = await meta.ExecuteReaderAsync(token);
         while (await metaReader.ReadAsync(token))
         {

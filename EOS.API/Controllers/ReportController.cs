@@ -57,7 +57,7 @@ public sealed class ReportController(
         return Ok(await repository.GetConditionOptionsAsync(definition, serialNo, token));
     }
 
-    /// <summary>打印面板设置：权限内报表 + 页头/表尾 + 排序方案 + 用户最近设置（SYSQR）。</summary>
+    /// <summary>打印面板设置：权限内报表 + 页头/表尾 + 排序方案 + 用户最近设置（SYS_USER_REPORT_PRINT）。</summary>
     [HttpGet("print-settings")]
     public async Task<IActionResult> PrintSettings(int moduleId, CancellationToken token)
     {
@@ -68,7 +68,7 @@ public sealed class ReportController(
         return Ok(await printSettingsRepository.GetAsync(moduleId, userId, token));
     }
 
-    /// <summary>保存打印面板设置（写入 SYSQR，IS_LAST=1 语义）。</summary>
+    /// <summary>保存打印面板设置（写入 SYS_USER_REPORT_PRINT，IS_LAST=1 语义）。</summary>
     [HttpPost("print-settings")]
     public async Task<IActionResult> SavePrintSettings(int moduleId,
         [FromBody] ReportPrintSettingsRequest request, CancellationToken token)

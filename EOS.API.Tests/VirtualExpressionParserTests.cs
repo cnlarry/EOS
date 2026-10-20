@@ -9,7 +9,7 @@ public class VirtualExpressionParserTests
 
     [Theory]
     [InlineData("PRODUCT.PRO_NAME", "PRODUCT", "PRO_NAME")]
-    [InlineData("SYSDN.EMP_NAME", "SYSDN", "EMP_NAME")]
+    [InlineData("SYS_EMPLOYEE.EMP_NAME", "SYS_EMPLOYEE", "EMP_NAME")]
     [InlineData("PRODUCT_J.ELEMENT_PRO_NO", "PRODUCT_J", "ELEMENT_PRO_NO")]
     [InlineData("COLOR_M.COLOR_NAME", "COLOR_M", "COLOR_NAME")]
     public void SimpleCrossTableReference_IsAccepted(string expression, string expectedTable, string expectedColumn)
@@ -60,7 +60,7 @@ public class VirtualExpressionParserTests
         const string relation = """
             CLIENT WITH (NOLOCK)
             LEFT JOIN CLIENT_LINKMAN WITH (NOLOCK) ON CLIENT.CLIENT_ID=CLIENT_LINKMAN.CLIENT_ID
-            LEFT JOIN SYSDN WITH (NOLOCK) ON CLIENT.SALES_ID=SYSDN.EMP_ID
+            LEFT JOIN SYS_EMPLOYEE WITH (NOLOCK) ON CLIENT.SALES_ID=SYS_EMPLOYEE.EMP_ID
             LEFT JOIN TAX WITH (NOLOCK) ON CLIENT.TAX_ID=TAX.TAX_ID
             LEFT JOIN CURR WITH (NOLOCK) ON CLIENT.CURR_ID=CURR.CURR_ID
             LEFT JOIN BANK WITH (NOLOCK) ON CLIENT.BANK_ID=BANK.BANK_ID
@@ -69,12 +69,12 @@ public class VirtualExpressionParserTests
 
         Assert.True(VirtualExpressionParser.TryParseRelation(relation, "CLIENT", out var joins, out var error), error);
         Assert.Equal(6, joins.Count);
-        Assert.Equal(["CLIENT_LINKMAN", "SYSDN", "TAX", "CURR", "BANK", "REPORT_HEADER"], joins.Select(join => join.Alias));
-        var sysdn = joins.Single(join => join.Alias.Equals("SYSDN", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal("SYSDN", sysdn.Table);
-        var condition = Assert.Single(sysdn.Conditions);
+        Assert.Equal(["CLIENT_LINKMAN", "SYS_EMPLOYEE", "TAX", "CURR", "BANK", "REPORT_HEADER"], joins.Select(join => join.Alias));
+        var employeeJoin = joins.Single(join => join.Alias.Equals("SYS_EMPLOYEE", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("SYS_EMPLOYEE", employeeJoin.Table);
+        var condition = Assert.Single(employeeJoin.Conditions);
         Assert.Equal(("CLIENT", "SALES_ID"), (condition.LeftTable, condition.LeftColumn));
-        Assert.Equal(("SYSDN", "EMP_ID"), (condition.RightTable, condition.RightColumn));
+        Assert.Equal(("SYS_EMPLOYEE", "EMP_ID"), (condition.RightTable, condition.RightColumn));
     }
 
     [Fact]

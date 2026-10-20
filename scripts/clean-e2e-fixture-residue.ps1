@@ -23,7 +23,7 @@
     跳过「空壳单据回收」：删掉夹具明细后，整张单据已无任何明细的主表行会被一并删除。
 
 .PARAMETER IncludePermissionResidue
-    并入删除「权限残留定项」：USER_ID 无自造前缀、但 CI 被写成 E2E 的 SYSDD / SYSDL 行
+    并入删除「权限残留定项」：USER_ID 无自造前缀、但 CI 被写成 E2E 的 SYS_USER_MODULE_PERMISSION / SYS_USER_ACCOUNT 行
     （夹具经 API 建的测试用户及其模块覆盖行）。默认只统计不删。
 
 .PARAMETER ReportPath
@@ -181,15 +181,15 @@ $Targets = @(
     'SFC_PROCESS_D:PRO_NO,PROCEDURE_ID',
     'SUPPLIER:SUPPLIER_ID',
     'SUPPLIER_LINKMAN:SUPPLIER_ID',
-    'SYSDD:USER_ID',
-    'SYSDL:USER_ID'
+    'SYS_USER_MODULE_PERMISSION:USER_ID',
+    'SYS_USER_ACCOUNT:USER_ID'
 )
 
 # 需要显式谓词的表（键形特殊，无法用「键列 LIKE E2E%」覆盖）
 $Specials = @(
     # SYSDF（旧操作流水）已随迁移 325 整表退役（数据留档 logs/archive/retire-324/），不再需要清理谓词
-    @{ Table = 'SYSDG';                  Predicate = "G_DESC = N'E2E 权限测试组'";                            Note = '组号由服务端生成，只有组名带自造标记' },
-    @{ Table = 'SYSDG_USER';             Predicate = "USER_ID LIKE N'E2E%' OR G_IDX IN (SELECT G_IDX FROM dbo.SYSDG WITH (NOLOCK) WHERE G_DESC = N'E2E 权限测试组')"; Note = '组成员：随组删除' },
+    @{ Table = 'SYS_USER_GROUP';                  Predicate = "G_DESC = N'E2E 权限测试组'";                            Note = '组号由服务端生成，只有组名带自造标记' },
+    @{ Table = 'SYS_USER_GROUP_MEMBER';             Predicate = "USER_ID LIKE N'E2E%' OR G_IDX IN (SELECT G_IDX FROM dbo.SYS_USER_GROUP WITH (NOLOCK) WHERE G_DESC = N'E2E 权限测试组')"; Note = '组成员：随组删除' },
     @{ Table = 'WORKBENCH_IDEMPOTENCY';  Predicate = "IDEMPOTENCY_KEY LIKE N'E2E%'";                         Note = '端到端幂等键' },
     @{ Table = 'INV_DEPOT_LOG';          Predicate = "PRO_NO LIKE N'E2E%'";                                  Note = '数量流水：按料号删，不按库别删' }
 )
@@ -203,11 +203,11 @@ $ShellPairs = @(
 )
 
 # 权限残留定项：USER_ID 不带自造前缀、但 CI 被写成 E2E 的行（DBG04U1 ~ DBG07U1 四个用户及其模块覆盖行）。
-# 判据是 CI 列：真实用户的 SYSDL.CI 一律 DEFAULT、SYSDD.CI 一律 _ccorp/空，只有夹具经 API 建的测试用户带 E2E。
+# 判据是 CI 列：真实用户的 SYS_USER_ACCOUNT.CI 一律 DEFAULT、SYS_USER_MODULE_PERMISSION.CI 一律 _ccorp/空，只有夹具经 API 建的测试用户带 E2E。
 # 默认只统计不删（避免误删真实授权）；-IncludePermissionResidue 才删。
 $PermissionResidue = @(
-    @{ Table = 'SYSDD'; Predicate = "CI = N'E2E' AND ISNULL(USER_ID, N'') NOT LIKE N'E2E%'"; Note = '权限残留定项：CI=E2E 且 USER_ID 无自造前缀（夹具建的测试用户的模块覆盖行）' },
-    @{ Table = 'SYSDL'; Predicate = "CI = N'E2E' AND ISNULL(USER_ID, N'') NOT LIKE N'E2E%'"; Note = '同上：测试用户本体（删除即移除这几个用户）' }
+    @{ Table = 'SYS_USER_MODULE_PERMISSION'; Predicate = "CI = N'E2E' AND ISNULL(USER_ID, N'') NOT LIKE N'E2E%'"; Note = '权限残留定项：CI=E2E 且 USER_ID 无自造前缀（夹具建的测试用户的模块覆盖行）' },
+    @{ Table = 'SYS_USER_ACCOUNT'; Predicate = "CI = N'E2E' AND ISNULL(USER_ID, N'') NOT LIKE N'E2E%'"; Note = '同上：测试用户本体（删除即移除这几个用户）' }
 )
 $Holds = if ($IncludePermissionResidue) { @() } else { $PermissionResidue }
 
@@ -532,7 +532,7 @@ $lines.Add('| 表 | 行数 | 说明 |')
 $lines.Add('|---|---:|---|')
 foreach ($r in $holdRows) { $lines.Add(('| {0} | {1} | {2} |' -f $r.表, $r.行数, $r.原因)) }
 if ($IncludePermissionResidue) {
-    foreach ($r in $rows | Where-Object { $_.表 -in @('SYSDD', 'SYSDL') -and $_.备注 -like '权限残留定项*' }) {
+    foreach ($r in $rows | Where-Object { $_.表 -in @('SYS_USER_MODULE_PERMISSION', 'SYS_USER_ACCOUNT') -and $_.备注 -like '权限残留定项*' }) {
         $lines.Add(('| {0} | {1} | {2} |' -f $r.表, $r.前, $r.备注)) 
     }
 }

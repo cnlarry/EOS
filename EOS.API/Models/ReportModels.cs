@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace EOS.API.Models;
 
-/// <summary>报表查询条件定义（SYSQR_DEFAULT 受控解释）。</summary>
+/// <summary>报表查询条件定义（SYS_REPORT_PARAMETER 受控解释）。</summary>
 public sealed record ReportCondition(
     int SerialNo,
     string? Field,
@@ -81,7 +81,7 @@ public sealed record ReportAggregateParameter(
     bool IsTo = false,
     string? Constant = null,
     /// <summary>
-    /// 取值来自**系统参数**（`SYSSS`，见 <see cref="SystemParameterService"/>）而不是前端。
+    /// 取值来自**系统参数**（`SYS_PARAMETER`，见 <see cref="SystemParameterService"/>）而不是前端。
     /// 用于"报表与预警必须读同一个阈值"这类参数：写死在注册表里的常量做不到"改了参数报表跟着变"，
     /// 而让用户每次手填，两处口径迟早分叉。
     /// </summary>
@@ -163,7 +163,7 @@ public sealed record ReportSortScheme(
     string? GroupName,
     string? GroupFields);
 
-/// <summary>用户最近一次打印设置（SYSQR IS_LAST=1）。</summary>
+/// <summary>用户最近一次打印设置（SYS_USER_REPORT_PRINT IS_LAST=1）。</summary>
 public sealed record ReportUserPrintSettings(
     string? ReportId,
     string? HeaderId,
@@ -182,7 +182,7 @@ public sealed record ReportPrintSettings(
     IReadOnlyDictionary<string, IReadOnlyList<ReportSortScheme>> SortSchemesByReport,
     ReportUserPrintSettings? UserSettings);
 
-/// <summary>报表打印设置保存（POST，写入 SYSQR）。</summary>
+/// <summary>报表打印设置保存（POST，写入 SYS_USER_REPORT_PRINT）。</summary>
 public sealed record ReportPrintSettingsRequest(
     string? ReportId,
     string? HeaderId,

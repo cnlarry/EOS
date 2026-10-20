@@ -12,7 +12,7 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 报表查看器数据仓库：
-/// - 定义：MODULES + SYSQR_DEFAULT 查询条件 + FIELDS 主表可见列（成本/保密/禁止字段过滤）；
+/// - 定义：MODULES + SYS_REPORT_PARAMETER 查询条件 + FIELDS 主表可见列（成本/保密/禁止字段过滤）；
 /// - 查询：条件值经白名单字段 + 参数化编译（F_TYPE 1 范围 / 2 固定单选 / 4 固定多选；
 /// F_TYPE 3 数据单选含 SQL 表达式，受控解析完成前不启用）；
 /// - 排序：默认主表 SORT_FIELDS（REPORT_SORT 明细级排序待后续）。
@@ -400,7 +400,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         foreach(var parameter in aggregate.Parameters)
         {
             // 取值优先级：注册表常量 > 系统参数 > 前端条件值。
-            // 系统参数那一档是"报表与预警读同一个阈值"的落点——它必须能吃 SYSSS 的运行期改动，
+            // 系统参数那一档是"报表与预警读同一个阈值"的落点——它必须能吃 SYS_PARAMETER 的运行期改动，
             // 否则"改了参数报表不动"就成了一张写着参数控制、实际硬编码的报表。
             var raw=parameter.Constant;
             if(raw is null && parameter.SystemParameterKey is { Length: > 0 } systemKey)
@@ -703,8 +703,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             SELECT d.SERIAL_NO,LTRIM(RTRIM(ISNULL(d.F_ID,''))),LTRIM(RTRIM(ISNULL(d.F_DESC,''))),ISNULL(d.F_TYPE,0),
                    LTRIM(RTRIM(ISNULL(d.F_EXPR,''))),LTRIM(RTRIM(ISNULL(d.F_VALUE,''))),LTRIM(RTRIM(ISNULL(d.PARA_NAME,''))),
                    LTRIM(RTRIM(ISNULL(u.F_VALUE,''))),LTRIM(RTRIM(ISNULL(d.FILTER_TEMPLATE,'')))
-            FROM dbo.SYSQR_DEFAULT d WITH (NOLOCK)
-            LEFT JOIN dbo.SYSQR_USER u WITH (NOLOCK)
+            FROM dbo.SYS_REPORT_PARAMETER d WITH (NOLOCK)
+            LEFT JOIN dbo.SYS_USER_REPORT_PARAMETER u WITH (NOLOCK)
               ON u.M_IDX=d.M_IDX AND u.SERIAL_NO=d.SERIAL_NO AND u.USER_ID=@UserId
             WHERE d.M_IDX=@ModuleId ORDER BY d.SERIAL_NO;
             """;
@@ -762,7 +762,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         return result;
     }
 
-    /// <summary>SYSQR_USER.F_VALUE 解析（范围条件存 "from☆to"，其余存单值）。</summary>
+    /// <summary>SYS_USER_REPORT_PARAMETER.F_VALUE 解析（范围条件存 "from☆to"，其余存单值）。</summary>
     internal static (string? From,string? To) SplitUserConditionValue(string? raw)
     {
         if(string.IsNullOrWhiteSpace(raw))return(null,null);

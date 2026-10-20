@@ -25,7 +25,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 /**
  * 个人设置（/settings/profile）：只管**用户自己的界面偏好**，账号信息一律只读。
  *
- * 为什么是这些项：显示名、工号、部门、用户组都来自人事主档与登录票据（`SYSDN` / `SYSDG`），
+ * 为什么是这些项：显示名、工号、部门、用户组都来自人事主档与登录票据（`SYS_EMPLOYEE` / `SYS_USER_GROUP`），
  * 属组织权威数据——允许自改就等于在人事档案之外造第二处真源，刷新一次就被覆盖回去。
  * 改密码是凭据操作，走侧栏用户菜单的弹窗（见 `PasswordChangeModal`），本页不重复承载。
  *

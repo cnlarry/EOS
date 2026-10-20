@@ -141,8 +141,8 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             ("@type", TestType), ("@no", TestNo), ("@depot", stock.Depot), ("@product", stock.Product));
         await ExecAsync(connection,
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", RecalcAccountHandler.ActionKey));
@@ -158,7 +158,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             $"DELETE FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
         await ExecAsync(connection,
-            "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module;",
+            "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module;",
             ("@user", TestUser), ("@module", ModuleId));
         await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';",
@@ -408,7 +408,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         await using (var connection = await OpenAsync())
         {
             await ExecAsync(connection,
-                "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module;",
+                "DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module;",
                 ("@user", TestUser), ("@module", ModuleId));
         }
 

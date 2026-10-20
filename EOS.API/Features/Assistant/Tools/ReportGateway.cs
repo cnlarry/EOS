@@ -49,7 +49,7 @@ public sealed class ReportGateway(
     public async Task<IReadOnlyList<ReportSibling>> ListReportsAsync(
         int moduleId, string userId, CancellationToken token)
     {
-        // 打印设置仓储的清单已按归属模块的 REPORT_TAG 过滤（个人 SYSDD 优先，否则组 SYSDH 取或）
+        // 打印设置仓储的清单已按归属模块的 REPORT_TAG 过滤（个人 SYS_USER_MODULE_PERMISSION 优先，否则组 SYS_GROUP_MODULE_PERMISSION 取或）
         var settings = await printSettings.GetAsync(moduleId, userId, token);
         return [.. settings.Reports.Select(item => new ReportSibling(item.ReportId, item.ReportName, item.IsDefault))];
     }

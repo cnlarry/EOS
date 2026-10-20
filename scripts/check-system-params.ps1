@@ -3,7 +3,7 @@
     系统参数门禁：参数定义完整性 + 引用键存在性 + 归属模块合法性。
 
 .DESCRIPTION
-    背景：系统参数（表 dbo.SYSSS，一行一个参数）把"参数定义"从列结构搬进了数据，
+    背景：系统参数（表 dbo.SYS_PARAMETER，一行一个参数）把"参数定义"从列结构搬进了数据，
     因此编译与单测都拦不住三类漂移：
 
       1. 定义不全：某一行的类型/分组/说明/生效范围缺失或取值非法——页面渲染不出来，
@@ -47,7 +47,7 @@ SET NOCOUNT ON;
 SELECT CONVERT(varchar(10), OWNER_MODULE) + N'|' + CONVERT(varchar(64), PARAM_KEY) + N'|'
      + CONVERT(varchar(16), VALUE_TYPE) + N'|' + ISNULL(CONVERT(varchar(4000), DEFAULT_VALUE), N'~NULL~') + N'|'
      + CONVERT(varchar(32), GROUP_CODE) + N'|' + CONVERT(varchar(10), SEQ_NO)
-FROM dbo.SYSSS ORDER BY OWNER_MODULE, GROUP_CODE, SEQ_NO, PARAM_KEY;
+FROM dbo.SYS_PARAMETER ORDER BY OWNER_MODULE, GROUP_CODE, SEQ_NO, PARAM_KEY;
 "@
     return Invoke-EosSqlQuery -Query $sql -ConnectionString $ConnectionString
 }
@@ -83,7 +83,7 @@ SELECT DISTINCT SUBSTRING(CAST(j AS nvarchar(max)), p, $Width) FROM r OPTION (MA
 function Get-ConfigReferences {
     <#
       从配置与快照里抽出 (Scope, Key) 引用。
-      定位用"裸 token"（SYSSS / HR_SETUP / HRM_SETUP / gateFlag），窗口从其出现处向后取，
+      定位用"裸 token"（SYS_PARAMETER / HR_SETUP / HRM_SETUP / gateFlag），窗口从其出现处向后取，
       再在窗口内截断到下一个 scope 标记——这样"某个门控的 key"不会被相邻门控的 key 混进来。
       快照里的配置是转义 JSON（\u0022），两种形式都要认。
     #>
@@ -165,34 +165,34 @@ function Get-CodeReferences {
 function Test-Definitions {
     param([string[]] $Rows)
     if ($Rows.Count -eq 0) {
-        $problems.Add('FAIL 参数表 dbo.SYSSS 没有任何参数行。')
+        $problems.Add('FAIL 参数表 dbo.SYS_PARAMETER 没有任何参数行。')
         return
     }
     $sql = @"
 SET NOCOUNT ON;
-SELECT N'定义缺失|' + PARAM_KEY FROM dbo.SYSSS
+SELECT N'定义缺失|' + PARAM_KEY FROM dbo.SYS_PARAMETER
  WHERE VALUE_TYPE NOT IN (N'bit', N'int', N'decimal', N'string')
     OR EFFECT_SCOPE NOT IN (N'immediate', N'restart')
     OR LTRIM(RTRIM(GROUP_CODE)) = N'' OR LTRIM(RTRIM(GROUP_LABEL)) = N''
     OR LTRIM(RTRIM(DESC_TEXT)) = N'' OR OWNER_MODULE IS NULL
 UNION ALL
-SELECT N'默认值非法|' + PARAM_KEY FROM dbo.SYSSS
+SELECT N'默认值非法|' + PARAM_KEY FROM dbo.SYS_PARAMETER
  WHERE DEFAULT_VALUE IS NOT NULL AND (
         (VALUE_TYPE = N'bit' AND DEFAULT_VALUE NOT IN (N'0', N'1'))
      OR (VALUE_TYPE = N'int' AND TRY_CONVERT(int, DEFAULT_VALUE) IS NULL)
      OR (VALUE_TYPE = N'decimal' AND TRY_CONVERT(decimal(38, 10), DEFAULT_VALUE) IS NULL))
 UNION ALL
 SELECT N'组内序号重复|' + CONVERT(nvarchar(32), GROUP_CODE) + N'.' + CONVERT(nvarchar(10), SEQ_NO)
-  FROM dbo.SYSSS GROUP BY OWNER_MODULE, GROUP_CODE, SEQ_NO HAVING COUNT(*) > 1
+  FROM dbo.SYS_PARAMETER GROUP BY OWNER_MODULE, GROUP_CODE, SEQ_NO HAVING COUNT(*) > 1
 UNION ALL
 SELECT N'归属模块未登记|' + CONVERT(nvarchar(10), OWNER_MODULE)
-  FROM dbo.SYSSS WHERE OWNER_MODULE NOT IN (110111, 180213, 180662, 3105) GROUP BY OWNER_MODULE
+  FROM dbo.SYS_PARAMETER WHERE OWNER_MODULE NOT IN (110111, 180213, 180662, 3105) GROUP BY OWNER_MODULE
 UNION ALL
 SELECT N'分组顺序未登记|' + CONVERT(nvarchar(32), GROUP_CODE)
-  FROM dbo.SYSSS WHERE GROUP_SEQ = 0 OR GROUP_SEQ IS NULL GROUP BY GROUP_CODE
+  FROM dbo.SYS_PARAMETER WHERE GROUP_SEQ = 0 OR GROUP_SEQ IS NULL GROUP BY GROUP_CODE
 UNION ALL
 SELECT N'分组顺序重复|' + CONVERT(nvarchar(10), OWNER_MODULE) + N'.' + CONVERT(nvarchar(10), GROUP_SEQ)
-  FROM (SELECT DISTINCT OWNER_MODULE, GROUP_CODE, GROUP_SEQ FROM dbo.SYSSS) g
+  FROM (SELECT DISTINCT OWNER_MODULE, GROUP_CODE, GROUP_SEQ FROM dbo.SYS_PARAMETER) g
   GROUP BY OWNER_MODULE, GROUP_SEQ HAVING COUNT(*) > 1;
 "@
     foreach ($row in (Invoke-EosSqlQuery -Query $sql -ConnectionString $ConnectionString)) {
@@ -246,7 +246,7 @@ catch {
 
 Test-Definitions -Rows $parameterRows
 
-$scopeMap = @{ SYSSS = 110111; HR_SETUP = 180213; HRM_SETUP = 180662 }
+$scopeMap = @{ SYS_PARAMETER = 110111; HR_SETUP = 180213; HRM_SETUP = 180662 }
 $configReferences = @(Get-ConfigReferences -Scopes $scopeMap)
 $codeReferences = @(Get-CodeReferences)
 $references = @(
@@ -279,7 +279,7 @@ else {
 }
 
 if ($SelfTest) {
-    $fake = @(@{ Scope = 'SYSSS'; Owner = 110111; Key = 'ZZ_NOT_A_PARAMETER'; Source = '-SelfTest' })
+    $fake = @(@{ Scope = 'SYS_PARAMETER'; Owner = 110111; Key = 'ZZ_NOT_A_PARAMETER'; Source = '-SelfTest' })
     $before = $problems.Count
     Test-References -ParameterRows $parameterRows -References $fake -ModuleColumns $moduleColumns | Out-Null
     if ($problems.Count -eq $before) {

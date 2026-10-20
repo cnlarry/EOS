@@ -66,7 +66,7 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE) VALUES (@pro, N'ZZFRZ 冻结料件', N'规格', '3');
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@pro, @depot, @location, @batch, @qty, @qty, 0, 3, @qty * 3);
-            INSERT INTO dbo.SYSDD_BUTTON (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG)
+            INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG)
                 VALUES (@user, @module, N'inventory-freeze', 1), (@user, @module, N'inventory-unfreeze', 1);
             """, ("@pro", Product), ("@depot", Depot), ("@location", Location), ("@batch", Batch), ("@qty", StockQty),
             ("@user", TestUser), ("@module", ModuleId));
@@ -85,7 +85,7 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
             DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';
             DELETE FROM dbo.INV_FREEZE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
-            DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;
+            DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID = @user;
             DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             """, ("@module", ModuleId), ("@pro", Product), ("@user", TestUser));
     }

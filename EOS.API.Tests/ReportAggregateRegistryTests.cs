@@ -68,7 +68,7 @@ public sealed class ReportAggregateRegistryTests
                 Assert.True(
                     parameter.Constant is not null || parameter.SerialNo >= 1 || parameter.SystemParameterKey is { Length: > 0 },
                     $"{reportId} 参数 {parameter.Name} 缺少取数来源");
-                // 系统参数键必须是"归属模块|键"的形态（读取侧按它查 SYSSS）
+                // 系统参数键必须是"归属模块|键"的形态（读取侧按它查 SYS_PARAMETER）
                 if (parameter.SystemParameterKey is { Length: > 0 } systemKey)
                     Assert.Matches(@"^\d{6}\|[A-Za-z_][A-Za-z0-9_]*$", systemKey);
                 Assert.True(parameter.MaxLength > 0);

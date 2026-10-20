@@ -392,7 +392,7 @@ public class EffectEngineTests
             items = new object[] { new { type = "switch", key = "PRO_MRP", value = true } },
         });
         var fragment = compiler.Compile(condition, (_, _) => null, column => column == "PRO_MRP");
-        Assert.Contains("dbo.SYSSS", fragment.Sql);
+        Assert.Contains("dbo.SYS_PARAMETER", fragment.Sql);
         Assert.Contains("= 1", fragment.Sql);
     }
 

@@ -93,7 +93,7 @@ describe('AdminSessionsPage', () => {
       sessions: [
         sessionRow('11', 'zhangsan', '十月采购对账', null, { employeeName: '张三', messageTokens: 12345 }),
         sessionRow('12', 'lisi', '八月盘点', '2026-09-20T02:00:00Z', { employeeName: '李四', messageTokens: 678 }),
-        // 账号不在 SYSDL 里（例如测试账号）：姓名取不到，界面要如实说，不假装它有姓名
+        // 账号不在 SYS_USER_ACCOUNT 里（例如测试账号）：姓名取不到，界面要如实说，不假装它有姓名
         sessionRow('13', 'eosdev-assistant-test-a', '测试会话', null),
       ],
       owners: ['lisi', 'zhangsan'],

@@ -109,7 +109,7 @@ export interface ModuleRightsInput {
 }
 
 // 报表权限不再有"逐报表的例外矩阵"：唯一真源是归属模块的 REPORT_TAG
-// （个人 SYSDD 优先，否则组 SYSDH 取或）。原先的 EffectiveReportRights / ReportRightsRow /
+// （个人 SYS_USER_MODULE_PERMISSION 优先，否则组 SYS_GROUP_MODULE_PERMISSION 取或）。原先的 EffectiveReportRights / ReportRightsRow /
 // ReportRightsInput 三型随管理面一起退场——留着它们只会让人以为还有第二处可以配报表权限。
 
 export interface UserGroupSummary {

@@ -6,7 +6,7 @@ namespace EOS.API.Security;
 /// <summary>
 /// 现代密码哈希。
 ///
-/// 存储格式（写入现有 SYSDL.USER_PWD，nvarchar(50)）：
+/// 存储格式（写入现有 SYS_USER_ACCOUNT.USER_PWD，nvarchar(50)）：
 /// "v1" + Base64(盐[12] || PBKDF2-SHA256(密码, 盐, 210000, 24))
 /// 共 2 + 48 = 50 字符，不超出旧表列宽；不新增任何字段。
 ///

@@ -140,7 +140,7 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
             // DATA_FILTER 无法受控解析
             await Assert.ThrowsAsync<ArgumentException>(() =>
                 _repository.SaveUserModuleRightsAsync(
-                    _userId, [ModuleInput(2306, "B", dataFilter: "SYSDL.XX_BROKEN(=")],
+                    _userId, [ModuleInput(2306, "B", dataFilter: "SYS_USER_ACCOUNT.XX_BROKEN(=")],
                     "admin", "IT", CancellationToken.None));
             // 目标用户不存在
             await Assert.ThrowsAsync<KeyNotFoundException>(() =>
@@ -159,9 +159,9 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
     {
         if (ConnectionString.Value is null || _seeded) return;
         await ExecuteNonQueryAsync($"""
-            INSERT INTO dbo.SYSDL (USER_ID,EMP_ID,ACTIVE_TAG,REMARK,CREATE_PERSON,CREATE_DATE)
+            INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,ACTIVE_TAG,REMARK,CREATE_PERSON,CREATE_DATE)
             VALUES (N'{_userId}',N'{_userId}',1,N'E2E 权限管理临时用户','IT',GETDATE());
-            INSERT INTO dbo.SYSDG (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE)
+            INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE)
             VALUES (N'{_groupId}',N'E2E 权限测试组',N'临时','IT',GETDATE());
             """);
         _seeded = true;
@@ -171,12 +171,12 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
     {
         if (ConnectionString.Value is null || !_seeded) return;
         await ExecuteNonQueryAsync($"""
-            DELETE FROM dbo.SYSDD WHERE USER_ID=N'{_userId}';
-            DELETE FROM dbo.SYSDH WHERE G_IDX=N'{_groupId}';
+            DELETE FROM dbo.SYS_USER_MODULE_PERMISSION WHERE USER_ID=N'{_userId}';
+            DELETE FROM dbo.SYS_GROUP_MODULE_PERMISSION WHERE G_IDX=N'{_groupId}';
             DELETE FROM dbo.REPORT_USER_STATE WHERE USER_ID=N'{_userId}';
-            DELETE FROM dbo.SYSDG_USER WHERE USER_ID=N'{_userId}' OR G_IDX=N'{_groupId}';
-            DELETE FROM dbo.SYSDG WHERE G_IDX=N'{_groupId}';
-            DELETE FROM dbo.SYSDL WHERE USER_ID=N'{_userId}';
+            DELETE FROM dbo.SYS_USER_GROUP_MEMBER WHERE USER_ID=N'{_userId}' OR G_IDX=N'{_groupId}';
+            DELETE FROM dbo.SYS_USER_GROUP WHERE G_IDX=N'{_groupId}';
+            DELETE FROM dbo.SYS_USER_ACCOUNT WHERE USER_ID=N'{_userId}';
             """);
         _seeded = false;
     }
