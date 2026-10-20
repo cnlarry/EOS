@@ -967,6 +967,62 @@ describe('FormEditorPage', () => {
     expect(detailInputs[0]).toHaveValue('8')
   })
 
+  it('明细录入：Tab 走同一行、Enter 走同一列（Excel 口径）', async () => {
+    const twoFields: FormDefinition = {
+      ...formDefinition,
+      detailFields: [field('ITEM', '明细项', { isRequired: true }), field('SPEC', '规格')],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return twoFields
+      if (p.includes('/record')) return recordBundle
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
+    const cellInput = (row: number, key: string) => container.querySelector<HTMLInputElement>(
+      `.erp-detail-grid tbody tr[data-order-id="r${row}"] td[data-col-id="${key}"] input.form-control`)
+    await waitFor(() => expect(cellInput(1, 'ITEM')).not.toBeNull())
+    // Tab：同一行向右
+    cellInput(0, 'ITEM')!.focus()
+    fireEvent.keyDown(cellInput(0, 'ITEM')!, { key: 'Tab' })
+    expect(document.activeElement).toBe(cellInput(0, 'SPEC'))
+    // Enter：同一列向下
+    fireEvent.keyDown(cellInput(0, 'SPEC')!, { key: 'Enter' })
+    expect(document.activeElement).toBe(cellInput(1, 'SPEC'))
+    // Shift+Tab：同一行向左
+    fireEvent.keyDown(cellInput(1, 'SPEC')!, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cellInput(1, 'ITEM'))
+  })
+
+  it('从 Excel 粘贴一块明细：按列落位，超出末行自动补行', async () => {
+    const twoFields: FormDefinition = {
+      ...formDefinition,
+      detailFields: [field('ITEM', '明细项', { isRequired: true }), field('SPEC', '规格')],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return twoFields
+      if (p.includes('/record')) return recordBundle
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    const cellInput = (row: number, key: string) => container.querySelector<HTMLInputElement>(
+      `.erp-detail-grid tbody tr[data-order-id="r${row}"] td[data-col-id="${key}"] input.form-control`)
+    await waitFor(() => expect(cellInput(0, 'ITEM')).not.toBeNull())
+    // 原有 1 行；粘 2 行 × 2 列 ⇒ 补 1 行
+    fireEvent.paste(cellInput(0, 'ITEM')!, { clipboardData: { getData: () => 'A1\tS1\nA2\tS2' } })
+    await waitFor(() => expect(cellInput(1, 'SPEC')).not.toBeNull())
+    expect(cellInput(0, 'ITEM')).toHaveValue('A1')
+    expect(cellInput(0, 'SPEC')).toHaveValue('S1')
+    expect(cellInput(1, 'ITEM')).toHaveValue('A2')
+    expect(cellInput(1, 'SPEC')).toHaveValue('S2')
+  })
+
   it('明细数量连续输入不丢焦点', async () => {
     // 列定义里的 cell 必须是稳定身份：写成行内箭头函数时，每次渲染 React 都会把整格卸载重挂，
     // 输入框随之失焦（表现为每敲一个字符都要重新点一下）。

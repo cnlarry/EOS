@@ -1760,6 +1760,13 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-data-table .erp-frozen-left { left: 0; }
 .erp-data-table .erp-frozen-right { right: 0; }
 .erp-data-table .erp-cell-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* 单元格区域选择（ErpTable cellSelection）：选区底色 + 起选格描边，对应 Excel 的选区与活动单元格。
+   悬停、冻结列的既有底色规则会盖掉选区，故这两类单独提权——选中的格子要一直看得出是选中的。 */
+.erp-data-table td.erp-cell-range { background: var(--erp-active-bg); }
+.erp-data-table tbody tr:hover td.erp-cell-range { background: var(--erp-active-bg); }
+.erp-data-table td.erp-cell-range-anchor { box-shadow: inset 0 0 0 2px var(--tblr-primary); }
+.erp-data-table td.erp-frozen-left.erp-cell-range,
+.erp-data-table td.erp-frozen-right.erp-cell-range { background: var(--erp-active-bg) !important; }
 .erp-data-table tfoot td { font-weight: 600; }
 .erp-table-context-menu { min-width: 8rem; }
 /* 滚动加载更多：底部哨兵与提示（ErpTable onEndReached） */

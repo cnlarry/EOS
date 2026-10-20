@@ -6,6 +6,7 @@ import {
   useReactTable,
   type CellData,
   type ColumnDef,
+  type Row,
   type RowData,
   type RowSelectionState,
   type SortingState,
@@ -14,11 +15,12 @@ import {
 } from '../../lib/tanstackTable'
 // 仅此处需要 v9 原始的行数据约束（模块增强的泛型必须与 v9 声明逐字一致），桥接层对外给的是放宽口径
 import type { RowData as CoreRowData } from '@tanstack/react-table'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './queryCondition'
-import { rowsToTsv, writeClipboard } from './tableClipboard'
+import { gridToTsv, parseClipboardGrid, rowsToTsv, writeClipboard } from './tableClipboard'
+import { moveRange, normalizeRange, type CellPoint, type CellRange } from './tableRange'
 import { useMenuPlacement } from './useMenuPlacement'
 
 /** 行窗口化阈值：少于该行数的数据直接全量渲染（避免小表/布局测量开销） */
@@ -56,7 +58,44 @@ function defaultNumericAlign(dataType: string | undefined): string | undefined {
   return dataType && MEASURE_DATA_TYPES.has(dataType.toLowerCase()) ? 'text-end' : undefined
 }
 
-interface ErpTableProps<TData extends RowData> {
+/** 表格自己处理按键前先排除这些"正在编辑的东西" */
+const EDITABLE_TARGET_SELECTOR = 'input, textarea, select, [contenteditable="true"]'
+
+/**
+ * 事件是否发生在可编辑控件里。
+ *
+ * 表格的键盘快捷键（方向键移行、Home/End 跳首末、Ctrl+C 复制整行）在输入框里必须让位：
+ * 否则在明细格里连"用方向键挪光标""选几个字复制"都做不到，Ctrl+C 还会把整行覆盖到剪贴板。
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest(EDITABLE_TARGET_SELECTOR))
+}
+
+interface FrozenOffsets {
+  leftByKey: Map<string, number>
+  rightByKey: Map<string, number>
+}
+
+const EMPTY_FROZEN: FrozenOffsets = { leftByKey: new Map(), rightByKey: new Map() }
+/** 默认值用同一份常量：解构默认写 `{}` 的话每次渲染都是新身份，
+ *  会让表格内部"可见列 / 全选判定"的 memo 每帧全部作废（行数越多越明显） */
+const EMPTY_SELECTION: RowSelectionState = {}
+const EMPTY_VISIBILITY: VisibilityState = {}
+
+/** 区域粘贴：从 `startRowIndex` 起逐行落位，`columns` 是起点列及其右侧的全部可见列键 */
+export interface RangePasteInfo {
+  startRowIndex: number
+  columns: string[]
+  rows: string[][]
+}
+
+/** 区域动作（清空 / 向下填充）：给出行下标与列键，页面据此改自己的数据 */
+export interface RangeActionInfo {
+  rowIndices: number[]
+  columns: string[]
+}
+
+export interface ErpTableProps<TData extends RowData> {
   columns: ColumnDef<TData, unknown>[]
   data: TData[]
   getRowId?: (row: TData, index: number) => string
@@ -118,7 +157,186 @@ interface ErpTableProps<TData extends RowData> {
    * 不要用 `isPending` 驱动它——首载没有旧数据，应当由页面渲染整块状态。
    */
   loading?: boolean
+  /**
+   * 单元格区域选择：鼠标拖选成一整块（Shift+点击扩展），Ctrl+C 复制该块为 TSV（不带表头）、
+   * 方向键在块内移动、Esc 清除。默认关闭——列表页不开也不会改变既有的"方向键移行"。
+   */
+  cellSelection?: boolean
+  /** 区域粘贴（Ctrl+V）。只在 `cellSelection` 开启且已选出区域时触发，粘贴起点为区域左上格 */
+  onPasteRange?: (info: RangePasteInfo) => void
+  /** 区域清空（Delete 键） */
+  onClearRange?: (info: RangeActionInfo) => void
+  /** 区域向下填充（Ctrl+D）：来源为区域首行 */
+  onFillDown?: (info: RangeActionInfo) => void
+  /**
+   * 这个值一变，把列表滚回顶部。
+   *
+   * 排序/筛选/换关键词是**整批换数据**：留在原来的滚动偏移上，用户看到的是"另一批数据的中段"，
+   * 会以为筛选没生效（或以为丢了行）。翻页/加载更多不属于换批，不要放进这个键。
+   */
+  scrollResetKey?: unknown
+  /**
+   * 选区数值摘要（Excel 状态栏的等价物）：选了一块之后回调"多少格、其中几个数、合计/平均/最值"。
+   * 选区清空时回调 null。是否展示、放在哪由页面决定——表格不自己占版面。
+   */
+  onSelectionSummaryChange?: (summary: RangeSummary | null) => void
 }
+
+/** 选区里可解析为数字的格子统计（金额、数量这类列选中后可以直接看合计） */
+export interface RangeSummary {
+  /** 选区覆盖的格子数 */
+  cells: number
+  /** 其中可解析为数字的格子数 */
+  numbers: number
+  sum: number
+  average: number
+  min: number
+  max: number
+}
+
+/**
+ * 把单元格值解析成数字：数字类型直接取；字符串要**去掉千分位/空白/前导货币符号后仍是纯数字**才算。
+ * 日期（`2026-10-20`）、编码（`A-01`）、布尔一律不算——把它们加进合计是没有意义的数。
+ */
+export function parseNumericCell(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string') return null
+  let text = value.trim().replace(/[\s,]/g, '')
+  text = text.replace(/^[¥$€£]/, '')
+  const percent = text.endsWith('%')
+  if (percent) text = text.slice(0, -1)
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return null
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/** 最近的纵向滚动祖先；找不到时回落到自身（表格外壳常常就是滚动容器） */
+function scrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+  let current: HTMLElement | null = node
+  while (current) {
+    const style = getComputedStyle(current)
+    if (/(auto|scroll|overlay)/.test(style.overflowY) || /(auto|scroll|overlay)/.test(style.overflow)) return current
+    current = current.parentElement
+  }
+  return node
+}
+
+/** 单行渲染：整表重渲染（开菜单、改选择）不牵动未变化的行 */
+interface BodyRowProps<TData extends CoreRowData> {
+  row: Row<TData>
+  selected: boolean
+  active: boolean
+  focused: boolean
+  rowClass?: string
+  /** 本行落在选区内时给出区域，否则 null（null 恒定，未受影响的行走 memo 快路径） */
+  range: CellRange | null
+  /** 本行是起选行时给出起选列（画锚点描边） */
+  anchorCol: number | null
+  cellSelection: boolean
+  frozenOffsets: FrozenOffsets
+  copyable: boolean
+  onActivate: (row: Row<TData>, event: MouseEvent<HTMLTableRowElement>) => void
+  onDoubleActivate?: (row: Row<TData>) => void
+  onCellPointerDown: (rowId: string, col: number, extend: boolean, event: MouseEvent<HTMLTableCellElement>) => void
+  onCellPointerEnter: (rowId: string, col: number) => void
+  onCellContextMenu: (event: MouseEvent<HTMLTableCellElement>, rowId: string, columnId: string) => void
+}
+
+function BodyRowInner<TData extends CoreRowData>({
+  row,
+  selected,
+  active,
+  focused,
+  rowClass,
+  range,
+  anchorCol,
+  cellSelection,
+  frozenOffsets,
+  copyable,
+  onActivate,
+  onDoubleActivate,
+  onCellPointerDown,
+  onCellPointerEnter,
+  onCellContextMenu,
+}: BodyRowProps<TData>) {
+  const rangeBounds = range ? normalizeRange(range) : null
+  const className = [
+    selected ? 'table-active' : '',
+    active ? 'erp-row-active' : '',
+    focused ? 'erp-row-focus' : '',
+    rowClass ?? '',
+  ].filter(Boolean).join(' ')
+  return (
+    <tr
+      data-order-id={row.id}
+      data-kb-index={row.index}
+      className={className || undefined}
+      onClick={(event) => onActivate(row, event)}
+      onDoubleClick={onDoubleActivate ? () => onDoubleActivate(row) : undefined}
+    >
+      {row.getVisibleCells().map((cell, colIndex) => {
+        const cellMeta = cell.column.columnDef.meta
+        const cellFrozen = cellMeta?.frozenLeft ? 'erp-frozen-left' : cellMeta?.frozenRight ? 'erp-frozen-right' : ''
+        const cellStyle: CSSProperties = {}
+        if (cellMeta?.frozenLeft) cellStyle.left = frozenOffsets.leftByKey.get(cell.column.id) ?? 0
+        if (cellMeta?.frozenRight) cellStyle.right = frozenOffsets.rightByKey.get(cell.column.id) ?? 0
+        if (cellMeta?.maxWidth) cellStyle.maxWidth = cellMeta.maxWidth
+        const truncate = cellMeta?.truncate !== false
+        // 行号/勾选/操作列默认不参与区域选择（它们的 id 以 __ 开头或就是 select），
+        // 其余列可用 meta.cellSelectable 单独排除
+        const selectable = cellSelection
+          && cellMeta?.cellSelectable !== false
+          && cell.column.id !== 'select'
+          && !cell.column.id.startsWith('__')
+        const inRange = rangeBounds != null && colIndex >= rangeBounds.left && colIndex <= rangeBounds.right
+        const cellClassName = [
+          cellMeta?.cellClassName ?? cellMeta?.className ?? defaultNumericAlign(cellMeta?.dataType),
+          cellFrozen,
+          inRange ? 'erp-cell-range' : '',
+          anchorCol === colIndex && inRange ? 'erp-cell-range-anchor' : '',
+        ].filter(Boolean).join(' ')
+        return (
+          <td
+            key={cell.id}
+            className={cellClassName || undefined}
+            style={Object.keys(cellStyle).length > 0 ? cellStyle : undefined}
+            data-col-id={cell.column.id}
+            onMouseDown={selectable
+              ? (event) => onCellPointerDown(row.id, colIndex, event.shiftKey, event)
+              : undefined}
+            onMouseEnter={(event) => {
+              // 区域拖选：鼠标跨格移动时扩展选区
+              if (selectable) onCellPointerEnter(row.id, colIndex)
+              // title 延迟到悬停才计算，避免大列表渲染热路径对每个单元格做格式化
+              if (cellMeta?.truncate === false) return
+              const raw = cell.getValue()
+              const next = cellMeta?.title != null
+                ? (typeof cellMeta.title === 'function'
+                  ? cellMeta.title({ value: raw, row: row.original })
+                  : cellMeta.title)
+                : (typeof raw === 'string' || typeof raw === 'number' ? String(raw) : undefined)
+              const current = event.currentTarget.getAttribute('title')
+              if (next == null || next === '') {
+                if (current) event.currentTarget.removeAttribute('title')
+              } else if (current !== next) {
+                event.currentTarget.setAttribute('title', next)
+              }
+            }}
+            onContextMenu={copyable
+              ? (event) => onCellContextMenu(event, row.id, cell.column.id)
+              : undefined}
+          >
+            {truncate
+              ? <span className="erp-cell-ellipsis">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
+              : flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </td>
+        )
+      })}
+    </tr>
+  )
+}
+
+const BodyRow = memo(BodyRowInner) as typeof BodyRowInner
 
 /**
  * 统一 ERP 列表表格：TanStack Table 状态模型 + `erp-data-table` 样式外壳。
@@ -130,14 +348,16 @@ interface ErpTableProps<TData extends RowData> {
  * - 列头快速筛选（meta.filterable + columnFilterValue / onColumnFilterChange）；
  * - 冻结列（meta.frozenLeft / meta.frozenRight，sticky）；
  * - 客户端本地排序（clientSideSorting，适合本地数据网格）；
- * - 行自定义类名（rowClassName，如占位行）与行双击回调（onRowDoubleClick）。
+ * - 行自定义类名（rowClassName，如占位行）与行双击回调（onRowDoubleClick）；
+ * - 单元格区域选择（cellSelection，拖选成块后 Ctrl+C 复制纯块，可接粘贴/清空/填充）。
  *
  * 列级行为通过 ColumnMeta 扩展：
  * - `className`：td/th 追加类；
  * - `cellClassName`：仅作用于数据单元格（优先级高于 className）；
  * - `minWidth`：表头最小列宽（工作台 DISPLAY_LENGTH）；
  * - `autoWidth`：初始列宽按内容自适应（操作列），之后与普通列一样可拖拽；
- * - `filterable` / `frozenLeft` / `frozenRight`：列头筛选 / 冻结。
+ * - `filterable` / `frozenLeft` / `frozenRight`：列头筛选 / 冻结；
+ * - `cellSelectable`：该列是否参与区域选择（缺省参与；行号/勾选/操作列应设 false）。
  */
 export function ErpTable<TData>({
   columns,
@@ -146,9 +366,9 @@ export function ErpTable<TData>({
   empty,
   sorting,
   onSortingChange,
-  rowSelection = {},
+  rowSelection = EMPTY_SELECTION,
   onRowSelectionChange,
-  columnVisibility = {},
+  columnVisibility = EMPTY_VISIBILITY,
   onColumnVisibilityChange,
   onRowClick,
   activeRowId,
@@ -174,10 +394,23 @@ export function ErpTable<TData>({
   loadingMore = false,
   virtualize = false,
   loading = false,
+  cellSelection = false,
+  onPasteRange,
+  onClearRange,
+  onFillDown,
+  scrollResetKey,
+  onSelectionSummaryChange,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
-  const [focusIndex, setFocusIndex] = useState<number | null>(null)
+  /** 键盘活动行按行键记（行键在窗口化滚动时不变，按行号记会让每次滚动都判定为"焦点变了"） */
+  const [focusRowId, setFocusRowId] = useState<string | null>(null)
+  const [cellRange, setCellRange] = useState<CellRange | null>(null)
+  const draggingRangeRef = useRef(false)
+  /** 拖选的起点：鼠标按下那格。与选区一起用，避免把"当前 focus"当成起点 */
+  const dragAnchorRef = useRef<{ row: number; col: number } | null>(null)
+  /** 有区域动作（粘贴/清空/填充）才把单击当成"落一个活动格"；纯浏览列表的单击仍是选行 */
+  const rangeActionsEnabled = Boolean(onPasteRange || onClearRange || onFillDown)
   const [cellMenu, setCellMenu] = useState<{ x: number; y: number; rowId: string; columnId: string; text: string } | null>(null)
   // 单元格右键菜单视口定位：贴近屏幕右/下缘时向内收，下方放不下则翻到落点上方
   const cellMenuPlacement = useMenuPlacement(cellMenu?.x ?? 0, cellMenu?.y ?? 0, Boolean(cellMenu && copyable))
@@ -227,9 +460,12 @@ export function ErpTable<TData>({
     }
   }, [loadingMore, hasMore])
 
-  // 滚动加载更多：以 shell 最近的 overflow 祖先为 root，底部哨兵进入视口（含 120px 提前量）时触发
+  // 滚动加载更多：以 shell 最近的 overflow 祖先为 root，底部哨兵进入视口（含 120px 提前量）时触发。
+  // 回调经 ref 取用：页面普遍传内联箭头函数，若把它放进依赖，每次渲染都会重建观察器
+  // （并重跑一遍向上找滚动容器的 getComputedStyle 链）。
+  const watchEndReached = Boolean(onEndReached)
   useEffect(() => {
-    if (!onEndReached) return
+    if (!watchEndReached) return
     const sentinel = sentinelRef.current
     if (!sentinel) return
     let root: Element | Document | null = null
@@ -255,7 +491,7 @@ export function ErpTable<TData>({
     }, { root, rootMargin: '120px 0px' })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [onEndReached])
+  }, [watchEndReached])
 
   /**
    * 行键兜底去重：`getRowId` 的结果会被当作 React 键用，重复键会让 React 复用/丢弃行节点
@@ -314,12 +550,35 @@ export function ErpTable<TData>({
   })
 
   const rowsModel = table.getRowModel().rows
+  // 行键 → 行号：区域选择、键盘焦点、复制都按行号取行，避免每次 find 扫全表
+  const rowIndexById = useMemo(() => {
+    const map = new Map<string, number>()
+    rowsModel.forEach((row, index) => map.set(row.id, index))
+    return map
+  }, [rowsModel])
+  const rowIndexRef = useRef(rowIndexById)
+  rowIndexRef.current = rowIndexById
+  // 选区经 ref 取用：拖选回调因此保持稳定，未受影响的行走 memo 快路径
+  const cellRangeRef = useRef<CellRange | null>(null)
+  cellRangeRef.current = cellRange
 
   // 可见列与其冻结偏移：冻结组宽度按列键累计（选择列固定 33px，其余用 DISPLAY_LENGTH），
   // 使 select + 若干业务列同处左侧/右侧时 sticky 偏移互不重叠
   const visibleColumns = table.getVisibleLeafColumns()
   const cellCount = visibleColumns.length
-  const frozenOffsets = (() => {
+  // 区域键盘的横向边界：跳过勾选/行号/操作列，Home/End 落到"第一个/最后一个可选列"
+  const selectableColIndexes = useMemo(() => visibleColumns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column }) => column.columnDef.meta?.cellSelectable !== false
+      && column.id !== 'select' && !column.id.startsWith('__'))
+    .map(({ index }) => index), [visibleColumns])
+  const firstSelectableCol = selectableColIndexes[0] ?? 0
+  const lastSelectableCol = selectableColIndexes.length
+    ? selectableColIndexes[selectableColIndexes.length - 1]!
+    : Math.max(0, cellCount - 1)
+  const frozenOffsets = useMemo<FrozenOffsets>(() => {
+    const hasFrozen = visibleColumns.some((column) => column.columnDef.meta?.frozenLeft || column.columnDef.meta?.frozenRight)
+    if (!hasFrozen) return EMPTY_FROZEN
     const leftByKey = new Map<string, number>()
     const rightByKey = new Map<string, number>()
     let left = 0
@@ -340,26 +599,65 @@ export function ErpTable<TData>({
       }
     }
     return { leftByKey, rightByKey }
-  })()
+  }, [visibleColumns])
+
+  // 选区数值摘要：只在选区变化时算一遍（用户动作驱动的，不在滚动热路径上）
+  const rangeSummary = useMemo<RangeSummary | null>(() => {
+    if (!cellSelection || !cellRange) return null
+    const { top, bottom, left, right } = normalizeRange(cellRange)
+    let cells = 0
+    let numbers = 0
+    let sum = 0
+    let min = Infinity
+    let max = -Infinity
+    for (let rowIndex = top; rowIndex <= bottom; rowIndex += 1) {
+      const row = rowsModel[rowIndex]
+      if (!row) continue
+      for (let colIndex = left; colIndex <= right; colIndex += 1) {
+        const column = visibleColumns[colIndex]
+        if (!column) continue
+        cells += 1
+        const parsed = parseNumericCell(row.getValue(column.id))
+        if (parsed === null) continue
+        numbers += 1
+        sum += parsed
+        if (parsed < min) min = parsed
+        if (parsed > max) max = parsed
+      }
+    }
+    if (cells === 0) return null
+    return { cells, numbers, sum, average: numbers ? sum / numbers : 0, min: numbers ? min : 0, max: numbers ? max : 0 }
+  }, [cellSelection, cellRange, rowsModel, visibleColumns])
+
+  const summaryCallbackRef = useRef(onSelectionSummaryChange)
+  summaryCallbackRef.current = onSelectionSummaryChange
+  useEffect(() => {
+    summaryCallbackRef.current?.(rangeSummary)
+  }, [rangeSummary])
 
   // 行窗口化当前渲染区间（非虚拟时即全量）
   const virtualStart = virtualActive ? Math.min(virtualWindow.start, rowsModel.length) : 0
   const virtualEnd = virtualActive ? Math.min(virtualWindow.end, rowsModel.length) : rowsModel.length
   const renderedRows = virtualActive ? rowsModel.slice(virtualStart, virtualEnd) : rowsModel
 
-  // 数据变化时钳制键盘焦点行号
+  // 数据变化后清掉已不存在的行焦点 / 越界的选区
   useEffect(() => {
-    setFocusIndex((current) => (current === null ? null : Math.min(current, Math.max(rowsModel.length - 1, 0))))
-  }, [rowsModel.length])
+    setFocusRowId((current) => (current && rowIndexById.has(current) ? current : null))
+    setCellRange((current) => (current && rowIndexById.size > 0
+      && current.anchor.row < rowIndexById.size && current.focus.row < rowIndexById.size
+      ? current : null))
+  }, [rowIndexById, rowsModel.length])
 
   // 键盘焦点行滚动到可视区（虚拟化下按行高换算容器滚动位置）
   useEffect(() => {
-    if (focusIndex == null) return
+    if (!focusRowId) return
+    const index = rowIndexById.get(focusRowId)
+    if (index === undefined) return
     if (virtualActive) {
       const container = scrollContainerRef.current
       const height = rowHeightRef.current
       if (!container || height <= 0) return
-      const top = focusIndex * height
+      const top = index * height
       const bottom = top + height
       const viewTop = container.scrollTop
       const viewBottom = viewTop + container.clientHeight
@@ -367,10 +665,10 @@ export function ErpTable<TData>({
       else if (bottom > viewBottom) container.scrollTop = bottom - container.clientHeight
       return
     }
-    shellRef.current
-      ?.querySelector(`tr[data-kb-index="${focusIndex}"]`)
-      ?.scrollIntoView?.({ block: 'nearest' })
-  }, [focusIndex, virtualActive])
+    const rowEl = Array.from(shellRef.current?.querySelectorAll<HTMLTableRowElement>('tr[data-order-id]') ?? [])
+      .find((el) => el.dataset.orderId === focusRowId)
+    rowEl?.scrollIntoView?.({ block: 'nearest' })
+  }, [focusRowId, virtualActive, rowIndexById])
 
   // 行窗口化：定位滚动容器（shell 最近的 overflow 祖先，与滚动加载共用同一容器）
   useEffect(() => {
@@ -389,7 +687,13 @@ export function ErpTable<TData>({
     }
   }, [virtualize])
 
-  // 按当前滚动位置计算并更新可视窗口（起始行 + 可视行数 + 上下 overscan）
+  /**
+   * 按当前滚动位置计算并更新可视窗口。
+   *
+   * 滚动热路径里不读 `scrollHeight`：那是强制布局的属性，读到就是一次同步 layout；
+   * 总高按「行数 × 实测行高」估，到底判定用同一个估值（略小于真实值 ⇒ 提前一点判定到底，
+   * 只多渲染末尾几行，不影响正确性）。
+   */
   const applyScrollWindow = useCallback((container: HTMLElement, total: number) => {
     const height = rowHeightRef.current
     if (height <= 0 || total <= 0) return
@@ -398,7 +702,8 @@ export function ErpTable<TData>({
       setVirtualWindow({ start: 0, end: Math.min(total, VIRTUAL_OVERSCAN * 2 + 10) })
       return
     }
-    const next = computeVirtualWindow(container.scrollTop, viewport, container.scrollHeight, total, height)
+    const estimatedHeight = total * height
+    const next = computeVirtualWindow(container.scrollTop, viewport, estimatedHeight, total, height)
     setVirtualWindow((current) => (current.start === next.start && current.end === next.end ? current : next))
   }, [])
 
@@ -425,20 +730,54 @@ export function ErpTable<TData>({
     applyScrollWindow(container, total)
   }, [virtualize, rowsModel.length, virtualActive, applyScrollWindow])
 
-  // 滚动 / 容器尺寸变化时更新可视窗口（行数变化时重新绑定以使用最新总行数）
+  // 滚动 / 容器尺寸变化时更新可视窗口（行数变化时重新绑定以使用最新总行数）。
+  // 滚动事件按帧合并：一次滚动会连发几十个事件，逐个 setState 等于把整表重渲染几十遍。
+  const rowsTotalRef = useRef(rowsModel.length)
+  rowsTotalRef.current = rowsModel.length
   useEffect(() => {
     if (!virtualActive) return
     const container = scrollContainerRef.current
     if (!container) return
-    const onScroll = () => applyScrollWindow(container, rowsModel.length)
-    const onResize = () => applyScrollWindow(container, rowsModel.length)
-    container.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onResize)
-    return () => {
-      container.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onResize)
+    let frame = 0
+    const onScroll = () => {
+      if (frame !== 0) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        applyScrollWindow(container, rowsTotalRef.current)
+      })
     }
-  }, [virtualActive, rowsModel.length, applyScrollWindow])
+    container.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame)
+      container.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [virtualActive, applyScrollWindow])
+
+  // 整批换数据（排序/筛选/换关键词）后滚回顶部：留在旧偏移上会看到"另一批数据的中段"
+  const resetKeyRef = useRef(scrollResetKey)
+  useEffect(() => {
+    if (resetKeyRef.current === scrollResetKey) return
+    resetKeyRef.current = scrollResetKey
+    const container = scrollContainerRef.current ?? scrollableAncestor(shellRef.current)
+    if (container) container.scrollTop = 0
+  }, [scrollResetKey])
+
+  // 区域拖选的松手收尾（鼠标移出表格后才松开也要停）
+  useEffect(() => {
+    if (!cellSelection) return
+    const stop = () => {
+      draggingRangeRef.current = false
+      dragAnchorRef.current = null
+    }
+    window.addEventListener('mouseup', stop)
+    window.addEventListener('blur', stop)
+    return () => {
+      window.removeEventListener('mouseup', stop)
+      window.removeEventListener('blur', stop)
+    }
+  }, [cellSelection])
 
   // 行右键菜单：点击别处关闭
   useEffect(() => {
@@ -484,74 +823,210 @@ export function ErpTable<TData>({
     return () => window.removeEventListener('pointerdown', close)
   }, [openFilter])
 
+  /** 已渲染行的单元格文本（随显示走；窗口化下屏幕外行取不到 DOM，由 data 兜底） */
+  const domCellsOf = (tableEl: Element): Map<string, ChildNode[]> => {
+    const map = new Map<string, ChildNode[]>()
+    for (const tr of Array.from(tableEl.querySelectorAll('tbody tr[data-order-id]'))) {
+      const orderId = tr.getAttribute('data-order-id')
+      if (orderId) map.set(orderId, Array.from(tr.querySelectorAll(':scope > td')))
+    }
+    return map
+  }
+
+  /**
+   * 单元格取文本：优先列 meta.copyText（虚拟化下屏幕外行不在 DOM，只有它能给出显示值），
+   * 其次已渲染 DOM 的文本，最后回退原始值。
+   */
+  const cellTextOf = (cell: { getValue: () => unknown; column: { columnDef: { meta?: { copyText?: unknown } } } }, row: { original: unknown }, domCell?: ChildNode): string => {
+    const copyText = cell.column.columnDef.meta?.copyText as CopyTextFn | undefined
+    if (copyText) {
+      const text = copyText({ value: cell.getValue(), row: row.original })
+      if (text !== undefined) return text
+    }
+    const domText = domCell?.textContent?.trim()
+    if (domText != null && domText !== '') return domText
+    const raw = cell.getValue()
+    return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : ''
+  }
+
   const copyRows = (ids: string[]) => {
     if (!ids.length) return
     const tableEl = shellRef.current?.querySelector('table')
     if (!tableEl) return
     const headers = Array.from(tableEl.querySelectorAll('thead th')).map((th) => (th.textContent ?? '').trim())
     // 已渲染行走 DOM（与显示一致）；虚拟化下屏幕外行不在 DOM，按列 meta.copyText / 原始值生成
-    const domRows = new Map<string, HTMLTableRowElement>()
-    for (const tr of Array.from(tableEl.querySelectorAll('tbody tr[data-order-id]'))) {
-      const orderId = tr.getAttribute('data-order-id')
-      if (orderId) domRows.set(orderId, tr as HTMLTableRowElement)
-    }
+    const domRows = domCellsOf(tableEl)
     const rows: string[][] = []
     for (const id of ids) {
-      const row = rowsModel.find((candidate) => candidate.id === id)
+      const index = rowIndexById.get(id)
+      const row = index === undefined ? undefined : rowsModel[index]
       if (!row) continue
-      const tr = domRows.get(id)
-      const domCells = tr ? Array.from(tr.querySelectorAll(':scope > td')) : []
-      const line = row.getVisibleCells().map((cell, cellIndex) => {
-        const copyText = cell.column.columnDef.meta?.copyText
-        if (copyText) {
-          const text = copyText({ value: cell.getValue(), row: row.original })
-          if (text !== undefined) return text
-        }
-        const domText = domCells[cellIndex]?.textContent?.trim()
-        if (domText != null && domText !== '') return domText
-        const raw = cell.getValue()
-        return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : ''
-      })
-      rows.push(line)
+      const domCells = domRows.get(id) ?? []
+      rows.push(row.getVisibleCells().map((cell, cellIndex) => cellTextOf(cell, row, domCells[cellIndex])))
     }
     if (rows.length === 0) return
     writeClipboard(rowsToTsv(headers, rows))
+  }
+
+  /** 区域复制：不带表头，粘回 Excel 就是一块数据 */
+  const copyRange = (range: CellRange) => {
+    const tableEl = shellRef.current?.querySelector('table')
+    if (!tableEl) return
+    const { top, bottom, left, right } = normalizeRange(range)
+    const domRows = domCellsOf(tableEl)
+    const lines: string[][] = []
+    for (let rowIndex = top; rowIndex <= bottom; rowIndex += 1) {
+      const row = rowsModel[rowIndex]
+      if (!row) continue
+      const cells = row.getVisibleCells()
+      const domCells = domRows.get(row.id) ?? []
+      const line: string[] = []
+      for (let colIndex = left; colIndex <= right; colIndex += 1) {
+        const cell = cells[colIndex]
+        line.push(cell ? cellTextOf(cell, row, domCells[colIndex]) : '')
+      }
+      lines.push(line)
+    }
+    if (lines.length === 0) return
+    writeClipboard(gridToTsv(lines))
   }
 
   const copySelection = (): string[] => {
     const selected = Object.keys(rowSelection).filter((id) => rowSelection[id])
     if (selected.length > 0) return selected
     if (activeRowId) return [activeRowId]
-    if (focusIndex != null && rowsModel[focusIndex]) return [rowsModel[focusIndex].id]
+    if (focusRowId) return [focusRowId]
     return []
   }
 
   const moveFocus = (target: number) => {
     if (rowsModel.length === 0) return
     const clamped = Math.max(0, Math.min(target, rowsModel.length - 1))
-    setFocusIndex(clamped)
-    onRowClick?.(rowsModel[clamped].original)
+    const row = rowsModel[clamped]
+    setFocusRowId(row.id)
+    onRowClick?.(row.original)
+  }
+
+  /** 区域动作要的列键：从区域左边界到右边界 */
+  const columnIdsOf = (left: number, right: number) => visibleColumns.slice(left, right + 1).map((column) => column.id)
+
+  const handleRangeKey = (event: KeyboardEvent<HTMLDivElement>, range: CellRange): boolean => {
+    const { top, bottom, left, right } = normalizeRange(range)
+    const total = rowsModel.length
+    /** 整块/扩选地把焦点放到指定格（横向钳到可选列，纵向钳到表内） */
+    const moveTo = (row: number, col: number, extend: boolean) => {
+      const nextRow = Math.max(0, Math.min(row, total - 1))
+      const nextCol = Math.max(firstSelectableCol, Math.min(col, lastSelectableCol))
+      setCellRange(extend ? { anchor: range.anchor, focus: { row: nextRow, col: nextCol } } : { anchor: { row: nextRow, col: nextCol }, focus: { row: nextRow, col: nextCol } })
+    }
+    /** 方向键移动：先按整体移动算，再把落点钳回可选列（否则会挪到勾选/操作列上） */
+    const moveBy = (dRow: number, dCol: number) => {
+      const next = moveRange(range, dRow, dCol, total, cellCount, event.shiftKey)
+      const clampCol = (point: CellPoint) => ({ ...point, col: Math.max(firstSelectableCol, Math.min(point.col, lastSelectableCol)) })
+      setCellRange({ anchor: clampCol(next.anchor), focus: clampCol(next.focus) })
+    }
+    switch (event.key) {
+      case 'ArrowDown':
+        // Ctrl+方向键：到该方向的边界（Ctrl+Shift 则扩选到边界），与 Excel 一致
+        if (event.ctrlKey || event.metaKey) moveTo(total - 1, range.focus.col, event.shiftKey)
+        else moveBy(1, 0)
+        event.preventDefault()
+        return true
+      case 'ArrowUp':
+        if (event.ctrlKey || event.metaKey) moveTo(0, range.focus.col, event.shiftKey)
+        else moveBy(-1, 0)
+        event.preventDefault()
+        return true
+      case 'ArrowRight':
+        if (event.ctrlKey || event.metaKey) moveTo(range.focus.row, lastSelectableCol, event.shiftKey)
+        else moveBy(0, 1)
+        event.preventDefault()
+        return true
+      case 'ArrowLeft':
+        if (event.ctrlKey || event.metaKey) moveTo(range.focus.row, firstSelectableCol, event.shiftKey)
+        else moveBy(0, -1)
+        event.preventDefault()
+        return true
+      case 'Home':
+        moveTo((event.ctrlKey || event.metaKey) ? 0 : range.focus.row, firstSelectableCol, event.shiftKey)
+        event.preventDefault()
+        return true
+      case 'End':
+        moveTo((event.ctrlKey || event.metaKey) ? total - 1 : range.focus.row, lastSelectableCol, event.shiftKey)
+        event.preventDefault()
+        return true
+      case 'Escape':
+        setCellRange(null)
+        event.preventDefault()
+        return true
+      case 'Delete':
+        if (onClearRange) {
+          const rowIndices: number[] = []
+          for (let index = top; index <= bottom; index += 1) rowIndices.push(index)
+          onClearRange({ rowIndices, columns: columnIdsOf(left, right) })
+          event.preventDefault()
+          return true
+        }
+        return false
+      default:
+        break
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && onFillDown) {
+      const rowIndices: number[] = []
+      for (let index = top; index <= bottom; index += 1) rowIndices.push(index)
+      onFillDown({ rowIndices, columns: columnIdsOf(left, right) })
+      event.preventDefault()
+      return true
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && onRowSelectionChange) {
+      const next: RowSelectionState = {}
+      for (const row of rowsModel) next[row.id] = true
+      onRowSelectionChange(next)
+      event.preventDefault()
+      return true
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+      copyRange(range)
+      event.preventDefault()
+      return true
+    }
+    return false
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // 编辑控件内的按键归控件自己：方向键挪光标、Home/End 到行首行尾、Ctrl+C 复制选中的文字。
+    // 表格若在这里抢走，用户在格子里连"选几个字复制"都做不到。
+    if (isEditableTarget(event.target)) return
+    if (cellSelection && cellRange && handleRangeKey(event, cellRange)) return
+    // Ctrl+A 全选行（Excel 的"整个区域"）：只对配了选择回调的表格生效
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && onRowSelectionChange && rowsModel.length > 0) {
+      const next: RowSelectionState = {}
+      for (const row of rowsModel) next[row.id] = true
+      onRowSelectionChange(next)
+      event.preventDefault()
+      return
+    }
     if (keyboardNavigation && rowsModel.length > 0) {
       switch (event.key) {
-        case 'ArrowDown': moveFocus((focusIndex ?? -1) + 1); event.preventDefault(); return
-        case 'ArrowUp': moveFocus((focusIndex ?? rowsModel.length) - 1); event.preventDefault(); return
+        case 'ArrowDown': moveFocus((focusRowId ? rowIndexById.get(focusRowId) ?? -1 : -1) + 1); event.preventDefault(); return
+        case 'ArrowUp': moveFocus((focusRowId ? rowIndexById.get(focusRowId) ?? rowsModel.length : rowsModel.length) - 1); event.preventDefault(); return
         case 'Home': moveFocus(0); event.preventDefault(); return
         case 'End': moveFocus(rowsModel.length - 1); event.preventDefault(); return
-        case 'PageDown': moveFocus((focusIndex ?? 0) + 10); event.preventDefault(); return
-        case 'PageUp': moveFocus((focusIndex ?? 0) - 10); event.preventDefault(); return
+        case 'PageDown': moveFocus((focusRowId ? rowIndexById.get(focusRowId) ?? 0 : 0) + 10); event.preventDefault(); return
+        case 'PageUp': moveFocus((focusRowId ? rowIndexById.get(focusRowId) ?? 0 : 0) - 10); event.preventDefault(); return
         case 'Enter':
-          if (focusIndex != null && rowsModel[focusIndex]) {
-            if (rowClickSingleSelect) {
-              const focusRow = rowsModel[focusIndex]
-              const isSelected = focusRow.getIsSelected()
-              const onlySelected = isSelected && Object.keys(rowSelection).length === 1
-              table.setRowSelection(onlySelected ? {} : { [focusRow.id]: true })
+          if (focusRowId) {
+            const index = rowIndexById.get(focusRowId)
+            const focusRow = index === undefined ? undefined : rowsModel[index]
+            if (focusRow) {
+              if (rowClickSingleSelect) {
+                const isSelected = focusRow.getIsSelected()
+                const onlySelected = isSelected && Object.keys(rowSelection).length === 1
+                table.setRowSelection(onlySelected ? {} : { [focusRow.id]: true })
+              }
+              onRowClick?.(focusRow.original)
+              event.preventDefault()
             }
-            onRowClick?.(rowsModel[focusIndex].original)
-            event.preventDefault()
           }
           return
       }
@@ -561,6 +1036,92 @@ export function ErpTable<TData>({
       event.preventDefault()
     }
   }
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!cellSelection || !onPasteRange || !cellRange) return
+    if (isEditableTarget(event.target)) return
+    const text = event.clipboardData?.getData('text/plain') ?? ''
+    if (!text) return
+    const grid = parseClipboardGrid(text)
+    if (grid.length === 0) return
+    const { top, left } = normalizeRange(cellRange)
+    event.preventDefault()
+    onPasteRange({
+      startRowIndex: top,
+      columns: visibleColumns.slice(left).map((column) => column.id),
+      rows: grid,
+    })
+  }
+
+  // 行点击 / 区域拖选：回调经 ref 取用，保持行组件的 props 恒定（否则每渲染都是新身份，memo 形同虚设）
+  const rowCallbacksRef = useRef({ rowClickSingleSelect, rowSelection, onRowClick, table })
+  rowCallbacksRef.current = { rowClickSingleSelect, rowSelection, onRowClick, table }
+  const handleRowActivate = useCallback((row: Row<TData & CoreRowData>, event: MouseEvent<HTMLTableRowElement>) => {
+    const context = rowCallbacksRef.current
+    setFocusRowId(null)
+    if (context.rowClickSingleSelect) {
+      const target = event.target as HTMLElement
+      if (!target.closest('input, button, a, select, textarea, label, [contenteditable="true"], .erp-col-resizer')) {
+        const isSelected = row.getIsSelected()
+        const onlySelected = isSelected && Object.keys(context.rowSelection).length === 1
+        context.table.setRowSelection(onlySelected ? {} : { [row.id]: true })
+      }
+    }
+    context.onRowClick?.(row.original)
+  }, [])
+  const onRowDoubleClickRef = useRef(onRowDoubleClick)
+  onRowDoubleClickRef.current = onRowDoubleClick
+  const handleRowDoubleActivate = useCallback((row: Row<TData & CoreRowData>) => {
+    onRowDoubleClickRef.current?.(row.original)
+  }, [])
+  const handleCellPointerDown = useCallback((rowId: string, col: number, extend: boolean, event: MouseEvent<HTMLTableCellElement>) => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    // 交互控件自己要用鼠标：在这里抢走会让复选框/选择器按钮点不动
+    if (target.closest('input, button, a, select, textarea, label, [contenteditable="true"], .erp-col-resizer')) return
+    const index = rowIndexRef.current.get(rowId)
+    if (index === undefined) return
+    event.preventDefault()
+    // 阻止默认后浏览器不会把焦点给这个 div，而粘贴事件只发给获得焦点的元素——这里补上
+    shellRef.current?.focus({ preventScroll: true })
+    setFocusRowId(null)
+    draggingRangeRef.current = true
+    dragAnchorRef.current = { row: index, col }
+    const current = cellRangeRef.current
+    if (extend && current) {
+      setCellRange({ anchor: current.anchor, focus: { row: index, col } })
+      return
+    }
+    // 只读列表上"单击一格"是选行，不该顺手留下一块选区（否则后续方向键变成移格子）；
+    // 带粘贴/清空/填充的可录入表格才把单击当成"落一个活动格"。
+    if (rangeActionsEnabled) {
+      setCellRange({ anchor: { row: index, col }, focus: { row: index, col } })
+    } else {
+      setCellRange(null)
+    }
+  }, [rangeActionsEnabled])
+  const handleCellPointerEnter = useCallback((rowId: string, col: number) => {
+    if (!draggingRangeRef.current) return
+    const anchor = dragAnchorRef.current
+    const index = rowIndexRef.current.get(rowId)
+    if (!anchor || index === undefined) return
+    if (anchor.row === index && anchor.col === col) return
+    setCellRange((current) => (current && current.anchor.row === anchor.row && current.anchor.col === anchor.col
+      && current.focus.row === index && current.focus.col === col
+      ? current
+      : { anchor, focus: { row: index, col } }))
+  }, [])
+  const handleCellContextMenu = useCallback((event: MouseEvent<HTMLTableCellElement>, rowId: string, columnId: string) => {
+    if (!copyable) return
+    event.preventDefault()
+    setCellMenu({
+      x: event.clientX,
+      y: event.clientY,
+      rowId,
+      columnId,
+      text: (event.currentTarget.textContent ?? '').trim(),
+    })
+  }, [copyable])
 
   const openColumnFilter = (columnId: string) => {
     setDraftFilter(columnFilterValue?.[columnId] ?? emptyQueryCondition())
@@ -616,8 +1177,16 @@ export function ErpTable<TData>({
 
   if (data.length === 0 && empty != null) return <>{empty}</>
 
+  const rangeBounds = cellRange ? normalizeRange(cellRange) : null
   return (
-    <div ref={shellRef} className={`erp-table-shell${loading ? ' is-loading' : ''}`} tabIndex={0} aria-busy={loading || undefined} onKeyDown={handleKeyDown}>
+    <div
+      ref={shellRef}
+      className={`erp-table-shell${loading ? ' is-loading' : ''}`}
+      tabIndex={0}
+      aria-busy={loading || undefined}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+    >
       <ErpDataTable responsive={responsive} resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''}`.trim()} persistResize={persistResize} onColumnResize={onColumnResize} fitRef={fitRef}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -759,74 +1328,26 @@ export function ErpTable<TData>({
           )}
           {renderedRows.map((row, offset) => {
             const index = virtualStart + offset
-            const customClass = rowClassName?.(row.original)
+            const inRange = rangeBounds != null && index >= rangeBounds.top && index <= rangeBounds.bottom
             return (
-              <tr
+              <BodyRow
                 key={row.id}
-                data-order-id={row.id}
-                data-kb-index={index}
-                className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}${customClass ? ` ${customClass}` : ''}`.trim() || undefined}
-                onClick={(event) => {
-                  setFocusIndex(null)
-                  if (rowClickSingleSelect) {
-                    const target = event.target as HTMLElement
-                    if (!target.closest('input, button, a, select, textarea, label, [contenteditable="true"], .erp-col-resizer')) {
-                      const isSelected = row.getIsSelected()
-                      const onlySelected = isSelected && Object.keys(rowSelection).length === 1
-                      table.setRowSelection(onlySelected ? {} : { [row.id]: true })
-                    }
-                  }
-                  onRowClick?.(row.original)
-                }}
-                onDoubleClick={onRowDoubleClick ? () => onRowDoubleClick(row.original) : undefined}
-              >
-                {row.getVisibleCells().map((cell) => {
-                  const cellMeta = cell.column.columnDef.meta
-                  const cellFrozen = cellMeta?.frozenLeft ? 'erp-frozen-left' : cellMeta?.frozenRight ? 'erp-frozen-right' : ''
-                  const cellStyle: CSSProperties = {}
-                  if (cellMeta?.frozenLeft) cellStyle.left = frozenOffsets.leftByKey.get(cell.column.id) ?? 0
-                  if (cellMeta?.frozenRight) cellStyle.right = frozenOffsets.rightByKey.get(cell.column.id) ?? 0
-                  if (cellMeta?.maxWidth) cellStyle.maxWidth = cellMeta.maxWidth
-                  const truncate = cellMeta?.truncate !== false
-                  return (
-                    <td
-                      key={cell.id}
-                      className={[cellMeta?.cellClassName ?? cellMeta?.className ?? defaultNumericAlign(cellMeta?.dataType), cellFrozen].filter(Boolean).join(' ') || undefined}
-                      style={Object.keys(cellStyle).length > 0 ? cellStyle : undefined}
-                      onMouseEnter={(event) => {
-                        // title 延迟到悬停才计算，避免大列表渲染热路径对每个单元格做格式化
-                        if (cellMeta?.truncate === false) return
-                        const raw = cell.getValue()
-                        const next = cellMeta?.title != null
-                          ? (typeof cellMeta.title === 'function'
-                            ? cellMeta.title({ value: raw, row: row.original })
-                            : cellMeta.title)
-                          : (typeof raw === 'string' || typeof raw === 'number' ? String(raw) : undefined)
-                        const current = event.currentTarget.getAttribute('title')
-                        if (next == null || next === '') {
-                          if (current) event.currentTarget.removeAttribute('title')
-                        } else if (current !== next) {
-                          event.currentTarget.setAttribute('title', next)
-                        }
-                      }}
-                      onContextMenu={copyable ? (event) => {
-                        event.preventDefault()
-                        setCellMenu({
-                          x: event.clientX,
-                          y: event.clientY,
-                          rowId: row.id,
-                          columnId: cell.column.id,
-                          text: (event.currentTarget.textContent ?? '').trim(),
-                        })
-                      } : undefined}
-                    >
-                      {truncate
-                        ? <span className="erp-cell-ellipsis">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
-                        : flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  )
-                })}
-              </tr>
+                row={row as unknown as Row<TData & CoreRowData>}
+                selected={row.getIsSelected()}
+                active={activeRowId === row.id}
+                focused={focusRowId === row.id}
+                rowClass={rowClassName?.(row.original)}
+                range={inRange ? cellRange : null}
+                anchorCol={cellRange && cellRange.anchor.row === index && inRange ? cellRange.anchor.col : null}
+                cellSelection={cellSelection}
+                frozenOffsets={frozenOffsets}
+                copyable={copyable}
+                onActivate={handleRowActivate}
+                onDoubleActivate={onRowDoubleClick ? handleRowDoubleActivate : undefined}
+                onCellPointerDown={handleCellPointerDown}
+                onCellPointerEnter={handleCellPointerEnter}
+                onCellContextMenu={handleCellContextMenu}
+              />
             )
           })}
           {virtualActive && virtualEnd < rowsModel.length && (
@@ -866,6 +1387,11 @@ export function ErpTable<TData>({
           >
             复制选中行
           </button>
+          {cellRange && (
+            <button className="dropdown-item" onClick={() => { copyRange(cellRange); setCellMenu(null) }}>
+              复制所选区域
+            </button>
+          )}
           {showFilterMenu && (
             <>
               <div className="dropdown-divider" />
@@ -899,6 +1425,9 @@ export function ErpTable<TData>({
     </div>
   )
 }
+
+/** 只用到 meta.copyText 的窄口径，供纯文本提取函数标注参数 */
+type CopyTextFn = (info: { value: unknown; row: unknown }) => string | undefined
 
 declare module '@tanstack/react-table' {
   // 泛型参数必须与 v9 的声明一致（否则 TS2428）：v9 是
@@ -939,5 +1468,7 @@ declare module '@tanstack/react-table' {
     /** 复制到剪贴板的文本（单元格/行/选中复制）。虚拟化下屏幕外行不在 DOM，
      *  提供后优先使用；未提供时回退已渲染单元格文本，再回退原始值。返回 undefined 继续回退。 */
     copyText?: (info: { value: TValue; row: TData }) => string | undefined
+    /** 该列是否参与单元格区域选择（默认参与；行号/勾选/操作列设为 false，避免选区落在不可编辑的格子上） */
+    cellSelectable?: boolean
   }
 }

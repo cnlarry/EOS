@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ErpTable, computeVirtualWindow } from './ErpTable'
+import { ErpTable, computeVirtualWindow, parseNumericCell } from './ErpTable'
 
 interface Row {
   id: string
@@ -550,5 +550,228 @@ describe('ErpTable', () => {
       vi.useRealTimers()
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('ErpTable 渲染开销', () => {
+  it('打开表头菜单不重渲染数据行（行级 memo）', () => {
+    let cellRenders = 0
+    function NameCell() {
+      cellRenders += 1
+      return <span>名称</span>
+    }
+    // 列与数据必须是稳定身份——这既是本用例的前提，也是真实页面的要求（useMemo 包住列定义）
+    const columns: ColumnDef<Row, unknown>[] = [
+      { id: 'name', accessorKey: 'name', header: '名称', cell: NameCell },
+    ]
+    const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} onSortingChange={vi.fn()} />)
+    const before = cellRenders
+    expect(before).toBeGreaterThan(0)
+    fireEvent.click(screen.getByLabelText('表头操作名称'))
+    // 菜单是表格自身的状态：只有表头该重画，数据行的 props 没变 ⇒ memo 应当整体跳过
+    expect(cellRenders).toBe(before)
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(2)
+  })
+})
+
+/** 可录入的列：用来验证"输入框里的方向键不被表格抢走" */
+function buildEditableColumns(): ColumnDef<Row, unknown>[] {
+  return [
+    { id: 'id', accessorKey: 'id', header: 'ID', enableSorting: false },
+    {
+      id: 'name',
+      accessorKey: 'name',
+      header: '名称',
+      enableSorting: false,
+      cell: ({ row }) => <input aria-label={`名称 ${row.id}`} className="form-control" defaultValue={row.original.name} />,
+    },
+  ]
+}
+
+function stubClipboard(): ReturnType<typeof vi.fn> {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  return writeText
+}
+
+/** 在 td 上按住鼠标拖到另一格：起选区（jsdom 没有真实布局，按元素事件驱动） */
+function dragRange(from: HTMLElement, to: HTMLElement) {
+  fireEvent.mouseDown(from, { button: 0 })
+  fireEvent.mouseEnter(to)
+  fireEvent.mouseUp(window)
+}
+
+describe('ErpTable 单元格区域选择', () => {
+  it('编辑控件内的方向键与 Ctrl+C 不被表格接管', () => {
+    const onRowClick = vi.fn()
+    const writeText = stubClipboard()
+    const { container } = render(
+      <ErpTable columns={buildEditableColumns()} data={rows} getRowId={(row) => row.id} onRowClick={onRowClick} cellSelection />,
+    )
+    const input = screen.getByLabelText('名称 1')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    // 表格的行导航不应被触发（否则在格子里按方向键会挪走活动行）
+    expect(onRowClick).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'c', ctrlKey: true })
+    expect(writeText).not.toHaveBeenCalled()
+    expect(container.querySelector('.erp-table-shell')).toBeInTheDocument()
+  })
+
+  it('拖选成块后 Ctrl+C 复制纯块（不带表头）', () => {
+    const writeText = stubClipboard()
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} cellSelection />,
+    )
+    const cells = container.querySelectorAll('tbody tr')
+    const firstRow = cells[0]!.querySelectorAll('td')
+    const secondRow = cells[1]!.querySelectorAll('td')
+    // 第一列是勾选列，不参与区域选择；从 ID 列拖到名称列
+    dragRange(firstRow[1] as HTMLElement, secondRow[2] as HTMLElement)
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(4)
+    fireEvent.keyDown(container.querySelector('.erp-table-shell')!, { key: 'c', ctrlKey: true })
+    expect(writeText).toHaveBeenCalledWith('1\tA\r\n2\tB')
+  })
+
+  it('有选区时 Delete 清空、Ctrl+V 按块粘贴', () => {
+    const onClearRange = vi.fn()
+    const onPasteRange = vi.fn()
+    const { container } = render(
+      <ErpTable
+        columns={buildColumns()}
+        data={rows}
+        getRowId={(row) => row.id}
+        cellSelection
+        onClearRange={onClearRange}
+        onPasteRange={onPasteRange}
+      />,
+    )
+    const rowsEls = container.querySelectorAll('tbody tr')
+    dragRange(rowsEls[0]!.querySelectorAll('td')[1] as HTMLElement, rowsEls[1]!.querySelectorAll('td')[2] as HTMLElement)
+    const shell = container.querySelector('.erp-table-shell')!
+    fireEvent.keyDown(shell, { key: 'Delete' })
+    expect(onClearRange).toHaveBeenCalledWith({ rowIndices: [0, 1], columns: ['id', 'name'] })
+    fireEvent.paste(shell, { clipboardData: { getData: () => 'X\tY\r\nZ\tW' } })
+    expect(onPasteRange).toHaveBeenCalledWith({
+      startRowIndex: 0,
+      columns: ['id', 'name'],
+      rows: [['X', 'Y'], ['Z', 'W']],
+    })
+  })
+
+  it('方向键在选区内移动并扩选，Escape 取消选区', () => {
+    const { container } = render(
+      // 带区域动作的表格：单击一格即落一个活动格（纯浏览列表的单击是选行，见上一条用例）
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} cellSelection onClearRange={vi.fn()} />,
+    )
+    const rowsEls = container.querySelectorAll('tbody tr')
+    const firstRow = rowsEls[0]!.querySelectorAll('td')
+    fireEvent.mouseDown(firstRow[1] as HTMLElement, { button: 0 })
+    fireEvent.mouseUp(window)
+    const shell = container.querySelector('.erp-table-shell')!
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(1)
+    fireEvent.keyDown(shell, { key: 'ArrowRight', shiftKey: true })
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(2)
+    fireEvent.keyDown(shell, { key: 'ArrowDown' })
+    // 不按 Shift：整块跟到下一行同一列，仍是一格
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(1)
+    fireEvent.keyDown(shell, { key: 'Escape' })
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(0)
+  })
+
+  it('纯浏览列表单击一格不留下选区（单击仍是选行）', () => {
+    const onRowClick = vi.fn()
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} cellSelection onRowClick={onRowClick} />,
+    )
+    const firstRow = container.querySelectorAll('tbody tr')[0]!.querySelectorAll('td')
+    fireEvent.mouseDown(firstRow[1] as HTMLElement, { button: 0 })
+    fireEvent.mouseUp(window)
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(0)
+    // 键盘仍是行导航
+    fireEvent.keyDown(container.querySelector('.erp-table-shell')!, { key: 'ArrowDown' })
+    expect(onRowClick).toHaveBeenCalledWith(rows[0])
+  })
+
+  it('Home/End 落到第一个/最后一个可选列，Ctrl+方向键到边界（勾选列不参与）', () => {
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} cellSelection onClearRange={vi.fn()} />,
+    )
+    const shell = container.querySelector('.erp-table-shell')!
+    const classNameAt = (row: number, col: number) => container.querySelectorAll('tbody tr')[row]!.querySelectorAll('td')[col]!.className
+    // 落在名称列（第 2 个数据列，td 下标 2）
+    fireEvent.mouseDown(container.querySelectorAll('tbody tr')[0]!.querySelectorAll('td')[2] as HTMLElement, { button: 0 })
+    fireEvent.mouseUp(window)
+    fireEvent.keyDown(shell, { key: 'Home' })
+    expect(classNameAt(0, 1)).toContain('erp-cell-range')
+    expect(classNameAt(0, 0)).not.toContain('erp-cell-range')
+    fireEvent.keyDown(shell, { key: 'End' })
+    expect(classNameAt(0, 2)).toContain('erp-cell-range')
+    // Ctrl+Shift+下：从末列扩到末行
+    fireEvent.keyDown(shell, { key: 'ArrowDown', ctrlKey: true, shiftKey: true })
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(2)
+    // Ctrl+Home：回到首格（单格）
+    fireEvent.keyDown(shell, { key: 'Home', ctrlKey: true })
+    expect(container.querySelectorAll('td.erp-cell-range')).toHaveLength(1)
+    expect(classNameAt(0, 1)).toContain('erp-cell-range')
+  })
+
+  it('Ctrl+A 全选行（只在配了选择回调的表格上生效）', () => {
+    const onSelection = vi.fn()
+    const { container } = render(
+      <ErpTable
+        columns={buildColumns()}
+        data={rows}
+        getRowId={(row) => row.id}
+        rowSelection={{}}
+        onRowSelectionChange={onSelection}
+      />,
+    )
+    fireEvent.keyDown(container.querySelector('.erp-table-shell')!, { key: 'a', ctrlKey: true })
+    expect(onSelection).toHaveBeenCalledWith({ '1': true, '2': true })
+  })
+
+  it('选区数值摘要：合计/平均/最值，清空选区后回调 null', () => {
+    const onSummary = vi.fn()
+    const data = [{ id: '1', amount: 10 }, { id: '2', amount: 25.5 }]
+    const numericColumns: ColumnDef<(typeof data)[number], unknown>[] = [
+      { accessorKey: 'id', header: 'ID' },
+      { accessorKey: 'amount', header: '金额' },
+    ]
+    const { container } = render(
+      <ErpTable
+        columns={numericColumns}
+        data={data}
+        getRowId={(row) => row.id}
+        cellSelection
+        onClearRange={vi.fn()}
+        onSelectionSummaryChange={onSummary}
+      />,
+    )
+    const rowsEls = container.querySelectorAll('tbody tr')
+    dragRange(rowsEls[0]!.querySelectorAll('td')[1] as HTMLElement, rowsEls[1]!.querySelectorAll('td')[1] as HTMLElement)
+    const summary = onSummary.mock.calls[onSummary.mock.calls.length - 1]?.[0]
+    expect(summary).toMatchObject({ cells: 2, numbers: 2, sum: 35.5, average: 17.75, min: 10, max: 25.5 })
+    fireEvent.keyDown(container.querySelector('.erp-table-shell')!, { key: 'Escape' })
+    expect(onSummary.mock.calls[onSummary.mock.calls.length - 1]?.[0]).toBeNull()
+  })
+
+  it('parseNumericCell 只认纯数字（千分位/货币符号可去，日期与编码不算）', () => {
+    expect(parseNumericCell(12.5)).toBe(12.5)
+    expect(parseNumericCell('1,234.50')).toBe(1234.5)
+    expect(parseNumericCell(' ¥ 88 ')).toBe(88)
+    expect(parseNumericCell('-3')).toBe(-3)
+    expect(parseNumericCell('2026-10-20')).toBeNull()
+    expect(parseNumericCell('A-01')).toBeNull()
+    expect(parseNumericCell(true)).toBeNull()
+    expect(parseNumericCell('')).toBeNull()
+  })
+
+  it('scrollResetKey 变化时把列表滚回顶部（排序/筛选换批后不留在中段）', () => {
+    const props = { columns: buildColumns(), data: rows, getRowId: (row: Row) => row.id }
+    const { container, rerender } = render(<ErpTable {...props} scrollResetKey="k1" />)
+    const shell = container.querySelector<HTMLElement>('.erp-table-shell')!
+    shell.scrollTop = 320
+    rerender(<ErpTable {...props} scrollResetKey="k2" />)
+    expect(shell.scrollTop).toBe(0)
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 
 export interface ColumnResizeOptions {
   /**
@@ -37,7 +37,10 @@ const MAX_MEASURE_ROWS = 300
  */
 export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, storageKey: string, options?: ColumnResizeOptions) {
   const persist = options?.persist ?? true
-  const onColumnResize = options?.onColumnResize
+  // 回调经 ref 取用：页面普遍传内联箭头函数，若把它们放进 effect 依赖，父组件每渲染一次
+  // 都会重跑整个 effect——重建 colgroup、重读 localStorage、重挂 MutationObserver。
+  const callbacksRef = useRef(options?.onColumnResize)
+  callbacksRef.current = options?.onColumnResize
   const fitRef = options?.fitRef
 
   useEffect(() => {
@@ -237,7 +240,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
     }
 
     const notify = (columnKey: string, width: number) => {
-      onColumnResize?.(columnKey, Math.round(width))
+      callbacksRef.current?.(columnKey, Math.round(width))
     }
 
     /**
@@ -342,12 +345,14 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
      */
     const reapplyAutoFit = () => {
       const keys = colKeys()
+      // 已保存宽度只读一次：逐列各读一次 localStorage + JSON.parse 是滚动/翻页里的固定开销
+      const saved = loadWidths()
       let changed = false
       thsOf().forEach((th, index) => {
         if (th.dataset.colAutofit !== 'true') return
         const key = keys[index]
         if (defaults.has(key)) return
-        if (loadWidths()[key] !== undefined) return
+        if (saved[key] !== undefined) return
         const { width, measuredRows } = measureFitWidth(index)
         if (measuredRows > 0 && width > 0) {
           defaults.set(key, width)
@@ -356,8 +361,20 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       })
       if (changed) apply()
     }
-    const bodyObserver = new MutationObserver(reapplyAutoFit)
-    for (const tbody of Array.from(table.tBodies)) bodyObserver.observe(tbody, { childList: true })
+    // 没有 autoWidth 列时根本不挂行观察器：行窗口化每次滚动都会改 tbody 子节点，
+    // 挂上了就是每个滚动帧都跑一遍逐行测量（getComputedStyle + 造隐藏 span）。
+    const hasAutoFitColumn = thsOf().some((th) => th.dataset.colAutofit === 'true')
+    let bodyFrame = 0
+    const bodyObserver = new MutationObserver(() => {
+      if (bodyFrame !== 0) return
+      bodyFrame = window.requestAnimationFrame(() => {
+        bodyFrame = 0
+        reapplyAutoFit()
+      })
+    })
+    if (hasAutoFitColumn) {
+      for (const tbody of Array.from(table.tBodies)) bodyObserver.observe(tbody, { childList: true })
+    }
 
     const endDrag = (event: PointerEvent) => {
       const handle = event.currentTarget as HTMLElement
@@ -431,6 +448,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       table.removeEventListener('pointerdown', onPointerDown)
       observer.disconnect()
       bodyObserver.disconnect()
+      if (bodyFrame !== 0) window.cancelAnimationFrame(bodyFrame)
     }
-  }, [tableRef, storageKey, persist, onColumnResize, fitRef])
+  }, [tableRef, storageKey, persist, fitRef])
 }

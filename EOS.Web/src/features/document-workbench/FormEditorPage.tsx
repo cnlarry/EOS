@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CellContext, ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
-import { Component, createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { Component, createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { IconDots, IconPlayerPlay, IconTrash } from '@tabler/icons-react'
@@ -9,7 +9,9 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { COMMAND_ACTIONS } from '../../components/common/commandActions'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
-import { ErpTable } from '../../components/common/ErpTable'
+import { ErpTable, type RangeActionInfo, type RangePasteInfo } from '../../components/common/ErpTable'
+import { parseClipboardGrid } from '../../components/common/tableClipboard'
+import { moveCursor, type GridMove } from './detailGridNav'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import { useFormBreadcrumb } from '../../components/layout/FormBreadcrumbContext'
@@ -416,34 +418,119 @@ interface DetailFormGridProps {
   onSortChange: (next: SortingState) => void
   onSelectionChange: (next: RowSelectionState) => void
   onResize: (fieldKey: string, width: number) => void
+  /** 区域粘贴：行号/列键都是"当前视图顺序"，由外层换算成物理行 */
+  onPasteRange?: (info: RangePasteInfo) => void
+  onClearRange?: (info: RangeActionInfo) => void
+  onFillDown?: (info: RangeActionInfo) => void
+}
+
+/**
+ * 明细行的可录入控件（文本/数值、下拉、复选，以及字段自带的选择器按钮）。
+ *
+ * 选择器按钮算同一格的一部分：键盘用户必须还能用 Tab 走到它（否则带选择器的字段
+ * 只剩下鼠标一条路）。它排在字段输入框之后，顺序与 DOM 一致。
+ */
+const DETAIL_CONTROL_SELECTOR = [
+  'input.form-control:not([disabled])',
+  'select.form-select:not([disabled])',
+  'input.form-check-input:not([disabled])',
+  'button.erp-chooser-btn:not([disabled])',
+].join(', ')
+
+function detailRowControls(row: HTMLTableRowElement): HTMLElement[] {
+  return Array.from(row.querySelectorAll<HTMLElement>(DETAIL_CONTROL_SELECTOR))
+}
+
+function detailBodyRows(tbody: HTMLTableSectionElement): HTMLTableRowElement[] {
+  return Array.from(tbody.querySelectorAll<HTMLTableRowElement>('tr[data-order-id]'))
+}
+
+/** 聚焦某行某列的可录入控件；行尚未渲染（刚新增，状态还没来得及画出来）时等下一帧重试 */
+function focusDetailCell(tbody: HTMLTableSectionElement, rowIndex: number, colIndex: number, attempt = 0) {
+  const row = detailBodyRows(tbody)[rowIndex]
+  const control = row ? detailRowControls(row)[colIndex] : undefined
+  if (control) {
+    control.focus()
+    return
+  }
+  if (attempt >= 5) return
+  window.setTimeout(() => focusDetailCell(tbody, rowIndex, colIndex, attempt + 1), 16)
+}
+
+/** 明细网格里把按键翻译成一次格子移动；返回 null 表示这个键归控件自己（输入、下拉、日期选择） */
+function gridMoveOf(event: ReactKeyboardEvent, target: HTMLElement): GridMove | null {
+  const inputType = target instanceof HTMLInputElement ? target.type : ''
+  const textLike = target instanceof HTMLInputElement && (inputType === 'text' || inputType === '')
+  switch (event.key) {
+    case 'Tab':
+      return event.shiftKey ? 'prev' : 'next'
+    case 'Enter':
+    case ' ':
+      // 选择器按钮上的 Enter/空格是"打开选择器"，不能被当成换格
+      if (target instanceof HTMLButtonElement) return null
+      if (event.key === ' ') return null
+      if (target.tagName === 'TEXTAREA') return null
+      if (inputType === 'checkbox' || inputType === 'date' || inputType === 'datetime-local') return null
+      return event.shiftKey ? 'up' : 'down'
+    // 单行文本框里的上下键本来什么也不做；接管成"上一格/下一格"才是 Excel 的手感。
+    // 下拉与多行文本必须保留原生行为（前者选值、后者移光标）。
+    case 'ArrowDown':
+      return textLike ? 'down' : null
+    case 'ArrowUp':
+      return textLike ? 'up' : null
+    default:
+      return null
+  }
 }
 
 /** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染；浏览态只读展示，不提供增删入口 */
-const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, actions, storageKey, onAddRow, onRemoveRow, onRemoveSelected, chooserMenuKey, chooserMenuDirection, onFieldChange, onChoose, onFieldBlur, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
-  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（浏览态无输入框，直接跳过） */
+const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, actions, storageKey, onAddRow, onRemoveRow, onRemoveSelected, chooserMenuKey, chooserMenuDirection, onFieldChange, onChoose, onFieldBlur, onSortChange, onSelectionChange, onResize, onPasteRange, onClearRange, onFillDown }: DetailFormGridProps) {
+  /**
+   * 明细网格键盘：Enter/Shift+Enter 上下格、Tab/Shift+Tab 左右格（行尾折行）、
+   * 上下方向键在单行文本框里也走格子；Enter 越过末行时新增一行并落光标。
+   *
+   * 两处刻意保留原生行为：
+   * - **Tab 走到末格就交还浏览器**：拦住它会让键盘用户在明细里出不来（键盘陷阱）；
+   * - 方向键到边界就停，不新增行（Excel 也是到底为止）。
+   *
+   * 这里的按键必须 `stopPropagation`：外壳 `ErpTable` 也有方向键/Enter 的行导航，
+   * 不拦住的话移动格子的同时还会把"活动行"挪走并滚动视图。
+   */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (viewing || event.key !== 'Enter') return
+    if (viewing) return
     const target = event.target as HTMLElement
-    if (!(target instanceof HTMLInputElement)) return
-    if (target.type === 'checkbox' || target.type === 'date' || target.type === 'datetime-local') return
+    const isControl = target instanceof HTMLInputElement || target instanceof HTMLSelectElement
+      || (target instanceof HTMLButtonElement && target.classList.contains('erp-chooser-btn'))
+    if (!isControl) return
     const row = target.closest('tr')
     const tbody = target.closest('tbody')
     if (!row || !tbody) return
+    const rows = detailBodyRows(tbody as HTMLTableSectionElement)
+    const rowIndex = rows.indexOf(row as HTMLTableRowElement)
+    const controls = detailRowControls(row as HTMLTableRowElement)
+    const colIndex = controls.indexOf(target)
+    if (rowIndex < 0 || colIndex < 0) return
+    const move = gridMoveOf(event, target)
+    if (!move) return
+    const result = moveCursor(
+      { row: rowIndex, col: colIndex },
+      move,
+      rows.length,
+      (index) => {
+        const candidate = rows[index]
+        return candidate ? detailRowControls(candidate).length : 0
+      },
+      move === 'down',
+    )
+    // 无处可去：不 preventDefault，把 Tab 还给浏览器（焦点继续往后走，不制造键盘陷阱）
+    if (!result.appendRow && !result.cursor) return
     event.preventDefault()
-    const rows = Array.from(tbody.querySelectorAll('tr'))
-    const rowIndex = rows.indexOf(row)
-    const cellInputs = Array.from(row.querySelectorAll<HTMLElement>('td input.form-control'))
-    const columnIndex = Math.max(0, cellInputs.indexOf(target))
-    if (rowIndex < rows.length - 1) {
-      rows[rowIndex + 1].querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
-      return
-    }
-    onAddRow()
-    window.setTimeout(() => {
-      tbody.querySelector('tr:last-of-type')?.querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
-    }, 30)
+    event.stopPropagation()
+    if (result.appendRow) onAddRow()
+    if (result.cursor) focusDetailCell(tbody as HTMLTableSectionElement, result.cursor.row, result.cursor.col)
   }
-  const visibleDetail = form.detailFields.filter(field => field.isVisible)
+
+  const visibleDetail = useMemo(() => form.detailFields.filter(field => field.isVisible), [form])
   const editContext: DetailEditContextValue = {
     fields: new Map(visibleDetail.map(field => [field.key, field])),
     errors: detailErrors,
@@ -458,13 +545,46 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
     : detailRows.map((_, index) => index)
   const rowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
   const gridRows: DetailGridRow[] = viewIndices.map(index => ({ __id: `r${index}`, __index: index, ...detailRows[index] }))
-  const columns: ColumnDef<DetailGridRow, unknown>[] = [
+  // 行键取函数必须是稳定身份：表格按它算行键去重，内联箭头函数会让这份映射每次渲染都作废
+  const detailRowId = useCallback((row: DetailGridRow) => row.__id, [])
+  /**
+   * 区域粘贴：从当前格起按列落位，只写可录入的列（只读列原样跳过，不挤占后面的位置）。
+   * 粘贴块超出末行时按需追加明细行——这正是 Excel 里"表格自动向下扩展"的手感。
+   */
+  const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    if (viewing || !onPasteRange) return
+    const text = event.clipboardData?.getData('text/plain') ?? ''
+    // 单值粘贴交给输入框自己（保留原生插入/替换行为）；带制表或换行的才当成一块数据
+    if (!text.includes('\t') && !text.includes('\n')) return
+    const target = event.target as HTMLElement
+    const cell = target.closest('td')
+    const row = target.closest('tr')
+    const tbody = target.closest('tbody')
+    const columnId = cell?.dataset.colId
+    if (!cell || !row || !tbody || !columnId) return
+    // 序号/勾选/操作列不是数据列：从这里起粘会让整块数据错位，直接不收
+    if (columnId.startsWith('__') || columnId === 'select') return
+    const startCol = columns.findIndex(column => column.id === columnId)
+    const startRow = detailBodyRows(tbody as HTMLTableSectionElement).indexOf(row as HTMLTableRowElement)
+    if (startCol < 0 || startRow < 0) return
+    const grid = parseClipboardGrid(text)
+    if (grid.length === 0) return
+    event.preventDefault()
+    onPasteRange({
+      startRowIndex: startRow,
+      columns: columns.slice(startCol).map(column => column.id).filter((id): id is string => Boolean(id)),
+      rows: grid,
+    })
+  }
+  // 列定义 memo：TanStack 以 columns/data 的身份判断要不要重建行模型。每次输入都新建一份
+  // 列定义时，敲一个字符等于让整张明细表所有行重新实例化一遍。
+  const columns = useMemo<ColumnDef<DetailGridRow, unknown>[]>(() => [
     // 浏览态不允许改明细：隐藏选择列与行操作列，只展示内容
     ...(!viewing ? [{
       id: '__check',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'erp-detail-check text-center', resizable: false, truncate: false },
+      meta: { className: 'erp-detail-check text-center', resizable: false, truncate: false, cellSelectable: false, minWidth: 36, frozenLeft: true },
       header: ({ table }: { table: { getIsAllPageRowsSelected: () => boolean; getIsSomePageRowsSelected: () => boolean; getToggleAllPageRowsSelectedHandler: () => (event: unknown) => void } }) => (
         <input
           className="form-check-input"
@@ -491,7 +611,8 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
       header: '序号',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false },
+      // 与勾选列一起冻结在左侧：横向滚动看后面的列时，行号始终在，跟 Excel 的行号栏同用
+      meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false, cellSelectable: false, minWidth: 52, frozenLeft: true },
       cell: ({ row }) => <span className="text-secondary">{row.index + 1}</span>,
     },
     ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => {
@@ -539,7 +660,8 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
+      // 删除按钮冻结在右侧：列多时不必滚到最右才找得到
+      meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false, cellSelectable: false, minWidth: 74, frozenRight: true },
       cell: ({ row }: { row: { original: DetailGridRow; index: number } }) => (
         // Inline delete as icon button, aligned with command bar icon conventions
         <Button
@@ -552,7 +674,7 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
         />
       ),
     } as ColumnDef<DetailGridRow, unknown>] : []),
-  ]
+  ], [visibleDetail, viewing, onRemoveRow])
   // 浏览态默认不显示这一排；有明细级自定义按钮（或视图排序提示）时它才是自定义按钮的落点。
   const showToolbar = !viewing || Boolean(detailSort) || Boolean(actions)
   return (
@@ -572,12 +694,12 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
           </div>
         </div>
       ) : null}
-      <div className="table-responsive" onKeyDown={handleKeyDown}>
+      <div className="table-responsive" onKeyDown={handleKeyDown} onPaste={handlePaste}>
         <DetailEditContext.Provider value={editContext}>
           <ErpTable
             columns={columns}
             data={gridRows}
-            getRowId={row => row.__id}
+            getRowId={detailRowId}
             sorting={detailSort ? [{ id: detailSort.key, desc: detailSort.dir === -1 }] : []}
             onSortingChange={onSortChange}
             rowSelection={rowSelection}
@@ -588,6 +710,12 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
             storageKey={storageKey}
             persistResize={false}
             onColumnResize={onResize}
+            // 电子表格手感：拖选成块 → Ctrl+C 复制纯块 / Ctrl+V 按块粘入 / Delete 清空 / Ctrl+D 向下填充。
+            // 浏览态只保留复制：写入口径一律不给（只读单据不该被粘贴/清空改动）。
+            cellSelection
+            onPasteRange={viewing ? undefined : onPasteRange}
+            onClearRange={viewing ? undefined : onClearRange}
+            onFillDown={viewing ? undefined : onFillDown}
             className="erp-detail-grid"
             responsive={false}
             empty={
@@ -1190,6 +1318,9 @@ export function FormEditorPage() {
   hasMasterAmountColumnsRef.current = hasMasterAmountColumns
   const selectedDetailRowsRef = useRef<Set<number>>(new Set())
   selectedDetailRowsRef.current = selectedDetailRows
+  /** 视图排序快照（视图行号 → 物理行号），区域粘贴/清空/填充要按它换算 */
+  const sortedIndicesRef = useRef<number[] | null>(null)
+  sortedIndicesRef.current = sortedIndices
 
   /** 主表金额汇总预览（明细 SUM，保存后服务端权威聚合覆盖；结果不变时跳过 setState 避免无意义渲染） */
   const syncMasterPreviewRows = useCallback((rows: Record<string, string>[]) => {
@@ -1241,6 +1372,81 @@ export function FormEditorPage() {
     updateDetailRowValues(index, { [key]: value })
   }, [updateDetailRowValues])
 
+  /**
+   * 批量改多行（区域粘贴 / 清空 / 向下填充）：与单行写入同一套口径——金额联动预览、
+   * 清掉被改字段的行内错误、一次 setState。逐行调用单行版本会在一次粘贴里触发几十次渲染。
+   */
+  const applyDetailPatches = useCallback((patches: Map<number, Record<string, string>>) => {
+    if (patches.size === 0) return
+    const def = formDefRef.current
+    const rows = detailRowsRef.current
+    if (!def) return
+    const nextRows = rows.slice()
+    let changed = false
+    for (const [index, patch] of patches) {
+      const row = nextRows[index]
+      if (!row) continue
+      const updated = { ...row, ...patch }
+      const amountPatch = Object.keys(patch).some(key => AMOUNT_TRIGGER_KEYS.has(key.toUpperCase()))
+        ? previewDetailAmount(def.detailFields, updated, masterValuesRef.current)
+        : null
+      nextRows[index] = amountPatch ? { ...updated, ...amountPatch } as Record<string, string> : updated
+      changed = true
+    }
+    if (!changed) return
+    detailRowsRef.current = nextRows
+    setDetailRows(nextRows)
+    syncMasterPreviewRows(nextRows)
+    setDetailErrors(current => {
+      let touched = false
+      const next = current.slice()
+      for (const [index, patch] of patches) {
+        const rowErrors = next[index]
+        if (!rowErrors) continue
+        let rowTouched = false
+        const nextRow = { ...rowErrors }
+        for (const key of Object.keys(patch)) {
+          if (key in nextRow) {
+            delete nextRow[key]
+            rowTouched = true
+          }
+        }
+        if (rowTouched) {
+          next[index] = nextRow
+          touched = true
+        }
+      }
+      return touched ? next : current
+    })
+    setDirty(true)
+  }, [syncMasterPreviewRows])
+
+  /** 视图行号 → 物理行号（无视图排序时两者相同；排序快照与行数不一致时按恒等处理） */
+  const viewRowToDataIndex = useCallback((viewIndex: number) => {
+    const view = sortedIndicesRef.current
+    const total = detailRowsRef.current.length
+    return view && view.length === total ? (view[viewIndex] ?? viewIndex) : viewIndex
+  }, [])
+
+  /**
+   * 当前**真正由用户键入**的明细字段键：粘贴/清空/填充只落这些列。
+   *
+   * 不能用 `writableFields`——它是"随保存提交"的口径，含只读但必填的联动列（如由币别带出的汇率）
+   * 与 ONLY_CHOOSE 的选入列；那些列一旦被粘贴写值，就绕过了"只能选入"的约束。
+   */
+  const writableDetailKeys = useCallback(() => {
+    const def = formDefRef.current
+    if (!def) return new Set<string>()
+    return new Set(def.detailFields
+      .filter(field => field.isVisible
+        && !field.isReadonly
+        && !field.serverFilled
+        && !field.displayOnly
+        && !field.isVirtual
+        && !(field.onlyChoose && field.choosers.some(source => source.active && source.table)))
+      .map(field => field.key))
+  }, [])
+
   /** 明细字段失焦校验（稳定回调，供 memo 化明细网格使用） */
   const blurDetailField = useCallback((index: number, field: FormFieldDefinition, value: string) => {
     const message = blurVerdict(field, value)
@@ -1263,13 +1469,26 @@ export function FormEditorPage() {
     }, 300)
   }, [moduleId])
 
-  const addDetailRow = useCallback(() => {
+  /** 新明细行的初值：主表同名值自动带入，其余按字段空值口径 */
+  const buildEmptyDetailRow = useCallback((def: FormDefinition): Record<string, string> => {
+    const row: Record<string, string> = {}
+    for (const field of def.detailFields) {
+      if (field.isVisible) row[field.key] = masterValuesRef.current[field.key] ?? emptyValue(field)
+    }
+    return row
+  }, [])
+
+  /**
+   * 追加 count 个空明细行，返回实际追加数（主表必填未填时为 0）。
+   *
+   * 准入检查只认「主表录入面上真实存在的字段」：DETAIL_NO_FIELDS 是随模块一起维护的历史元数据，
+   * 里面可能留着本模块录入面根本没有的键（字段被标为不显示、或本就不属于这张表）——
+   * 那些键在界面上永远给不出值，逐键检查会让门禁成为死结：用户无论怎么填都加不出明细行。
+   * 取不到录入项的键直接跳过，检查落在真正需要用户先填的那些字段上。
+   */
+  const appendDetailRows = useCallback((count: number): number => {
     const def = formDefRef.current
-    if (!def) return
-    // 只检查「主表录入面上真实存在的字段」。DETAIL_NO_FIELDS 是随模块一起维护的历史元数据，
-    // 里面可能留着本模块录入面根本没有的键（字段被标为不显示、或本就不属于这张表）——
-    // 那些键在界面上永远给不出值，逐键检查会让门禁成为死结：用户无论怎么填都加不出明细行。
-    // 取不到录入项的键直接跳过，检查落在真正需要用户先填的那些字段上。
+    if (!def || count <= 0) return 0
     const entryKeys = new Map(def.masterFields.filter(field => field.isVisible).map(field => [field.key.toUpperCase(), field.key]))
     const missing = def.detailNoFields
       .split(';')
@@ -1280,23 +1499,81 @@ export function FormEditorPage() {
       })
     if (missing.length > 0) {
       setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
-      return
-    }
-    // 主表同名值自动带入新明细行
-    const empty: Record<string, string> = {}
-    for (const field of def.detailFields) {
-      if (field.isVisible) empty[field.key] = masterValuesRef.current[field.key] ?? emptyValue(field)
+      return 0
     }
     const currentRows = detailRowsRef.current
-    const nextRows = [...currentRows, empty]
+    const added = Array.from({ length: count }, () => buildEmptyDetailRow(def))
+    const nextRows = [...currentRows, ...added]
     detailRowsRef.current = nextRows
     setDetailRows(nextRows)
     // 快照视图：新行追加到视图末尾
-    setSortedIndices(current => current ? [...current, currentRows.length] : current)
+    setSortedIndices(current => current ? [...current, ...added.map((_, offset) => currentRows.length + offset)] : current)
     syncMasterPreviewRows(nextRows)
-    setDetailErrors(current => [...current, {}])
+    setDetailErrors(current => [...current, ...added.map(() => ({}))])
     setDirty(true)
-  }, [syncMasterPreviewRows])
+    return added.length
+  }, [buildEmptyDetailRow, syncMasterPreviewRows])
+
+  const addDetailRow = useCallback(() => {
+    appendDetailRows(1)
+  }, [appendDetailRows])
+
+  /** 区域粘贴：按列落位，只写可写列；超出末行按需补行 */
+  const pasteDetailRange = useCallback((info: RangePasteInfo) => {
+    const def = formDefRef.current
+    if (!def) return
+    const writable = writableDetailKeys()
+    const fieldByKey = new Map(def.detailFields.map(field => [field.key, field]))
+    const missingRows = info.startRowIndex + info.rows.length - detailRowsRef.current.length
+    if (missingRows > 0) appendDetailRows(missingRows)
+    const patches = new Map<number, Record<string, string>>()
+    info.rows.forEach((line, rowOffset) => {
+      const index = viewRowToDataIndex(info.startRowIndex + rowOffset)
+      const patch: Record<string, string> = {}
+      line.forEach((cellText, colOffset) => {
+        const key = info.columns[colOffset]
+        if (!key || !writable.has(key)) return
+        const field = fieldByKey.get(key)
+        if (!field) return
+        patch[key] = (field.dataType ?? '').toLowerCase() === 'bit'
+          ? (/^(1|true|是|y|yes)$/i.test(cellText.trim()) ? '1' : '0')
+          : cellText
+      })
+      if (Object.keys(patch).length > 0) patches.set(index, { ...patches.get(index), ...patch })
+    })
+    applyDetailPatches(patches)
+  }, [appendDetailRows, applyDetailPatches, viewRowToDataIndex, writableDetailKeys])
+
+  /** 区域清空（Delete）：只清可写列，只读列保持原值 */
+  const clearDetailRange = useCallback((info: RangeActionInfo) => {
+    const writable = writableDetailKeys()
+    const keys = info.columns.filter(key => writable.has(key))
+    if (keys.length === 0) return
+    const patches = new Map<number, Record<string, string>>()
+    for (const viewIndex of info.rowIndices) {
+      const patch: Record<string, string> = {}
+      for (const key of keys) patch[key] = ''
+      patches.set(viewRowToDataIndex(viewIndex), patch)
+    }
+    applyDetailPatches(patches)
+  }, [applyDetailPatches, viewRowToDataIndex, writableDetailKeys])
+
+  /** 向下填充（Ctrl+D）：以区域首行为来源，复制到其余行（纯值复制，与 Excel 一致） */
+  const fillDetailRangeDown = useCallback((info: RangeActionInfo) => {
+    if (info.rowIndices.length < 2) return
+    const writable = writableDetailKeys()
+    const keys = info.columns.filter(key => writable.has(key))
+    if (keys.length === 0) return
+    const source = detailRowsRef.current[viewRowToDataIndex(info.rowIndices[0])]
+    if (!source) return
+    const patches = new Map<number, Record<string, string>>()
+    for (const viewIndex of info.rowIndices.slice(1)) {
+      const patch: Record<string, string> = {}
+      for (const key of keys) patch[key] = String(source[key] ?? '')
+      patches.set(viewRowToDataIndex(viewIndex), patch)
+    }
+    applyDetailPatches(patches)
+  }, [applyDetailPatches, viewRowToDataIndex, writableDetailKeys])
 
   const applyDetailChooser = (index: number, field: FormFieldDefinition, rows: UnifiedChooserRow[]) => {
     const source = field.choosers.find(item => item.active && item.table && item.serialNo === detailChooserSerial)
@@ -1746,6 +2023,9 @@ export function FormEditorPage() {
           onSortChange={handleDetailSortingChange}
           onSelectionChange={handleDetailRowSelectionChange}
           onResize={saveDetailWidth}
+          onPasteRange={pasteDetailRange}
+          onClearRange={clearDetailRange}
+          onFillDown={fillDetailRangeDown}
         />
       ) : null}
       {chooserField ? (
