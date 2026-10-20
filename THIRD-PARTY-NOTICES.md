@@ -15,10 +15,11 @@
 | 组件 | 版本 | 许可 |
 |---|---|---|
 | Microsoft.Data.SqlClient | 7.1.1 | MIT |
-| Microsoft.AspNetCore.OpenApi | 10.0.12 | MIT |
-| Microsoft.OpenApi | 2.12.0 | MIT |
+| Microsoft.AspNetCore.OpenApi | 10.0.13 | MIT |
+| Microsoft.OpenApi | 2.12.2 | MIT |
 | DbUp（dbup-sqlserver / dbup-core） | 7.2.0 / 6.1.1 | MIT |
-| System.Drawing.Common | 10.0.12 | MIT |
+| System.Drawing.Common | 10.0.13 | MIT |
+| System.Security.Cryptography.Pkcs | 10.0.13 | MIT |
 | ZXing.Net | 0.16.11 | **Apache-2.0** |
 | MiniExcel | 1.46.0 | **Apache-2.0** |
 | QuestPDF | 2026.9.1 | **QuestPDF Community License**（见第四节） |
@@ -27,10 +28,10 @@
 
 | 组件 | 版本 | 许可 |
 |---|---|---|
-| Microsoft.NET.Test.Sdk | 18.10.1 | MIT |
-| Microsoft.AspNetCore.SignalR.Client | 10.0.12 | MIT |
+| Microsoft.NET.Test.Sdk | 18.11.0 | MIT |
+| Microsoft.AspNetCore.SignalR.Client | 10.0.13 | MIT |
 | xunit | 2.9.3 | Apache-2.0 |
-| xunit.runner.visualstudio | 4.0.0 | Apache-2.0 |
+| xunit.runner.visualstudio | 4.0.1 | Apache-2.0 |
 
 ## 二、前端（npm，`EOS.Web`）
 
@@ -38,13 +39,13 @@
 
 | 组件 | 版本 | 许可 |
 |---|---|---|
-| react / react-dom | 19.3.0 | MIT |
+| react / react-dom | 19.3.1 | MIT |
 | react-router-dom | 7.18.4 | MIT |
-| @tanstack/react-query | 5.104.1 | MIT |
-| @tanstack/react-table | 9.2.6 | MIT |
-| @tabler/core | 1.6.1 | MIT |
-| @tabler/icons-react | 3.48.0 | MIT |
-| zod | 4.6.5 | MIT |
+| @tanstack/react-query | 5.104.5 | MIT |
+| @tanstack/react-table | 9.3.1 | MIT |
+| @tabler/core | 1.7.0 | MIT |
+| @tabler/icons-react | 3.49.0 | MIT |
+| zod | 4.6.7 | MIT |
 | @dnd-kit/core / @dnd-kit/modifiers | 6.3.1 / 9.0.0 | MIT |
 | @xyflow/react（React Flow） | 12.12.0 | MIT |
 | @dagrejs/dagre | 3.1.1 | MIT |

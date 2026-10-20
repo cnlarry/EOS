@@ -21,8 +21,8 @@ updates:
       nuget-api:
         patterns: ["*"]
     ignore:
-      # Microsoft.OpenApi 3.x 超出 Microsoft.AspNetCore.OpenApi 10.0.12 的依赖约束
-      # （>= 2.12.0 && < 3.0.0），升上去就是 NU1608 且本仓把警告当错误 ⇒ 还原即失败。
+      # Microsoft.OpenApi 3.x 超出 Microsoft.AspNetCore.OpenApi 10.0.x 的依赖约束
+      # （[2.12.2, 3.0.0)），升上去就是 NU1608 且本仓把警告当错误 ⇒ 还原即失败。
       # 这不是我们能收口的版本冲突，等上游放开 3.x 再解除本条。
       # （QuestPDF 原先挡在 2026.9.1，其过时 API 适配已完成：Program.RegisterPdfFont 改用
       #  RegisterFontFromStream 并在启动时按字体文件里的族名核对，故那条已撤。）
