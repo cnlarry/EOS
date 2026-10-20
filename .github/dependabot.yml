@@ -1,6 +1,10 @@
 # 依赖更新：按量分组、每周一次，避免把维护者的通知淹没在逐包 PR 里。
 # 注意 CONTRIBUTING 的约定：依赖有增减时要同步登记 THIRD-PARTY-NOTICES.md
 # （组件、版本与许可），所以这类 PR 合入前需要人工看一眼那张表。
+#
+# 分组粒度按「更新级别」而不是「包」：混在一个组里的破坏性升级会让整条 PR 变红，
+# 而分组 PR 不能只合安全的那几个（只能 recreate 拆开重来）。安全更新不受本文件的
+# 分组与 ignore 影响，仍会单开 PR。
 version: 2
 updates:
   - package-ecosystem: nuget
@@ -27,9 +31,7 @@ updates:
   - package-ecosystem: nuget
     directory: /EOS.API.Tests
     commit-message:
-      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
-      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
-      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      # 同 EOS.API 条目：提交信息门禁要求 Conventional Commits。
       prefix: "chore(deps)"
     schedule:
       interval: weekly
@@ -39,28 +41,53 @@ updates:
         patterns: ["*"]
     ignore:
       # 同 EOS.API 条目（理由写在那边）：Microsoft.OpenApi 3.x 触 NU1608（上游约束 < 3.0.0）。
-      # （QuestPDF 那条已撤：其过时 API 适配随本次升级一并落地。）
       - dependency-name: "Microsoft.OpenApi"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /EOS.Web
     commit-message:
-      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
-      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
-      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      # 同 EOS.API 条目：提交信息门禁要求 Conventional Commits。
       prefix: "chore(deps)"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # 拆成三个组后条数会多，"5" 会把 major 的 PR 挤掉（超限即不再新建）
+    open-pull-requests-limit: 10
+    # 下面四个始终单独出 PR：它们的破坏性不在"版本号大小"，而在本仓的用法上——
+    #   typescript             tsc 全开 noUnused*，检查加严即红
+    #   @tanstack/react-table  全仓走 lib/tanstackTable.ts 的 v9 legacy 桥，入口一改类型成片报错
+    #   oxlint                 `npm run lint` 就是它，规则默认级别上调即红
+    #   @tabler/icons-react    图标改名/删除 → 构建期 TS2305
     groups:
-      npm:
+      # patch 一般可以整体合
+      npm-patch:
         patterns: ["*"]
+        update-types: ["version-update:semver-patch"]
+        exclude-patterns:
+          - "typescript"
+          - "@tanstack/react-table"
+          - "oxlint"
+          - "@tabler/icons-react"
+      # minor 要人看：小版本也会带行为变化（vitest/jsdom 的 DOM 行为、vite 的构建产物）
+      npm-minor:
+        patterns: ["*"]
+        update-types: ["version-update:semver-minor"]
+        exclude-patterns:
+          - "typescript"
+          - "@tanstack/react-table"
+          - "oxlint"
+          - "@tabler/icons-react"
+      npm-major:
+        patterns: ["*"]
+        update-types: ["version-update:semver-major"]
+        exclude-patterns:
+          - "typescript"
+          - "@tanstack/react-table"
+          - "oxlint"
+          - "@tabler/icons-react"
   - package-ecosystem: github-actions
     directory: /
     commit-message:
-      # 提交信息门禁按 `origin/main..HEAD` 扫整个 PR 的提交，而 Dependabot 默认标题
-      # `Bump x and y others` 不是 Conventional Commits ⇒ 每个依赖 PR 都卡在门禁上。
-      # 用规范前缀统一；已有的旧 PR 需要一次 `@dependabot recreate` 才会重新生成提交。
+      # 同 EOS.API 条目：提交信息门禁要求 Conventional Commits。
       prefix: "chore(deps)"
     schedule:
       interval: monthly
