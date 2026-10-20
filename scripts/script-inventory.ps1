@@ -78,6 +78,7 @@ $StandaloneTools = @{
     'rollback-report-attribution.ps1'  = '报表归属迁移的回滚脚本，保留作回退手段'
     'verify-adr024-remainder.ps1'      = 'ADR-024 收尾批的落库与运行态复验，使命已完结'
     'register-field-relation-edges.ps1' = '单据关系效果边登记器：与已退役的全量核验脚本成对，保留作重登记手段（保存 lint 只在保存时校验，不覆盖存量重登记）'
+    'rebuild-workbench-snapshots.ps1'  = '迁移 436 框架表改名后重建全部工作台快照：先备份再清版本历史并全量重发布，保留作同类元数据大改后的重建手段'
 }
 
 # 类别推导的人工例外（推导规则见文件头；这里只放规则判错的少数几条）。
