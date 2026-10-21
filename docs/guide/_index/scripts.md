@@ -47,8 +47,8 @@
 | 脚本 | 作用 | 依赖 | 引用 |
 |---|---|---|---|
 | `check-agent-skills.ps1` | Agent 技能门禁：frontmatter 名与目录名一致、引用资产存在、引用资产未陈旧。 | git | 5 |
-| `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 7 |
-| `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 7 |
+| `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 6 |
+| `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 6 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
 | `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 5 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
@@ -69,9 +69,9 @@
 |---|---|---|---|
 | `check-base-data.ps1` | 基础数据一致性门禁：模块清单、建库种子与库内实际三者必须一致。 | 连库 | 5 |
 | `check-button-remarks.ps1` | 自定义按钮备注巡检：MANUAL 行的 REMARK 必须是人话，不得为空、不得是写给开发者的编号。 | 连库 | 2 |
-| `check-chooser-self-mapping.ps1` | 连库门禁：标了「数据仅可选入」（FIELDS.ONLY_CHOOSE=1）且可见的字段，必须有一个 启用中的数据源把**它自己**列进回填目标（RETURN_ITEMS），否则用户选完拿不到值。 | 连库 | 4 |
+| `check-chooser-self-mapping.ps1` | 连库门禁：标了「数据仅可选入」（FIELDS.ONLY_CHOOSE=1）且可见的字段，必须有一个 启用中的数据源把**它自己**列进回填目标（RETURN_ITEMS），否则用户选完拿不到值。 | 连库 | 3 |
 | `check-field-labels.ps1` | 字段元数据巡检：FIELDS 的字段中文名不得是占位文本，批核/结案状态位不得进入复合格。 | 连库 | 2 |
-| `check-field-type-alignment.ps1` | 连库门禁：FIELDS.F_TYPE 必须与物理列的数值族一致（声明得比物理宽，脏值会绕过校验变成 500）。 | 连库 | 2 |
+| `check-field-type-alignment.ps1` | 连库门禁：FIELDS.F_TYPE 必须与物理列的数值族一致（声明得比物理宽，脏值会绕过校验变成 500）。 | 连库 | 1 |
 | `check-forbidden-problem-filter.ps1` | 拒绝出口门禁：保证 403 权限拒绝始终带结构化错误体。 | 仅静态 | 3 |
 | `check-form-layout.ps1` | 模块级表单版式巡检：版式行不得悬空、越界或把不该藏的字段藏起来。 | 连库 | 5 |
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
@@ -83,7 +83,7 @@
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
 | `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 10 |
 | `check-system-params.ps1` | 系统参数门禁：参数定义完整性 + 引用键存在性 + 归属模块合法性。 | 连库 | 4 |
-| `check-validation-rule-parity.ps1` | ADR-016 S0 ① 校验规则口径核对：MODULE_VALIDATION_RULE ↔ 代码闭集 ↔ 当前快照 ↔ 运行时加载器。 | 连库、工具链 | 4 |
+| `check-validation-rule-parity.ps1` | ADR-016 S0 ① 校验规则口径核对：MODULE_VALIDATION_RULE ↔ 代码闭集 ↔ 当前快照 ↔ 运行时加载器。 | 连库、工具链 | 3 |
 | `verify-permission-gate.ps1` | 权限门端到端验证：确认"没有该模块权限的账号"在真实 HTTP 上被拒（403；选择器类 403/404），而不是 200。 | 连库、需 API 在线 | 7 |
 
 ## 五、一次性批次（使命已完结，保留作留痕）
@@ -140,8 +140,8 @@
 | `report-inventory-imbalance-keys.ps1` | 逐键定性库存不平键（余额对流水累计），并回答「是否仍在扩大」。 | 连库 | 1 |
 | `republish-all-whitelist.ps1` | 全量白名单模块重发布 + 快照差异清单（发布即重派生的验收工具）。 | 连库、需 API 在线 | 4 |
 | `review-whitelist-candidates.ps1` | 统一表单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 + 当前可写模块（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED）， 逐模块… | 连库 | 3 |
-| `seed-business-actions.ps1` | 业务动作/校验配置一次性导入器（幂等，可重复执行）：按清单生成幂等 T-SQL 并单次执行，只写种子表。 | 连库 | 2 |
-| `seed-dev-data.ps1` | EOS 开发/测试语义化测试数据种子（用户拍板 2026-08-23，决策清单 §17）。 | 需 API 在线 | 2 |
+| `seed-business-actions.ps1` | 业务动作/校验配置一次性导入器（幂等，可重复执行）：按清单生成幂等 T-SQL 并单次执行，只写种子表。 | 连库 | 1 |
+| `seed-dev-data.ps1` | EOS 开发/测试语义化测试数据种子（用户拍板 2026-08-23，决策清单 §17）。 | 需 API 在线 | 1 |
 | `set-eos-env.ps1` | 把应用需要的凭据设成 User 级环境变量（配置里 ${VAR} 引用的真值来源）。 | 连库 | 3 |
 | `set-mssql-mcp-env.ps1` | 为 MCP 的 SQL Server 服务器维护 User 级环境变量（连接串走 SQL 认证，密码不进仓库）。 | 连库 | 3 |
 | `sweep-all.ps1` | 全系统广扫的单一入口：按顺序跑四层体检，逐层对比基线，最后汇总一份报告。 | 仅静态 | 1 |
