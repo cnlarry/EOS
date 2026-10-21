@@ -138,6 +138,24 @@ const derivedAmountKeys = form =>
     ? DERIVED_AMOUNT_KEYS
     : new Set()
 
+/**
+ * 保存期被效果链改写的明细列：`pur-apply-sync` 承接旧过程 `P_PUR_APPLY_After_Save`，
+ * 第一步就是「本单明细应购数量清零」，随后由待购表（PUR_APPLY_MORE）分配补回。
+ * 提交值被覆盖是设计，不参与读回比对；只对挂了该 SAVE 效果的模块生效，
+ * 免得把普通模块的同名列一起放过。
+ */
+const SAVE_REWRITTEN_DETAIL_KEYS = { 'pur-apply-sync': new Set(['REQUIRE_QTY']) }
+const saveRewrittenDetailKeys = definition => {
+  const keys = new Set()
+  for (const action of definition?.businessActions ?? []) {
+    if (!action?.enabled) continue
+    if (String(action.eventCode ?? '').toUpperCase() !== 'SAVE') continue
+    const mapped = SAVE_REWRITTEN_DETAIL_KEYS[String(action.effectKey ?? '').toLowerCase()]
+    for (const key of mapped ?? []) keys.add(key)
+  }
+  return keys
+}
+
 /** 新增态的主表提交集：可写字段 + 主键（新增时主键要用户给，编辑态才由键决定）。 */
 function createFields(form) {
   const derived = derivedAmountKeys(form)
@@ -154,13 +172,46 @@ function createFields(form) {
  */
 const ZERO_AMOUNT_KEYS = new Set(['REBATE_SUM', 'REBATE', 'DISCOUNT_SUM', 'PREPAY_SUM'])
 
-/** 按字段类型造一个合法值。返回 null 表示"造不出来"，由调用方记 UNFILLABLE。 */
-function generateValue(field, runTag, seq) {
+/**
+ * 解析模块过滤条件（`MODULES.FILTER`）里的等值项：`BACK_TYPE='SCTW'`、`REWORK_TAG=0`。
+ * 这些字段决定"这条记录属于哪个模块"，探针值落在被排除的一侧时保存直接被
+ * `RECORD_OUT_OF_MODULE_FILTER` 拒（与 1522/180308 同族）。只认 `KEY=值` 的合取式，
+ * 其它形态（函数、比较、子查询）一律跳过——猜错的判别值比不猜更糟。
+ */
+function parseModuleFilter(text) {
+  const map = new Map()
+  if (!text) return map
+  for (const part of String(text).split(/\s+and\s+/i)) {
+    const match = part.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:'([^']*)'|([0-9.]+))$/)
+    if (!match) continue
+    map.set(match[1].toUpperCase(), match[2] !== undefined ? match[2] : match[3])
+  }
+  return map
+}
+
+/**
+ * 按字段类型造一个合法值。返回 null 表示"造不出来"，由调用方记 UNFILLABLE。
+ *
+ * 数值列的小数位不能只看列声明的 scale：`numeric-context` 把字段分成 QTY / PRICE / AMOUNT /
+ * RATE / PERCENT，其中**数量的可接受小数位由该行的单位精度决定**（PCS/箱/张为 0 位、
+ * 米/千克为 3 位），与 `decimal(18,6)` 的物理声明无关。按列 scale 造 1.2500 会撞上
+ * 「小数位超出精度（最多 0 位）」——探针值不合法，模块被记成 create-rejected，白丢覆盖。
+ * 所以数量造整数（任何单位都成立），金额/单价/汇率/百分比造 2 位；
+ * 未登记角色的数值字段才退回按列 scale 造值。
+ *
+ * `filterValues` 命中时优先：模块判别字段必须取模块过滤条件要求的值，否则整张单都建不进去。
+ */
+function generateValue(field, runTag, seq, roleByKey, filterValues) {
+  const filterHit = filterValues?.get(String(field.key ?? '').toUpperCase())
+  if (filterHit !== undefined && filterHit !== '') return filterHit
   if (ZERO_AMOUNT_KEYS.has(String(field.key ?? '').toUpperCase()) && isNumeric(field)) return '0'
   const max = Number(field.maxLength) || 0
   const clamp = text => (max > 0 && text.length > max ? text.slice(0, max) : text)
   if (isBit(field)) return '0'
   if (isNumeric(field)) {
+    const role = String(roleByKey?.[String(field.key ?? '').toUpperCase()] ?? '').toUpperCase()
+    if (role === 'QTY') return '1'
+    if (role === 'PRICE' || role === 'AMOUNT' || role === 'RATE' || role === 'PERCENT') return '1.25'
     const scale = Number.isFinite(field.scale) ? Math.max(0, Math.min(Number(field.scale), 4)) : 2
     return (1.25).toFixed(scale)
   }
@@ -175,7 +226,11 @@ function generateValue(field, runTag, seq) {
 }
 
 /** 主键值：必须唯一，故不用默认值（默认值在多行之间重复会撞主键）。 */
-function generateKeyValue(field, runTag, seq) {
+function generateKeyValue(field, runTag, seq, filterValues) {
+  // 主键里的模块判别列（单别）必须取模块过滤要求的值，否则整单被
+  // RECORD_OUT_OF_MODULE_FILTER 拒——唯一性由复合主键的另一列（单号）承担。
+  const filterHit = filterValues?.get(String(field.key ?? '').toUpperCase())
+  if (filterHit !== undefined && filterHit !== '') return filterHit
   const max = Number(field.maxLength) || 0
   const raw = `${VALUE_PREFIX}${runTag}${seq}`
   const text = String(field.dataType ?? '').toLowerCase()
@@ -191,19 +246,24 @@ function generateKeyValue(field, runTag, seq) {
  * 造值必须用真值：假值会被业务校验规则挡住（那会淹没真缺陷），也会污染依赖它的筛选条件
  * （见 LESSONS L100）。
  */
-async function fillByChooser(page, moduleId, field, values, detailValues, submittable, targets = values) {
+async function fillByChooser(page, moduleId, field, values, detailValues, submittable, targets = values, preferValue = null) {
   const sources = activeSources(field)
   for (let index = 0; index < sources.length; index++) {
     const source = sources[index]
-    const query = new URLSearchParams({ page: '1', pageSize: '5', serialNo: String(source.serialNo ?? 1) })
+    // 有判别值时多取候选：单别类字段的候选项常排在后面，5 行看不到模块过滤要求的那一个
+    const query = new URLSearchParams({ page: '1', pageSize: preferValue != null ? '50' : '5', serialNo: String(source.serialNo ?? 1) })
     query.set('master', JSON.stringify(values))
     if (detailValues) query.set('detail', JSON.stringify(detailValues))
     const path = `/api/v1/document-workbench/${moduleId}/form-chooser/${encodeURIComponent(field.key)}?${query}`
     const response = await api(page, 'GET', path)
     if (response.status !== 200 || !Array.isArray(response.json?.rows) || response.json.rows.length === 0) continue
-    const row = response.json.rows[0]
     const mapping = parseReturnMapping(source.returnMapping)
     const items = mapping.length > 0 ? mapping : [{ target: field.key, column: field.key }]
+    const rows = response.json.rows
+    const matched = preferValue != null
+      ? rows.find(candidate => items.some(item => String(candidate[item.column] ?? '').trim() === preferValue))
+      : null
+    const row = matched ?? rows[0]
     let applied = 0
     const rejectedTargets = []
     for (const item of items) {
@@ -220,7 +280,7 @@ async function fillByChooser(page, moduleId, field, values, detailValues, submit
     }
     // rejectedTargets 里既有"表单上根本没有的字段"（元数据不一致），也有"在表单上但不可提交"
     // （虚拟呈现列，设计如此）——两种由调用方按表单字段集分开判。
-    if (applied > 0 || rejectedTargets.length > 0) return { serialNo: source.serialNo ?? 1, row, rejectedTargets }
+    if (applied > 0 || rejectedTargets.length > 0) return { serialNo: source.serialNo ?? 1, row, rejectedTargets, preferMatched: Boolean(matched) }
   }
   return null
 }
@@ -581,6 +641,15 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
     return { moduleId, capability: 'side-effect', title: form.title, autoApprove, hasWorkflow: Boolean(form.hasWorkflow) }
   }
 
+  // 数值列的业务角色（QTY / PRICE / AMOUNT / RATE / PERCENT）：造值时的小数位按角色定，
+  // 不按列声明的 scale（见 generateValue）。取不到就退化为按列 scale 造值。
+  const numericContext = await api(page, 'GET', `/api/v1/document-workbench/${moduleId}/numeric-context`)
+  const roleByKey = numericContext.status === 200 && numericContext.json?.fieldRoles
+    ? numericContext.json.fieldRoles
+    : null
+  // 模块过滤条件里的等值项：判别字段按它造值，选择器字段按它挑候选行（见 parseModuleFilter）。
+  const filterValues = parseModuleFilter(definition.json?.moduleFilter)
+
   const fields = createFields(form)
   const values = {}
   const unsolved = []
@@ -613,18 +682,29 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
   // 第一遍：主键与不需要选择器的字段（它们往往是选择器筛选条件的来源，必须先有值）
   for (const field of fields.filter(item => item.isPrimaryKey || activeSources(item).length === 0)) {
     seq++
+    // 模块判别字段的值优先于默认值：默认值往往落在模块过滤范围之外
+    const filterHit = filterValues.get(String(field.key ?? '').toUpperCase())
     const raw = field.isPrimaryKey
-      ? generateKeyValue(field, runTag, seq)
-      : (String(form.defaultValues?.[field.key] ?? '').trim() || String(field.defaultValue ?? '').trim() || generateValue(field, runTag, seq))
+      ? generateKeyValue(field, runTag, seq, filterValues)
+      : (filterHit !== undefined && filterHit !== ''
+        ? filterHit
+        : (String(form.defaultValues?.[field.key] ?? '').trim() || String(field.defaultValue ?? '').trim() || generateValue(field, runTag, seq, roleByKey, filterValues)))
     if (raw === null || raw === '') { unsolved.push(field.key); continue }
     values[field.key] = raw
   }
   // 第二遍：带选择器的字段——现在 master 里已经有筛选条件要的值了，能查到真实候选
   for (const field of fields.filter(item => !item.isPrimaryKey && activeSources(item).length > 0)) {
     if (String(values[field.key] ?? '').trim() !== '') continue
-    const picked = await fillByChooser(page, moduleId, field, values, null, submittable)
+    const filterKey = String(field.key ?? '').toUpperCase()
+    const prefer = filterValues.get(filterKey)
+    const picked = await fillByChooser(page, moduleId, field, values, null, submittable, values, prefer ?? null)
     reportMissingTargets(picked, formMasterKeys)
-    if (!picked || String(values[field.key] ?? '').trim() === '') unsolved.push(field.key)
+    // 模块过滤要求这个字段取固定值（单别类）：候选里没有那一行时直接提交该值，
+    // 否则整张单会被 RECORD_OUT_OF_MODULE_FILTER 拒，连回环都走不到。
+    if (prefer !== undefined && prefer !== '' && picked?.preferMatched !== true && submittable.has(filterKey)) {
+      values[field.key] = prefer
+    }
+    if (String(values[field.key] ?? '').trim() === '') unsolved.push(field.key)
   }
   // 第三遍：回头再试那些"因为依赖别的回填值才查不到"的字段（联动常有先后）
   for (const key of [...unsolved]) {
@@ -643,8 +723,10 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
   // 但**不参与读回比对**（服务端 RecalculateDetailAmounts 会按 数量×单价×折扣×税率 覆盖它）。
   // "提交"与"断言"在这里必须分开，否则不是漏测就是误报——两个方向都踩过。
   const detailFields = writableFields(form.detailFields)
+  const saveRewritten = saveRewrittenDetailKeys(definition.json)
   const detailCompareFields = detailFields
     .filter(field => !DERIVED_AMOUNT_KEYS.has(String(field.key ?? '').toUpperCase()))
+    .filter(field => !saveRewritten.has(String(field.key ?? '').toUpperCase()))
   let details = null
   if (detailFields.length > 0) {
     const row = {}
@@ -659,8 +741,10 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
       // 金额也全是 0，而主表那几个汇总列我提交的是正值 —— 于是"读回 ≠ 提交"看起来像缺陷，
       // 实际是我自己造了一份不自洽的单据。照常生成正值，让主表汇总能对上。
       const key = String(field.key ?? '').toUpperCase()
-      const preset = DERIVED_AMOUNT_KEYS.has(key) ? '' : String(field.defaultValue ?? '').trim()
-      const raw = preset || generateValue(field, runTag, ++seq)
+      // 数值列一律不吃默认值：物理默认约束与版式默认值普遍是 0，提交 0 会让服务端的
+      // 金额/数量链算出一份"合法但没内容"的单据（汇总对不上，或数量为 0 让分配结果变 0）。
+      const preset = DERIVED_AMOUNT_KEYS.has(key) || isNumeric(field) ? '' : String(field.defaultValue ?? '').trim()
+      const raw = preset || generateValue(field, runTag, ++seq, roleByKey)
       if (raw === null || raw === '') { detailUnsolved.push(field.key); continue }
       row[field.key] = raw
     }
@@ -674,7 +758,7 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
       // 厂商/客户，本库这组探针值下可能一条候选都没有（`{m.supplier_id}` 指向的厂商没有未结单据）。
       // 这属于**造值边界**，不是缺陷：退回造值继续走完回环，只记一条 info，
       // 否则整个模块会被判 unfillable、彻底失去覆盖（创建/读回/改/删都不再验）。
-      const fallback = generateValue(field, runTag, ++seq)
+      const fallback = generateValue(field, runTag, ++seq, roleByKey)
       if (fallback === null || fallback === '') { detailUnsolved.push(field.key); continue }
       row[field.key] = fallback
       findings.push({
