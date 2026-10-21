@@ -4,11 +4,16 @@
 
 .DESCRIPTION
     依据 docs/decisions/ADR-038-数值列的语义标准化.md（决定四、决定七）。
-    三项断言：
+    五项断言：
       1) 物理 float 列必须已登记 NUMERIC_ROLE（白名单见脚本内，只减不增）；
       2) NUMERIC_ROLE 只能取 AMOUNT/QTY/PRICE/RATE/PERCENT/NON_NUMERIC；
       3) 已登记语义的字段，F_TYPE 与物理类型都必须属于数值类
-         （F_TYPE 是展示类型，nvarchar 对 nchar、date 对 datetime 属正常，不做逐字相等）。
+         （F_TYPE 是展示类型，nvarchar 对 nchar、date 对 datetime 属正常，不做逐字相等）；
+      4) 金额（AMOUNT）的显式显示格式必须带千分位：写成 `0.00` / `0.##` / `0.###` 的，
+         屏幕上是 1234.50 而同一列表的其它金额是 1,234.50（ADR-037 决定六的默认口径是
+         `#,##0.00`；显式格式优先级更高，所以写错就会盖掉默认值）。4 个工资列是具名例外；
+      5) 复制型视图的字段必须与源表同名字段登记同一语义族（视图是独立 T_ID，
+         整表复制 FIELDS 时漏一列就静默丢语义）。
 
 .PARAMETER Report
     只输出报告、始终返回 0（用于盘点）；默认发现违规即返回 1。
@@ -87,8 +92,62 @@ ORDER BY f.T_ID, f.F_ID;
         [void]$problems.Add("已登记语义但类型非数值：$text（表|字段|F_TYPE|物理类型）")
     }
 
+    # 4) 金额的显式显示格式必须带千分位。
+    #    判据：显式格式非空、且不含千分位占位符（`,`）即不合格——`0.00`（固定两位不分组）、
+    #    `0.##` / `0.###`（去尾零且不分组）都在内；留空走语义族默认，合格。
+    #    例外是 4 个工资列：`0`（整数口径）与 `0.###`（小时工资保留三位）是显式选择，
+    #    清单具名放行、只减不增，收敛与否另属业务口径。
+    $allowUngroupedAmount = @(
+        'HR_WAGE_D|WAGE_ITEMA5'
+        'HR_WAGE_D|WAGE_ITEMA7'
+        'HRM_WAGE_D|WAGE_ITEMA7'
+        'HRM_WAGE_D|WAGE_ITEM02'
+    )
+    $ungroupedAmount = Invoke-EosSqlQuery -Query @"
+SELECT f.T_ID + N'|' + f.F_ID + N'|' + f.DISPLAY_FORMAT
+FROM dbo.FIELDS AS f
+WHERE f.NUMERIC_ROLE = N'AMOUNT'
+  AND LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT, N''))) <> N''
+  AND CHARINDEX(N',', f.DISPLAY_FORMAT) = 0
+ORDER BY f.T_ID, f.F_ID;
+"@
+    foreach ($r in @($ungroupedAmount)) {
+        $text = ([string]$r).Trim()
+        if (-not $text) { continue }
+        $parts = $text -split '\|'
+        if ($allowUngroupedAmount -contains "$($parts[0])|$($parts[1])") { continue }
+        [void]$problems.Add("金额显示格式缺千分位：$text（表|字段|格式；写 #,##0.00 或留空）")
+    }
+
+    # 5) 复制型视图的字段必须与源表同名字段登记同一语义族。
+    #    视图是独立的 T_ID：把基表的 FIELDS 行整表复制过去时，复制列表里漏一列就会静默丢语义，
+    #    金额于是掉进"其余数值"回落（800 显示成 800），而字段、格式、对齐看上去全都正常。
+    #    清单是显式的「视图 ← 源表」，新增复制型视图时在这里补一行。
+    $viewSource = @(
+        @{ View = 'V_COP_ORDER_D_UNDELIVERED'; Source = 'COP_ORDER_D' }
+        @{ View = 'V_COP_ORDER_D_UNPRODUCED'; Source = 'COP_ORDER_D' }
+        @{ View = 'V_COP_SEND_D_UNRECONCILED'; Source = 'COP_SEND_D' }
+        @{ View = 'V_PUR_RECEIVE_D_UNRECONCILED'; Source = 'PUR_RECEIVE_D' }
+        @{ View = 'V_COP_ACCOUNT_M'; Source = 'COP_ACCOUNT_M' }
+        @{ View = 'V_PUR_DUE_M'; Source = 'PUR_DUE_M' }
+    )
+    $pairsSql = ($viewSource | ForEach-Object { "SELECT N'$($_.View)' AS V, N'$($_.Source)' AS S" }) -join ' UNION ALL '
+    $roleDrift = Invoke-EosSqlQuery -Query @"
+WITH MAP AS ($pairsSql)
+SELECT m.V + N'|' + f.F_ID + N'|' + ISNULL(f.NUMERIC_ROLE, N'(空)') + N'|' + ISNULL(s.NUMERIC_ROLE, N'(空)')
+FROM MAP AS m
+JOIN dbo.FIELDS AS f ON LTRIM(RTRIM(f.T_ID)) = m.V
+JOIN dbo.FIELDS AS s ON LTRIM(RTRIM(s.T_ID)) = m.S AND LTRIM(RTRIM(s.F_ID)) = LTRIM(RTRIM(f.F_ID))
+WHERE ISNULL(f.NUMERIC_ROLE, N'') <> ISNULL(s.NUMERIC_ROLE, N'')
+ORDER BY m.V, f.F_ID;
+"@
+    foreach ($r in @($roleDrift)) {
+        $text = ([string]$r).Trim()
+        if ($text) { [void]$problems.Add("视图字段语义族与源表不一致：$text（视图|字段|视图语义|源表语义）") }
+    }
+
     if ($problems.Count -eq 0) {
-        Write-Output 'PASS 语义登记完整、枚举合法、F_TYPE 与物理类型一致'
+        Write-Output 'PASS 语义登记完整、枚举合法、F_TYPE 与物理类型一致、金额显示格式带千分位、视图字段语义族与源表一致'
         exit 0
     }
 

@@ -66,12 +66,12 @@
 
 | 脚本 | 作用 | 依赖 | 引用 |
 |---|---|---|---|
-| `check-base-data.ps1` | 基础数据一致性门禁：模块清单、建库种子与库内实际三者必须一致。 | 连库 | 4 |
+| `check-base-data.ps1` | 基础数据一致性门禁：模块清单、建库种子与库内实际三者必须一致。 | 连库 | 5 |
 | `check-button-remarks.ps1` | 自定义按钮备注巡检：MANUAL 行的 REMARK 必须是人话，不得为空、不得是写给开发者的编号。 | 连库 | 2 |
 | `check-chooser-self-mapping.ps1` | 连库门禁：标了「数据仅可选入」（FIELDS.ONLY_CHOOSE=1）且可见的字段，必须有一个 启用中的数据源把**它自己**列进回填目标（RETURN_ITEMS），否则用户选完拿不到值。 | 连库 | 4 |
 | `check-docs.ps1` | 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链。 | git | 8 |
 | `check-field-labels.ps1` | 字段元数据巡检：FIELDS 的字段中文名不得是占位文本，批核/结案状态位不得进入复合格。 | 连库 | 2 |
-| `check-field-type-alignment.ps1` | 连库门禁：FIELDS.F_TYPE 必须与物理列的数值族一致（声明得比物理宽，脏值会绕过校验变成 500）。 | 连库 | 1 |
+| `check-field-type-alignment.ps1` | 连库门禁：FIELDS.F_TYPE 必须与物理列的数值族一致（声明得比物理宽，脏值会绕过校验变成 500）。 | 连库 | 2 |
 | `check-forbidden-problem-filter.ps1` | 拒绝出口门禁：保证 403 权限拒绝始终带结构化错误体。 | 仅静态 | 3 |
 | `check-form-layout.ps1` | 模块级表单版式巡检：版式行不得悬空、越界或把不该藏的字段藏起来。 | 连库 | 5 |
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
@@ -79,7 +79,7 @@
 | `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 5 |
 | `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 9 |
-| `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 3 |
+| `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 4 |
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
 | `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 10 |
 | `check-system-params.ps1` | 系统参数门禁：参数定义完整性 + 引用键存在性 + 归属模块合法性。 | 连库 | 4 |
