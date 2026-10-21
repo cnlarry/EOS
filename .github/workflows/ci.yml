@@ -103,6 +103,11 @@ jobs:
         run: ./scripts/check-agent-skills.ps1
       - name: 敏感信息文本
         run: ./scripts/check-sensitive-terms.ps1
+      # 文档里的相对链接必须命中**已入库**的文件。本机用 .git/info/exclude 排除了 docs/*，
+      # 于是"指向 docs/架构.md 这类本机专有文件"在本地一切正常、克隆下来是死链——
+      # 这类问题本地看不见，只有换一台机器才暴露，故放进 CI 做硬门禁。
+      - name: 文档一致性与链接
+        run: ./scripts/check-docs.ps1
       # scripts/ 下积了几十个脚本，其中不少是一次性批次工具。这条门禁守住"每个脚本都写得出
       # 它干什么、且被某处引用过"（独立工具走白名单），并校验生成的台账与脚本目录一致——
       # 否则新增脚本会一路堆到没人说得清哪条还在生效。口径见 docs/guide/06 第五节。

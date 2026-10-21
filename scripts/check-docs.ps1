@@ -2,23 +2,99 @@
 <#
 .SYNOPSIS
 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、
-活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链。
+活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链，
+以及**随仓库分发的文档里，相对链接必须指向已入库的文件**。
 .DESCRIPTION
 维护纪律（docs/status.md §8）：开工前运行本脚本。任一"错误"未修复即退出码 1；
 警告只提示不阻塞。
 .EXAMPLE
 .\scripts\check-docs.ps1
 .\scripts\check-docs.ps1 -PlanStaleDays 14 -StatusMaxLagCommits 50
+.\scripts\check-docs.ps1 -SelfTest
 #>
 param(
     [int]$PlanStaleDays = 30,
-    [int]$StatusMaxLagCommits = 30
+    [int]$StatusMaxLagCommits = 30,
+    [switch]$SelfTest
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $errors = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
+
+# ---- 0. 相对链接的解析与入库判定（2d 与 -SelfTest 共用同一份实现） ----
+# 解析成"仓库根相对的路径"，并跳过不该判的形态（外链 / 同页锚点 / 站点绝对路径）。
+# 判据与文档里的写法无关：反斜杠一律当分隔符，`./`、`../` 归一，`#片段` 去掉，URL 转义还原。
+function Resolve-RepoTarget {
+    param([string]$DocRel, [string]$Target)
+    $t = ($Target -replace '\\', '/').Trim()
+    if ($t -match '^(?i)(https?:|mailto:|data:|tel:)') { return $null }
+    if ($t.StartsWith('#')) { return $null }
+    if ($t.StartsWith('/')) { return $null }
+    $t = ($t -split '#')[0]
+    if ([string]::IsNullOrWhiteSpace($t)) { return $null }
+    $t = [System.Uri]::UnescapeDataString($t)
+    $docDir = (Split-Path -Parent ($DocRel -replace '\\', '/'))
+    # Split-Path 在 Windows 上会回吐反斜杠，这里再归一一次——否则拼出来的路径与
+    # `git ls-files` 的正斜杠形式永远对不上，整篇文档会被判成"全部链接未入库"。
+    if ($null -ne $docDir) { $docDir = ($docDir -replace '\\', '/') }
+    $joined = if ([string]::IsNullOrWhiteSpace($docDir)) { $t } else { "$docDir/$t" }
+    $parts = [System.Collections.Generic.List[string]]::new()
+    foreach ($seg in ($joined -split '/')) {
+        if ($seg -eq '' -or $seg -eq '.') { continue }
+        if ($seg -eq '..') {
+            if ($parts.Count -gt 0) { $parts.RemoveAt($parts.Count - 1) }
+            continue
+        }
+        $parts.Add($seg)
+    }
+    return ($parts -join '/')
+}
+
+# 目标是文件：在入库清单里；目标是目录（如 docs/guide/）：清单里有它下面的文件。
+function Test-TrackedTarget {
+    param([string]$Path, [System.Collections.Generic.ISet[string]]$Tracked)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if ($Tracked.Contains($Path)) { return $true }
+    foreach ($f in $Tracked) {
+        if ($f.StartsWith($Path + '/', [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
+if ($SelfTest) {
+    # 用合成清单驱动**同一份实现**：只证明判据有判别力，不读真实仓库。
+    $fake = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($p in 'AGENTS.md', 'docs/decisions/ADR-001.md', 'docs/guide/03-工程规范与硬约束.md', 'docs/img/pic.png') {
+        [void]$fake.Add($p)
+    }
+    $cases = @(
+        @{ Doc = 'AGENTS.md'; Target = 'docs/decisions/ADR-001.md'; Expect = $true;  Why = '已入库的相对路径' },
+        @{ Doc = 'AGENTS.md'; Target = './docs/guide/03-工程规范与硬约束.md'; Expect = $true;  Why = './ 前缀' },
+        @{ Doc = 'AGENTS.md'; Target = 'docs\img\pic.png'; Expect = $true;  Why = '反斜杠分隔符' },
+        @{ Doc = 'docs/guide/03-工程规范与硬约束.md'; Target = '../decisions/ADR-001.md'; Expect = $true;  Why = '../ 上跳' },
+        @{ Doc = 'AGENTS.md'; Target = 'docs/guide/'; Expect = $true;  Why = '目录（其下有入库文件）' },
+        @{ Doc = 'AGENTS.md'; Target = 'docs/decisions/ADR-001.md#L3'; Expect = $true;  Why = '带片段' },
+        @{ Doc = 'AGENTS.md'; Target = 'docs/架构.md'; Expect = $false; Why = '本机专有、未入库' },
+        @{ Doc = 'docs/guide/03-工程规范与硬约束.md'; Target = '架构.md'; Expect = $false; Why = '解析后落在未入库路径' },
+        @{ Doc = 'AGENTS.md'; Target = 'https://example.com/x'; Expect = $null;  Why = '外链不判' },
+        @{ Doc = 'AGENTS.md'; Target = '#section'; Expect = $null;  Why = '同页锚点不判' }
+    )
+    $fail = 0
+    foreach ($c in $cases) {
+        $resolved = Resolve-RepoTarget -DocRel $c.Doc -Target $c.Target
+        $actual = if ($null -eq $resolved) { $null } else { Test-TrackedTarget -Path $resolved -Tracked $fake }
+        if ($actual -ne $c.Expect) {
+            $fail++
+            Write-Output ("FAIL 自检：{0}（{1}）期望 {2}，实际 {3}，解析为 {4}" -f $c.Target, $c.Why, $c.Expect, $actual, $resolved)
+        }
+    }
+    if ($fail -gt 0) { Write-Output "FAIL 自检：$fail/$($cases.Count) 条判定不符"; exit 1 }
+    Write-Output "PASS 自检：$($cases.Count) 条样例判定全对（外链与锚点放行、未入库路径必抓）"
+    exit 0
+}
+
 # git 无输出时命令结果是 $null，而 `([string]$null).Trim()` 仍会抛"不能对值为 Null 的表达式调用方法"
 # ——[string] 在"内联转换再调方法"的写法下挡不住 null，门禁会自己崩掉。统一走 Out-String：
 # 它永远产出字符串（无输入时为空串），是这里唯一可靠的取值方式。
@@ -136,6 +212,39 @@ if (-not (Test-Path $lessonsPath)) {
         }
     }
 }
+
+# ---- 2d. 随仓库分发的文档：相对链接必须指向已入库的文件（错误） ----
+# 真实反例：AGENTS.md 指向 docs/架构.md，而 docs/ 在工作副本被 .git/info/exclude 整目录排除——
+# 本机读写正常、克隆下来是死链，而 AGENTS.md 恰是 AI 与外部读者的入口。
+# 判据只认 `git ls-files`（工作副本里存在不算入库），不判内容、不判链接文案。
+$trackedFiles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($p in (git -C $root ls-files)) { if ($p) { [void]$trackedFiles.Add(($p -replace '\\', '/')) } }
+$brokenLinks = 0
+foreach ($rel in @(git -C $root ls-files '*.md')) {
+    if ([string]::IsNullOrWhiteSpace($rel)) { continue }
+    $full = Join-Path $root $rel
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    $inFence = $false
+    $lineNo = 0
+    foreach ($line in (Get-Content -LiteralPath $full -Encoding UTF8)) {
+        $lineNo++
+        if ($line -match '^\s*(```|~~~)') { $inFence = -not $inFence; continue }
+        if ($inFence) { continue }
+        # 行内代码里的写法示例不算真链接（`[x](y)` 是在讲写法）
+        $scan = [regex]::Replace($line, '`[^`]*`', '')
+        foreach ($m in [regex]::Matches($scan, '!?\[[^\]]*\]\((?<t>[^)\s]+)')) {
+            $resolved = Resolve-RepoTarget -DocRel $rel -Target $m.Groups['t'].Value
+            if ($null -eq $resolved) { continue }
+            if (-not (Test-TrackedTarget -Path $resolved -Tracked $trackedFiles)) {
+                $brokenLinks++
+                if ($brokenLinks -le 10) {
+                    $errors.Add(("{0}:{1} 的链接指向未入库的文件：{2} → {3}" -f ($rel -replace '\\', '/'), $lineNo, $m.Groups['t'].Value, $resolved))
+                }
+            }
+        }
+    }
+}
+if ($brokenLinks -gt 10) { $errors.Add("……另有 $($brokenLinks - 10) 处同类问题（只列前 10 条）") }
 
 # ---- 3. 活跃计划新鲜度（警告） ----
 $activePlans = @(Get-ChildItem (Join-Path $root 'docs\plans') -Filter '*.md' -File -ErrorAction SilentlyContinue |
