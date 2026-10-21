@@ -9,9 +9,10 @@
       2) NUMERIC_ROLE 只能取 AMOUNT/QTY/PRICE/RATE/PERCENT/NON_NUMERIC；
       3) 已登记语义的字段，F_TYPE 与物理类型都必须属于数值类
          （F_TYPE 是展示类型，nvarchar 对 nchar、date 对 datetime 属正常，不做逐字相等）；
-      4) 金额（AMOUNT）的显式显示格式必须带千分位：写成 `0.00` / `0.##` / `0.###` 的，
-         屏幕上是 1234.50 而同一列表的其它金额是 1,234.50（ADR-037 决定六的默认口径是
-         `#,##0.00`；显式格式优先级更高，所以写错就会盖掉默认值）。4 个工资列是具名例外；
+      4) 数值列的显式显示格式必须带千分位（**所有语义族**，不限金额）：写成 `0.00` / `0.##` / `0.###`
+         这类型式会盖掉语义族默认的分组，同一个列表里并排的数量列于是显示成 `600000.00`
+         而不是 `600,000.00`（ADR-037 决定六的默认口径带千分位）。留空即走默认，视为合格；
+         允许的写法是按位数加 `,` 的分组等价式（`#,##0.00`、`#,##0.##`、`#,##`）；
       5) 复制型视图的字段必须与源表同名字段登记同一语义族（视图是独立 T_ID，
          整表复制 FIELDS 时漏一列就静默丢语义）。
 
@@ -92,31 +93,20 @@ ORDER BY f.T_ID, f.F_ID;
         [void]$problems.Add("已登记语义但类型非数值：$text（表|字段|F_TYPE|物理类型）")
     }
 
-    # 4) 金额的显式显示格式必须带千分位。
+    # 4) 数值列的显式显示格式必须带千分位（所有语义族，不限金额）。
     #    判据：显式格式非空、且不含千分位占位符（`,`）即不合格——`0.00`（固定两位不分组）、
-    #    `0.##` / `0.###`（去尾零且不分组）都在内；留空走语义族默认，合格。
-    #    例外是 4 个工资列：`0`（整数口径）与 `0.###`（小时工资保留三位）是显式选择，
-    #    清单具名放行、只减不增，收敛与否另属业务口径。
-    $allowUngroupedAmount = @(
-        'HR_WAGE_D|WAGE_ITEMA5'
-        'HR_WAGE_D|WAGE_ITEMA7'
-        'HRM_WAGE_D|WAGE_ITEMA7'
-        'HRM_WAGE_D|WAGE_ITEM02'
-    )
-    $ungroupedAmount = Invoke-EosSqlQuery -Query @"
+    #    `0.##` / `0.###`（去尾零且不分组）、`#`（全可选位且不分组）都在内。留空走语义族默认，合格。
+    $ungroupedNumeric = Invoke-EosSqlQuery -Query @"
 SELECT f.T_ID + N'|' + f.F_ID + N'|' + f.DISPLAY_FORMAT
 FROM dbo.FIELDS AS f
-WHERE f.NUMERIC_ROLE = N'AMOUNT'
+WHERE LOWER(ISNULL(f.F_TYPE, N'')) IN (N'decimal', N'numeric', N'float', N'money', N'smallmoney', N'real')
   AND LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT, N''))) <> N''
   AND CHARINDEX(N',', f.DISPLAY_FORMAT) = 0
 ORDER BY f.T_ID, f.F_ID;
 "@
-    foreach ($r in @($ungroupedAmount)) {
+    foreach ($r in @($ungroupedNumeric)) {
         $text = ([string]$r).Trim()
-        if (-not $text) { continue }
-        $parts = $text -split '\|'
-        if ($allowUngroupedAmount -contains "$($parts[0])|$($parts[1])") { continue }
-        [void]$problems.Add("金额显示格式缺千分位：$text（表|字段|格式；写 #,##0.00 或留空）")
+        if ($text) { [void]$problems.Add("数值显示格式缺千分位：$text（表|字段|格式；写 #,##0.00 一类分组格式，或留空）") }
     }
 
     # 5) 复制型视图的字段必须与源表同名字段登记同一语义族。

@@ -61,6 +61,15 @@ describe('formatFieldValue', () => {
     expect(formatFieldValue(1234.5, 'decimal', 'C', { locale: 'en-US', currency: 'JPY' })).toBe('¥1,235')
   })
 
+  it('分组等价式：只加千分位，位数与空零语义不变', () => {
+    // 迁移 442 把 `#` 改成 `#,##`：0 仍显示空白，只是大数加了分隔符
+    expect(formatFieldValue(0, 'float', '#,##')).toBe('')
+    expect(formatFieldValue(600000, 'float', '#,##')).toBe('600,000')
+    expect(formatFieldValue(1128200, 'float', '#,##0.00')).toBe('1,128,200.00')
+    expect(formatFieldValue(0.5, 'float', '#,##.#')).toBe('.5')
+    expect(formatFieldValue(600000, 'float', '#,##0.##')).toBe('600,000')
+  })
+
   it('系统自定义数字格式（0.## 等库内实际格式）', () => {
     expect(formatFieldValue(12, 'float', '0.##')).toBe('12')
     expect(formatFieldValue(12.5, 'float', '0.##')).toBe('12.5')
