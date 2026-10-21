@@ -50,13 +50,13 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.DEPT d WHERE LTRIM(RTRIM(d.DEPT_ID)) = v.DEP
 GO
 
 -- ================================================================ 员工（登录人）
-INSERT dbo.SYSDN (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
+INSERT dbo.SYS_EMPLOYEE (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG, CREATE_DATE, CONFIRM_DATE)
 SELECT v.EMP_ID, v.EMP_NAME, v.DEPT_ID, 1, GETDATE(), GETDATE()
 FROM (VALUES
     (N'admin', N'系统管理员', N'ZJB'),
     (N'larry', N'演示用户',     N'YW3')
 ) v(EMP_ID, EMP_NAME, DEPT_ID)
-WHERE NOT EXISTS (SELECT 1 FROM dbo.SYSDN e WHERE LTRIM(RTRIM(e.EMP_ID)) = v.EMP_ID);
+WHERE NOT EXISTS (SELECT 1 FROM dbo.SYS_EMPLOYEE e WHERE LTRIM(RTRIM(e.EMP_ID)) = v.EMP_ID);
 GO
 
 -- ================================================================ 员工基本资料（供单据引用）

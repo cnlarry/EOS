@@ -24,27 +24,27 @@ IF NOT EXISTS (SELECT 1 FROM dbo.DEPT WHERE LTRIM(RTRIM(DEPT_ID)) = 'ZJB')
     VALUES ('ZJB', N'总经办', 1);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.SYSDN WHERE LTRIM(RTRIM(EMP_ID)) = 'admin')
-    INSERT dbo.SYSDN (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG)
+IF NOT EXISTS (SELECT 1 FROM dbo.SYS_EMPLOYEE WHERE LTRIM(RTRIM(EMP_ID)) = 'admin')
+    INSERT dbo.SYS_EMPLOYEE (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG)
     VALUES ('admin', N'系统管理员', 'ZJB', 1);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.SYSDN WHERE LTRIM(RTRIM(EMP_ID)) = 'larry')
-    INSERT dbo.SYSDN (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG)
+IF NOT EXISTS (SELECT 1 FROM dbo.SYS_EMPLOYEE WHERE LTRIM(RTRIM(EMP_ID)) = 'larry')
+    INSERT dbo.SYS_EMPLOYEE (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG)
     VALUES ('larry', N'演示用户', 'ZJB', 1);
 GO
 
 -- ---------------------------------------------------------------- 账号
 -- 口令哈希格式："v1" + Base64(盐[12] || PBKDF2-SHA256(口令, 盐, 210000 次迭代, 24 字节))
 -- 下面的值分别对应口令 admin 与 larry。
-IF NOT EXISTS (SELECT 1 FROM dbo.SYSDL WHERE LTRIM(RTRIM(USER_ID)) = 'admin')
-    INSERT dbo.SYSDL (USER_ID, USER_PWD, EMP_ID, ACTIVE_TAG, CONFIRM_TAG, REMARK)
+IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_ACCOUNT WHERE LTRIM(RTRIM(USER_ID)) = 'admin')
+    INSERT dbo.SYS_USER_ACCOUNT (USER_ID, USER_PWD, EMP_ID, ACTIVE_TAG, CONFIRM_TAG, REMARK)
     VALUES ('admin', N'v1Z6SJh2GJYChyu+14+n5FcDFhMVlPuK0HxKD8fcl1mkuCLJe3', 'admin', 1, 1,
             N'初始管理员账号，首次登录后请立即修改口令');
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.SYSDL WHERE LTRIM(RTRIM(USER_ID)) = 'larry')
-    INSERT dbo.SYSDL (USER_ID, USER_PWD, EMP_ID, ACTIVE_TAG, CONFIRM_TAG, REMARK)
+IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_ACCOUNT WHERE LTRIM(RTRIM(USER_ID)) = 'larry')
+    INSERT dbo.SYS_USER_ACCOUNT (USER_ID, USER_PWD, EMP_ID, ACTIVE_TAG, CONFIRM_TAG, REMARK)
     VALUES ('larry', N'v1gnnK62ABonFL3CkSYtsMC5ZTpIWZUWM4+2A4lJbueAKE2ZL4', 'larry', 1, 1,
             N'初始普通用户账号，首次登录后请立即修改口令');
 GO
@@ -54,9 +54,9 @@ GO
 -- 因此为 admin 逐模块写入全开的个人权限行，即可获得完整权限，无需建立用户组。
 --
 -- EXEC_TAG 是执行类别，按字符串比较取较大者为更高权限；取字典中的最大值，字典为空时用 'A'。
-DECLARE @execTag CHAR(1) = ISNULL((SELECT MAX(EXEC_ID) FROM dbo.SYSDD_EXEC_TYPE), 'A');
+DECLARE @execTag CHAR(1) = ISNULL((SELECT MAX(EXEC_ID) FROM dbo.SYS_PERMISSION_ACTION), 'A');
 
-INSERT dbo.SYSDD (
+INSERT dbo.SYS_USER_MODULE_PERMISSION (
     USER_ID, M_IDX, EXEC_TAG,
     ADDNEW_TAG, EDIT_TAG, DELETE_TAG, REPORT_TAG, COST_TAG, SETUP_TAG, SECRECY_TAG,
     ENDCASE_TAG, UNENDCASE_TAG, APPROVE_TAG, DEAPPROVE_TAG,
@@ -74,16 +74,16 @@ SELECT 'admin', m.M_IDX, @execTag,
        0
 FROM (SELECT M_IDX FROM dbo.MODULES) m
 WHERE NOT EXISTS (
-    SELECT 1 FROM dbo.SYSDD d
+    SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d
     WHERE LTRIM(RTRIM(d.USER_ID)) = 'admin' AND d.M_IDX = m.M_IDX
 );
 GO
 
 -- 普通用户 larry：可日常录入/修改/删除/查询，但不含配置（SETUP）、保密（SECRECY）、
 -- 成本（COST）与审批（批核/解批/结案/反结案）权限——审批与分权属职权，不下放。
-DECLARE @execTagUser CHAR(1) = ISNULL((SELECT MAX(EXEC_ID) FROM dbo.SYSDD_EXEC_TYPE), 'A');
+DECLARE @execTagUser CHAR(1) = ISNULL((SELECT MAX(EXEC_ID) FROM dbo.SYS_PERMISSION_ACTION), 'A');
 
-INSERT dbo.SYSDD (
+INSERT dbo.SYS_USER_MODULE_PERMISSION (
     USER_ID, M_IDX, EXEC_TAG,
     ADDNEW_TAG, EDIT_TAG, DELETE_TAG, REPORT_TAG, COST_TAG, SETUP_TAG, SECRECY_TAG,
     ENDCASE_TAG, UNENDCASE_TAG, APPROVE_TAG, DEAPPROVE_TAG,
@@ -99,13 +99,13 @@ SELECT 'larry', m.M_IDX, @execTagUser,
        0
 FROM (SELECT M_IDX FROM dbo.MODULES) m
 WHERE NOT EXISTS (
-    SELECT 1 FROM dbo.SYSDD d
+    SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d
     WHERE LTRIM(RTRIM(d.USER_ID)) = 'larry' AND d.M_IDX = m.M_IDX
 );
 GO
 
 -- ---------------------------------------------------------------- 报表权限
--- 报表可见性由**归属模块的 REPORT_TAG** 决定（个人 SYSDD 优先，否则组 SYSDH 取或），
+-- 报表可见性由**归属模块的 REPORT_TAG** 决定（个人 SYS_USER_MODULE_PERMISSION 优先，否则组 SYS_GROUP_MODULE_PERMISSION 取或），
 -- 没有报表级 override；上面逐模块写入的全开个人权限已覆盖它。
 -- SYSDD_REPORT 只承载报表中心的用户状态（收藏/排序/最近使用），不预置。
 GO
@@ -130,5 +130,5 @@ GO
  *   [Buffer]::BlockCopy($key,  0, $buf, 12, 24)
  *   'v1' + [Convert]::ToBase64String($buf)
  *
- *   UPDATE dbo.SYSDL SET USER_PWD = N'<上面输出的值>' WHERE LTRIM(RTRIM(USER_ID)) = 'admin';
+ *   UPDATE dbo.SYS_USER_ACCOUNT SET USER_PWD = N'<上面输出的值>' WHERE LTRIM(RTRIM(USER_ID)) = 'admin';
  */

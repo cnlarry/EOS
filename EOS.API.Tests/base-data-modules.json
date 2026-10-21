@@ -4,7 +4,7 @@
     { "moduleId": "110101", "name": "公司基本资料",   "table": "COMPANY",                "seeded": true },
     { "moduleId": "110102", "name": "部门资料",       "table": "DEPT",                   "seeded": true },
     { "moduleId": "110103", "name": "货币资料",       "table": "CURR",                   "seeded": true },
-    { "moduleId": "110104", "name": "系统员工资料",   "table": "SYSDN",                  "seeded": true },
+    { "moduleId": "110104", "name": "系统员工资料",   "table": "SYS_EMPLOYEE",           "seeded": true },
     { "moduleId": "110105", "name": "银行帐号资料",   "table": "BANK",                   "seeded": true },
     { "moduleId": "110106", "name": "税别资料",       "table": "TAX",                    "seeded": true },
     { "moduleId": "110107", "name": "价格条件设定",   "table": "PRICE",                  "seeded": true },

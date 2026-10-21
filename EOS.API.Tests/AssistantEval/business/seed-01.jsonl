@@ -8,7 +8,7 @@
 {"question": "统一表单的选择器和列表的数据范围一致吗？", "expected": "一致：模块 FILTER + DATA_FILTER + EXEC_TAG，无法受控时返回空列表。", "sources": ["TryBuildChooserScopePredicate", "GetChooserOptionsAsync"]}
 {"question": "没有成本权限的用户能通过导出拿到成本字段吗？", "expected": "不能；成本/保密/禁止字段在查询、导出、打印、选择器全链路过滤。", "sources": ["WorkbenchScopeFilter"]}
 {"question": "报表查询的数据范围怎么算？", "expected": "用户模块 DATA_FILTER 与报表 override DATA_FILTER 取交集收紧。", "sources": ["CombineDataFilters"]}
-{"question": "打印单据页头的优先级是什么？", "expected": "本次选择/SYSQR → 客户默认 CLIENT.HEADER_ID → 报表默认 REPORT.HEADER_ID。", "sources": ["PrintController"]}
+{"question": "打印单据页头的优先级是什么？", "expected": "本次选择/SYS_USER_REPORT_PRINT → 客户默认 CLIENT.HEADER_ID → 报表默认 REPORT.HEADER_ID。", "sources": ["PrintController"]}
 {"question": "单据页头显示的是客户公司还是开单方？", "expected": "开单方主体；客户名称只进正文，不覆盖页头。", "sources": ["DocumentPdfService"]}
 {"question": "记忆里存的单据引用过期或越权了会怎样？", "expected": "注入前复核权限，失效引用自动跳过不注入。", "sources": ["AssistantMemoryStore.BuildMemoryPrefixAsync"]}
 {"question": "助手会把记忆里的金额快照直接当事实吗？", "expected": "不会；记忆只存引用不存快照，且标注可能过期仅供参考。", "sources": ["AssistantMemoryStore.BuildPrefix"]}
@@ -20,7 +20,7 @@
 {"question": "权限串为空和必签名单为空分别是什么意思？", "expected": "空权限串=全部有权限；空必签名单=无必签者，两者语义不同。", "sources": ["WorkflowEngine", "FlowStep"]}
 {"question": "流程条件写了系统解析不了的表达式会怎样？", "expected": "拒绝启动流程（FLOW_CONDITION_UNSUPPORTED），绝不拼接执行。", "sources": ["WorkflowEngine", "DataFilterParser"]}
 {"question": "有单据在途时能删除流程定义吗？", "expected": "不能；有在途实例时禁止删除定义，防孤儿实例。", "sources": ["FlowDefinitionService"]}
-{"question": "流程设计里能写不存在的审批人吗？", "expected": "不能；审批人按 SYSDL 真实用户校验。", "sources": ["FlowDefinitionService.SaveFlowAsync"]}
+{"question": "流程设计里能写不存在的审批人吗？", "expected": "不能；审批人按 SYS_USER_ACCOUNT 真实用户校验。", "sources": ["FlowDefinitionService.SaveFlowAsync"]}
 {"question": "既有实现的用户存 SQL 表还能新增吗？", "expected": "不能；SYSQD/SYSQL/LISTREPORT 已物理删除，不再新增用户运行时存 SQL。", "sources": ["030_tsql_tables_drop.sql"]}
 {"question": "2205 报表过滤条件设置页还能用吗？", "expected": "已下线；条件走 SYSQR_DEFAULT.FILTER_TEMPLATE 结构化维护。", "sources": ["025_report_conditions_page_offline.sql"]}
 {"question": "保存单据时必须带什么防重复？", "expected": "幂等键；缺失返回 IDEMPOTENCY_KEY_REQUIRED。", "sources": ["WorkbenchCommandHandler"]}
