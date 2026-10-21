@@ -18,7 +18,7 @@ import { IconMaximize, IconMinus, IconPlus } from '@tabler/icons-react'
 import { Button } from '../../components/ui/Button'
 import {
   DOMAIN_NODE_SIZE,
-  TABLE_NODE_SIZE,
+  MODULE_NODE_SIZE,
   bestColumnCount,
   layoutFlowGraph,
   layoutGridGraph,
@@ -135,7 +135,7 @@ export function BusinessFlowCanvas({
   }, [])
 
   useEffect(() => {
-    // 尺寸按每个节点自己的行数算：三行内容的节点（标题 + 表代码 + 模块名）比两行的高，
+    // 尺寸按每个节点自己的行数算：三行内容的节点（标题 + 主表代码 + 补充信息）比两行的高，
     // 用同一个常量会让它在固定高度里被裁掉。
     const sizes = new Map(inputNodes.map((node) => [node.id, nodeSize(node.data)]))
     const ids = inputNodes.map((node) => node.id)
@@ -159,7 +159,7 @@ export function BusinessFlowCanvas({
 
     setNodes(
       inputNodes.map((node) => {
-        const size = sizes.get(node.id) ?? TABLE_NODE_SIZE
+        const size = sizes.get(node.id) ?? MODULE_NODE_SIZE
         // 固定节点尺寸：布局是按这个尺寸算的间距，交给内容自适应会让布局与坐标对不上。
         return {
           ...node,

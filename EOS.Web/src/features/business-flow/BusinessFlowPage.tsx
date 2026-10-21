@@ -26,14 +26,15 @@ import {
   isEdgeVisible,
   isWeakDomainLink,
   linkRows,
+  moduleNodeId,
   orderByRelation,
   parseDomainLinkId,
   relationKeyLabel,
   type FlowDomainGraph,
   type FlowLinkGraph,
   type FlowLinkRow,
+  type FlowModuleEdge,
   type FlowOverview,
-  type FlowTableEdge,
 } from './flowGraph'
 import './business-flow.css'
 
@@ -55,17 +56,20 @@ const PEER_PARAM = 'peer'
 
 /**
  * 业务流程图（/admin/business-flow，模块 2314）：
- * 两个数据源合成一张表间关系图，三级下钻——业务域总览 → 域内表间关系 → 两个域之间的关系明细。
+ * 两个数据源合成一张**模块关系图**，三级下钻——业务域总览 → 域内模块关系 → 两个域之间的模块关系明细。
+ *
+ * 节点是模块（一份单据 / 一个业务页），不是表：这一页回答"单据怎么往下走、模块与模块之间怎么衔接"，
+ * 表是实现细节，退到每条边的「涉及表对」里作证据。
  *
  * - FIELD_DATASOURCE（字段取值来源）回答"这个字段的值从哪来"，量大、含大量选基础资料；
  * - FIELD_RELATION（已登记单据关系，RELATION_KIND=EFFECT）回答"本单用键列关联到哪张单"，
- *   量小、集中在业务域，是真正意义上的单据上下游。两者在同一对表上会重合，故合并成一条边并标出 Registered。
+ *   量小、集中在业务域，是真正意义上的单据上下游。两者在同一对模块上会重合，故合并成一条边并标出 Registered。
  *
- * 第三级从总览图上那条带数字的连线进入：线上写 "6+3"，点进去是这两个模块之间的逐条关系
- * （上游表 / 下游表 / 关系类型 / 引用字段 / 登记键列）。行数是两类事实的并集——
- * 同一对表双重身份时只占一行、两个标签并列，重合条数在标题上写明，免得数字对不上。
+ * 第三级从总览图上那条带数字的连线进入：线上写 "6+3"，点进去是这两个域之间的逐条模块关系
+ * （上游模块 / 下游模块 / 关系类型 / 涉及表对 / 引用字段 / 登记键列）。行数是两类事实的并集——
+ * 同一对模块双重身份时只占一行、两个标签并列，重合条数在标题上写明，免得数字对不上。
  *
- * 边的域内/跨域只看两端是否同域——既有元数据里没有「主档 / 单据」标记，任何按表名或引用频次的
+ * 边的域内/跨域只看两端模块是否同域——既有元数据里没有「主档 / 单据」标记，任何按名字或引用频次的
  * 自动判据都会误判，故只采用这条完全由既有元数据推导、无需维护的判据。
  */
 export function BusinessFlowPage() {
@@ -129,11 +133,11 @@ export function BusinessFlowPage() {
     return registeredOnly ? { ...data, edges: data.edges.filter((edge) => edge.registered) } : data
   }, [linkGraph.data, registeredOnly])
   const linkDetailRows = useMemo(() => linkRows(linkData), [linkData])
-  const linkTableCounts = useMemo(() => {
-    const tables = linkTables(linkData)
+  const linkModuleCounts = useMemo(() => {
+    const modules = linkModules(linkData)
     return {
-      from: tables.filter((table) => table.inFromDomain).length,
-      to: tables.filter((table) => !table.inFromDomain).length,
+      from: modules.filter((module) => module.inFromDomain).length,
+      to: modules.filter((module) => !module.inFromDomain).length,
     }
   }, [linkData])
   /**
@@ -167,8 +171,8 @@ export function BusinessFlowPage() {
     showExternal,
   ])
 
-  const tableNames = useMemo(
-    () => new Map((domainGraph.data?.nodes ?? []).map((node) => [node.tableId, node.tableName || node.tableId])),
+  const moduleNames = useMemo(
+    () => new Map((domainGraph.data?.nodes ?? []).map((node) => [node.moduleId, node.moduleName])),
     [domainGraph.data],
   )
   const selectedEdge = useMemo(
@@ -176,38 +180,34 @@ export function BusinessFlowPage() {
       selectedEdgeId == null
         ? null
         : ((domainGraph.data?.edges.find((edge) => flowEdgeId(edge) === selectedEdgeId) ?? null) as
-            | FlowTableEdge
+            | FlowModuleEdge
             | null),
     [domainGraph.data, selectedEdgeId],
   )
 
   /**
-   * 第三级的关系明细表。上游表 / 下游表两列把表代码放前面、表名补在后面——
-   * 抓代码的人与认名字的人都能一眼对上；"关系类型"是标签而不是单选，
-   * 因为同一对表可能既是字段取值来源、又是已登记单据关系。
+   * 第三级的关系明细表。上游模块 / 下游模块两列写模块名（编号补在后面），
+   * 「涉及表对」给出这条模块关系落在哪几对表上——抓代码的人与认名字的人都能一眼对上；
+   * "关系类型"是标签而不是单选，因为同一对模块可能既是字段取值来源、又是已登记单据关系。
    */
   const linkColumns = useMemo<ColumnDef<FlowLinkRow, unknown>[]>(() => [
     {
-      accessorKey: 'fromTable',
-      header: '上游表',
+      accessorKey: 'fromModuleName',
+      header: '上游模块',
       cell: ({ row }) => (
         <>
-          <span className="font-monospace">{row.original.fromTable}</span>
-          {row.original.fromTableName && row.original.fromTableName !== row.original.fromTable
-            ? <span className="text-secondary ms-1">{row.original.fromTableName}</span>
-            : null}
+          {row.original.fromModuleName}
+          <span className="text-secondary ms-1">#{row.original.fromModuleId}</span>
         </>
       ),
     },
     {
-      accessorKey: 'toTable',
-      header: '下游表',
+      accessorKey: 'toModuleName',
+      header: '下游模块',
       cell: ({ row }) => (
         <>
-          <span className="font-monospace">{row.original.toTable}</span>
-          {row.original.toTableName && row.original.toTableName !== row.original.toTable
-            ? <span className="text-secondary ms-1">{row.original.toTableName}</span>
-            : null}
+          {row.original.toModuleName}
+          <span className="text-secondary ms-1">#{row.original.toModuleId}</span>
         </>
       ),
     },
@@ -229,6 +229,13 @@ export function BusinessFlowPage() {
           ))}
         </span>
       ),
+    },
+    {
+      accessorKey: 'tablePairs',
+      header: '涉及表对',
+      cell: (info) => info.getValue()
+        ? <code className="text-secondary small">{String(info.getValue())}</code>
+        : <span className="text-secondary">—</span>,
     },
     {
       accessorKey: 'fields',
@@ -338,9 +345,9 @@ export function BusinessFlowPage() {
         </strong>
         <span className="text-secondary ms-2 small">
           {inLink
-            ? `共 ${linkDetailRows.length} 条关系${linkDualCount > 0 ? `（其中 ${linkDualCount} 条同时是已登记单据关系，故比连线上的两个数字之和少）` : ''} · 上游 ${linkTableCounts.from} 张表 · 下游 ${linkTableCounts.to} 张表`
+            ? `共 ${linkDetailRows.length} 条模块关系${linkDualCount > 0 ? `（其中 ${linkDualCount} 条同时是已登记单据关系，故比连线上的两个数字之和少）` : ''} · 上游 ${linkModuleCounts.from} 个模块 · 下游 ${linkModuleCounts.to} 个模块`
             : inDomain
-              ? `悬停聚焦、单击进入对应模块；共 ${graph.nodes.length} 张表 · ${graph.edges.length} 条关系`
+              ? `悬停聚焦、单击进入对应模块；共 ${graph.nodes.length} 个模块 · ${graph.edges.length} 条关系`
               : `悬停聚焦其流向，双击业务域进入内部，单击连线看两域之间的关系 · 共 ${overview.data?.domains.length ?? 0} 个业务域`}
         </span>
       </div>
@@ -472,11 +479,11 @@ export function BusinessFlowPage() {
         <aside className="erp-flow-detail" aria-label="连线细节">
           <div className="erp-flow-detail-head">
             <span className="erp-flow-detail-title">
-              {tableNames.get(selectedEdge.fromTable) ?? selectedEdge.fromTable}
+              {moduleNames.get(selectedEdge.fromModuleId) ?? `模块 #${selectedEdge.fromModuleId}`}
               <span className="erp-flow-detail-arrow" aria-hidden="true">
                 →
               </span>
-              {tableNames.get(selectedEdge.toTable) ?? selectedEdge.toTable}
+              {moduleNames.get(selectedEdge.toModuleId) ?? `模块 #${selectedEdge.toModuleId}`}
             </span>
             <Button size="sm" variant="ghost" title="收起细节" onClick={() => setSelectedEdgeId(null)}>
               收起
@@ -515,8 +522,20 @@ export function BusinessFlowPage() {
             )}
           </section>
 
+          <section className="erp-flow-detail-section">
+            <div className="erp-flow-detail-label">涉及表对（{selectedEdge.tablePairs.length}）</div>
+            <ul className="erp-flow-detail-list">
+              {selectedEdge.tablePairs.map((pair) => (
+                <li key={pair}>
+                  <code>{pair}</code>
+                </li>
+              ))}
+            </ul>
+          </section>
+
           <p className="erp-flow-detail-note">
-            上游：{selectedEdge.fromTable} · 下游：{selectedEdge.toTable}
+            上游：{moduleNames.get(selectedEdge.fromModuleId) ?? `模块 #${selectedEdge.fromModuleId}`} · 下游：
+            {moduleNames.get(selectedEdge.toModuleId) ?? `模块 #${selectedEdge.toModuleId}`}
             {selectedEdge.upstreamInDomain && selectedEdge.downstreamInDomain ? '（两端都在本域）' : null}
           </p>
         </aside>
@@ -596,7 +615,7 @@ function buildOverviewGraph(
           // 名称与编号并成一行：三行内容在固定高度的节点里会把首尾裁掉
           title: domain.rootIdx === 0 ? domain.name : `${domain.name}（#${domain.rootIdx}）`,
           code: '',
-          meta: `${domain.tableCount} 张表 · 域内流程 ${domain.internalEdgeCount}${relation}`,
+          meta: `${domain.moduleCount} 个模块 · 域内关系 ${domain.internalEdgeCount}${relation}`,
           // 跨域总量不再做成角标：它与边上那条"两域之间的引用数"表达同一件事，
           // 并列显示只会让画面更吵——该域的对外连接度从它引出的连线上一眼就能看出来。
           badge: '',
@@ -623,32 +642,31 @@ function buildDomainGraph(
 
   const edges: Edge[] = visible.map((edge) => ({
     id: flowEdgeId(edge),
-    source: edge.fromTable,
-    target: edge.toTable,
-    // 登记关系用键列做标签（关系名里的表名在两端节点上已写着，重复无信息量）
+    source: moduleNodeId(edge.fromModuleId),
+    target: moduleNodeId(edge.toModuleId),
+    // 登记关系用键列做标签（模块名在两端节点上已写着，重复无信息量）
     ...(edge.registered ? { label: relationKeyLabel(edge.keyPairs) } : {}),
     ...flowEdgeStyle(edge.kind, edge.registered),
   }))
 
-  // 折叠跨域引用后，只被跨域边连接的域外表会变成孤立点，一并过滤掉。
+  // 折叠跨域引用后，只被跨域边连接的域外模块会变成孤立点，一并过滤掉。
   const connected = new Set(edges.flatMap((edge) => [edge.source, edge.target]))
   const nodes: FlowNodeSeed[] = data.nodes
-    .filter((node) => connected.has(node.tableId))
+    .filter((node) => connected.has(moduleNodeId(node.moduleId)))
     .map((node) => ({
-      id: node.tableId,
+      id: moduleNodeId(node.moduleId),
       type: 'flow' as const,
       data: {
-        title: node.tableName || node.tableId,
-        code: node.tableId,
-        // 模块名多数与表名相同（表就是该模块的主表），单独占一行纯属重复；
-        // 只有两者确实不同（如明细表挂在某单据模块下）时才补在下面一行。
-        meta: node.moduleName && node.moduleName !== node.tableName ? node.moduleName : '',
+        // 标题是模块名（业务用户认这个），第二行才是主表代码（对账时认这个）
+        title: node.moduleName,
+        code: node.masterTable,
+        meta: '',
         badge: node.selfReferenceCount > 0 ? `自引用 ${node.selfReferenceCount}` : '',
-        variant: node.inDomain ? 'table' : 'table-external',
+        variant: node.inDomain ? 'module' : 'module-external',
         // 入口只给"当前用户对该模块有读权限"的节点：服务端下发的 permissions 已按用户过滤过，
         // 与菜单同一口径——没权限的模块在图上同样不显示为可点入口，而不是点进去才被拒。
         routeUrl:
-          node.routeUrl != null && node.moduleId != null && allowedPermissions.has(moduleReadPermission(node.moduleId))
+          node.routeUrl != null && allowedPermissions.has(moduleReadPermission(node.moduleId))
             ? node.routeUrl
             : undefined,
       },
@@ -656,24 +674,34 @@ function buildDomainGraph(
   return { nodes, edges }
 }
 
-/** 第三级图上出现的表：上游域与下游域各若干张，按表代码去重。 */
-function linkTables(data: FlowLinkGraph | undefined): { tableId: string; tableName: string; inFromDomain: boolean }[] {
-  const tables = new Map<string, { tableId: string; tableName: string; inFromDomain: boolean }>()
+/** 第三级图上出现的模块：上游域与下游域各若干，按模块号去重。 */
+function linkModules(
+  data: FlowLinkGraph | undefined,
+): { moduleId: number; moduleName: string; inFromDomain: boolean }[] {
+  const modules = new Map<number, { moduleId: number; moduleName: string; inFromDomain: boolean }>()
   for (const edge of data?.edges ?? []) {
-    if (!tables.has(edge.fromTable)) {
-      tables.set(edge.fromTable, { tableId: edge.fromTable, tableName: edge.fromTableName, inFromDomain: true })
+    if (!modules.has(edge.fromModuleId)) {
+      modules.set(edge.fromModuleId, {
+        moduleId: edge.fromModuleId,
+        moduleName: edge.fromModuleName,
+        inFromDomain: true,
+      })
     }
-    if (!tables.has(edge.toTable)) {
-      tables.set(edge.toTable, { tableId: edge.toTable, tableName: edge.toTableName, inFromDomain: false })
+    if (!modules.has(edge.toModuleId)) {
+      modules.set(edge.toModuleId, {
+        moduleId: edge.toModuleId,
+        moduleName: edge.toModuleName,
+        inFromDomain: false,
+      })
     }
   }
-  return [...tables.values()]
+  return [...modules.values()]
 }
 
 /**
- * 第三级图：只画这一对业务域之间的表与关系。
+ * 第三级图：只画这一对业务域之间的模块与关系。
  *
- * 两端靠外观与颜色区分——上游域的表按本域表画（实线），下游域的表按域外表画（虚线），
+ * 两端靠外观与颜色区分——上游域的模块按本域模块画（实线），下游域的模块按域外模块画（虚线），
  * 左侧色条取该域在总览上的颜色，于是"这条线是从哪边引过来的"在图上直接看得出来。
  * 这一级不提供"打开模块"入口：节点入口是第二级的事，这里只回答"两个模块之间有什么"。
  */
@@ -687,24 +715,24 @@ function buildLinkGraph(
 
   const edges: Edge[] = data.edges.map((edge) => ({
     id: flowEdgeId(edge),
-    source: edge.fromTable,
-    target: edge.toTable,
-    // 登记关系用键列做标签（关系名里的表名在两端节点上已写着，重复无信息量）
+    source: moduleNodeId(edge.fromModuleId),
+    target: moduleNodeId(edge.toModuleId),
+    // 登记关系用键列做标签（模块名在两端节点上已写着，重复无信息量）
     ...(edge.registered ? { label: relationKeyLabel(edge.keyPairs) } : {}),
     // kind 恒按域内流程画（蓝实线）：这一级的轴是"已登记 / 仅字段引用"，不是"域内 / 跨域"
     ...flowEdgeStyle('internal', edge.registered),
   }))
 
-  const nodes: FlowNodeSeed[] = linkTables(data).map((table) => ({
-    id: table.tableId,
+  const nodes: FlowNodeSeed[] = linkModules(data).map((module) => ({
+    id: moduleNodeId(module.moduleId),
     type: 'flow' as const,
     data: {
-      title: table.tableName || table.tableId,
-      code: table.tableId,
+      title: module.moduleName,
+      code: '',
       meta: '',
       badge: '',
-      variant: table.inFromDomain ? 'table' : 'table-external',
-      color: colorOf(table.inFromDomain ? data.fromRootIdx : data.toRootIdx),
+      variant: module.inFromDomain ? 'module' : 'module-external',
+      color: colorOf(module.inFromDomain ? data.fromRootIdx : data.toRootIdx),
     },
   }))
   return { nodes, edges }

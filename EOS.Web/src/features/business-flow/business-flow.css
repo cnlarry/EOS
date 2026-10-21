@@ -208,7 +208,7 @@
   background: linear-gradient(180deg, var(--erp-flow-domain-wash) 0%, var(--tblr-bg-surface) 100%);
 }
 
-.erp-flow-node--table-external {
+.erp-flow-node--module-external {
   border-style: dashed;
   background: var(--erp-flow-surface-faint);
   opacity: 0.85;
@@ -253,7 +253,7 @@
   filter: drop-shadow(0 0 3px color-mix(in srgb, var(--tblr-primary) 55%, transparent));
 }
 
-/* 连线细节面板：回答"这两张表为什么有一条线"——登记键列与取值来源字段 */
+/* 连线细节面板：回答"这两个模块为什么有一条线"——登记键列、取值来源字段与涉及的表对 */
 .erp-flow-detail {
   flex: 0 0 280px;
   min-width: 0;

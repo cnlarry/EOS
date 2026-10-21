@@ -27,8 +27,8 @@ const bootstrap = {
 
 const overview = {
   domains: [
-    { rootIdx: 10, name: '基本参数', tableCount: 12, internalEdgeCount: 3, outEdgeCount: 4, inEdgeCount: 1, relationEdgeCount: 0 },
-    { rootIdx: 14, name: '销售管理', tableCount: 9, internalEdgeCount: 2, outEdgeCount: 1, inEdgeCount: 3, relationEdgeCount: 2 },
+    { rootIdx: 10, name: '基本参数', moduleCount: 12, internalEdgeCount: 3, outEdgeCount: 4, inEdgeCount: 1, relationEdgeCount: 0 },
+    { rootIdx: 14, name: '销售管理', moduleCount: 9, internalEdgeCount: 2, outEdgeCount: 1, inEdgeCount: 3, relationEdgeCount: 2 },
   ],
   links: [{ fromRootIdx: 10, toRootIdx: 14, edgeCount: 5, relationEdgeCount: 2 }],
 }
@@ -40,15 +40,17 @@ const linkGraph = {
   toName: '销售管理',
   edges: [
     {
-      fromTable: 'PRODUCT', toTable: 'COP_ORDER_D', fromTableName: '产品', toTableName: '销售订单明细',
-      registered: false, relationName: null, fieldCount: 3, fields: ['PRO_ID', 'PRO_NAME', 'UNIT'],
-      keyPairs: [],
+      fromModuleId: 1201, toModuleId: 1405, fromModuleName: '产品档案', toModuleName: '销售订单',
+      registered: false, relationName: null, fieldCount: 3,
+      fields: ['COP_ORDER_D.PRO_ID', 'COP_ORDER_D.PRO_NAME', 'COP_ORDER_D.UNIT'],
+      keyPairs: [], tablePairs: ['PRODUCT → COP_ORDER_D'],
     },
     {
-      // 同一对表既是字段取值来源、又是已登记单据关系：明细里只占一行，两个标签并列
-      fromTable: 'PRODUCT', toTable: 'COP_ORDER_M', fromTableName: '产品', toTableName: '客户订单',
-      registered: true, relationName: '客户订单定位键（效果）', fieldCount: 2, fields: ['PRO_ID', 'QTY'],
-      keyPairs: ['PRO_ID → PRO_ID'],
+      // 同一对模块既是字段取值来源、又是已登记单据关系：明细里只占一行，两个标签并列
+      fromModuleId: 1201, toModuleId: 1410, fromModuleName: '产品档案', toModuleName: '客户订单',
+      registered: true, relationName: '客户订单定位键（效果）', fieldCount: 2,
+      fields: ['COP_ORDER_M.PRO_ID', 'COP_ORDER_M.QTY'],
+      keyPairs: ['PRO_ID → PRO_ID'], tablePairs: ['PRODUCT → COP_ORDER_M'],
     },
   ],
 }
@@ -93,22 +95,22 @@ describe('BusinessFlowPage 第三级：两个业务域之间的关系', () => {
 
     // 标题写清是哪两个模块；摘要说明"合并后的条数为何比线上两个数字之和少"
     expect(await screen.findByText('基本参数 → 销售管理')).toBeInTheDocument()
-    expect(screen.getByText('共 2 条关系（其中 1 条同时是已登记单据关系，故比连线上的两个数字之和少） · 上游 1 张表 · 下游 2 张表')).toBeInTheDocument()
+    expect(screen.getByText('共 2 条模块关系（其中 1 条同时是已登记单据关系，故比连线上的两个数字之和少） · 上游 1 个模块 · 下游 2 个模块')).toBeInTheDocument()
 
     // 默认是视图页签：只有画布，没有表格
     expect(screen.getByRole('tab', { name: '视图' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('flow-canvas')).toHaveTextContent('PRODUCT,COP_ORDER_D,COP_ORDER_M')
+    expect(screen.getByTestId('flow-canvas')).toHaveTextContent('module:1201,module:1405,module:1410')
     expect(screen.queryByRole('table')).toBeNull()
 
-    // 切到列表页签：两条关系逐条罗列（上游表、下游表、关系类型、引用字段、登记键列）
+    // 切到列表页签：两条关系逐条罗列（上游模块、下游模块、关系类型、涉及表对、引用字段、登记键列）
     fireEvent.click(screen.getByRole('tab', { name: '列表' }))
-    expect(detailTable().getAllByText('PRODUCT')).toHaveLength(2)
-    expect(detailTable().getByText('COP_ORDER_D')).toBeInTheDocument()
-    expect(detailTable().getByText('销售订单明细')).toBeInTheDocument()
+    expect(detailTable().getAllByText('产品档案')).toHaveLength(2)
+    expect(detailTable().getByText('销售订单')).toBeInTheDocument()
+    expect(detailTable().getByText('PRODUCT → COP_ORDER_D')).toBeInTheDocument()
     // 两条关系都是字段取值来源（第二条同时还登记为单据关系，故多一个标签）
     expect(detailTable().getAllByText('字段取值来源')).toHaveLength(2)
     expect(detailTable().getByText('已登记单据关系')).toBeInTheDocument()
-    expect(detailTable().getByText('PRO_ID、PRO_NAME、UNIT')).toBeInTheDocument()
+    expect(detailTable().getByText('COP_ORDER_D.PRO_ID、COP_ORDER_D.PRO_NAME、COP_ORDER_D.UNIT')).toBeInTheDocument()
     expect(detailTable().getByText('PRO_ID → PRO_ID')).toBeInTheDocument()
 
     // 不该顺手把第二级的域内图也拉下来
@@ -118,21 +120,21 @@ describe('BusinessFlowPage 第三级：两个业务域之间的关系', () => {
   it('两个页签读的是同一批过滤后的数据', async () => {
     renderPage('/admin/business-flow?domain=10&peer=14')
     fireEvent.click(await screen.findByRole('tab', { name: '列表' }))
-    await waitFor(() => expect(detailTable().getByText('PRO_ID、PRO_NAME、UNIT')).toBeInTheDocument())
+    await waitFor(() => expect(detailTable().getByText('COP_ORDER_D.PRO_ID、COP_ORDER_D.PRO_NAME、COP_ORDER_D.UNIT')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: '只看登记关系' }))
 
-    // 只被字段引用命中的那对表整行消失；留下来的那条仍是双重身份，两个标签都还在
-    await waitFor(() => expect(detailTable().queryByText('PRO_ID、PRO_NAME、UNIT')).toBeNull())
-    expect(detailTable().queryByText('COP_ORDER_D')).toBeNull()
-    expect(detailTable().getByText('COP_ORDER_M')).toBeInTheDocument()
+    // 只被字段引用命中的那对模块整行消失；留下来的那条仍是双重身份，两个标签都还在
+    await waitFor(() => expect(detailTable().queryByText('COP_ORDER_D.PRO_ID、COP_ORDER_D.PRO_NAME、COP_ORDER_D.UNIT')).toBeNull())
+    expect(detailTable().queryByText('销售订单')).toBeNull()
+    expect(detailTable().getByText('客户订单')).toBeInTheDocument()
     expect(detailTable().getByText('字段取值来源')).toBeInTheDocument()
-    expect(screen.getByText('共 1 条关系（其中 1 条同时是已登记单据关系，故比连线上的两个数字之和少） · 上游 1 张表 · 下游 1 张表')).toBeInTheDocument()
+    expect(screen.getByText('共 1 条模块关系（其中 1 条同时是已登记单据关系，故比连线上的两个数字之和少） · 上游 1 个模块 · 下游 1 个模块')).toBeInTheDocument()
 
     // 同一份过滤后的数据在视图页签上也只剩这一条边
     fireEvent.click(screen.getByRole('tab', { name: '视图' }))
-    expect(screen.getByTestId('flow-canvas')).toHaveTextContent('PRODUCT,COP_ORDER_M')
-    expect(screen.getByTestId('flow-canvas')).not.toHaveTextContent('COP_ORDER_D')
+    expect(screen.getByTestId('flow-canvas')).toHaveTextContent('module:1201,module:1410')
+    expect(screen.getByTestId('flow-canvas')).not.toHaveTextContent('module:1405')
   })
 
   it('没有关系时两个页签各自给空态而不是空白', async () => {

@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 业务流程图（模块 2314，根 23 系统管理 / 父 2311 数据表维护）：只读元数据浏览。
-/// 数据取自 FIELD_DATASOURCE（字段数据来源），不新增任何写路径。
+/// 业务流程图（模块 2314，23 系统管理直下）：只读元数据浏览。
+/// 节点是模块（单据/业务页），数据取自 FIELD_DATASOURCE 与 FIELD_RELATION，不新增任何写路径。
 /// </summary>
 [ApiController]
 [Authorize]
@@ -29,7 +29,7 @@ public sealed class BusinessFlowController(
         return Ok(await repository.GetOverviewAsync(token));
     }
 
-    /// <summary>某个业务域内的表间明细图（权限门 CanBrowse 2314）。</summary>
+    /// <summary>某个业务域内的模块关系图（权限门 CanBrowse 2314）。</summary>
     [HttpGet("domains/{rootIdx:int}")]
     public async Task<IActionResult> Domain(int rootIdx, CancellationToken token)
     {

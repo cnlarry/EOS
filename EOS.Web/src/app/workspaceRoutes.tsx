@@ -98,7 +98,7 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 操作审计（模块 2316，根 23 系统管理本级）**没有前端页面**：它是统一工作台的只读承载页
   // （`M_URL=/workbench`，见迁移 354），列表与浏览态由 `/workbench/2316` 提供；
   // 与日志管理 2313 各有一个模块号，故权限仍可分别授予。
-  // 业务流程图（模块 2314，根 23 系统管理 / 父 2311 数据表维护）：按字段数据来源反推表间引用，只读
+  // 业务流程图（模块 2314，23 系统管理直下）：按字段数据来源与已登记单据关系画模块间的单据走向，只读
   { element: <RequirePermission permission={moduleReadPermission(2314)} />, children: [
     { path: 'admin/business-flow', element: withSuspense(<BusinessFlowPage />) },
   ] },

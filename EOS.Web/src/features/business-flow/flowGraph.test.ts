@@ -5,8 +5,8 @@ import {
   DOMAIN_PALETTE,
   GRID_GAP_X,
   GRID_GAP_Y,
-  TABLE_NODE_SIZE,
-  TABLE_NODE_WIDTH,
+  MODULE_NODE_SIZE,
+  MODULE_NODE_WIDTH,
   bestColumnCount,
   domainColor,
   domainLinkId,
@@ -20,6 +20,7 @@ import {
   layoutFlowGraph,
   layoutGridGraph,
   linkRows,
+  moduleNodeId,
   nodeHeightForLines,
   nodeLineCount,
   nodeSize,
@@ -29,22 +30,23 @@ import {
   type FlowDomainLink,
   type FlowLinkEdge,
   type FlowLinkGraph,
+  type FlowModuleEdge,
   type FlowNodeData,
   type FlowNodeSize,
-  type FlowTableEdge,
 } from './flowGraph'
 
 /** 边工厂：只写关心的字段，其余取"字段引用、在本域下游"的默认值。 */
-function edge(overrides: Partial<FlowTableEdge> = {}): FlowTableEdge {
+function edge(overrides: Partial<FlowModuleEdge> = {}): FlowModuleEdge {
   return {
-    fromTable: 'UP',
-    toTable: 'DOWN',
+    fromModuleId: 1201,
+    toModuleId: 1405,
     kind: 'internal',
     registered: false,
     relationName: null,
     fieldCount: 1,
-    fields: ['F'],
+    fields: ['COP_ORDER_D.PRO_ID'],
     keyPairs: [],
+    tablePairs: ['PRODUCT → COP_ORDER_D'],
     downstreamInDomain: true,
     upstreamInDomain: true,
     ...overrides,
@@ -55,23 +57,24 @@ function link(overrides: Partial<FlowDomainLink> = {}): FlowDomainLink {
   return { fromRootIdx: 14, toRootIdx: 16, edgeCount: 0, relationEdgeCount: 0, ...overrides }
 }
 
-/** 节点载荷工厂：默认是"两行"的表节点（标题 + 表代码，无补充信息）。 */
+/** 节点载荷工厂：默认是"两行"的模块节点（标题 + 主表代码，无补充信息）。 */
 function nodeData(overrides: Partial<FlowNodeData> = {}): FlowNodeData {
-  return { title: '销售订单明细', code: 'COP_ORDER_D', meta: '', badge: '', variant: 'table', ...overrides }
+  return { title: '销售订单', code: 'COP_ORDER_D', meta: '', badge: '', variant: 'module', ...overrides }
 }
 
-/** 第二/三级的关系事实工厂：默认是"一对表、一个字段引用、无登记关系"。 */
+/** 第二/三级的关系事实工厂：默认是"一对模块、一个字段引用、无登记关系"。 */
 function linkEdge(overrides: Partial<FlowLinkEdge> = {}): FlowLinkEdge {
   return {
-    fromTable: 'PRODUCT',
-    toTable: 'COP_ORDER_D',
-    fromTableName: '产品',
-    toTableName: '销售订单明细',
+    fromModuleId: 1201,
+    toModuleId: 1405,
+    fromModuleName: '产品档案',
+    toModuleName: '销售订单',
     registered: false,
     relationName: null,
     fieldCount: 1,
-    fields: ['PRO_ID'],
+    fields: ['COP_ORDER_D.PRO_ID'],
     keyPairs: [],
+    tablePairs: ['PRODUCT → COP_ORDER_D'],
     ...overrides,
   }
 }
@@ -95,9 +98,14 @@ describe('flowGraph 标识与配色', () => {
     expect(domainRootIdxOf(domainNodeId(0))).toBe(0)
   })
 
-  it('边 id 由两端表名决定，方向不同即不同边', () => {
-    expect(flowEdgeId(edge({ fromTable: 'A', toTable: 'B' }))).toBe('A->B')
-    expect(flowEdgeId(edge({ fromTable: 'B', toTable: 'A' }))).toBe('B->A')
+  it('边 id 由两端模块号决定，方向不同即不同边', () => {
+    expect(flowEdgeId(edge({ fromModuleId: 1201, toModuleId: 1405 }))).toBe('module:1201->module:1405')
+    expect(flowEdgeId(edge({ fromModuleId: 1405, toModuleId: 1201 }))).toBe('module:1405->module:1201')
+  })
+
+  it('模块节点 id 带前缀，避免与域节点 id 互相误解析', () => {
+    expect(moduleNodeId(2314)).toBe('module:2314')
+    expect(domainRootIdxOf(moduleNodeId(2314))).toBeNull()
   })
 
   it('域间连线 id 用域节点 id 拼装', () => {
@@ -176,11 +184,11 @@ describe('flowGraph 边与域间连线的判据', () => {
 })
 
 describe('flowGraph 第三级（两个业务域之间）', () => {
-  it('域间连线 id 能还原成两端域编号，表间连线返回 null', () => {
+  it('域间连线 id 能还原成两端域编号，模块间连线返回 null', () => {
     expect(parseDomainLinkId('domain:14->domain:16')).toEqual({ fromRootIdx: 14, toRootIdx: 16 })
     // 0 是合法编号（未归属域），不能被当成 falsy 丢掉
     expect(parseDomainLinkId('domain:0->domain:14')).toEqual({ fromRootIdx: 0, toRootIdx: 14 })
-    expect(parseDomainLinkId('COP_ORDER_D->COP_ORDER_M')).toBeNull()
+    expect(parseDomainLinkId('module:1201->module:1405')).toBeNull()
     expect(parseDomainLinkId('domain:14')).toBeNull()
     expect(parseDomainLinkId('domain:->domain:14')).toBeNull()
   })
@@ -189,18 +197,25 @@ describe('flowGraph 第三级（两个业务域之间）', () => {
     const rows = linkRows(linkGraph([
       linkEdge(),
       linkEdge({
-        fromTable: 'COP_ORDER_M', toTable: 'COP_SEND_M', fromTableName: '客户订单', toTableName: '发货单',
+        fromModuleId: 1405, toModuleId: 1410, fromModuleName: '销售订单', toModuleName: '发货单',
         registered: true, relationName: '发货单定位键（效果）', fieldCount: 6,
-        fields: ['ORDER_NO', 'ORDER_TYPE'], keyPairs: ['ORDER_NO → ORDER_NO'],
+        fields: ['COP_SEND_M.ORDER_NO', 'COP_SEND_M.ORDER_TYPE'],
+        keyPairs: ['ORDER_NO → ORDER_NO'],
+        tablePairs: ['COP_ORDER_M → COP_SEND_M', 'COP_ORDER_D → COP_SEND_D'],
       }),
     ]))
 
-    expect(rows.map((row) => row.id)).toEqual(['PRODUCT->COP_ORDER_D', 'COP_ORDER_M->COP_SEND_M'])
+    expect(rows.map((row) => row.id)).toEqual([
+      'module:1201->module:1405',
+      'module:1405->module:1410',
+    ])
     expect(rows[0].relationKinds).toEqual(['字段取值来源'])
     // 两类事实可以同时成立：标签是列表而不是单一类型
     expect(rows[1].relationKinds).toEqual(['已登记单据关系', '字段取值来源'])
-    expect(rows[1].fields).toBe('ORDER_NO、ORDER_TYPE')
+    expect(rows[1].fields).toBe('COP_SEND_M.ORDER_NO、COP_SEND_M.ORDER_TYPE')
     expect(rows[1].keyPairs).toBe('ORDER_NO → ORDER_NO')
+    // 表级证据随行下发：这条模块关系具体落在哪几对表上
+    expect(rows[1].tablePairs).toBe('COP_ORDER_M → COP_SEND_M、COP_ORDER_D → COP_SEND_D')
     expect(rows[1].relationName).toBe('发货单定位键（效果）')
     expect(rows[1].registered).toBe(true)
   })
@@ -212,7 +227,7 @@ describe('flowGraph 第三级（两个业务域之间）', () => {
 })
 
 describe('flowGraph 节点尺寸', () => {
-  it('行数 = 标题 + 可选表代码 + 可选补充信息', () => {
+  it('行数 = 标题 + 可选主表代码 + 可选补充信息', () => {
     expect(nodeLineCount(nodeData({ code: '', meta: '' }))).toBe(1)
     expect(nodeLineCount(nodeData())).toBe(2)
     expect(nodeLineCount(nodeData({ meta: '销售管理' }))).toBe(3)
@@ -230,23 +245,23 @@ describe('flowGraph 节点尺寸', () => {
     expect(nodeHeightForLines(3)).toBe(70)
   })
 
-  it('域节点恒为两行；表节点按内容取两行或三行', () => {
-    expect(nodeSize(nodeData({ variant: 'domain', code: '', meta: '30 张表 · 域内流程 12' }))).toEqual({
+  it('域节点恒为两行；模块节点按内容取两行或三行', () => {
+    expect(nodeSize(nodeData({ variant: 'domain', code: '', meta: '30 个模块 · 域内关系 12' }))).toEqual({
       width: DOMAIN_NODE_WIDTH,
       height: nodeHeightForLines(2),
     })
-    expect(nodeSize(nodeData())).toEqual({ width: TABLE_NODE_WIDTH, height: nodeHeightForLines(2) })
-    // 模块名与表名不同时才会补第三行——这正是先前被裁掉的那一行
-    expect(nodeSize(nodeData({ meta: '销售管理' }))).toEqual({ width: TABLE_NODE_WIDTH, height: nodeHeightForLines(3) })
+    expect(nodeSize(nodeData())).toEqual({ width: MODULE_NODE_WIDTH, height: nodeHeightForLines(2) })
+    // 需要补第三行时（如域外模块补所属域）高度就多一行
+    expect(nodeSize(nodeData({ meta: '销售管理' }))).toEqual({ width: MODULE_NODE_WIDTH, height: nodeHeightForLines(3) })
     expect(nodeSize(nodeData({ meta: '销售管理' })).height).toBeGreaterThan(nodeSize(nodeData()).height)
   })
 })
 
 describe('flowGraph 布局', () => {
   const sizes = new Map<string, FlowNodeSize>([
-    ['A', TABLE_NODE_SIZE],
-    ['B', TABLE_NODE_SIZE],
-    ['C', TABLE_NODE_SIZE],
+    ['A', MODULE_NODE_SIZE],
+    ['B', MODULE_NODE_SIZE],
+    ['C', MODULE_NODE_SIZE],
   ])
 
   it('分层布局让上游在左、下游在右', () => {

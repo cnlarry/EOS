@@ -7,11 +7,15 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 业务流程图数据源集成测试：直连 EOS.ERP 验证「业务域总览」与「域内明细图」两段**多结果集** SQL 能真的跑通。
+/// 业务流程图数据源集成测试：直连 EOS.ERP 验证「业务域总览」「域内模块关系图」「域间模块关系明细」
+/// 三段**多结果集** SQL 能真的跑通。
 ///
-/// 为什么必须真库跑：这两段各含五个结果集，而 **SQL Server 的 CTE 只对紧随其后的那一条语句有效**——
+/// 为什么必须真库跑：三段各含多个结果集，而 **SQL Server 的 CTE 只对紧随其后的那一条语句有效**——
 /// 多个结果集共用一份 CTE 时只有第一个能执行，第二个起报「对象名无效」。这类缺陷编译、静态门禁、
 /// 依赖 SQL 文本的单测都发现不了（它们不解析 T-SQL 作用域），只有把语句真的交给库才暴露。
+///
+/// 另一半价值是**口径对账**：节点是模块而不是表，所以这里断言的是"模块对的条数"——
+/// 总览连线上的数字与第三级明细里的行数必须逐条对得上，否则界面上的两个数字会各说各话。
 ///
 /// 连接串取自 env MSSQL_ERP_CONN，拿不到时跳过。只读查询，不产生测试数据。
 /// </summary>
@@ -34,11 +38,8 @@ public sealed class BusinessFlowRepositoryLiveTests
     }
 
     /// <summary>
-    /// 总览要同时拿到五个结果集（域清单 / 域间引用 / 域内流程数 / 域间登记关系 / 各域登记关系数），
+    /// 总览要同时拿到五个结果集（域清单 / 域间字段引用 / 域内关系数 / 域间登记关系 / 各域登记关系数），
     /// 缺一个都会让图表残缺——尤其是后两个：少了它们，域间连线就只剩"选基础资料"那一类。
-    ///
-    /// 未归属域（编号 0）必须在场：表不属于任何模块时 <c>MIN(M_ROOT_IDX)</c> 是 NULL，
-    /// 未归一成 0 会让读取器直接抛 <c>SqlNullValueException</c>。
     /// </summary>
     [Fact]
     public async Task GetOverviewAsync_五个结果集都能取到()
@@ -49,19 +50,20 @@ public sealed class BusinessFlowRepositoryLiveTests
 
         Assert.NotEmpty(overview.Domains);
         Assert.True(overview.Domains.Count > 10, $"业务域数量异常偏少：{overview.Domains.Count}");
-        Assert.Contains(overview.Domains, domain => domain.RootIdx == 0 && domain.Name == "未归属");
-        Assert.Contains(overview.Domains, domain => domain.TableCount > 0 && domain.InternalEdgeCount > 0);
+        Assert.Contains(overview.Domains, domain => domain.ModuleCount > 0 && domain.InternalEdgeCount > 0);
         Assert.NotEmpty(overview.Links);
-        Assert.All(overview.Domains, domain => Assert.True(domain.TableCount >= 0));
+        Assert.All(overview.Domains, domain => Assert.True(domain.ModuleCount >= 0));
         // 两个数据源的计数各自独立统计，不能被其中一个覆盖掉（这正是分成两列的原因）
         Assert.Contains(overview.Domains, domain => domain.RelationEdgeCount > 0);
         Assert.Contains(overview.Links, link => link.RelationEdgeCount > 0);
         Assert.Contains(overview.Links, link => link.EdgeCount > 0);
+        // 域名不能是编号兜底串：能进总览的域都来自 MODULES 的根模块
+        Assert.All(overview.Domains, domain => Assert.False(string.IsNullOrWhiteSpace(domain.Name)));
     }
 
     /// <summary>
-    /// 域内明细图：挑一个确定有引用关系的域，五个结果集都要能取到
-    /// （域名 / 域内表清单 / 引用明细 / 登记关系明细 / 表名与模块候选）。
+    /// 域内明细图：挑一个确定有关系的域，五个结果集都要能取到
+    /// （域名 / 模块清单 / 字段引用明细 / 登记关系明细 / 自引用计数）。
     /// </summary>
     [Fact]
     public async Task GetDomainGraphAsync_域内明细图可构建()
@@ -70,7 +72,7 @@ public sealed class BusinessFlowRepositoryLiveTests
 
         var overview = await _repository.GetOverviewAsync(CancellationToken.None);
         var domain = overview.Domains
-            .Where(item => item.TableCount > 0 && item.InternalEdgeCount > 0)
+            .Where(item => item.ModuleCount > 0 && item.InternalEdgeCount > 0)
             .OrderByDescending(item => item.InternalEdgeCount)
             .First();
 
@@ -82,17 +84,25 @@ public sealed class BusinessFlowRepositoryLiveTests
         Assert.NotEmpty(graph.Nodes);
         Assert.NotEmpty(graph.Edges);
         // 入口：至少有一部分节点能点进统一工作台——路由由服务端按菜单同一套白名单解析，解析不出兜底页。
-        var entryNodes = graph.Nodes.Where(node => node.RouteUrl is not null && node.ModuleId is not null).ToList();
+        var entryNodes = graph.Nodes.Where(node => node.RouteUrl is not null).ToList();
         Assert.NotEmpty(entryNodes);
         Assert.All(entryNodes, node => Assert.DoesNotContain("/fallback/", node.RouteUrl!, StringComparison.OrdinalIgnoreCase));
         // 两端都在域内的才是域内流程；有一端在域外的按跨域引用画
         Assert.Contains(graph.Edges, edge => edge.Kind == "internal");
         // 边集收「任意一端在本域」，且每条边都要标出端点在不在域内——前端靠它区分下游视角与上游视角
         Assert.All(graph.Edges, edge => Assert.True(edge.DownstreamInDomain || edge.UpstreamInDomain));
+        // 节点是模块：编号必须为正，且节点集合与边端点一致（没有悬空节点）
+        Assert.All(graph.Nodes, node => Assert.True(node.ModuleId > 0));
+        var endpointIds = graph.Edges
+            .SelectMany(edge => new[] { edge.FromModuleId, edge.ToModuleId })
+            .Distinct()
+            .OrderBy(id => id)
+            .ToList();
+        Assert.Equal(endpointIds, graph.Nodes.Select(node => node.ModuleId).OrderBy(id => id).ToList());
     }
 
     /// <summary>
-    /// 上游视角的数据只能由服务端给出：这类边（本域的表被域外引用）落在别的域的下游视图里，
+    /// 上游视角的数据只能由服务端给出：这类边（本域的模块被域外引用）落在别的域的下游视图里，
     /// 前端无法从默认视图翻转出来。若它们全都取不到，"上游视角"就是个没有效果的开关。
     /// </summary>
     [Fact]
@@ -121,10 +131,11 @@ public sealed class BusinessFlowRepositoryLiveTests
 
     /// <summary>
     /// 登记关系边要带出"靠哪些键列关联"：这是它相对字段引用边多出来的信息，
-    /// 缺了它就只剩"有这条线"而说不出为什么。
+    /// 缺了它就只剩"有这条线"而说不出为什么。表级证据（涉及表对）同样不能空——
+    /// 节点升到模块之后，那是唯一还能追到具体表的线索。
     /// </summary>
     [Fact]
-    public async Task GetDomainGraphAsync_登记关系边带键列()
+    public async Task GetDomainGraphAsync_登记关系边带键列与表对()
     {
         if (ConnectionString.Value is null) return;
 
@@ -139,23 +150,12 @@ public sealed class BusinessFlowRepositoryLiveTests
 
         Assert.NotEmpty(registered);
         Assert.All(registered, edge => Assert.NotEmpty(edge.KeyPairs));
-        // 同一对表只出一条边：既是字段引用又是登记关系时，两种信息落在同一条边上而不是画两条重叠的线
+        Assert.All(registered, edge => Assert.NotEmpty(edge.TablePairs));
+        // 同一对模块只出一条边：既是字段引用又是登记关系时，两种信息落在同一条边上而不是画两条重叠的线
         Assert.All(registered, edge => Assert.True(edge.DownstreamInDomain || edge.UpstreamInDomain));
         Assert.Equal(
             registered.Count,
-            registered.Select(edge => (edge.FromTable, edge.ToTable)).Distinct().Count());
-    }
-
-    /// <summary>未归属域（编号 0）没有对应的 MODULES 行，名称必须由服务端兜底给出，不能落到 404。</summary>
-    [Fact]
-    public async Task GetDomainGraphAsync_未归属域可打开()
-    {
-        if (ConnectionString.Value is null) return;
-
-        var graph = await _repository.GetDomainGraphAsync(0, CancellationToken.None);
-
-        Assert.NotNull(graph);
-        Assert.Equal("未归属", graph!.Name);
+            registered.Select(edge => (edge.FromModuleId, edge.ToModuleId)).Distinct().Count());
     }
 
     /// <summary>查不到模块编号的域要说"不存在"，交给控制器 404，而不是返回一个空图。</summary>
@@ -165,13 +165,15 @@ public sealed class BusinessFlowRepositoryLiveTests
         if (ConnectionString.Value is null) return;
 
         Assert.Null(await _repository.GetDomainGraphAsync(999_999, CancellationToken.None));
+        // 编号 0 不再是"未归属域"：节点是模块，不属于任何模块的表没有节点，因此也不存在 0 号域。
+        Assert.Null(await _repository.GetDomainGraphAsync(0, CancellationToken.None));
     }
 
     /// <summary>
-    /// 第三级「两个域之间的关系」：逐条关系的构成必须与总览那条连线的数字对得上——
+    /// 第三级「两个域之间」：逐条关系的构成必须与总览那条连线的数字对得上——
     /// 线上写 "6+3"，明细里就该有 6 条带字段取值来源、3 条带已登记单据关系。
     ///
-    /// 行数是两者的<b>并集</b>而不是和：同一对表两类事实都成立时只出一行（两个标签并列），
+    /// 行数是两者的<b>并集</b>而不是和：同一对模块两类事实都成立时只出一行（两个标签并列），
     /// 连线上那两个数字之和因此可能比行数大。逐条断言的是"每一类各有几条"，
     /// 并额外证明这库里确实存在重合（否则"合并"这件事没有样本，成了纸面约定）。
     ///
@@ -204,14 +206,17 @@ public sealed class BusinessFlowRepositoryLiveTests
             // 两类事实各自的条数：与连线上分开写的两个数字逐一对应
             Assert.Equal(link.RelationEdgeCount, graph.Edges.Count(edge => edge.Registered));
             Assert.Equal(link.EdgeCount, graph.Edges.Count(edge => edge.FieldCount > 0));
-            // 一对表只出一条记录，不会因为两个来源都命中而重复计数
-            Assert.Equal(graph.Edges.Count, graph.Edges.Select(edge => (edge.FromTable, edge.ToTable)).Distinct().Count());
+            // 一对模块只出一条记录，不会因为两个来源都命中而重复计数
+            Assert.Equal(
+                graph.Edges.Count,
+                graph.Edges.Select(edge => (edge.FromModuleId, edge.ToModuleId)).Distinct().Count());
             // 并集：每一行至少有一类身份，且行数不超过两个数字之和（重合时更少）
             Assert.All(graph.Edges, edge =>
             {
                 Assert.True(edge.Registered || edge.FieldCount > 0);
-                Assert.False(string.IsNullOrWhiteSpace(edge.FromTableName));
-                Assert.False(string.IsNullOrWhiteSpace(edge.ToTableName));
+                Assert.False(string.IsNullOrWhiteSpace(edge.FromModuleName));
+                Assert.False(string.IsNullOrWhiteSpace(edge.ToModuleName));
+                Assert.NotEmpty(edge.TablePairs);
             });
             Assert.True(graph.Edges.Count <= link.EdgeCount + link.RelationEdgeCount);
             if (graph.Edges.Any(edge => edge.Registered && edge.FieldCount > 0)) checkedOverlap = true;
@@ -225,24 +230,7 @@ public sealed class BusinessFlowRepositoryLiveTests
         }
 
         Assert.True(checkedRegistered, "关系最多的若干条域间连线里一条登记关系都没有，键列断言会变成恒真的假断言。");
-        Assert.True(checkedOverlap, "这库里两类事实没有一对表重合，「一对表一条关系」的合并口径没有样本可比。");
-    }
-
-    /// <summary>未归属域（编号 0）没有对应的 MODULES 行，名字必须由服务端兜底给出，不能落到 404。</summary>
-    [Fact]
-    public async Task GetDomainLinkGraphAsync_未归属域可打开()
-    {
-        if (ConnectionString.Value is null) return;
-
-        var overview = await _repository.GetOverviewAsync(CancellationToken.None);
-        var candidate = overview.Links.FirstOrDefault(item => item.FromRootIdx == 0 || item.ToRootIdx == 0);
-        // 这个库里没有"未归属表"参与的关系时不虚构样本：那条 0 号兜底另有域内图的用例覆盖
-        if (candidate is null) return;
-
-        var graph = await _repository.GetDomainLinkGraphAsync(candidate.FromRootIdx, candidate.ToRootIdx, CancellationToken.None);
-
-        Assert.NotNull(graph);
-        Assert.Equal("未归属", candidate.FromRootIdx == 0 ? graph!.FromName : graph!.ToName);
+        Assert.True(checkedOverlap, "这库里两类事实没有一对模块重合，「一对模块一条关系」的合并口径没有样本可比。");
     }
 
     /// <summary>任一端查不到模块编号的域都要说"不存在"，交给控制器 404。</summary>

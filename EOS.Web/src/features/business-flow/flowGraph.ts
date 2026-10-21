@@ -1,15 +1,16 @@
 import dagre from '@dagrejs/dagre'
 import { MarkerType, type Edge } from '@xyflow/react'
 
-/** 业务域：表的归属模块的根模块。rootIdx 为 0 表示未归属任何模块的表。 */
+/** 业务域：模块的根模块。rootIdx 为 0 表示根模块缺失的模块。 */
 export interface FlowDomain {
   rootIdx: number
   name: string
-  tableCount: number
+  /** 该域内承载单据/业务页的模块数（有主表的模块）。 */
+  moduleCount: number
   internalEdgeCount: number
   outEdgeCount: number
   inEdgeCount: number
-  /** 已登记单据关系边里「引用方在本域」的条数。 */
+  /** 已登记单据关系边里「下游在本域」的条数。 */
   relationEdgeCount: number
 }
 
@@ -32,37 +33,46 @@ export interface FlowOverview {
   links: FlowDomainLink[]
 }
 
-export interface FlowTableNode {
-  tableId: string
-  tableName: string
+/**
+ * 图上的一个节点：**一个模块**（一份可点进去的单据或业务页），不是一张表。
+ * 这一页要回答"单据怎么往下走、模块与模块之间怎么衔接"，表是实现细节。
+ */
+export interface FlowModuleNode {
+  moduleId: number
   moduleName: string
-  /** 该表是否属于当前正在浏览的域；false 表示它是被本域引用的域外表。 */
+  /** 该模块承载的主表（表代码）；节点上作为第二行，便于按表名对账。 */
+  masterTable: string
+  /** 该模块是否属于当前正在浏览的域；false 表示它是被本域引用的域外模块。 */
   inDomain: boolean
   degree: number
   selfReferenceCount: number
-  /** 该表对应模块里可打开的那一个；为 null 表示没有能进的入口。 */
-  moduleId: number | null
   /** 服务端按菜单白名单解析好的入口路由，前端直接跳转，不自己拼 URL。 */
   routeUrl: string | null
 }
 
-export interface FlowTableEdge {
-  /** 上游（被引用方）：字段的取值来源表，或登记关系里被定位的目标表。 */
-  fromTable: string
-  /** 下游（引用方）：字段所属表，或登记关系里执行动作的本单。 */
-  toTable: string
+/**
+ * 图上的一条边：一对模块之间的关系，方向为「上游（被引用）→ 下游（引用方）」。
+ * 表级证据不丢：`tablePairs` 给出这条模块关系具体落在哪几对表上。
+ */
+export interface FlowModuleEdge {
+  /** 上游（被引用方）模块号。 */
+  fromModuleId: number
+  /** 下游（引用方）模块号。 */
+  toModuleId: number
   /** internal=两端都在本域；external=有一端在域外（默认折叠）。 */
-  kind: 'internal' | 'external' | 'self'
+  kind: 'internal' | 'external'
   /** 是否同时是已登记单据关系（FIELD_RELATION，RELATION_KIND=EFFECT）。 */
   registered: boolean
-  /** 登记关系的语义名；一对表命中多个边组时用 " / " 连接。 */
+  /** 登记关系的语义名；一对模块命中多个边组时用 " / " 连接。 */
   relationName: string | null
   /** 字段引用条数（FIELD_DATASOURCE）。 */
   fieldCount: number
-  /** 引用字段名（FIELD_DATASOURCE）。 */
+  /** 引用字段名，形如 "COP_ORDER_D.MRP_QTY"（跨表，故带表前缀）。 */
   fields: string[]
   /** 登记键列对，形如 "SEND_NO → SEND_NO"（本单列 → 目标单列）。 */
   keyPairs: string[]
+  /** 这条模块关系落在哪几对表上，形如 "COP_ORDER_D → PRODUCT"。 */
+  tablePairs: string[]
   /** 引用方在本域：默认视图画的那些边（"本域引用了谁"）。 */
   downstreamInDomain: boolean
   /** 被引用方在本域：打开上游视角后额外画出来的边（"本域被谁引用"）。 */
@@ -72,25 +82,26 @@ export interface FlowTableEdge {
 export interface FlowDomainGraph {
   rootIdx: number
   name: string
-  nodes: FlowTableNode[]
-  edges: FlowTableEdge[]
+  nodes: FlowModuleNode[]
+  edges: FlowModuleEdge[]
 }
 
 /**
- * 两个业务域之间的一条关系事实（第三级「模块关系」视图）：上游表 → 下游表，
- * 外加这条线为什么存在——字段取值来源明细，以及它是否同时是已登记单据关系。
- * 两个来源合成一条记录，与域内图同一口径（同一对表只出现一次）。
+ * 两个业务域之间的一条关系事实（第三级「模块关系」视图）：上游模块 → 下游模块，
+ * 外加这条线为什么存在——字段取值来源明细、表级对账，以及它是否同时是已登记单据关系。
+ * 两个来源合成一条记录，与域内图同一口径（同一对模块只出现一次）。
  */
 export interface FlowLinkEdge {
-  fromTable: string
-  toTable: string
-  fromTableName: string
-  toTableName: string
+  fromModuleId: number
+  toModuleId: number
+  fromModuleName: string
+  toModuleName: string
   registered: boolean
   relationName: string | null
   fieldCount: number
   fields: string[]
   keyPairs: string[]
+  tablePairs: string[]
 }
 
 /**
@@ -107,13 +118,13 @@ export interface FlowLinkGraph {
   edges: FlowLinkEdge[]
 }
 
-/** 第三级明细表的一行：一条关系事实整理成可直接展示的文本。 */
+/** 第三级明细表的一行：一条模块关系整理成可直接展示的文本。 */
 export interface FlowLinkRow {
   id: string
-  fromTable: string
-  fromTableName: string
-  toTable: string
-  toTableName: string
+  fromModuleId: number
+  fromModuleName: string
+  toModuleId: number
+  toModuleName: string
   /** 这条关系为什么存在：两类事实可以同时成立，故是标签列表而不是单个类型。 */
   relationKinds: string[]
   registered: boolean
@@ -123,6 +134,8 @@ export interface FlowLinkRow {
   fieldCount: number
   fields: string
   keyPairs: string
+  /** 这条模块关系具体落在哪几对表上（表级证据）。 */
+  tablePairs: string
 }
 
 /** 画布节点的展示载荷。 */
@@ -131,7 +144,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   code: string
   meta: string
   badge: string
-  variant: 'domain' | 'table' | 'table-external'
+  variant: 'domain' | 'module' | 'module-external'
   /** 该域的配色（与它引出的连线同色），域总览图上以左侧色条呈现。 */
   color?: string
   /** 点击可打开的模块入口（服务端解析好的路由）；没有就不给入口，点击只做聚焦。 */
@@ -158,9 +171,16 @@ export function domainRootIdxOf(nodeId: string): number | null {
   return /^\d+$/.test(raw) ? Number(raw) : null
 }
 
-/** 边的稳定 id：一对表只有一条边（两个数据源已合成），故两端表名即唯一键。 */
-export function flowEdgeId(edge: { fromTable: string; toTable: string }): string {
-  return `${edge.fromTable}->${edge.toTable}`
+/** 模块节点 id 前缀：域与模块共存于不同层级的图，前缀让 id 不会互相误解析。 */
+export const MODULE_NODE_PREFIX = 'module:'
+
+export function moduleNodeId(moduleId: number): string {
+  return `${MODULE_NODE_PREFIX}${moduleId}`
+}
+
+/** 边的稳定 id：一对模块只有一条边（两个数据源已合成），故两端模块号即唯一键。 */
+export function flowEdgeId(edge: { fromModuleId: number; toModuleId: number }): string {
+  return `${moduleNodeId(edge.fromModuleId)}->${moduleNodeId(edge.toModuleId)}`
 }
 
 export function domainLinkId(link: FlowDomainLink): string {
@@ -190,16 +210,17 @@ export function linkRows(data: FlowLinkGraph | undefined): FlowLinkRow[] {
     if (edge.fieldCount > 0) relationKinds.push('字段取值来源')
     return {
       id: flowEdgeId(edge),
-      fromTable: edge.fromTable,
-      fromTableName: edge.fromTableName,
-      toTable: edge.toTable,
-      toTableName: edge.toTableName,
+      fromModuleId: edge.fromModuleId,
+      fromModuleName: edge.fromModuleName,
+      toModuleId: edge.toModuleId,
+      toModuleName: edge.toModuleName,
       relationKinds,
       registered: edge.registered,
       relationName: edge.relationName,
       fieldCount: edge.fieldCount,
       fields: edge.fields.join('、'),
       keyPairs: edge.keyPairs.join('、'),
+      tablePairs: edge.tablePairs.join('、'),
     }
   })
 }
@@ -220,17 +241,17 @@ export function domainLinkLabel(link: FlowDomainLink, registeredOnly: boolean): 
  * 一条域内边在当前视角下该不该画。判据集中在这里，便于阅读与单测：
  * 1. **已登记单据关系始终显示**——它就是"单据上下游"本身，不该被"跨域折叠"藏起来；
  * 2. 下游视角（默认）：本域引用了谁。域内边画，跨域引用按开关折叠；
- * 3. 上游视角：本域的表被谁引用。这类边落在别的域的下游视图里、本域看不到，所以开关一开就必须画，
+ * 3. 上游视角：本域的模块被谁引用。这类边落在别的域的下游视图里、本域看不到，所以开关一开就必须画，
  *    否则"上游视角"这个名字等于没有效果。
  */
-export function isEdgeVisible(edge: FlowTableEdge, showExternal: boolean, includeUpstream: boolean): boolean {
+export function isEdgeVisible(edge: FlowModuleEdge, showExternal: boolean, includeUpstream: boolean): boolean {
   if (edge.registered) return true
   if (edge.downstreamInDomain) return edge.kind === 'internal' || showExternal
   return includeUpstream && edge.upstreamInDomain
 }
 
 export const DOMAIN_NODE_WIDTH = 180
-export const TABLE_NODE_WIDTH = 168
+export const MODULE_NODE_WIDTH = 168
 
 /**
  * 节点几何：**必须与 `business-flow.css` 的 `.erp-flow-node` 保持一致**
@@ -257,14 +278,14 @@ export function nodeHeightForLines(lines: number): number {
 /** 节点尺寸：宽度按类型固定，高度按实际行数算——三行内容的节点就该比两行的高。 */
 export function nodeSize(data: FlowNodeData): FlowNodeSize {
   return {
-    width: data.variant === 'domain' ? DOMAIN_NODE_WIDTH : TABLE_NODE_WIDTH,
+    width: data.variant === 'domain' ? DOMAIN_NODE_WIDTH : MODULE_NODE_WIDTH,
     height: nodeHeightForLines(nodeLineCount(data)),
   }
 }
 
 /** 两行节点的尺寸。域节点恒为两行；网格列数的估算也按两行算。 */
 export const DOMAIN_NODE_SIZE: FlowNodeSize = { width: DOMAIN_NODE_WIDTH, height: nodeHeightForLines(2) }
-export const TABLE_NODE_SIZE: FlowNodeSize = { width: TABLE_NODE_WIDTH, height: nodeHeightForLines(2) }
+export const MODULE_NODE_SIZE: FlowNodeSize = { width: MODULE_NODE_WIDTH, height: nodeHeightForLines(2) }
 
 const INTERNAL_EDGE_COLOR = '#206bc4'
 const EXTERNAL_EDGE_COLOR = '#adb5bd'
@@ -341,7 +362,7 @@ export function domainEdgeStyle(link: FlowDomainLink, color: string): Partial<Ed
  * - 跨域引用：灰虚线（默认折叠，展开后一眼可辨）。
  * 与画布组件分开放：画布文件只导出组件，Fast Refresh 才能正常工作。
  */
-export function flowEdgeStyle(kind: FlowTableEdge['kind'], registered = false): Partial<Edge> {
+export function flowEdgeStyle(kind: FlowModuleEdge['kind'], registered = false): Partial<Edge> {
   if (registered) {
     return {
       type: 'smoothstep',
@@ -478,7 +499,7 @@ export function layoutGridGraph(
   let column = 0
 
   for (const id of nodeIds) {
-    const size = sizes.get(id) ?? TABLE_NODE_SIZE
+    const size = sizes.get(id) ?? MODULE_NODE_SIZE
     positions.set(id, { x, y })
     rowHeight = Math.max(rowHeight, size.height)
     column += 1
@@ -510,7 +531,7 @@ export function layoutFlowGraph(
   graph.setGraph({ rankdir: direction, nodesep: 20, ranksep: 56, marginx: 16, marginy: 16 })
 
   for (const id of nodeIds) {
-    const size = sizes.get(id) ?? TABLE_NODE_SIZE
+    const size = sizes.get(id) ?? MODULE_NODE_SIZE
     graph.setNode(id, { width: size.width, height: size.height })
   }
   for (const link of links) {
@@ -523,7 +544,7 @@ export function layoutFlowGraph(
 
   const positions = new Map<string, { x: number; y: number }>()
   for (const id of nodeIds) {
-    const size = sizes.get(id) ?? TABLE_NODE_SIZE
+    const size = sizes.get(id) ?? MODULE_NODE_SIZE
     const node = graph.node(id) as { x: number; y: number } | undefined
     if (!node) {
       positions.set(id, { x: 0, y: 0 })
