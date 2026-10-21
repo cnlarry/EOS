@@ -217,10 +217,14 @@ if (-not (Test-Path $lessonsPath)) {
 # 真实反例：AGENTS.md 指向 docs/架构.md，而 docs/ 在工作副本被 .git/info/exclude 整目录排除——
 # 本机读写正常、克隆下来是死链，而 AGENTS.md 恰是 AI 与外部读者的入口。
 # 判据只认 `git ls-files`（工作副本里存在不算入库），不判内容、不判链接文案。
+# `-c core.quotePath=false` 是必需的：该选项默认为 true 时，git 会把含中文的路径输出成
+# `"docs/guide/03-\345\267\245...md"` 这种八进制转义，入库清单里就全是转义串，任何中文文件名
+# 的链接都会被判成"未入库"。本机 `.gitconfig` 恰好关掉过它，CI 的干净环境不会，于是同一份脚本
+# 本机绿、流水线红——门禁不能依赖个人 git 配置。
 $trackedFiles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-foreach ($p in (git -C $root ls-files)) { if ($p) { [void]$trackedFiles.Add(($p -replace '\\', '/')) } }
+foreach ($p in (git -C $root -c core.quotePath=false ls-files)) { if ($p) { [void]$trackedFiles.Add(($p -replace '\\', '/')) } }
 $brokenLinks = 0
-foreach ($rel in @(git -C $root ls-files '*.md')) {
+foreach ($rel in @(git -C $root -c core.quotePath=false ls-files '*.md')) {
     if ([string]::IsNullOrWhiteSpace($rel)) { continue }
     $full = Join-Path $root $rel
     if (-not (Test-Path -LiteralPath $full)) { continue }
