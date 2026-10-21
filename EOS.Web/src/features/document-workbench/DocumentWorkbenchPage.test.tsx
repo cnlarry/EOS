@@ -282,18 +282,6 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.getByText('VIEW_FORM')).toBeInTheDocument()
   })
 
-  it('选中一行后出现「在新标签打开」（同模块两单并排的入口），未选中时不出现', async () => {
-    renderPage()
-    await loaded()
-    expect(screen.queryByRole('button', { name: '在新标签打开' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('P1'))
-    const openInNewTab = await screen.findByRole('button', { name: '在新标签打开' })
-    fireEvent.click(openInNewTab)
-    // 该入口按 NEWTAB 打开：进入浏览态（有外壳时它是一个独立的对照窗口）
-    expect(screen.getByText('VIEW_FORM')).toBeInTheDocument()
-  })
-
   it('搜索关键字触发带 keyword 的记录查询', async () => {
     renderPage()
     await loaded()

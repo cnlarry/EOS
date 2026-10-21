@@ -362,29 +362,13 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     openForm(workbenchView(moduleId,key),{openMode:definition.data.formOpenMode,...formShellHint(),state:{navKeys,navIndex}})
   }
   const openSearchCenter=()=>{openTab(`/search-center/${moduleId}`,{locate:true})}
-  /**
-   * 把当前选中的那一行在新标签里打开（对照窗口，ADR-040 §2.6）：
-   * 同模块要并排看两张单时用它——双击会接管本模块标签，对照则另开固定承载这一张单的标签，
-   * 关闭它回到开它的标签。只在恰好选中一行时出现，避免"选了 5 行却只开 1 张"的歧义。
-   */
-  const openSelectionInNewTab=()=>{
-    if(!definition.data)return
-    const keys=Object.keys(selected).filter(key=>selected[key])
-    if(keys.length!==1)return
-    const row=selected[keys[0]]??rows.find(item=>rowKey(item)===keys[0])
-    if(!row)return
-    const key=definition.data.masterPkOrder.map(column=>String(row[column]??''))
-    openForm(workbenchView(moduleId,key),{openMode:'NEWTAB',...formShellHint()})
-  }
-  const selectedCount=Object.keys(selected).filter(key=>selected[key]).length
-  // 列表工具条只留「新增」+ 列表自身工具（导出 / 查询 / 新标签打开）：单据级动作
+  // 列表工具条只留「新增」+ 列表自身工具（导出 / 查询）：单据级动作
   // （编辑/复制/删除/批核/结案/打印…）全在统一表单的浏览态工具条里，破坏性动作必须先打开单据看细节。
   // （曾经这套内容由 `MODULES.FORM_BUTTONS` 白名单裁剪，该列已随迁移 320 退役且全库为空；
   //   「查询」入口仍按模块的 SEARCH 位出现，见下方 businessItems 之后的补位。）
   const businessItems:ErpCommandItem[]=[
     {action:'new',visible:definition.data?.hasAdd,variant:'primary',onClick:openNew},
     {action:'export',render:()=>exportButton},
-    {action:'newtab',visible:selectedCount===1,onClick:openSelectionInNewTab},
   ]
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.groupId}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
   const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupId',String(activeGroup.groupId));current.set('groupValue',value);return current},{replace:true})}
