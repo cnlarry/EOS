@@ -28,7 +28,7 @@
 
 | 资产 | 口径 | 说明 |
 |---|---|---|
-| `docs/status.md` | 本机 | 现状事实源；`docs/` 未整体纳入版本控制，别人克隆里没有 |
+| `docs/status.md` | 随仓库 | 现状事实源，**已纳入版本控制**（`.git/info/exclude` 里显式 `!docs/status.md` 放行；`check-docs.ps1` 对已入库副本照常校验刷新滞后）。`docs/` 下其余工作文档（`docs/plans/` 除 `decision-ledger.md` 外）仍只在本机 |
 | `AGENTS.local.md` | 本机 | 维护者本机指引（含发布相关的多 Agent 并行规范）；由 `.git/info/exclude` 排除，不随仓库分发 |
 | `scripts/publish-release.ps1` | 相对 | 实际位于 `.agents/skills/eos-release/scripts/`，正文与 README 按技能目录相对书写（文件名带连字符，抽取正则会把长名截断，故登记口径） |
 | `.agents/reservations/` | 本机 | 共享文件编辑锁目录（运行时协调状态，被 `.git/info/exclude` 排除，不随仓库分发） |
