@@ -12,6 +12,7 @@ import {
   parsePersistedTabs,
   restoreWorkspaceState,
   serializeTabs,
+  shouldApplyAddressSync,
   tabIdentityOf,
   tabUrlOf,
   workspaceReducer,
@@ -143,8 +144,23 @@ describe('标签身份（ADR-040）', () => {
   })
 })
 
-describe('workspaceReducer', () => {
-  it('打开新地址新建标签并激活', () => {
+describe('地址同步的落地判据', () => {
+  it('没有待落地地址时照常同步', () => {
+    expect(shouldApplyAddressSync(null, '/a', '/anything')).toBe(true)
+  })
+
+  it('外壳刚发起、地址还没跟上时先等（否则会把刚切过去的标签改写成旧地址）', () => {
+    // 中间帧：地址仍是列表，活动标签已经是同一模块的单据窗口
+    expect(shouldApplyAddressSync('/workbench/1209/view/A', '/workbench/1209', '/workbench/1209/view/A')).toBe(false)
+  })
+
+  it('地址已落到目标、或两边都没动（导航被拦下）时放行', () => {
+    expect(shouldApplyAddressSync('/workbench/1209/view/A', '/workbench/1209/view/A', '/workbench/1209')).toBe(true)
+    expect(shouldApplyAddressSync('/workbench/1209/view/A', '/workbench/1209', '/workbench/1209')).toBe(true)
+  })
+})
+
+describe('workspaceReducer', () => {  it('打开新地址新建标签并激活', () => {
     const state = workspaceReducer(createWorkspaceState('/dashboard', 't1'), { type: 'open', id: 't2', url: '/workbench/1606', label: '采购订单' })
     expect(state.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/workbench/1606'])
     expect(state.activeId).toBe('t2')

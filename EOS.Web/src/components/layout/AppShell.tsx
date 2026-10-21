@@ -46,6 +46,7 @@ import {
   parsePersistedTabs,
   restoreWorkspaceState,
   serializeTabs,
+  shouldApplyAddressSync,
   tabIdentityOf,
   tabUrlOf,
   UNRESOLVED_TAB_LABEL,
@@ -500,11 +501,13 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
 
   // 激活标签即把浏览器地址切到该标签（地址栏始终反映活动标签）。
   // 用 replace：切标签不是翻页，历史里不该留下"又一个地址"；state 一并带回去，否则会抹掉该标签的跨页上下文。
+  // 先登记待落地地址（见同步效应里的说明），否则中间帧会把目标标签的地址改成旧地址。
   const activateTab = useCallback((id: string) => {
     const tab = workspaceRef.current.tabs.find((item) => item.id === id)
     if (!tab) return
     dispatch({ type: 'activate', id })
     if (tabUrlOf(locationRef.current) !== tab.url) {
+      pendingNavRef.current = tab.url
       navigateRef.current(tab.url, { replace: true, state: tab.state })
     }
   }, [])
@@ -526,6 +529,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     })
     dropDirty(id)
     if (next && tabUrlOf(locationRef.current) !== next.url) {
+      pendingNavRef.current = next.url
       navigateRef.current(next.url, { replace: true, state: next.state })
     }
   }, [dropDirty])
@@ -689,8 +693,19 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
 
   // 地址同步：同身份 ⇒ 标签内导航；身份变了 ⇒ 切到/新建对应标签（见 workspaceTabs 的 sync 分支）。
   // state 一并落到标签上：标签面板会重造 location，不带过去的话页面读到的 state 永远是 null。
+  //
+  // **外壳自己发起的切换要等它落地**：开/切/关标签会先后改两处状态（标签、浏览器地址），
+  // 两者落进两次渲染时，中间那一帧是"地址还是旧的、活动标签已经是新的"。此时若照常推断身份，
+  // 会把刚切过去的标签判成"用户离开了它"，进而把它的地址改写成旧地址（同一个模块两个标签时尤其明显：
+  // 一次点击看起来开了两份，切标签也会莫名重挂载一次）。判据：地址与活动标签尚未对齐就等，
+  // 对齐后（通常是幂等刷新）才交给同步效应；被拦下的导航则因"两边都没动"而自动作废。
   useLayoutEffect(() => {
-    pendingNavRef.current = null
+    if (pendingNavRef.current !== null) {
+      // 用 ref 读活动标签（与渲染同步更新）：不把 tabs 放进依赖，避免每次标签变化都多跑一轮同步
+      const activeTab = workspaceRef.current.tabs.find((tab) => tab.id === workspaceRef.current.activeId)
+      if (!shouldApplyAddressSync(pendingNavRef.current, activeUrl, activeTab?.url ?? null)) return
+      pendingNavRef.current = null
+    }
     dispatch({ type: 'sync', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined, state: location.state })
   }, [activeUrl, tabLabel, fromParam, location.state, nextTabId])
 

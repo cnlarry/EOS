@@ -216,6 +216,22 @@ export function tabMatchesUrl(tab: WorkspaceTab, url: string): boolean {
 }
 
 /**
+ * 地址同步效应是否应当接手。
+ *
+ * 外壳自己发起的切换（开/切/关标签）会先后改两处状态：标签、浏览器地址。两者落进两次渲染时，
+ * 中间那一帧是"地址还是旧的、活动标签已经是新的"——此时按身份推断会把刚切过去的标签判成
+ * "用户离开了它"，进而把它的地址改写成旧地址（同一模块两个标签时表现为一次点击开出两份、
+ * 或每次切标签都莫名重挂载一次）。
+ *
+ * 判据：还有待落地的地址、且它既不是当前地址、当前地址也与活动标签不一致 ⇒ 先等。
+ * 导航被拦下时两边都没动（当前地址 = 活动标签地址），这里会放行，不会卡住同步。
+ */
+export function shouldApplyAddressSync(pending: string | null, activeUrl: string, activeTabUrl: string | null): boolean {
+  if (pending === null) return true
+  return pending === activeUrl || activeTabUrl === activeUrl
+}
+
+/**
  * 标题暂不可解析时的占位文案（如页面尚未上抛标题、且该地址不在导航树里）。
  * 它只用于"从零开始"的场合，**不得用来覆盖标签上已有的标题**——否则一次上下文未就绪
  * 就会把标签永久改成占位文案。
