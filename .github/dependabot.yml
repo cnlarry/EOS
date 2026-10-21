@@ -59,9 +59,10 @@ updates:
     #   @tabler/icons-react    图标改名/删除 → 构建期 TS2305
     groups:
       # patch 一般可以整体合
+      # 分组的 update-types 只认 major/minor/patch（带 semver 前缀的是 ignore 段写法）
       npm-patch:
         patterns: ["*"]
-        update-types: ["version-update:semver-patch"]
+        update-types: ["patch"]
         exclude-patterns:
           - "typescript"
           - "@tanstack/react-table"
@@ -70,7 +71,7 @@ updates:
       # minor 要人看：小版本也会带行为变化（vitest/jsdom 的 DOM 行为、vite 的构建产物）
       npm-minor:
         patterns: ["*"]
-        update-types: ["version-update:semver-minor"]
+        update-types: ["minor"]
         exclude-patterns:
           - "typescript"
           - "@tanstack/react-table"
@@ -78,7 +79,7 @@ updates:
           - "@tabler/icons-react"
       npm-major:
         patterns: ["*"]
-        update-types: ["version-update:semver-major"]
+        update-types: ["major"]
         exclude-patterns:
           - "typescript"
           - "@tanstack/react-table"
