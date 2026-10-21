@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { createSession, getSituation, listMessages, listSessions, saveMemory, setMessageFeedback } from './api'
 import { extractPageContext } from './pageContext'
 import { buildChatSituation, describeSituation } from './situationSource'
@@ -14,6 +14,7 @@ import {
 } from './assistantContext'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import type { AssistantMessage, AssistantSession, SituationDigestItem } from './types'
 
 function readBool(key: string): boolean {
@@ -70,7 +71,7 @@ function readMessageId(message: unknown): number | undefined {
  */
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
-  const navigate = useNavigate()
+  const openTab = useOpenTab()
   const [open, setOpen] = useState(() => readBool(ASSISTANT_OPEN_KEY))
   const [sessions, setSessions] = useState<AssistantSession[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -285,8 +286,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const openInForm = useCallback((draft: AssistantFormDraft) => {
     sessionStorage.setItem(assistantPrefillKey(draft.moduleId), JSON.stringify(draft.values))
     setOpen(false)
-    navigate(workbenchNew(draft.moduleId))
-  }, [navigate])
+    openTab(workbenchNew(draft.moduleId), { locate: true })
+  }, [openTab])
 
   /**
    * 反馈：乐观更新（先改本地再提交），失败回滚。它是**标注**而不是业务写入，

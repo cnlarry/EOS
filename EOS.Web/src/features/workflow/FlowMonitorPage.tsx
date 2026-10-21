@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { IconEye, IconRefresh } from '@tabler/icons-react'
-import { useNavigate } from 'react-router-dom'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
@@ -80,7 +80,7 @@ function stateBadge(state: string, overdue = false): { label: string; cls: strin
 
 /** 流程监控（2103）：在途/完成/撤回流程实例全局视图 + 超时标记 + 明细下钻。 */
 export function FlowMonitorPage() {
-  const navigate = useNavigate()
+  const openTab = useOpenTab()
   const [status, setStatus] = useState('')
   const [keyword, setKeyword] = useState('')
   const [selectedWfId, setSelectedWfId] = useState<number | null>(null)
@@ -168,14 +168,14 @@ export function FlowMonitorPage() {
             <IconEye size={14} className="me-1" />明细
           </Button>
           {row.original.keyValues.length > 0 && (
-            <Button size="sm" className="erp-table-action" title="查看单据内容" onClick={() => navigate(workbenchView(row.original.moduleId, row.original.keyValues))}>
+            <Button size="sm" className="erp-table-action" title="查看单据内容" onClick={() => openTab(workbenchView(row.original.moduleId, row.original.keyValues), { locate: true })}>
               单据
             </Button>
           )}
         </div>
       ),
     },
-  ], [navigate])
+  ], [openTab])
 
   const errorMessage = describeApiError(list.error, '加载失败，请稍后重试。')
   const inFlightCount = rows.filter((row) => row.state === '0').length
@@ -246,7 +246,7 @@ export function FlowMonitorPage() {
                       {selected.ageDays != null && <div className="col-auto">在途 {Math.floor(selected.ageDays)} 天</div>}
                       {selected.keyValues.length > 0 && (
                         <div className="col-auto">
-                          <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchView(selected.moduleId, selected.keyValues))}>查看单据</Button>
+                          <Button size="sm" className="erp-table-action" onClick={() => openTab(workbenchView(selected.moduleId, selected.keyValues), { locate: true })}>查看单据</Button>
                         </div>
                       )}
                     </div>

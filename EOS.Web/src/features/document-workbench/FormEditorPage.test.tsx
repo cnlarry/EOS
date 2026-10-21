@@ -2,7 +2,8 @@ import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
-import { WorkspaceDirtyContext, WorkspaceTabContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
+import { WorkspaceDirtyContext, WorkspaceTabContext, WorkspaceTabKindContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
+import { WorkspaceNavContext } from '../../components/layout/WorkspaceNavContext'
 import { ToastProvider } from '../../components/ui/Toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
@@ -177,7 +178,9 @@ describe('FormEditorPage', () => {
     await waitFor(() => expect(screen.getByText('该模块未启用统一表单编辑（含存盘后业务逻辑的模块暂不开放，或不在白名单内）。')).toBeInTheDocument())
   })
 
-  it('跨模块关联浏览（from 参数）：返回按钮回到来源工作台列表', async () => {
+  it('交叉浏览（带 from 参数）：返回仍回**本模块**列表，不看来源参数', async () => {
+    // ADR-040 §2.2 规则 3：返回只有一个含义——回本模块列表。
+    // 来源不再由目标页记住：来源标签原地还在，切过去即可（参数只用来提示"← 来源"）。
     const router = createMemoryRouter(
       [
         { path: '/workbench/:moduleId', element: <BackProbe /> },
@@ -188,11 +191,52 @@ describe('FormEditorPage', () => {
     renderWithProviders(<ToastProvider><RouterProvider router={router} /></ToastProvider>)
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '返回' }))
-    await waitFor(() => expect(screen.getByText('BACK_LIST_1405')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('BACK_LIST_1209')).toBeInTheDocument())
   })
 
-  it('常规浏览（无 from 参数）：返回按钮回到当前模块列表', async () => {
+  it('对照窗口（record 标签）：返回=关闭自己，且不提供上一条/下一条与新增/复制', async () => {
+    const closeActiveTab = vi.fn()
     const router = createMemoryRouter(
+      [
+        { path: '/workbench/:moduleId', element: <BackProbe /> },
+        { path: '/workbench/:moduleId/view/*', element: <FormEditorPage /> },
+      ],
+      {
+        initialEntries: [{
+          pathname: '/workbench/1209/view/P1/A',
+          state: { navKeys: [['P1', 'A'], ['P2', 'A']], navIndex: 0 },
+        }],
+      },
+    )
+    const authStub: AuthContextValue = {
+      bootstrap: null, loading: false,
+      login: async () => undefined, logout: async () => undefined,
+      hasPermission: () => true,
+    }
+    renderWithProviders(
+      <WorkspaceNavContext.Provider value={{ openTab: vi.fn(), closeActiveTab }}>
+        <WorkspaceTabKindContext.Provider value="record">
+          <WorkspaceTabContext.Provider value="r1">
+            <AuthContext.Provider value={authStub}>
+              <ToastProvider><RouterProvider router={router} /></ToastProvider>
+            </AuthContext.Provider>
+          </WorkspaceTabContext.Provider>
+        </WorkspaceTabKindContext.Provider>
+      </WorkspaceNavContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    // 对照窗口只承载这一张单：沿列表翻动与新增/复制都不提供（避免窗口里悄悄换单）
+    expect(screen.queryByRole('button', { name: '上一条' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新增' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '复制' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    expect(closeActiveTab).toHaveBeenCalledTimes(1)
+    // 不是"导航到列表"，而是关掉这个窗口
+    expect(screen.queryByText('BACK_LIST_1209')).not.toBeInTheDocument()
+  })
+
+  it('常规浏览（无 from 参数）：返回按钮回到当前模块列表', async () => {    const router = createMemoryRouter(
       [
         { path: '/workbench/:moduleId', element: <BackProbe /> },
         { path: '/workbench/:moduleId/view/*', element: <FormEditorPage /> },

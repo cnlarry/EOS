@@ -87,6 +87,11 @@ jobs:
       # 不带这条，规范就只是"谁记得谁跑"。
       - name: 前端页面外壳
         run: ./scripts/check-page-shell.ps1
+      # 工作区导航只有一种写法：跨模块走 useOpenTab、返回回本模块列表。
+      # 拦 navigate(-1)、back= 参数机制、window.open 打开应用内业务页——这三类退化编译与单测都照不出来，
+      # 只表现为"点返回跳到别处 / 标签列表被另一个窗口覆盖"。口径见 docs/guide/03 第七节与 ADR-040。
+      - name: 前端工作区导航
+        run: ./scripts/check-tab-navigation.ps1
       - name: 数据层边界
         run: ./scripts/check-data-layer-boundary.ps1
       - name: 已退役库对象

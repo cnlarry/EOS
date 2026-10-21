@@ -1,6 +1,5 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { tabLinkHandler, useOpenTab } from '../../components/layout/WorkspaceNavContext'
-import { encodeBackPath, withBackPath } from '../../lib/navigation'
 import { workbenchList, workbenchView } from './workbenchPath'
 
 interface FieldBrowseLinkProps {
@@ -31,19 +30,17 @@ interface FieldBrowseLinkProps {
  */
 export function FieldBrowseLink({ value, browseModuleId, browseKeyFields, row, fromModuleId, canBrowse = true }: FieldBrowseLinkProps) {
   const openTab = useOpenTab()
-  const location = useLocation()
   if (!value || !browseModuleId || browseModuleId <= 0 || !canBrowse) return <>{value}</>
   const recordKeys = browseKeyFields?.length && row
     ? browseKeyFields.map(key => String(row[key] ?? '')).filter(keyValue => keyValue !== '')
     : []
   const isRecordLink = recordKeys.length > 0 && recordKeys.length === (browseKeyFields?.length ?? 0)
-  // `from` 只够回到来源模块的**列表**；`back` 带的是来源页的完整地址，
-  // 目标页据此切回原来那个页签（且位置精确——前提是来源页把视图状态写进了 URL）
-  const back = encodeBackPath(location.pathname, location.search)
+  // 借看别处的一条记录：定位到**目标模块标签**（不新建、不顶掉来源）。
+  // `from` 只留作目标页标题/面包屑的"← 来源"提示，不再承担返回（ADR-040 §2.4）。
   const target = isRecordLink
-    ? withBackPath(workbenchView(browseModuleId, recordKeys, fromModuleId), back)
+    ? workbenchView(browseModuleId, recordKeys, fromModuleId)
     : workbenchList(browseModuleId)
-  const handleClick = tabLinkHandler(openTab, target)
+  const handleClick = tabLinkHandler(openTab, target, { locate: true })
   return (
     <Link
       className="erp-browse-link"

@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useId, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { Button } from '../../components/ui/Button'
@@ -53,6 +54,7 @@ const RECENT_LIMIT = 6
  */
 export function ReportCenterPage() {
   const navigate = useNavigate()
+  const openTab = useOpenTab()
   const queryClient = useQueryClient()
   const baseId = useId()
   const [search, setSearch] = useState('')
@@ -148,8 +150,9 @@ export function ReportCenterPage() {
       moduleId: item.moduleId,
       reportId: item.reportId,
     }).catch(() => undefined)
-    // 打开的是**这张报表**，不是"这个模块的默认报表"：地址带身份，才能深链、分享、收藏到具体一张
-    navigate(`/report/${encodeURIComponent(item.reportId)}`)
+    // 打开的是**这张报表**，不是"这个模块的默认报表"：地址带身份，才能深链、分享、收藏到具体一张。
+    // 报表自成标签（身份 = 报表编号），报表中心留在原标签里，返回不丢目录
+    openTab(`/report/${encodeURIComponent(item.reportId)}`, { locate: true })
   }
 
   const moveFavorite = (item: ReportCatalogItem, direction: -1 | 1) => {
@@ -170,7 +173,7 @@ export function ReportCenterPage() {
         className="erp-catalog-tile-btn"
         aria-label={`自定义版式 ${item.reportName}`}
         title="自定义打印版式"
-        onClick={() => navigate(`/layout-designer/${item.moduleId}`)}
+        onClick={() => openTab(`/layout-designer/${item.moduleId}`, { locate: true })}
       >
         <IconPencil size={14} />
       </button>

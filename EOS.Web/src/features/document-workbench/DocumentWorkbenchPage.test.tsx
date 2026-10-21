@@ -282,6 +282,18 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.getByText('VIEW_FORM')).toBeInTheDocument()
   })
 
+  it('选中一行后出现「在新标签打开」（同模块两单并排的入口），未选中时不出现', async () => {
+    renderPage()
+    await loaded()
+    expect(screen.queryByRole('button', { name: '在新标签打开' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('P1'))
+    const openInNewTab = await screen.findByRole('button', { name: '在新标签打开' })
+    fireEvent.click(openInNewTab)
+    // 该入口按 NEWTAB 打开：进入浏览态（有外壳时它是一个独立的对照窗口）
+    expect(screen.getByText('VIEW_FORM')).toBeInTheDocument()
+  })
+
   it('搜索关键字触发带 keyword 的记录查询', async () => {
     renderPage()
     await loaded()
@@ -475,12 +487,11 @@ describe('DocumentWorkbenchPage', () => {
     renderPage()
     await loaded()
     const link = screen.getByRole('link', { name: 'P1' })
-    // 链接同时带 `from`（模块号，旧口径兜底）与 `back`（来源页完整地址，精确回跳）。
-    // `back` 的具体值是当前路由，这里只断言"带了这个参数"——把测试绑死在某个 URL 上
-    // 会让它随路由配置变化而无谓地红。
+    // 链接只带 `from`（来源模块，仅用于目标页的"← 来源"提示）：返回统一回目标模块列表，
+    // 不再携带 `back` 这类"来源页完整地址"参数（ADR-040 §2.4）
     const href = link.getAttribute('href') ?? ''
-    expect(href).toContain('/workbench/1305/view/P1?from=1209')
-    expect(href).toContain('back=')
+    expect(href).toBe('/workbench/1305/view/P1?from=1209')
+    expect(href).not.toContain('back=')
   })
 
   it('有权限但无键源列时降级为目标模块列表链接', async () => {

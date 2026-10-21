@@ -776,7 +776,7 @@ export function LayoutDesignerPage() {
             ? '无版式设计权限：需要管理员在权限管理中为当前账号授予 FORM_DESIGN_TAG（版式设计）权限位。'
             : '加载失败：无权访问或模块无内置版式。'}
         </div>
-        <Button variant="secondary" onClick={() => navigate(-1)}>返回</Button>
+        <Button variant="secondary" onClick={() => navigate('/report-center')}>返回报表中心</Button>
       </div>
     )
   }
@@ -798,7 +798,7 @@ export function LayoutDesignerPage() {
         ariaLabel="版式设计器工具栏"
         search={(
           <>
-            <Button variant="secondary" size="sm" onClick={() => navigate(-1)}>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/report-center')}>
               <IconArrowLeft size={16} /> 返回
             </Button>
             <strong className="ms-2">{definition.data?.title ?? ''} · 版式设计器</strong>

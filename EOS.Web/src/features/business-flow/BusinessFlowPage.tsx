@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { Edge } from '@xyflow/react'
 import { useSearchParams } from 'react-router-dom'
 import { ErpCommandBar } from '../../components/common/ErpCommandBar'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListGrid } from '../../components/common/ErpListGrid'
@@ -74,6 +75,7 @@ const PEER_PARAM = 'peer'
  */
 export function BusinessFlowPage() {
   const { bootstrap } = useAuth()
+  const openTab = useOpenTab()
   const [searchParams, setSearchParams] = useSearchParams()
   const [showExternal, setShowExternal] = useState(false)
   const [includeUpstream, setIncludeUpstream] = useState(false)
@@ -297,13 +299,14 @@ export function BusinessFlowPage() {
   }
 
   /**
-   * 用浏览器新标签页打开统一工作台，不接管当前页。
+   * 打开节点对应的模块：切到该模块标签（没有则新建），**不接管当前页**。
    * 这张图是"我在查元数据"的工作现场（当前业务域、选中的连线、拖过的排版），
-   * 在同一标签页跳走就全丢了；副窗口打开还能把两边对着看。
-   * 调用发生在点击事件里（用户手势内），不会被浏览器的弹窗拦截。
+   * 原地跳走就全丢了；同时开两个标签还能把两边对着看。
+   * 以前这里用 `window.open` 开浏览器窗口，等于在同一个会话里起第二个外壳，
+   * 两边的标签列表会互相覆盖（ADR-040 §1.3 S7 的同类问题）。
    */
-  const openInNewTab = (routeUrl: string) => {
-    window.open(routeUrl, '_blank', 'noopener')
+  const openModuleTab = (routeUrl: string) => {
+    openTab(routeUrl, { locate: true })
   }
 
   const loading = overview.isPending || (inDomain && domainGraph.isPending) || (inLink && linkGraph.isPending)
@@ -472,7 +475,7 @@ export function BusinessFlowPage() {
         layout={inDomain ? 'layered' : 'grid'}
         selectedEdgeId={selectedEdgeId}
         onActivateNode={activateNode}
-        onOpenNode={openInNewTab}
+        onOpenNode={openModuleTab}
         onEdgeSelect={handleEdgeSelect}
       />
       {selectedEdge ? (

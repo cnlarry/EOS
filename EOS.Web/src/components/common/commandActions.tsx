@@ -11,6 +11,7 @@ import {
   IconDeviceFloppy,
   IconEdit,
   IconEye,
+  IconExternalLink,
   IconFileExport,
   IconFileUpload,
   IconHelpCircle,
@@ -65,4 +66,6 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   prior: { icon: <IconArrowUp size={16} />, title: '上一条' },
   next: { icon: <IconArrowDown size={16} />, title: '下一条' },
   help: { icon: <IconHelpCircle size={16} />, title: '帮助' },
+  // 对照窗口：把选中的那一行在新标签里打开，用于同模块两单并排（ADR-040 §2.6）
+  newtab: { icon: <IconExternalLink size={16} />, title: '在新标签打开' },
 }

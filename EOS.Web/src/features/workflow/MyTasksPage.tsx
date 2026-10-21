@@ -2,7 +2,7 @@ import { IconRefresh } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -56,7 +56,7 @@ type ApproveState = 'Y' | 'N'
 
 /** 我的任务（2102）：真实流程待办（同意/驳回）+ 直接批核模型单据计数 */
 export function MyTasksPage() {
-  const navigate = useNavigate()
+  const openTab = useOpenTab()
   const result = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => apiClient.get<MyTasksResult>('/workflow/my-tasks'),
@@ -141,9 +141,9 @@ export function MyTasksPage() {
       enableSorting: false,
       enableHiding: false,
       meta: { className: 'text-end', frozenRight: true, truncate: false, autoWidth: true },
-      cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>去处理</Button>,
+      cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => openTab(workbenchList(row.original.moduleId), { locate: true })}>去处理</Button>,
     },
-  ], [navigate])
+  ], [openTab])
 
   const errorMessage = describeApiError(result.error, '发生未知错误，请稍后重试。')
   const totalPending = (result.data?.tasks ?? []).reduce((sum, task) => sum + task.pending, 0)
@@ -176,7 +176,7 @@ export function MyTasksPage() {
             size="sm"
             className="erp-table-action"
             title="查看单据内容"
-            onClick={() => navigate(workbenchView(row.original.moduleId, row.original.keyValues.length > 0 ? row.original.keyValues : null))}
+            onClick={() => openTab(workbenchView(row.original.moduleId, row.original.keyValues.length > 0 ? row.original.keyValues : null), { locate: true })}
           >
             查看
           </Button>

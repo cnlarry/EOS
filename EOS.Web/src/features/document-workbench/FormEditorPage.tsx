@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CellContext, ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { Component, createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useCloseTab, useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { createPortal } from 'react-dom'
 import { IconDots, IconPlayerPlay, IconTrash } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -15,7 +16,7 @@ import { moveCursor, type GridMove } from './detailGridNav'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { useMenuPlacement } from '../../components/common/useMenuPlacement'
 import { useFormBreadcrumb } from '../../components/layout/FormBreadcrumbContext'
-import { useTabDirty } from '../../components/layout/workspaceDirty'
+import { useTabDirty, useTabKind } from '../../components/layout/workspaceDirty'
 import {
   clearServerNotice,
   reportDirtyFields,
@@ -29,7 +30,6 @@ import { parseWorkbenchKey, workbenchAction, workbenchCopy, workbenchEdit, workb
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
-import { safeBackPath } from '../../lib/navigation'
 import { FormFieldRenderer, type ChooserAnchor } from './FormFieldRenderer'
 import { ChooserSourceMenu } from './ChooserSourceMenu'
 import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
@@ -739,6 +739,10 @@ export function FormEditorPage() {
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const openTab = useOpenTab()
+  const closeTab = useCloseTab()
+  // 对照窗口（ADR-040 §2.6）：只承载这一张单，不提供沿列表翻动与新增/复制，返回=关闭自己
+  const inRecordTab = useTabKind() === 'record'
   const queryClient = useQueryClient()
   const { setBreadcrumb } = useFormBreadcrumb()
   const wbAction = workbenchAction(location.pathname)
@@ -763,13 +767,6 @@ export function FormEditorPage() {
   })
   const [reportListOpen, setReportListOpen] = useState(false)
   const copyFrom = searchParams.get('copyFrom')
-  // 跨模块关联字段浏览（FieldBrowseLink 带入 from）：来源工作台模块。返回与面包屑按来源呈现
-  //（URL 参数携带，刷新不丢；仅当为合法模块 ID 且不同于当前模块时生效）。
-  const fromModuleId = (() => {
-    const raw = searchParams.get('from')
-    if (!raw || !/^\d+$/.test(raw) || raw === moduleId) return null
-    return raw
-  })()
   // 无主键段的 view/edit 直达（如 /workbench/1405/view）重定向到列表，避免空白表单
   useEffect(() => {
     if ((isEdit || isView) && !keyParam) navigate(workbenchList(moduleId), { replace: true })
@@ -864,7 +861,8 @@ export function FormEditorPage() {
     keyValues: isView ? parseWorkbenchKey(splat) : null,
     dirty,
     onRefreshed: async () => { await recordQuery.refetch() },
-    onNavigate: (targetModuleId, targetKey) => navigate(workbenchView(String(targetModuleId), targetKey)),
+    // 单据行为效果里的"跳到另一张单"：跨模块 ⇒ 定位到目标模块标签，来源标签原地保留
+    onNavigate: (targetModuleId, targetKey) => openTab(workbenchView(String(targetModuleId), targetKey), { locate: true }),
   })
 
   // 上抛单据面包屑给 AppShell：编辑/查看带单号，新增/复制不显示单号
@@ -1166,7 +1164,7 @@ export function FormEditorPage() {
           { state: { navKeys: remaining, navIndex: targetIndex } })
       } else {
         // 无列表顺序上下文（如直接地址进入）或顺序已对不上：回到列表，避免停留在已删除记录的空白浏览态
-        navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
+        navigate(workbenchList(moduleId))
       }
       // 被删记录的缓存查询直接移除（不再重取）；列表/定义后台失效刷新，不阻塞导航
       queryClient.removeQueries({ queryKey: ['workbench', moduleId, 'record', keyParam] })
@@ -1234,17 +1232,13 @@ export function FormEditorPage() {
   }
 
   const back = () => {
-    // 跨模块关联浏览的三种回退口径，按精度从高到低：
-    //   ① `back`：来源页的完整地址（含 query）——切回原页签，且位置精确
-    //      （前提是来源页把视图状态写进了 URL）；地址经 safeBackPath 校验，挡开放重定向。
-    //   ② `from`：只有模块号，退回来源模块的列表页。
-    //   ③ 都没有：回当前模块列表。
-    const backPath = safeBackPath(searchParams.get('back'))
-    if (backPath) {
-      navigate(backPath)
+    // 对照窗口的"返回"是关掉这个窗口本身（回到开它的标签）；普通表单标签回本模块列表。
+    // 两者都只有一种含义，不读 `back`/`from` 参数——跨模块的"来源"由标签栏承载（ADR-040 §2.2 规则 3）。
+    if (inRecordTab) {
+      closeTab()
       return
     }
-    navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
+    navigate(workbenchList(moduleId))
   }
 
   // Ctrl+S to save (edit/new mode): listener attached once; latest closure kept via ref
@@ -1734,7 +1728,9 @@ export function FormEditorPage() {
     dialogShellMemory.set(moduleId, next)
     setDialogShell(next)
   }, [formQuery.data, moduleId])
-  const shell = dialogShell
+  // 对照窗口自己就是容器：即便模块配的是弹窗方式，也不在标签里再套一层窗体
+  //（那会变成"标签里弹窗、弹窗后面还有一张列表底图"，既多余又点不动）
+  const shell = inRecordTab ? null : dialogShell
   const inDialog = shell !== null
   /**
    * 装进统一弹窗壳（非弹窗方式原样渲染）。两件事一起做，才像"在工作台上弹出窗口"：
@@ -1834,14 +1830,14 @@ export function FormEditorPage() {
                 })
                 return [
                   { action: 'back', onClick: back },
-                  ...(navKeys && navIndex != null ? [
+                  ...(navKeys && navIndex != null && !inRecordTab ? [
                     { action: 'prior', disabled: navIndex <= 0, onClick: () => goNeighbor(-1) },
                     { action: 'next', disabled: navIndex >= navKeys.length - 1, onClick: () => goNeighbor(1) },
                   ] satisfies ErpCommandItem[] : []),
-                  ...(form.canAddNew && form.hasAdd
+                  ...(form.canAddNew && form.hasAdd && !inRecordTab
                     ? [{ action: 'new', variant: 'primary', onClick: () => navigate(workbenchNew(moduleId)) } satisfies ErpCommandItem]
                     : []),
-                  ...(form.ifCopy && form.canAddNew && keyParam
+                  ...(form.ifCopy && form.canAddNew && keyParam && !inRecordTab
                     ? [{ action: 'copy', onClick: () => navigate(workbenchCopy(moduleId, currentKey)) } satisfies ErpCommandItem]
                     : []),
                   ...(form.canEdit && form.hasEdit && keyParam
@@ -2136,7 +2132,7 @@ export function FormEditorPage() {
                     className="btn btn-link p-0 text-start"
                     onClick={() => {
                       setReportListOpen(false)
-                      navigate(`/report/${encodeURIComponent(option.reportId)}`)
+                      openTab(`/report/${encodeURIComponent(option.reportId)}`, { locate: true })
                     }}
                   >
                     {option.reportName}
@@ -2184,7 +2180,7 @@ export function FormEditorPage() {
               className="erp-field-setup-item"
               role="menuitem"
               onClick={() => {
-                navigate(`/admin/fields/${encodeURIComponent(form.masterTable)}/${encodeURIComponent(fieldSetupMenu.field.key)}?moduleId=${moduleId}`)
+                openTab(`/admin/fields/${encodeURIComponent(form.masterTable)}/${encodeURIComponent(fieldSetupMenu.field.key)}?moduleId=${moduleId}`, { locate: true })
                 setFieldSetupMenu(null)
               }}
             >

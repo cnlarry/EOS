@@ -24,7 +24,7 @@ import { PAGE_META } from '../../app/routeMeta'
 import { WORKSPACE_ROUTES } from '../../app/workspaceRoutes'
 import { PasswordChangeModal } from '../../features/settings/PasswordChangeModal'
 import { ThemePreferenceContext, type ResolvedTheme, type ThemePreference } from './themePreference'
-import { WorkspaceNavContext, tabLinkHandler } from './WorkspaceNavContext'
+import { WorkspaceNavContext, tabLinkHandler, type OpenTabOptions } from './WorkspaceNavContext'
 import { DirtyConfirmDialog } from './DirtyConfirmDialog'
 import { WorkspacePanel } from './WorkspacePanel'
 import { WorkspaceNavGuard } from './WorkspaceNavGuard'
@@ -41,12 +41,12 @@ import {
   createWorkspaceState,
   fromModuleIdOf,
   isHomeTab,
-  isHomeUrl,
   moduleIdOfUrl,
   neighborAfterClose,
   parsePersistedTabs,
   restoreWorkspaceState,
   serializeTabs,
+  tabIdentityOf,
   tabUrlOf,
   UNRESOLVED_TAB_LABEL,
   workspaceReducer,
@@ -419,43 +419,104 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     return decodeURIComponent(pathname.split('/').filter(Boolean).pop() ?? '') || UNRESOLVED_TAB_LABEL
   }, [moduleTitleForPath, allLeaves])
 
-  /** 打开标签：已开则聚焦，未开则新建；撞顶只提示，既不新建也不跳转 */
-  const openTab = useCallback((rawUrl: string) => {
+  /**
+   * 打开目标地址（ADR-040）：
+   * - 命中同一身份 ⇒ 该标签已开：默认只聚焦（菜单语义），`locate` 时把它带到目标地址；
+   * - 未开 ⇒ 新建标签；
+   * - 撞顶 ⇒ 只提示，既不新建也不跳转。
+   *
+   * 切换/新建都走 `replace`：切标签不是"在某个标签里翻页"，不该往历史里塞条目
+   * （否则后退会落在别的标签的地址上，这正是旧实现"复活已关闭标签"的来源）。
+   */
+  const openTab = useCallback((rawUrl: string, options?: OpenTabOptions) => {
     const url = canonicalTabUrl(rawUrl)
+    const locate = options?.locate === true
+    const asRecord = options?.asRecord === true
+    const state = options?.state
     if (!tabsEnabled) {
       // 回退模式：不做标签，直接原地导航
-      if (tabUrlOf(locationRef.current) !== url) navigateRef.current(url)
+      if (tabUrlOf(locationRef.current) !== url) navigateRef.current(url, state === undefined ? undefined : { state })
       return
     }
     const { tabs } = workspaceRef.current
-    if (!tabs.some((tab) => tab.url === url) && tabs.length >= MAX_TABS) {
+    const identity = tabIdentityOf(url)
+    // 对照窗口按单据身份找；普通标签按模块/页面身份找（两类互不命中）
+    const existing = asRecord && identity.recordKey
+      ? tabs.find((tab) => tab.kind === 'record' && tab.key === identity.recordKey)
+      : tabs.find((tab) => tab.key === identity.key)
+    if (existing) {
+      const moving = existing.url !== url && (asRecord || locate)
+      if (moving && dirtyFlagsRef.current[existing.id]) {
+        // 目标标签有未保存的改动：绝不静默替换（草稿丢了找不回来），切回去并说明原因
+        notify({ message: `${existing.label} 有未保存的改动，已切回该标签`, variant: 'warning' })
+        dispatch({ type: 'activate', id: existing.id })
+        if (tabUrlOf(locationRef.current) !== existing.url) {
+          navigateRef.current(existing.url, { replace: true, state: existing.state })
+        }
+        return
+      }
+      dispatch({
+        type: 'open',
+        id: nextTabId(),
+        url,
+        label: labelForUrl(url),
+        fromModuleId: fromModuleIdOf(url, moduleIdOfUrl(url)) ?? undefined,
+        locate,
+        asRecord,
+        state,
+      })
+      // 切标签要把该标签自己的 state 一并带到地址上：否则浏览器 location 的 state 变成 undefined，
+      // 同步效应会把标签上原有的跨页上下文（浏览顺序等）抹掉。
+      const target = moving ? url : existing.url
+      if (tabUrlOf(locationRef.current) !== target) {
+        pendingNavRef.current = target
+        navigateRef.current(target, moving ? { replace: true, state } : { replace: true, state: existing.state })
+      }
+      return
+    }
+    if (tabs.length >= MAX_TABS) {
       dispatch({ type: 'hint', hint: HINT_TAB_LIMIT })
       return
     }
-    dispatch({ type: 'open', id: nextTabId(), url, label: labelForUrl(url), fromModuleId: fromModuleIdOf(url, moduleIdOfUrl(url)) ?? undefined })
+    dispatch({
+      type: 'open',
+      id: nextTabId(),
+      url,
+      label: labelForUrl(url),
+      fromModuleId: fromModuleIdOf(url, moduleIdOfUrl(url)) ?? undefined,
+      asRecord,
+      openedFrom: options?.openedFrom,
+      state,
+    })
     if (tabUrlOf(locationRef.current) !== url) {
       // 开新标签不会丢弃任何标签的改动，登记后放行，避免被脏页拦截器误拦
       pendingNavRef.current = url
-      navigateRef.current(url)
+      navigateRef.current(url, state === undefined ? { replace: true } : { replace: true, state })
     }
-  }, [labelForUrl, nextTabId, tabsEnabled])
+  }, [labelForUrl, nextTabId, tabsEnabled, notify])
 
   /** 菜单类入口：左键单击时开标签，修饰键与中键保留浏览器默认行为（新窗口打开） */
   const openTabFromLink = useCallback((url: string) => tabLinkHandler(openTab, url), [openTab])
 
-  // 激活标签即把浏览器地址切到该标签（地址栏始终反映活动标签）
+  // 激活标签即把浏览器地址切到该标签（地址栏始终反映活动标签）。
+  // 用 replace：切标签不是翻页，历史里不该留下"又一个地址"；state 一并带回去，否则会抹掉该标签的跨页上下文。
   const activateTab = useCallback((id: string) => {
     const tab = workspaceRef.current.tabs.find((item) => item.id === id)
     if (!tab) return
     dispatch({ type: 'activate', id })
-    if (tabUrlOf(locationRef.current) !== tab.url) navigateRef.current(tab.url)
+    if (tabUrlOf(locationRef.current) !== tab.url) {
+      navigateRef.current(tab.url, { replace: true, state: tab.state })
+    }
   }, [])
-  const setTabUrl = useCallback((id: string, url: string) => dispatch({ type: 'tabUrl', id, url }), [])
+  const setTabUrl = useCallback((id: string, url: string, state?: unknown) => dispatch({ type: 'tabUrl', id, url, state }), [])
 
   /** 真正执行关闭：清掉该标签的面包屑与脏位，关闭活动标签时地址跟着接管者走 */
   const applyClose = useCallback((id: string) => {
     const { tabs, activeId } = workspaceRef.current
-    const next = activeId === id ? neighborAfterClose(tabs, id) : null
+    const closing = tabs.find((tab) => tab.id === id)
+    // 对照窗口是"从某个标签开出来的旁支"：关掉它应当回到开它的那个标签，而不是机械取邻居
+    const origin = closing?.openedFrom ? tabs.find((tab) => tab.id === closing.openedFrom) : undefined
+    const next = activeId === id ? (origin ?? neighborAfterClose(tabs, id)) : null
     dispatch({ type: 'close', id })
     setCrumbs((prev) => {
       if (!(id in prev)) return prev
@@ -464,7 +525,9 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
       return copy
     })
     dropDirty(id)
-    if (next && tabUrlOf(locationRef.current) !== next.url) navigateRef.current(next.url)
+    if (next && tabUrlOf(locationRef.current) !== next.url) {
+      navigateRef.current(next.url, { replace: true, state: next.state })
+    }
   }, [dropDirty])
 
   /** 关闭全部可关闭的标签：首页常驻，其余关掉并把地址切回首页 */
@@ -482,7 +545,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     for (const tab of removed) dropDirty(tab.id)
     if (home && tabUrlOf(locationRef.current) !== home.url) {
       pendingNavRef.current = home.url
-      navigateRef.current(home.url)
+      navigateRef.current(home.url, { replace: true })
     }
   }, [dropDirty])
 
@@ -544,13 +607,15 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
 
   const workspaceNav = useMemo(() => ({ openTab, closeActiveTab }), [openTab, closeActiveTab])
 
-  /** 该次导航是否会丢弃活动标签的未保存改动：切标签、开新标签都不算 */
+  /** 该次导航是否会丢弃活动标签的未保存改动：切标签、开新标签、跨身份跳转都不算 */
   const shouldBlock = useCallback((nextUrl: string) => {
     if (pendingNavRef.current === nextUrl) return false
     const { tabs, activeId } = workspaceRef.current
     if (tabs.some((tab) => tab.url === nextUrl)) return false
     const active = tabs.find((tab) => tab.id === activeId)
     if (!active || active.url === nextUrl) return false
+    // 身份不同 ⇒ 这是"去另一个模块/页面"，只会切标签或新开标签，活动标签的草稿原地保留
+    if (tabIdentityOf(nextUrl).key !== active.key) return false
     return Boolean(dirtyFlagsRef.current[active.id])
   }, [])
 
@@ -622,24 +687,18 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     if (location.pathname === INDEX_URL) navigateRef.current(HOME_URL, { replace: true })
   }, [location.pathname])
 
-  // 地址同步：命中其它标签的地址即激活该标签，否则改写活动标签地址（标签内导航）
+  // 地址同步：同身份 ⇒ 标签内导航；身份变了 ⇒ 切到/新建对应标签（见 workspaceTabs 的 sync 分支）。
+  // state 一并落到标签上：标签面板会重造 location，不带过去的话页面读到的 state 永远是 null。
   useLayoutEffect(() => {
     pendingNavRef.current = null
-    const { tabs, activeId } = workspaceRef.current
-    const active = tabs.find((tab) => tab.id === activeId)
-    // 首页标签常驻且地址固定：它内部若发生导航（如助手跳转），另开一个标签承载，不改写首页
-    if (active && isHomeTab(active) && !isHomeUrl(activeUrl)) {
-      dispatch({ type: 'open', id: nextTabId(), url: activeUrl, label: tabLabel || labelForUrl(activeUrl), fromModuleId: fromParam ?? undefined })
-      return
-    }
-    dispatch({ type: 'sync', url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
-  }, [activeUrl, tabLabel, fromParam, nextTabId, labelForUrl])
+    dispatch({ type: 'sync', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined, state: location.state })
+  }, [activeUrl, tabLabel, fromParam, location.state, nextTabId])
 
   // 标签列表清空后兜底重建（正常路径由关闭动作保证非空）
   useLayoutEffect(() => {
     if (workspace.tabs.length > 0) return
-    dispatch({ type: 'reset', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
-  }, [workspace.tabs.length, activeUrl, tabLabel, fromParam, nextTabId])
+    dispatch({ type: 'reset', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined, state: location.state })
+  }, [workspace.tabs.length, activeUrl, tabLabel, fromParam, location.state, nextTabId])
 
   // 标签相关的一次性提示（撞顶、接近上限）走全局轻提示：标签栏是 34px 的横向滚动单行，
   // 提示塞进去只会和标签抢同一条窄带，而这两种提示恰恰只在标签开满时出现
@@ -930,8 +989,10 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   }, [])
 
   // 助手的状态容器包住整棵树：半屏抽屉与全屏标签页共用同一份会话（切换形态不打断对话）。
-  // 缩进不改动，保持这次改动的 diff 只落在首尾两行。
+  // 标签入口（useOpenTab）包在助手之上：抽屉与助手页也在外壳之外，必须同样拿到"切/开标签"
+  // 的能力，否则它们只能用 navigate 原地顶掉当前标签。
   return (
+    <WorkspaceNavContext.Provider value={workspaceNav}>
     <AssistantProvider>
     <ThemePreferenceContext.Provider value={themePreferenceValue}>
     <div
@@ -1177,22 +1238,22 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
             />
           )}
           <WorkspaceDirtyContext.Provider value={dirtyRegistry}>
-            <WorkspaceNavContext.Provider value={workspaceNav}>
-              <div className="erp-workspace">
-                {workspace.tabs.map((tab) => (tab.mounted ? (
-                  <WorkspacePanel
-                    key={tab.id}
-                    id={tab.id}
-                    url={tab.url}
-                    routes={routes}
-                    active={tab.id === workspace.activeId}
-                    crumb={crumbs[tab.id] ?? EMPTY_TAB_CRUMB}
-                    onCrumbChange={patchCrumb}
-                    onTabUrl={setTabUrl}
-                  />
-                ) : null))}
-              </div>
-            </WorkspaceNavContext.Provider>
+            <div className="erp-workspace">
+              {workspace.tabs.map((tab) => (tab.mounted ? (
+                <WorkspacePanel
+                  key={tab.id}
+                  id={tab.id}
+                  url={tab.url}
+                  kind={tab.kind}
+                  state={tab.state}
+                  routes={routes}
+                  active={tab.id === workspace.activeId}
+                  crumb={crumbs[tab.id] ?? EMPTY_TAB_CRUMB}
+                  onCrumbChange={patchCrumb}
+                  onTabUrl={setTabUrl}
+                />
+              ) : null))}
+            </div>
           </WorkspaceDirtyContext.Provider>
         </main>
 
@@ -1222,5 +1283,6 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     </div>
     </ThemePreferenceContext.Provider>
     </AssistantProvider>
+    </WorkspaceNavContext.Provider>
   )
 }

@@ -1,6 +1,8 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
+import { useCurrentTabId } from '../../components/layout/workspaceDirty'
+import { tabIdentityOf } from '../../components/layout/workspaceTabs'
 
 /**
  * 统一表单的打开方式（服务端 `MODULES.FORM_OPEN_MODE`，随定义下发）：
@@ -79,11 +81,19 @@ export interface OpenWorkbenchFormOptions {
 export function useOpenWorkbenchForm(): (url: string, options?: OpenWorkbenchFormOptions) => void {
   const navigate = useNavigate()
   const openTab = useOpenTab()
+  const currentTabId = useCurrentTabId()
   return useCallback(
     (url: string, options?: OpenWorkbenchFormOptions) => {
       const mode = normalizeFormOpenMode(options?.openMode)
       if (mode === 'NEWTAB') {
-        openTab(url)
+        // 浏览/编辑一张**已存在**的单 ⇒ 开对照窗口（身份 = 模块 + 主键，可同模块并排）。
+        // 新增/复制还没有主键、也就没有单据身份，留在模块标签里——否则每次新增都多一个窗口，
+        // 而且会把"有未保存改动"的确认变成一次说不清的拦截。
+        if (tabIdentityOf(url).recordKey) {
+          openTab(url, { asRecord: true, openedFrom: currentTabId ?? undefined, state: options?.state })
+        } else {
+          navigate(url, options?.state === undefined ? undefined : { state: options.state })
+        }
         return
       }
       const state = mode === 'DIALOG'
@@ -98,6 +108,6 @@ export function useOpenWorkbenchForm(): (url: string, options?: OpenWorkbenchFor
         : options?.state
       navigate(url, state === undefined ? undefined : { state })
     },
-    [navigate, openTab],
+    [navigate, openTab, currentTabId],
   )
 }

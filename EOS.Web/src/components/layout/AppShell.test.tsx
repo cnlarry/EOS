@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { Link, MemoryRouter, Navigate, Route, Routes, createMemoryRouter, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
+import { Link, MemoryRouter, Navigate, Route, Routes, createMemoryRouter, RouterProvider, useLocation, useNavigate, type RouteObject } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../../features/auth/authContext'
 import type { AppBootstrap } from '../../features/auth/types'
@@ -23,8 +23,20 @@ function CounterPage() {
   return <button type="button" onClick={() => setCount((current) => current + 1)}>计数 {count}</button>
 }
 
+/** 显示导航 state 的页面：用于验证"切标签不抹掉跨页上下文" */
+function StatePage() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  return (
+    <div>
+      <span data-testid="tab-state">{JSON.stringify(location.state)}</span>
+      <button type="button" onClick={() => navigate('/state', { state: { navIndex: 1 } })}>带 state 跳转</button>
+    </div>
+  )
+}
+
 /** 会置脏的页面：用于验证脏点、关闭确认与离开拦截 */
-function DirtyPage() {
+function DirtyPage({ to = '/counter', action = '去计数器' }: { to?: string; action?: string }) {
   const [value, setValue] = useState('')
   useTabDirty(value !== '', {
     save: async () => { setValue('') },
@@ -33,7 +45,7 @@ function DirtyPage() {
   return (
     <div>
       <input aria-label="标题" value={value} onChange={(event) => setValue(event.target.value)} />
-      <Link to="/counter">去计数器</Link>
+      <Link to={to}>{action}</Link>
     </div>
   )
 }
@@ -86,9 +98,11 @@ const fixtureRoutes: RouteObject[] = [
   { path: 'settings/profile', element: <div>PROFILE</div> },
   { path: 'counter', element: <CounterPage /> },
   { path: 'dirty', element: <DirtyPage /> },
+  { path: 'state', element: <StatePage /> },
   { path: 'admin/tables/:tableId/fields', element: <div>FIELDS</div> },
   { path: 'workbench/:moduleId', element: <div>WB</div> },
   { path: 'workbench/:moduleId/new', element: <div>NEW_FORM</div> },
+  { path: 'workbench/:moduleId/edit/*', element: <DirtyPage to="/workbench/1209/view/B" action="换一张单" /> },
   { path: 'workbench/:moduleId/view/*', element: <div>VIEW_FORM</div> },
 ]
 
@@ -809,6 +823,30 @@ describe('AppShell', () => {
     expect(screen.getByText('DASH')).toBeInTheDocument()
   })
 
+  it('关闭对照窗口回到开它的标签，而不是取邻居', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 'home', url: '/dashboard', label: '首页' },
+      { id: 't2', url: '/counter', label: '计数器' },
+      { id: 't4', url: '/workbench/1209', label: '分组模块' },
+      {
+        id: 'r1',
+        url: '/workbench/1209/view/A',
+        label: '查看分组模块：A',
+        kind: 'record',
+        key: 'r:1209:A',
+        openedFrom: 't4',
+      },
+    ]))
+    renderShell('/workbench/1209/view/A')
+    // 刷新时正看着对照窗口：它是活动标签
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/workbench/1209/view/A')
+
+    fireEvent.click(screen.getByRole('button', { name: /关闭标签 查看分组模块/ }))
+    // 回到开它的那个模块标签（右邻是"分组模块"；这里是按 openedFrom 精确回退）
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/workbench/1209')
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+  })
+
   it('多标签逐一切换：被切到的标签一定有内容（不出现空白工作区）', () => {
     localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
       { id: 't1', url: '/dashboard', label: '首页' },
@@ -899,17 +937,32 @@ describe('AppShell 脏页导航拦截（数据路由）', () => {
     localStorage.clear()
   })
 
-  it('标签内导航离开脏页被拦下，取消后停留原处', async () => {
-    renderDataRouterShell('/dashboard')
-    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+  it('同一标签内换页（同模块换单据）离开脏页被拦下，取消后停留原处', async () => {
+    renderDataRouterShell('/workbench/1209/edit/A')
     fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
     await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('link', { name: '去计数器' }))
+    fireEvent.click(screen.getByRole('link', { name: '换一张单' }))
     await waitFor(() => expect(screen.getByRole('dialog', { name: '未保存改动确认' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '未保存改动确认' })).not.toBeInTheDocument())
     expect(screen.getByLabelText('标题')).toBeInTheDocument()
+  })
+
+  it('跨页面跳转另开标签，脏页原地保留，不弹确认', async () => {
+    renderDataRouterShell('/dirty')
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('link', { name: '去计数器' }))
+    // 目标页在新标签里打开（首页 + 脏页 + 计数器 三个标签），不是把脏页顶掉
+    await waitFor(() => expect(screen.getByRole('button', { name: /计数 0/ })).toBeInTheDocument())
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.queryByRole('dialog', { name: '未保存改动确认' })).not.toBeInTheDocument()
+
+    // 草稿留在原标签里：切回去还在，未被丢弃
+    fireEvent.click(screen.getByRole('tab', { name: /脏页演示/ }))
+    await waitFor(() => expect(screen.getByLabelText('标题')).toHaveValue('改动'))
   })
 
   it('切换标签不算离开脏页，不弹确认', async () => {
@@ -926,3 +979,31 @@ describe('AppShell 脏页导航拦截（数据路由）', () => {
   })
 })
 
+describe('AppShell 菜单点击与标签身份（ADR-040）', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('已开的模块标签停在内页时，点菜单只聚焦，不把它拉回列表', async () => {
+    renderShell('/workbench/1209/view/A')
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2))
+
+    fireEvent.click(screen.getByRole('link', { name: '分组模块' }))
+    // 地址与页签数量都不变：菜单只负责"去那个模块"，不负责"回那一页"
+    await waitFor(() => expect(screen.getByTestId('browser-location')).toHaveTextContent('/workbench/1209/view/A'))
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+  })
+
+  it('切走再切回，标签自己的导航 state 还在（浏览顺序不能被切标签抹掉）', async () => {
+    renderShell('/state')
+    fireEvent.click(screen.getByRole('button', { name: '带 state 跳转' }))
+    await waitFor(() => expect(screen.getByTestId('tab-state')).toHaveTextContent('{"navIndex":1}'))
+
+    fireEvent.click(screen.getByRole('tab', { name: /首页/ }))
+    await waitFor(() => expect(screen.getByText('DASH')).toBeInTheDocument())
+
+    // 该标签的标题由页面自报（这条夹具不上抛标题），按位置取第二个页签
+    fireEvent.click(screen.getAllByRole('tab')[1])
+    await waitFor(() => expect(screen.getByTestId('tab-state')).toHaveTextContent('{"navIndex":1}'))
+  })
+})

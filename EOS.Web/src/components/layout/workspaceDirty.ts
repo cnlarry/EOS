@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef } from 'react'
+import type { TabKind } from './workspaceTabs'
 
 /** 页面为"关闭/离开时如何处置未保存改动"提供的两个动作。 */
 export interface TabDirtyHandlers {
@@ -23,6 +24,19 @@ export const WorkspaceDirtyContext = createContext<WorkspaceDirtyValue | null>(n
 
 /** 当前面板所属的标签标识：页面据此把脏位登记到自己的标签上。 */
 export const WorkspaceTabContext = createContext<string | null>(null)
+
+/** 当前面板所属标签的身份类型：对照窗口据此隐藏"上一条/下一条"、把"返回"改成关闭自己。 */
+export const WorkspaceTabKindContext = createContext<TabKind>('module')
+
+/** 当前标签标识（外壳之外或单测里没有 Provider 时返回 null）。 */
+export function useCurrentTabId(): string | null {
+  return useContext(WorkspaceTabContext)
+}
+
+/** 当前标签身份类型；无 Provider 时按普通模块标签处理。 */
+export function useTabKind(): TabKind {
+  return useContext(WorkspaceTabKindContext)
+}
 
 /**
  * 页面把"已改未保存"登记给外壳：关闭标签、离开当前标签时的确认与保存统一由外壳处理。

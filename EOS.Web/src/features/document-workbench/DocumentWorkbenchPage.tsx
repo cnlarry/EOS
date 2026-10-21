@@ -2,7 +2,8 @@ import { IconFileExport, IconZoomScan } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
@@ -44,7 +45,8 @@ const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>ite
  */
 export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean } = {}) {
   const { hasPermission } = useAuth()
-  const navigate=useNavigate()
+  // 跨页面/跨模块一律走标签入口：原地 navigate 会把当前现场顶掉（ADR-040）
+  const openTab=useOpenTab()
   /** 按模块声明的打开方式打开统一表单（新页签 / 弹窗 / 本页签） */
   const openForm=useOpenWorkbenchForm()
   const { moduleId='' }=useParams()
@@ -189,7 +191,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         truncate:(field.dataType??'').toLowerCase()!=='bit',
         title:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||undefined,
         copyText:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||'—',
-        headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.masterTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
+        headerMenu:[{label:'字段设置',onClick:()=>openTab(`/admin/fields/${encodeURIComponent(definition.data?.masterTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`,{locate:true})}],
       },
       cell:(info)=>{
         const value=info.getValue()
@@ -201,7 +203,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
           :text
       },
     })),
-  ],[master,hasPermission,moduleId,navigate,definition.data?.masterTable,roleOf])
+  ],[master,hasPermission,moduleId,openTab,definition.data?.masterTable,roleOf])
   const detailColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>detail.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
     id:field.key,
     accessorKey:field.key,
@@ -215,7 +217,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       truncate:(field.dataType??'').toLowerCase()!=='bit',
       title:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||undefined,
       copyText:({value})=>formatFieldValue(value,field.dataType,field.format,{numericRole:roleOf(field.key)})||'—',
-      headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.detailTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
+      headerMenu:[{label:'字段设置',onClick:()=>openTab(`/admin/fields/${encodeURIComponent(definition.data?.detailTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`,{locate:true})}],
     },
     cell:(info)=>{
       const value=info.getValue()
@@ -226,7 +228,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(moduleReadPermission(field.browseModuleId))}/>
         :text
     },
-  })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable,roleOf])
+  })),[detail,hasPermission,moduleId,openTab,definition.data?.detailTable,roleOf])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   // 助手处境上报：列表筛选条件与选中行主键（服务端会再截断并按字段白名单校验）。
@@ -359,18 +361,31 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     const navIndex=navKeys.findIndex(candidate=>candidate.every((value,i)=>value===key[i]))
     openForm(workbenchView(moduleId,key),{openMode:definition.data.formOpenMode,...formShellHint(),state:{navKeys,navIndex}})
   }
-  const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
-  // 列表工具条只留「新增」+ 列表自身工具（导出 / 查询）：单据级动作
+  const openSearchCenter=()=>{openTab(`/search-center/${moduleId}`,{locate:true})}
+  /**
+   * 把当前选中的那一行在新标签里打开（对照窗口，ADR-040 §2.6）：
+   * 同模块要并排看两张单时用它——双击会接管本模块标签，对照则另开固定承载这一张单的标签，
+   * 关闭它回到开它的标签。只在恰好选中一行时出现，避免"选了 5 行却只开 1 张"的歧义。
+   */
+  const openSelectionInNewTab=()=>{
+    if(!definition.data)return
+    const keys=Object.keys(selected).filter(key=>selected[key])
+    if(keys.length!==1)return
+    const row=selected[keys[0]]??rows.find(item=>rowKey(item)===keys[0])
+    if(!row)return
+    const key=definition.data.masterPkOrder.map(column=>String(row[column]??''))
+    openForm(workbenchView(moduleId,key),{openMode:'NEWTAB',...formShellHint()})
+  }
+  const selectedCount=Object.keys(selected).filter(key=>selected[key]).length
+  // 列表工具条只留「新增」+ 列表自身工具（导出 / 查询 / 新标签打开）：单据级动作
   // （编辑/复制/删除/批核/结案/打印…）全在统一表单的浏览态工具条里，破坏性动作必须先打开单据看细节。
   // （曾经这套内容由 `MODULES.FORM_BUTTONS` 白名单裁剪，该列已随迁移 320 退役且全库为空；
   //   「查询」入口仍按模块的 SEARCH 位出现，见下方 businessItems 之后的补位。）
-  const businessItems:ErpCommandItem[]=[{action:'new'},{action:'export'}].map((button)=>({
-    action:button.action,
-    visible:button.action==='new'?definition.data?.hasAdd:true,
-    onClick:button.action==='new'?openNew:undefined,
-    render:button.action==='export'?()=>exportButton:undefined,
-    variant:button.action==='new'?'primary':undefined,
-  }))
+  const businessItems:ErpCommandItem[]=[
+    {action:'new',visible:definition.data?.hasAdd,variant:'primary',onClick:openNew},
+    {action:'export',render:()=>exportButton},
+    {action:'newtab',visible:selectedCount===1,onClick:openSelectionInNewTab},
+  ]
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.groupId}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
   const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupId',String(activeGroup.groupId));current.set('groupValue',value);return current},{replace:true})}
   const groupQuery=groupId!=null&&groupValue!=null?{groupId,groupValue}:{}

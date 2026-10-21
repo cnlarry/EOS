@@ -11,14 +11,18 @@ import {
 } from 'react-router-dom'
 import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
 import { PageBreadcrumbContext, type PageBreadcrumb } from './PageBreadcrumbContext'
-import { WorkspaceTabContext } from './workspaceDirty'
-import type { TabCrumb, TabCrumbPatch } from './workspaceTabs'
+import { WorkspaceTabContext, WorkspaceTabKindContext } from './workspaceDirty'
+import type { TabCrumb, TabCrumbPatch, TabKind } from './workspaceTabs'
 
 interface WorkspacePanelProps {
   /** 标签标识 */
   id: string
   /** 该面板自身的地址：路径 + 查询串 */
   url: string
+  /** 该标签的身份类型（对照窗口要隐藏普通单据标签才有的动作） */
+  kind: TabKind
+  /** 该标签当前的导航 state（跨页上下文：浏览顺序、保存告警、窗体提示） */
+  state: unknown
   /** 工作区路由表 */
   routes: RouteObject[]
   /** 是否为当前活动标签。非活动面板常驻不卸载，仅隐藏，以保留分页/选中/滚动/草稿等本地状态 */
@@ -26,8 +30,8 @@ interface WorkspacePanelProps {
   /** 该标签自己的面包屑值 */
   crumb: TabCrumb
   onCrumbChange: (tabId: string, patch: TabCrumbPatch) => void
-  /** 隐藏标签内部发起导航时，把目标地址写回该标签自身 */
-  onTabUrl: (tabId: string, url: string) => void
+  /** 隐藏标签内部发起导航时，把目标地址（与 state）写回该标签自身 */
+  onTabUrl: (tabId: string, url: string, state?: unknown) => void
 }
 
 /**
@@ -42,7 +46,7 @@ interface WorkspacePanelProps {
  * 用 memo 包一层：外壳因时钟/侧栏/菜单搜索等自身状态重渲染时，标签内容不必跟着重渲染；
  * 标签地址变化、或其消费的 context 变化时仍会正常更新。
  */
-export const WorkspacePanel = memo(function WorkspacePanel({ id, url, routes, active, crumb, onCrumbChange, onTabUrl }: WorkspacePanelProps) {
+export const WorkspacePanel = memo(function WorkspacePanel({ id, url, kind, state, routes, active, crumb, onCrumbChange, onTabUrl }: WorkspacePanelProps) {
   const navigationType = useNavigationType()
   const realNavigation = useContext(UNSAFE_NavigationContext)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -50,15 +54,23 @@ export const WorkspacePanel = memo(function WorkspacePanel({ id, url, routes, ac
 
   const location = useMemo(() => {
     const parsed = parsePath(url)
-    return { pathname: parsed.pathname || '/', search: parsed.search ?? '', hash: parsed.hash ?? '', state: null, key: 'tab' }
-  }, [url])
+    // state 必须一起带过去：标签重造了 location，若不带上 state，页面侧读到的永远是 null
+    // （浏览顺序、保存告警、窗体首帧提示都走 state）。key 随地址变化，供"换了一张单"类重置用。
+    return {
+      pathname: parsed.pathname || '/',
+      search: parsed.search ?? '',
+      hash: parsed.hash ?? '',
+      state: state ?? null,
+      key: `${id}:${url}`,
+    }
+  }, [id, url, state])
   const locationContext = useMemo(() => ({ location, navigationType }), [location, navigationType])
 
   const containedNavigator = useMemo(() => ({
     ...realNavigation.navigator,
     go: () => {},
-    push: (to: To) => onTabUrl(id, typeof to === 'string' ? to : createPath(to)),
-    replace: (to: To) => onTabUrl(id, typeof to === 'string' ? to : createPath(to)),
+    push: (to: To, nextState?: unknown) => onTabUrl(id, typeof to === 'string' ? to : createPath(to), nextState),
+    replace: (to: To, nextState?: unknown) => onTabUrl(id, typeof to === 'string' ? to : createPath(to), nextState),
   }), [realNavigation, id, onTabUrl])
   // 活动标签沿用真实导航上下文（值相同，不会引起子树额外渲染），隐藏标签换成收口后的导航器
   const navigationContext = useMemo(
@@ -94,11 +106,13 @@ export const WorkspacePanel = memo(function WorkspacePanel({ id, url, routes, ac
       <UNSAFE_LocationContext.Provider value={locationContext}>
         <UNSAFE_NavigationContext.Provider value={navigationContext}>
           <WorkspaceTabContext.Provider value={id}>
+            <WorkspaceTabKindContext.Provider value={kind}>
             <div className="container-fluid px-3 px-lg-4">
               <FormBreadcrumbContext.Provider value={formValue}>
                 <PageBreadcrumbContext.Provider value={pageValue}>{element}</PageBreadcrumbContext.Provider>
               </FormBreadcrumbContext.Provider>
             </div>
+            </WorkspaceTabKindContext.Provider>
           </WorkspaceTabContext.Provider>
         </UNSAFE_NavigationContext.Provider>
       </UNSAFE_LocationContext.Provider>
