@@ -248,3 +248,24 @@
 同步改动：`EOS.API/Models/AuthenticationModels.cs` 的 `LoginUser` 增加 `GroupNames`；
 `EOS.Web/src/services/api/mockTransport.ts`（无后端开发时的假用户）跟着改字段名，
 它的形状必须与真实引导载荷一致，否则本地开发会照着假数据写错字段。
+
+## 收口（选择器记忆）：两个按当前用户隔离的端点
+
+- `GET` / `PUT /api/v1/chooser/memory`（`ChooserController`）读写「当前用户 + 目标表」上次用的
+  筛选字段与查询值。表名、字段名只做**标识符形状**校验，并且只作为**参数值**落库与回传，
+  不进动态 SQL 的标识符位置——记忆是数据，不是可执行的查询片段。
+- `formField` 数据源的表单选择器响应新增 `targetTable`：前端据此在首次取数后补读记忆，命中就带着
+  上次的条件重查一次；请求带 `applyMemory=true` 时由服务端在解析出目标表后直接套用并回传
+  `appliedMemory`，省掉"空条件查一次、再按记忆重查"的两次往返。
+- 记忆只影响**查询条件**，不参与权限判定：候选集仍按调用方在该模块上的授权与行级范围过滤，
+  记忆里存了越界条件也只是筛出空集。
+
+## 收口（迁移 436–438）：框架表改名对契约的影响
+
+- 库内框架表统一改 `SYS_` 前缀（`SYSDD` → `SYS_USER_MODULE_PERMISSION`、`SYSDL` → `SYS_USER_ACCOUNT`、
+  `SYSQR` → `SYS_USER_REPORT_PRINT`、`SYSSS` → `SYS_PARAMETER` 等），视图 `V_SYSDL_SYSDN` 改为
+  `V_SYS_USER_ACCOUNT_EMPLOYEE`；业务表前缀（`COP_` / `PUR_` / `HR_` 等）不动。
+- **HTTP 契约未变**：路径、字段名、错误码与分页形状都不含这些表名，调用方无需改动；
+  受影响的只有"按名字读库"的地方（元数据表、`VIRTUAL_EXP`、`FILTER_STRUCT`、效果与校验的参数结构）。
+- 效果与校验里 switch 门控的**来源域**跟着改名：写 `SYS_PARAMETER`，旧名 `SYSSS` 会被判为不支持并
+  拒绝（fail-closed），不会静默降级。
