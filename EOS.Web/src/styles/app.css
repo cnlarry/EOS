@@ -29,6 +29,13 @@
   --erp-radius-lg: 12px;
   --erp-radius-pill: 999px;
 
+  /* 电子表格单元格留白档位：数据行与表头共用这一对值，行高随之确定
+     （12px 字 × 1.43 行高 + 上下各 6.5px ≈ 30px）。放宽只改这里，不要在页面或
+     feature 的 .css 里重写 padding；主表与明细表共用同一档，明细编辑行因格内是
+     30px 的输入控件而自然更高，占位行按同一算式跟齐（见 .erp-detail-filler）。 */
+  --erp-table-cell-pad-y: 6.5px;
+  --erp-table-cell-pad-x: 5px;
+
   /* 吸顶表头底色：表头是 sticky 元素，底色必须**不透明**，否则滚动时下面的行会透出来；
      同时要比卡面重一档才能读出「表头 / 数据」两层。用 body-color 混卡面而不是现成的
      --tblr-bg-surface-secondary——后者在浅色下几乎等于白，看不出层次。
@@ -1589,7 +1596,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-master-table-region.is-loading { pointer-events: none; opacity: .62; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
 .erp-detail-card { overflow: hidden; }
-.erp-detail-card .card-header { min-height: 2.8rem; }
+/* 明细卡标题行（"明细 + 主键摘要"）：只装一行说明，按内容取高就够；
+   原先 min-height 2.8rem 让工作台的明细标题比表格行还高，白占一截。
+   编辑态那一行里有 26px 的「新增一行 / 删除所选」按钮，自然比浏览态高一点 */
+.erp-detail-card .card-header { min-height: 2rem; padding-block: 4px; }
 .erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 366px - var(--erp-tabbar-height) - var(--erp-workspace-gap)); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
 .erp-detail-card tfoot td { background: var(--tblr-bg-surface-secondary); }
 .erp-detail-card tfoot tr:last-child td:first-child { border-bottom-left-radius: var(--tblr-border-radius); }
@@ -1704,7 +1714,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 单元格强制单行：超宽时由 .erp-cell-ellipsis 省略截断，title 悬停显示全文（复制仍取完整 textContent） */
 .erp-data-table td { white-space: nowrap; }
 .erp-data-table .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: var(--erp-radius-xs); }
-.erp-data-table > :not(caption) > * > * { padding: 5px !important; }
+.erp-data-table > :not(caption) > * > * { padding: var(--erp-table-cell-pad-y) var(--erp-table-cell-pad-x) !important; }
 .erp-data-table.erp-table-compact > :not(caption) > * > * { padding: 2px 6px !important; }
 .erp-data-table tbody tr { cursor: pointer; }
 /* 列宽拖拽手柄（通用：主表、子表、字段维护等任意 ResizableTable 生效） */
@@ -1714,7 +1724,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-col-resizing, .erp-col-resizing * { cursor: col-resize !important; user-select: none !important; }
 .erp-data-table .btn-sm.erp-table-action { --tblr-btn-padding-x: 6px; --tblr-btn-padding-y: 1px; font-size: var(--erp-font-sm); line-height: 1; min-height: 0; }
 .erp-data-table .btn-sm.erp-table-action svg { width: 14px; height: 14px; }
-.erp-data-table .erp-select-column { width: 33px !important; min-width: 33px; max-width: 33px; padding: 5px !important; text-align: center; }
+.erp-data-table .erp-select-column { width: 33px !important; min-width: 33px; max-width: 33px; padding: var(--erp-table-cell-pad-y) 5px !important; text-align: center; }
 .erp-data-table .erp-select-column .form-check-input { display: block; margin: 0 auto; }
 .erp-data-table .erp-browse-link { color: var(--tblr-primary); text-decoration: none; }
 .erp-data-table .erp-browse-link:hover { text-decoration: underline; }
@@ -2457,8 +2467,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-detail-grid .erp-form-control .d-flex > .form-control,
 .erp-detail-grid .erp-form-control .d-flex > .form-select { flex: 1 1 auto; width: auto; min-width: 96px; }
 .erp-detail-grid .form-check-input { width: 14px; height: 14px; margin-top: 0; }
-/* 明细空行占位：行数不足 5 时补足，保持网格完整（不参与保存） */
-.erp-detail-filler td { height: 41px; }
+/* 明细空行占位：行数不足 5 时补足，保持网格完整（不参与保存）。
+   高度按编辑行的算式给（30px 输入控件 + 上下同一档留白），随留白 token 自动跟齐 */
+.erp-detail-filler td { height: calc(30px + var(--erp-table-cell-pad-y) * 2); }
 
 /* 统一表单：视口撑满（与工作台一致），主表单占剩余位置、明细固定高度，各自内部滚动。
    主表单卡与明细卡之间取 10px，与工作台、全站留白口径统一 */

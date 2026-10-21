@@ -438,7 +438,9 @@ export function ErpTable<TData>({
   const allLoadedTimerRef = useRef<number | null>(null)
   const seenBottomRef = useRef(false)
   const wasLoadingMoreRef = useRef(false)
-  // 行窗口化（virtualize）：滚动容器、实测行高与当前可视窗口
+  // 行窗口化（virtualize）：滚动容器、实测行高与当前可视窗口。
+  // 行高初值只是激活前的首帧估值，激活时按首行 offsetHeight 覆盖；取偏小值，
+  // 估小只会多渲染几行，估大才会在滚动中露出空白。
   const scrollContainerRef = useRef<HTMLElement | null>(null)
   const rowHeightRef = useRef(27)
   const [virtualActive, setVirtualActive] = useState(false)
