@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 95d418e6e608fd48 -->
+<!-- code-map-fingerprint: 45fc4de2e1dd0e26 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -363,7 +363,7 @@
 | `/report-center/inbox` | `ReportInboxPage` | — |
 | `/report/:reportId` | `ReportIdentityRoute` | — |
 | `/reports/:moduleId` | `ReportViewerRoute` | — |
-| `/search-center/:moduleId?` | `SearchCenterPage` | — |
+| `/search-center/:moduleId?` | `SearchCenterPage` | 34 |
 | `/settings/:table` | `SystemSettingsPage` | — |
 | `/settings/profile` | `ProfilePage` | — |
 | `/workbench/:moduleId` | `WorkbenchRoute` | — |

@@ -150,6 +150,11 @@ export interface ErpTableProps<TData extends RowData> {
   loadingMore?: boolean
   /** 大数据行窗口化：行数超过阈值且滚动容器可滚时只渲染可视区行（+overscan）。
    *  启用后屏幕外行不在 DOM，复制等取文本操作优先使用列 meta.copyText。 */
+  /**
+   * 单元格右键菜单的追加项（页面自己的动作，如"在查询中心查找此值"）。
+   * 返回空数组则不渲染；固定项（复制/筛选）不受影响。
+   */
+  cellMenuExtra?: (context: { columnId: string; row: TData; value: unknown }) => { key: string; label: string; onClick: () => void }[]
   virtualize?: boolean
   /**
    * 后台刷新中（配合 React Query 的 `isFetching` 与 `keepPreviousData`）：
@@ -402,6 +407,7 @@ export function ErpTable<TData>({
   onSelectionSummaryChange,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
+  cellMenuExtra,
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   /** 键盘活动行按行键记（行键在窗口化滚动时不变，按行号记会让每次滚动都判定为"焦点变了"） */
   const [focusRowId, setFocusRowId] = useState<string | null>(null)
@@ -1474,3 +1480,19 @@ declare module '@tanstack/react-table' {
     cellSelectable?: boolean
   }
 }
+          {cellMenuExtra && cellMenu ? (() => {
+            const row = table.getRow(cellMenu.rowId)?.original
+            if (!row) return null
+            const items = cellMenuExtra({ columnId: cellMenu.columnId, row, value: cellRowValue })
+            if (items.length === 0) return null
+            return (
+              <>
+                <div className="dropdown-divider" />
+                {items.map(item => (
+                  <button key={item.key} className="dropdown-item" onClick={() => { item.onClick(); setCellMenu(null) }}>
+                    {item.label}
+                  </button>
+                ))}
+              </>
+            )
+          })() : null}

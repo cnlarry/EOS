@@ -344,6 +344,11 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     // 报表身份地址（/report/{reportId}）路径里只有报表编号、没有模块号，解析不出模块名；
     // 给一个稳定的兜底标题，免得标签退化成占位文案（页面自身展示报表名与模块名）。
     if (/^\/report\/[^/]+$/.test(pathname)) return '报表'
+    // 查询中心同理：路径里的模块号是检索目标，不是页面身份；页面名取菜单里那条入口叶子
+    // （`/search-center/{入口模块号}` 的 label），否则切一次模块标题就解析不出来。
+    if (/^\/search-center(?:\/|$)/.test(pathname)) {
+      return allLeaves.find((item) => item.route?.startsWith('/search-center'))?.label ?? null
+    }
     const moduleId = moduleIdOfUrl(pathname)
     if (!moduleId) return null
     return allLeaves.find((item) => item.route === workbenchList(moduleId))?.label ?? null

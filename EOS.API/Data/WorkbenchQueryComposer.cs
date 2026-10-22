@@ -99,7 +99,7 @@ public sealed class WorkbenchQueryComposer(
         if (detail)
         {
             // 关联键与显示列解耦：键列只要求在子表物理存在，用户未勾选的键列仅用于关联，不渲染。
-            var detailKeyColumns = await ResolveDetailKeyColumnsAsync(connection, definition, table, token);
+            var detailKeyColumns = await WorkbenchSql.ResolveDetailKeyColumnsAsync(connection, definition, table, token);
             foreach (var key in detailKeyColumns)
             {
                 if (!keys.TryGetValue(key, out var value))
@@ -292,21 +292,8 @@ public sealed class WorkbenchQueryComposer(
     /// <summary>
     /// 子表关联键列：主表主键中在子表物理存在的列（保持主键顺序）。
     /// 键列是否出现在用户列配置里不影响关联——列配置只决定渲染哪些列。
+    /// 解析本身在 <see cref="WorkbenchSql.ResolveDetailKeyColumnsAsync"/>，与搜索中心共用。
     /// </summary>
-    private static async Task<IReadOnlyList<string>> ResolveDetailKeyColumnsAsync(
-        SqlConnection connection,
-        WorkbenchDefinition definition,
-        string table,
-        CancellationToken token)
-    {
-        var candidates = definition.MasterPkOrder.Where(key => WorkbenchSql.Identifier.IsMatch(key)).ToList();
-        if (candidates.Count == 0)
-        {
-            return [];
-        }
-        var physical = await WorkbenchSql.GetPhysicalColumnsAsync(connection, null, table, token);
-        return candidates.Where(physical.Contains).ToList();
-    }
 
     private async Task<ListSelection> BuildListSelectionAsync(
         SqlConnection connection,
@@ -375,7 +362,7 @@ public sealed class WorkbenchQueryComposer(
         }
     }
 
-    private static string ResolveOrder(
+    internal static string ResolveOrder(
         WorkbenchDefinition definition,
         IReadOnlyList<WorkbenchField> fields,
         IReadOnlyList<WorkbenchField> selected,
@@ -433,7 +420,7 @@ public sealed class WorkbenchQueryComposer(
     /// 把高级查询条件渲染为谓词：字段白名单/虚拟字段/可查询性校验在此完成，
     /// 算子表与连接词拼装交给 <see cref="QueryConditionRenderer"/>（与选择器同一份）。
     /// </summary>
-    private static void AddQueryPredicates(WorkbenchQuery query, IReadOnlyList<WorkbenchField> fields, List<string> predicates, SqlCommand command)
+    internal static void AddQueryPredicates(WorkbenchQuery query, IReadOnlyList<WorkbenchField> fields, List<string> predicates, SqlCommand command)
     {
         if (query.Conditions.Count > QueryConditionRenderer.MaxConditions)
         {
@@ -464,7 +451,7 @@ public sealed class WorkbenchQueryComposer(
         }
     }
 
-    private static void AddKeywordPredicates(string keyword, IReadOnlyList<WorkbenchField> fields, List<string> predicates, SqlCommand command)
+    internal static void AddKeywordPredicates(string keyword, IReadOnlyList<WorkbenchField> fields, List<string> predicates, SqlCommand command)
     {
         var textFields = fields.Where(field => field.IsQueryable && IsTextLike(field.DataType)).ToList();
         if (textFields.Count == 0)

@@ -1355,6 +1355,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 列表上方的统计/说明行（"共 N 个…"）：卡头之下、表格之上的一行提示文字。
    样式（字号 / 次要色 / 内边距）就此一处定义 */
 .erp-list-header { padding: 8px 16px 0; font-size: var(--erp-font-sm); color: var(--tblr-secondary); }
+/* 查询中心：命令栏左侧的「查询范围」（模块 / 数据表 / 关键字）排成一行，窄视口换行而不是被裁 */
+.erp-search-scope { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+.erp-search-scope-select { flex: 0 0 auto; width: auto; max-width: 220px; }
+/* 最近查询列表：直接排在表格上方（不绝对定位——它嵌在列表卡的 before 槽位里） */
+.erp-search-recent { margin: 6px 16px 0 auto; width: min(420px, 100%); max-height: 280px; overflow-y: auto; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-md); background: var(--tblr-bg-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
 /* 配置面列表（230102 模块分组 / 230103 自定义按钮）：同一模块的多行在视觉上是一块——
    每块的第一行画一条上分隔线。刻意**不用跨行合并单元格**：`ErpTable` 每行每列必产出一个 `<td>`
    （合并要改公共组件），而合并会打坏复制（按列索引取单元格）与排序（同模块的行一被重排，合并块就碎）。

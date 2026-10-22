@@ -136,7 +136,11 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'report-center', element: withSuspense(<ReportCenterPage />) },
   { path: 'report-center/inbox', element: withSuspense(<ReportInboxPage />) },
   { path: 'layout-designer/:moduleId', element: withSuspense(<LayoutDesignerPage />) },
-  { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
+  // 查询中心（模块 34）：跨模块检索入口，菜单可见性与页面可达性同一条读权限；
+  // 页面内的模块清单与行范围另有各自的模块权限与数据范围，入口不等于放大权限。
+  { element: <RequirePermission permission={moduleReadPermission(34)} />, children: [
+    { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
+  ] },
   // 基本资料导入（模块 230902，系统管理）：入口按模块读权限显示，写入按目标模块的新增权限逐次鉴权
   { element: <RequirePermission permission={moduleReadPermission(230902)} />, children: [
     { path: 'import', element: withSuspense(<ImportPage />) },

@@ -159,6 +159,9 @@ const PAGE_FAMILIES: { key: string; pattern: RegExp }[] = [
   { key: 'admin:users', pattern: /^\/admin\/users(?:\/|$)/ },
   { key: 'admin:groups', pattern: /^\/admin\/groups(?:\/|$)/ },
   { key: 'report-center', pattern: /^\/report-center(?:\/|$)/ },
+  // 查询中心：路径里的模块号是"这次要检索哪个模块"，不是页面身份——
+  // 不归并的话，切一次模块就多一个标签（旧页签停在上一个模块，新页签标题还解析不出来）。
+  { key: 'search-center', pattern: /^\/search-center(?:\/|$)/ },
   { key: 'settings', pattern: /^\/settings(?:\/|$)/ },
 ]
 

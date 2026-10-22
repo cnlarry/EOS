@@ -60,17 +60,21 @@ internal static class ModuleRouteValidator
         _ => "DIRECTORY",
     };
 
-    /// <summary>参数化承载页：M_URL 为该路径时追加 /{moduleId}。</summary>
+    /// <summary>
+    /// 参数化承载页：M_URL 为该路径时追加 /{moduleId}。
+    /// 只收"模块号有业务含义"的承载页——工作台是某个模块的列表，报表是"按模块列报表"。
+    /// 查询中心不在此列：它是一个页面，模块号是页面内的检索目标（见 <see cref="ExactRoutes"/>）。
+    /// </summary>
     private static readonly string[] ParameterizedBases =
     [
         "/reports",
         "/workbench",
-        "/search-center",
     ];
 
     private static readonly string[] ExactRoutes =
     [
         "/dashboard",
+        "/search-center",
         "/admin/menus", "/admin/tables", "/admin/field-audit", "/admin/users",
         "/admin/fields", "/admin/depot-stock-policy", "/admin/logs", "/admin/business-flow",
         "/admin/assistant/sessions", "/admin/assistant/mechanism", "/admin/assistant/kb", "/admin/assistant/models",

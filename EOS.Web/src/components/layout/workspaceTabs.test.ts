@@ -133,6 +133,11 @@ describe('标签身份（ADR-040）', () => {
     // 系统管理下的独立页不并进任何族
     expect(tabIdentityOf('/admin/menus').key).toBe('p:/admin/menus')
     expect(tabIdentityOf('/admin/groups').key).toBe('admin:groups')
+    // 查询中心：路径里的模块号是"这次检索哪个模块"，不是页面身份——
+    // 不归并的话切一次模块就多一个标签，且新标签标题解析不出来
+    expect(tabIdentityOf('/search-center/34').key).toBe('search-center')
+    expect(tabIdentityOf('/search-center/1405').key).toBe('search-center')
+    expect(tabIdentityOf('/search-center/1405?find=PRODUCT_NO%3AP1').key).toBe('search-center')
   })
 
   it('报表按编号成键；打印与版式设计是工具页，不占模块标签', () => {

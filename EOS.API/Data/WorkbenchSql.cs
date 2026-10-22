@@ -122,6 +122,23 @@ internal static class WorkbenchSql
     }
 
     /// <summary>
+    /// 明细表与主表的共享键列：主表主键中在明细表物理存在的那些列。
+    /// 工作台的子表查询（按已选主表行取明细）与搜索中心（按明细表全表检索）共用同一份解析，
+    /// 避免两处对"关联键"的定义漂移。
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> ResolveDetailKeyColumnsAsync(
+        SqlConnection connection, WorkbenchDefinition definition, string detailTable, CancellationToken token)
+    {
+        var candidates = definition.MasterPkOrder.Where(key => Identifier.IsMatch(key)).ToList();
+        if (candidates.Count == 0)
+        {
+            return [];
+        }
+        var physical = await GetPhysicalColumnsAsync(connection, null, detailTable, token);
+        return candidates.Where(physical.Contains).ToList();
+    }
+
+    /// <summary>
     /// 选择器回填映射来源列存在性：物理列 或 来源表内受控虚拟列
     /// （FIELDS.IS_VIRTUAL=1 且 VIRTUAL_EXP 非空，运行时由 VirtualColumnResolver 经受控 JOIN 解析）。
     /// 来源列取自「来源查询结果集列」（物理 + VIRTUAL_EXP 派生），虚拟来源列合法。

@@ -7,13 +7,14 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
+import { checkboxSelectColumn } from '../../components/common/erpCheckboxSelectColumn'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import type { RangeSummary } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
-import { Modal } from '../../components/ui/Modal'
+import { useColumnWidthSaver } from '../../hooks/useColumnWidthSaver'
 import { apiClient } from '../../services/api'
 import { moduleReadPermission } from '../auth/modulePermissions'
 import { ApiError } from '../../types/api'
@@ -150,32 +151,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   },[columnSettings.data,definition.data?.detailTable])
 
   const masterColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>[
-    {
-      id:'select',
-      enableSorting:false,
-      enableHiding:false,
-      meta:{className:'erp-select-column',frozenLeft:true,resizable:false,truncate:false},
-      header:({table})=>(
-        <input
-          className="form-check-input"
-          type="checkbox"
-          aria-label="选择当前页"
-          checked={table.getIsAllPageRowsSelected()}
-          ref={(input)=>{if(input)input.indeterminate=table.getIsSomePageRowsSelected()}}
-          onChange={table.getToggleAllPageRowsSelectedHandler()}
-        />
-      ),
-      cell:({row})=>(
-        <input
-          className="form-check-input"
-          type="checkbox"
-          aria-label="选择此行"
-          checked={row.getIsSelected()}
-          onChange={row.getToggleSelectedHandler()}
-          onClick={event=>event.stopPropagation()}
-        />
-      ),
-    },
+    checkboxSelectColumn<Record<string,unknown>>(),
     ...master.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
       id:field.key,
       accessorKey:field.key,
@@ -276,9 +252,6 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   },[active,definition.data])
   const keys=useMemo(()=>(definition.data?.masterPkOrder??[]).reduce<Record<string,string>>((result,column)=>{if(active?.[column]!=null)result[column]=String(active[column]);return result},{}),[active,definition.data?.masterPkOrder])
   const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable),placeholderData:keepPreviousData})
-  // 多槽队列：自适应列宽一次入队多列，逐列串行写回；单槽会被同步循环覆盖导致只保存最后一列
-  const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}[]>([])
-  const widthSaveRunning=useRef(false)
   // 列宽是操作习惯：写个人层（SYS_USER_COLUMN.F_WIDTH，与"选择列"同一批行），有模块浏览权即可；字段元数据里的宽度是所有人的
   // 默认值，只在字段设置面改，不随拖拽变动。
   /**
@@ -290,42 +263,10 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     setQueryOpen(true)
   },[appliedConditions])
   /** 应用高级查询：列头筛选标记按新条件重建，否则在弹窗里删掉的条件仍会显示筛选态 */
-  const applyQueryConditions=useCallback((next:QueryCondition[])=>{
-    setAppliedConditions(next)
-    setColumnFilters(current=>{
-      const result:Record<string,QueryCondition>={}
-      for(const key of Object.keys(current)){
-        const hit=next.find(item=>item.field.toLowerCase()===key.toLowerCase())
-        if(hit)result[key]=hit
-      }
-      return result
-    })
-    setQueryOpen(false)
-  },[])
-  const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
-    widthSaveQueue.current.push({detail:detailTable,fieldKey,width})
-    if(widthSaveRunning.current)return
-    widthSaveRunning.current=true
-    try{
-      while(widthSaveQueue.current.length>0){
-        const target=widthSaveQueue.current.shift()!
-        // 列宽钳制 [40,300]：与后端 WorkbenchFieldMetaMapper.FilterColumnWidths 同源（双端各自收紧，改需同步）
-        const normalized=Math.min(300,Math.max(40,Math.round(target.width)))
-        try{
-          await apiClient.put<void>(`/document-workbench/${moduleId}/column-widths`,{
-            master:target.detail?{}:{[target.fieldKey]:normalized},
-            detail:target.detail?{[target.fieldKey]:normalized}:{},
-          })
-        }catch(error){
-          window.alert(error instanceof Error?`保存列宽失败：${error.message}`:'保存列宽失败。')
-        }
-      }
-      // 全部写回完成后再刷新一次定义，避免逐列刷新把未保存完的列重置回旧宽度
-      try{await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})}catch{/* 忽略刷新失败 */}
-    }finally{
-      widthSaveRunning.current=false
-    }
-  },[queryClient,moduleId])
+  // 列宽写回走统一队列（与查询中心共用 `useColumnWidthSaver`；多槽串行，自适应列宽一次入队多列也不会丢）
+  const { saveColumnWidth } = useColumnWidthSaver(moduleId, () => {
+    void queryClient.invalidateQueries({ queryKey: ['workbench', moduleId, 'definition'] })
+  })
   const saveMasterWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(false,columnKey,width)},[saveColumnWidth])
   const saveDetailWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(true,columnKey,width)},[saveColumnWidth])
   const handleColumnFilterChange=useCallback((columnId:string,condition:QueryCondition|null)=>{
@@ -340,6 +281,18 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       if(condition)next.push({...condition,logic:'and'})
       return next
     })
+  },[])
+  const applyQueryConditions=useCallback((next:QueryCondition[])=>{
+    setAppliedConditions(next)
+    setColumnFilters(current=>{
+      const result:Record<string,QueryCondition>={}
+      for(const key of Object.keys(current)){
+        const hit=next.find(item=>item.field.toLowerCase()===key.toLowerCase())
+        if(hit)result[key]=hit
+      }
+      return result
+    })
+    setQueryOpen(false)
   },[])
   /** 滚动到底加载下一页：ErpTable 的哨兵观察器只在"有没有这个回调"上重建，回调本身必须稳定 */
   const fetchNextRowsRef=useRef(records.fetchNextPage)
@@ -518,6 +471,19 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         {active&&masterDescribe?(<div className="small text-truncate" title={masterDescribe}>{masterDescribe}</div>):(<span className="small text-secondary text-nowrap">选择主表行查看明细</span>)}
         {details.isFetching&&<span className="small text-secondary ms-auto text-nowrap">正在加载明细…</span>}
       </div>
+        // 右键「在查询中心查找此值」：把"看到某个料号/单号"直接接到跨单据倒查，
+        // 这比从菜单进查询中心再选模块快得多。只在模块登记了检索位时出现。
+        cellMenuExtra:({columnId,value}:{columnId:string;value:unknown})=>{
+          if(!definition.data||!(definition.data.searchMaster||definition.data.searchDetail))return []
+          const text=value==null?'':String(value).trim()
+          if(!text)return []
+          const shown=text.length>14?`${text.slice(0,14)}…`:text
+          return [{
+            key:'search-center',
+            label:`在查询中心查找“${shown}”`,
+            onClick:()=>openTab(`/search-center?module=${moduleId}&find=${encodeURIComponent(`${columnId}:${text}`)}`,{locate:true}),
+          }]
+        },
       {details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpListGrid
         plain
         listId={`workbench-${moduleId}-detail`}
