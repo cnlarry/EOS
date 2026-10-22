@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: 9f00c9f6949006fb -->
+<!-- inventory-fingerprint: 1d6f8a76415a473d -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,7 +21,7 @@
 
 ## 一、总览
 
-- 入库脚本 **89** 个：门禁（CI） 18 · 门禁（本地按需） 18 · 一次性批次 21 · 工具 32
+- 入库脚本 **90** 个：门禁（CI） 18 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 32
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**13** 个，见第七节
@@ -50,13 +50,13 @@
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 6 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 6 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
-| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 5 |
+| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 7 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
 | `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 11 |
 | `check-docs.ps1` | 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链， 以及**随仓库分发的文档里，相对链接必须指向已入库的文件**。 | git | 10 |
-| `check-migration-numbers.ps1` | 迁移编号唯一性门禁：同一个编号只能对应一个迁移脚本，且文件名必须符合 `NNN_描述.sql`。 | 仅静态 | 4 |
+| `check-migration-numbers.ps1` | 迁移编号唯一性门禁：同一个编号只能对应一个迁移脚本，且文件名必须符合 `NNN_描述.sql`。 | 仅静态 | 5 |
 | `check-numeric-column-types.ps1` | 静态门禁：迁移脚本不得新增 float 列。 | 仅静态 | 4 |
-| `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 6 |
+| `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 8 |
 | `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 8 |
 | `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 2 |
 | `check-tab-navigation.ps1` | 前端「工作区导航」门禁：跨模块跳转与返回只允许一种写法（ADR-040）。 | 仅静态 | 3 |
@@ -78,7 +78,8 @@
 | `check-form-layout.ps1` | 模块级表单版式巡检：版式行不得悬空、越界或把不该藏的字段藏起来。 | 连库 | 5 |
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
 | `check-live-fixture-hygiene.ps1` | 真库用例夹具卫生门禁：写入只能落在用例**自己造**的键上。 | 仅静态 | 5 |
-| `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 5 |
+| `check-master-amount-rollup.ps1` | 连库门禁：主表金额汇总（主表列 = 明细同名列 SUM）的三项断言。 | 连库 | 2 |
+| `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 6 |
 | `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 9 |
 | `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 4 |
@@ -122,7 +123,7 @@
 | `auto-enable-batch.ps1` | 统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写模块声明）→ 真实数据 CRUD 回路 （尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。 全绿则保留启用并出报告；任一失败则整批回滚并出差异报告（不静默修… | 需 API 在线 | 5 |
 | `dev-services.ps1` | EOS 本地开发服务管理：EOS.API 一键启动、停止、重启、状态与日志。 | 需 API 在线、工具链 | 4 |
 | `eos-sql-selftest.ps1` | eos-sql.ps1 托管回退路径的结果集回归自检。 | 连库 | 1 |
-| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 44 |
+| `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 45 |
 | `export-bootstrap-baseline.ps1` | 重建迁移基线登记 `db/bootstrap/40_journal_baseline.sql`。 | 连库 | 2 |
 | `export-bootstrap-metadata.ps1` | 从当前库重建元数据种子 `db/bootstrap/20_metadata.sql`。 | 连库 | 1 |
 | `export-bootstrap-schema.ps1` | 从当前库重建结构种子 `db/bootstrap/10_schema.sql`。 | 连库 | 2 |
@@ -137,7 +138,7 @@
 | `publish-workbench-snapshots.ps1` | 发布工作台定义快照（开发库自助发布，替代人工在 230101 点「发布配置」；走同一服务端接口：校验 → 版本递增 → 写快照 → 清脏）。 | 需 API 在线 | 3 |
 | `register-field-relation-edges.ps1` | 单据关系效果边登记器（FIELD_RELATION 方案 A，迁移 058 后运行）：从业务动作的定位键派生并幂等登记 EFFECT 边。 | 连库 | 独立工具 |
 | `regression.ps1` | EOS 一键回归护栏：单测 + 前端 lint/build/test + E2E 四链 + UI 冒烟。 | 需 API 在线、工具链 | 5 |
-| `release.ps1` | EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 生成 CHANGELOG 节 → 产出清单； 定稿提交之后用 -TagOnly 打标签。**分两步是刻意的**：标签必须落在「CHANGELOG 定稿」那… | 连库、git、工具链 | 8 |
+| `release.ps1` | EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 生成 CHANGELOG 节 → 产出清单； 定稿提交之后用 -TagOnly 打标签。**分两步是刻意的**：标签必须落在「CHANGELOG 定稿」那… | 连库、git、工具链 | 9 |
 | `report-form-meta.ps1` | 统一表单切片模块字段矩阵报告：按模块输出主/明细表字段的 必填 / 默认值 / FORM_OPTIONS / 选择器 / 隐藏必填 / 只读联动 清单，供实施顾问逐表确认。 | 需 API 在线 | 1 |
 | `report-inventory-imbalance-keys.ps1` | 逐键定性库存不平键（余额对流水累计），并回答「是否仍在扩大」。 | 连库 | 1 |
 | `republish-all-whitelist.ps1` | 全量白名单模块重发布 + 快照差异清单（发布即重派生的验收工具）。 | 连库、需 API 在线 | 4 |
