@@ -28,6 +28,8 @@ import { useMenuPlacement } from './useMenuPlacement'
 const VIRTUAL_MIN_ROWS = 80
 /** 可视区上/下行数缓冲，保证滚动过程中新入视口的行已被渲染 */
 const VIRTUAL_OVERSCAN = 12
+/** 窗口按行数分块推进：滚动 8 行才换一次窗口，避免每滚一行就重渲染整块表 */
+const VIRTUAL_CHUNK = 8
 
 /**
  * 虚拟窗口的行区间（start 含、end 不含）。
@@ -46,6 +48,17 @@ export function computeVirtualWindow(scrollTop: number, viewport: number, scroll
     ? total
     : Math.min(total, start + Math.ceil(viewport / height) + VIRTUAL_OVERSCAN * 2)
   return { start, end }
+}
+
+/**
+ * 窗口按块对齐：滚动 8 行才换一次窗口，避免每滚一行就重渲染 40+ 行。
+ * start 向下取整多留上方缓冲，end 向上取整多留下方缓冲；到底时 end 保持 total。
+ */
+export function chunkVirtualWindow(start: number, end: number, total: number, chunk = VIRTUAL_CHUNK) {
+  return {
+    start: Math.max(0, Math.floor(start / chunk) * chunk),
+    end: end >= total ? total : Math.min(total, Math.ceil(end / chunk) * chunk),
+  }
 }
 
 /**
@@ -508,11 +521,49 @@ export function ErpTable<TData>({
   // 避免默认空数组每次渲染都是新引用导致 TanStack 状态循环（卡死路由过渡）
   const [internalSorting, setInternalSorting] = useState<SortingState>([])
   const resolvedSorting = sorting ?? internalSorting
-  const updateSorting = (updater: SortingState | ((current: SortingState) => SortingState)) => {
-    const next = typeof updater === 'function' ? updater(resolvedSorting) : updater
-    if (onSortingChange) onSortingChange(next)
+  const tableOptionRef = useRef({
+    onSortingChange,
+    resolvedSorting,
+    onRowSelectionChange,
+    rowSelection,
+    onColumnVisibilityChange,
+    columnVisibility,
+  })
+  useLayoutEffect(() => {
+    tableOptionRef.current = {
+      onSortingChange,
+      resolvedSorting,
+      onRowSelectionChange,
+      rowSelection,
+      onColumnVisibilityChange,
+      columnVisibility,
+    }
+  })
+  // 表格实例的 state / 回调保持稳定身份：内联对象与内联函数每次渲染都换身份，
+  // TanStack 会据此重建行模型/行对象，窗口化滚动时 40 行会被整体重渲染。
+  const handleTableSortingChange = useCallback((updater: SortingState | ((current: SortingState) => SortingState)) => {
+    const context = tableOptionRef.current
+    const next = typeof updater === 'function' ? updater(context.resolvedSorting) : updater
+    if (context.onSortingChange) context.onSortingChange(next)
     else setInternalSorting(next)
-  }
+  }, [])
+  const handleTableRowSelectionChange = useCallback((updater: unknown) => {
+    const context = tableOptionRef.current
+    // table-core 的行选择状态是 Record<string, true>，本仓对外仍是 Record<string, boolean>；
+    // 这里按同一对象收窄/放宽，运行期不变。
+    const current = context.rowSelection as Record<string, true>
+    const next = typeof updater === 'function'
+      ? (updater as (old: Record<string, true>) => Record<string, true>)(current)
+      : updater as Record<string, true>
+    context.onRowSelectionChange?.(next as unknown as RowSelectionState)
+  }, [])
+  const handleTableColumnVisibilityChange = useCallback((updater: VisibilityState | ((current: VisibilityState) => VisibilityState)) => {
+    const context = tableOptionRef.current
+    const next = typeof updater === 'function' ? updater(context.columnVisibility) : updater
+    context.onColumnVisibilityChange?.(next)
+  }, [])
+  // 表头菜单与表格实例共用同一个排序入口（身份稳定，行为不变）
+  const updateSorting = handleTableSortingChange
   const onEndReachedRef = useRef(onEndReached)
   onEndReachedRef.current = onEndReached
   const loadingMoreRef = useRef(loadingMore)
@@ -528,6 +579,9 @@ export function ErpTable<TData>({
   // 估小只会多渲染几行，估大才会在滚动中露出空白。
   const scrollContainerRef = useRef<HTMLElement | null>(null)
   const rowHeightRef = useRef(27)
+  const viewportHeightRef = useRef(0)
+  const headerHeightRef = useRef(0)
+  const lastEndReachedRef = useRef(0)
   const [virtualActive, setVirtualActive] = useState(false)
   const [virtualWindow, setVirtualWindow] = useState({ start: 0, end: 0 })
 
@@ -616,6 +670,15 @@ export function ErpTable<TData>({
     console.warn('[ErpTable] getRowId 出现重复键，已按出现顺序补后缀：', signature.split('|'))
   }, [rowIdentity])
 
+  const tableState = useMemo(() => ({
+    sorting: resolvedSorting,
+    rowSelection: rowSelection as Record<string, true>,
+    columnVisibility,
+  }), [resolvedSorting, rowSelection, columnVisibility])
+  const tableGetRowId = useMemo(
+    () => (rowIds ? (_row: TData & CoreRowData, index: number) => rowIds[index] ?? String(index) : undefined),
+    [rowIds],
+  )
   const table = useReactTable({
     // 桥接层的列定义把行类型映射成 `TData & RowData`（为满足 v9 的索引签名约束），
     // 表格实例推出的行类型因此比入参窄一层：入参与选择状态各窄化一次。运行期无差别。
@@ -623,17 +686,15 @@ export function ErpTable<TData>({
     columns,
     // v9 的行选择状态只记被选中的行（Record<string, true>），本仓按 v8 记 true/false；
     // 多出来的 false 项在 v9 里是假值、不参与判定，故此处直接窄化即可。
-    state: { sorting: resolvedSorting, rowSelection: rowSelection as Record<string, true>, columnVisibility },
+    state: tableState,
     manualSorting: !clientSideSorting,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: clientSideSorting ? getSortedRowModel() : undefined,
-    getRowId: rowIds ? (_row: TData & CoreRowData, index: number) => rowIds[index] ?? String(index) : undefined,
-    onSortingChange: updateSorting,
-    onRowSelectionChange: (updater) =>
-      onRowSelectionChange?.(typeof updater === 'function' ? updater(rowSelection as Record<string, true>) : updater),
-    onColumnVisibilityChange: (updater) =>
-      onColumnVisibilityChange?.(typeof updater === 'function' ? updater(columnVisibility) : updater),
+    getRowId: tableGetRowId,
+    onSortingChange: handleTableSortingChange,
+    onRowSelectionChange: handleTableRowSelectionChange,
+    onColumnVisibilityChange: handleTableColumnVisibilityChange,
   })
 
   const rowsModel = table.getRowModel().rows
@@ -774,24 +835,49 @@ export function ErpTable<TData>({
     }
   }, [virtualize])
 
+  /** 量一次表头高度与当前渲染行的平均高度（滚动热路径不调用） */
+  const measureRowHeight = useCallback((container: HTMLElement) => {
+    const header = container.querySelector('thead')
+    if (header) {
+      const headerHeight = header.getBoundingClientRect().height
+      if (headerHeight > 0) headerHeightRef.current = headerHeight
+    }
+    const rows = container.querySelectorAll<HTMLElement>('tbody tr:not(.erp-virtual-spacer)')
+    if (rows.length === 0) return
+    let sum = 0
+    for (const row of rows) sum += row.getBoundingClientRect().height
+    const average = sum / rows.length
+    if (average > 0) rowHeightRef.current = average
+  }, [])
+
   /**
    * 按当前滚动位置计算并更新可视窗口。
    *
    * 滚动热路径里不读 `scrollHeight`：那是强制布局的属性，读到就是一次同步 layout；
-   * 总高按「行数 × 实测行高」估，到底判定用同一个估值（略小于真实值 ⇒ 提前一点判定到底，
-   * 只多渲染末尾几行，不影响正确性）。
+   * 总高按「表头高 + 行数 × 实测平均行高」估。窗口按 VIRTUAL_CHUNK 行分块推进，
+   * 滚动 8 行才换一次窗口，避免每滚一行就重渲染 40+ 行。
    */
   const applyScrollWindow = useCallback((container: HTMLElement, total: number) => {
     const height = rowHeightRef.current
     if (height <= 0 || total <= 0) return
-    const viewport = container.clientHeight
+    const viewport = viewportHeightRef.current || container.clientHeight
     if (viewport <= 0) {
       setVirtualWindow({ start: 0, end: Math.min(total, VIRTUAL_OVERSCAN * 2 + 10) })
       return
     }
-    const estimatedHeight = total * height
-    const next = computeVirtualWindow(container.scrollTop, viewport, estimatedHeight, total, height)
-    setVirtualWindow((current) => (current.start === next.start && current.end === next.end ? current : next))
+    const estimatedHeight = headerHeightRef.current + total * height
+    const raw = computeVirtualWindow(container.scrollTop, viewport, estimatedHeight, total, height)
+    // 分块对齐：滚动 8 行才换一次窗口，避免每滚一行就重渲染 40+ 行
+    const { start, end } = chunkVirtualWindow(raw.start, raw.end, total)
+    setVirtualWindow((current) => (current.start === start && current.end === end ? current : { start, end }))
+    // 窗口已经碰到末行：提前触发加载，别等用户滚进底部占位空白才由哨兵发现
+    if (raw.end >= total - 1 && hasMoreRef.current && !loadingMoreRef.current) {
+      const now = performance.now()
+      if (now - lastEndReachedRef.current > 500) {
+        lastEndReachedRef.current = now
+        onEndReachedRef.current?.()
+      }
+    }
   }, [])
 
   // 行数变化后重估窗口化：行数不足 / 容器不可滚时回退全量渲染
@@ -804,23 +890,45 @@ export function ErpTable<TData>({
       setVirtualActive(false)
       return
     }
-    const sample = container.querySelector('tbody tr:not(.erp-virtual-spacer)') as HTMLElement | null
-    const measured = sample ? sample.offsetHeight : 0
-    if (measured > 0) rowHeightRef.current = measured
     // 容器暂无布局高度（所在标签被隐藏）时不能据此判定“无需窗口化”，否则恢复可见后不会自恢复
     if (container.clientHeight === 0) return
-    if (container.scrollHeight <= container.clientHeight + 4) {
+    viewportHeightRef.current = container.clientHeight
+    measureRowHeight(container)
+    if (container.scrollHeight <= container.clientHeight + 4 && !virtualActive) {
       setVirtualActive(false)
       return
     }
     if (!virtualActive) setVirtualActive(true)
     applyScrollWindow(container, total)
-  }, [virtualize, rowsModel.length, virtualActive, applyScrollWindow])
+  }, [virtualize, rowsModel.length, virtualActive, applyScrollWindow, measureRowHeight])
+
+  // 容器尺寸/可见性变化（从隐藏标签恢复、窗口缩放、拖拽分栏）时重新量行高并重算窗口。
+  // 单靠 rowsModel.length 不会在“标签从隐藏变可见”时触发，恢复后就会停在旧窗口/旧行高。
+  const rowsTotalRef = useRef(rowsModel.length)
+  rowsTotalRef.current = rowsModel.length
+  useEffect(() => {
+    if (!virtualize) return
+    if (typeof ResizeObserver === 'undefined') return
+    const container = scrollContainerRef.current
+    if (!container) return
+    const observer = new ResizeObserver(() => {
+      const total = rowsTotalRef.current
+      if (total === 0) return
+      if (total < VIRTUAL_MIN_ROWS || container.clientHeight <= 0) {
+        setVirtualActive(false)
+        return
+      }
+      viewportHeightRef.current = container.clientHeight
+      measureRowHeight(container)
+      if (!virtualActive) setVirtualActive(true)
+      applyScrollWindow(container, total)
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [virtualize, virtualActive, measureRowHeight, applyScrollWindow])
 
   // 滚动 / 容器尺寸变化时更新可视窗口（行数变化时重新绑定以使用最新总行数）。
   // 滚动事件按帧合并：一次滚动会连发几十个事件，逐个 setState 等于把整表重渲染几十遍。
-  const rowsTotalRef = useRef(rowsModel.length)
-  rowsTotalRef.current = rowsModel.length
   useEffect(() => {
     if (!virtualActive) return
     const container = scrollContainerRef.current

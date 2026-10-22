@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { firePointer, stubRect } from '../../test/pointer'
-import { ErpTable, computeVirtualWindow, parseNumericCell } from './ErpTable'
+import { ErpTable, chunkVirtualWindow, computeVirtualWindow, parseNumericCell } from './ErpTable'
 
 interface Row {
   id: string
@@ -197,6 +197,14 @@ describe('ErpTable', () => {
     expect(middle.end).toBeLessThan(total)
     // 顶部不产生上方占位
     expect(computeVirtualWindow(0, viewport, scrollHeight, total, height).start).toBe(0)
+  })
+
+  it('虚拟窗口按 8 行分块推进，减少滚动中的重复渲染', () => {
+    // start 向下取整多留上方缓冲，end 向上取整多留下方缓冲
+    expect(chunkVirtualWindow(13, 37, 100)).toEqual({ start: 8, end: 40 })
+    // 到底时 end 必须是 total，不能因为向上取整又造出底部占位
+    expect(chunkVirtualWindow(95, 100, 100)).toEqual({ start: 88, end: 100 })
+    expect(chunkVirtualWindow(0, 5, 100)).toEqual({ start: 0, end: 8 })
   })
 
   it('后台刷新时保留旧行并标记 is-loading', () => {
