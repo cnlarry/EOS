@@ -263,15 +263,6 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable),placeholderData:keepPreviousData})
   // 列宽是操作习惯：写个人层（SYS_USER_COLUMN.F_WIDTH，与"选择列"同一批行），有模块浏览权即可；字段元数据里的宽度是所有人的
   // 默认值，只在字段设置面改，不随拖拽变动。
-  /**
-   * 打开高级查询：草稿从"已生效条件"起步。列头/单元格右键筛选与高级查询是同一批条件的两个视图
-   * （`handleColumnFilterChange` 双向同步），草稿若从空行起步，刚设的筛选在弹窗里就看不到。
-   */
-  const openQueryBuilder=useCallback(()=>{
-    setConditions(appliedConditions.length?appliedConditions.map(item=>({...item})):[emptyQueryCondition()])
-    setQueryOpen(true)
-  },[appliedConditions])
-  /** 应用高级查询：列头筛选标记按新条件重建，否则在弹窗里删掉的条件仍会显示筛选态 */
   // 列宽写回走统一队列（与查询中心共用 `useColumnWidthSaver`；多槽串行，自适应列宽一次入队多列也不会丢）
   const { saveColumnWidth } = useColumnWidthSaver(moduleId, () => {
     void queryClient.invalidateQueries({ queryKey: ['workbench', moduleId, 'definition'] })
@@ -291,6 +282,15 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       return next
     })
   },[])
+  /**
+   * 打开高级查询：草稿从"已生效条件"起步。列头/单元格右键筛选与高级查询是同一批条件的两个视图
+   * （`handleColumnFilterChange` 双向同步），草稿若从空行起步，刚设的筛选在弹窗里就看不到。
+   */
+  const openQueryBuilder=useCallback(()=>{
+    setConditions(appliedConditions.length?appliedConditions.map(item=>({...item})):[emptyQueryCondition()])
+    setQueryOpen(true)
+  },[appliedConditions])
+  /** 应用高级查询：列头筛选标记按新条件重建，否则在弹窗里删掉的条件仍会显示筛选态 */
   const applyQueryConditions=useCallback((next:QueryCondition[])=>{
     setAppliedConditions(next)
     setColumnFilters(current=>{
@@ -471,6 +471,19 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         onColumnResize:saveMasterWidth,
         columnFilterValue:columnFilters,
         onColumnFilterChange:handleColumnFilterChange,
+        // 右键「在查询中心查找此值」：把"看到某个料号/单号"直接接到跨单据倒查，
+        // 这比从菜单进查询中心再选模块快得多。只在模块登记了检索位时出现。
+        cellMenuExtra:({columnId,value}:{columnId:string;value:unknown})=>{
+          if(!definition.data||!(definition.data.searchMaster||definition.data.searchDetail))return []
+          const text=value==null?'':String(value).trim()
+          if(!text)return []
+          const shown=text.length>14?`${text.slice(0,14)}…`:text
+          return [{
+            key:'search-center',
+            label:`在查询中心查找“${shown}”`,
+            onClick:()=>openTab(`/search-center?module=${moduleId}&find=${encodeURIComponent(`${columnId}:${text}`)}`,{locate:true}),
+          }]
+        },
         onColumnsReorder:handleColumnsReorder,
         // 电子表格手感：拖选一块单元格 → Ctrl+C 复制成 TSV（不带表头），直接粘进 Excel
         cellSelection:true,
@@ -487,19 +500,6 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         {active&&masterDescribe?(<div className="small text-truncate" title={masterDescribe}>{masterDescribe}</div>):(<span className="small text-secondary text-nowrap">选择主表行查看明细</span>)}
         {details.isFetching&&<span className="small text-secondary ms-auto text-nowrap">正在加载明细…</span>}
       </div>
-        // 右键「在查询中心查找此值」：把"看到某个料号/单号"直接接到跨单据倒查，
-        // 这比从菜单进查询中心再选模块快得多。只在模块登记了检索位时出现。
-        cellMenuExtra:({columnId,value}:{columnId:string;value:unknown})=>{
-          if(!definition.data||!(definition.data.searchMaster||definition.data.searchDetail))return []
-          const text=value==null?'':String(value).trim()
-          if(!text)return []
-          const shown=text.length>14?`${text.slice(0,14)}…`:text
-          return [{
-            key:'search-center',
-            label:`在查询中心查找“${shown}”`,
-            onClick:()=>openTab(`/search-center?module=${moduleId}&find=${encodeURIComponent(`${columnId}:${text}`)}`,{locate:true}),
-          }]
-        },
       {details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpListGrid
         plain
         listId={`workbench-${moduleId}-detail`}
