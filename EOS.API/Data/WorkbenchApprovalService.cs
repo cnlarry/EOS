@@ -377,6 +377,13 @@ public sealed class WorkbenchApprovalService(
                 RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error),
                 effectRun.Steps);
         }
+        // 批核/解批效果（如变更单回写、回执核价）可能改了本单明细：主表金额由框架统一补算，
+        // 效果处理器不自己算。预演路径整段回滚，跑了也是白跑，故跳过。
+        if (!simulate && definition.DetailTable is not null)
+        {
+            await MasterAmountRollup.ApplyAsync(connection, transaction, definition.MasterTable,
+                definition.DetailTable, definition.MasterPkOrder, keyValues, token);
+        }
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
             approve ? "APPROVE" : "DEAPPROVE", auditSummary ?? (approve ? "批核" : "解批"), userId, "WORKBENCH_RECORD", result: 1, fieldChanges: confirmChanges, token);
         return new ApprovalCoreResult(null, effectRun.Steps, StepWarnings(effectRun.Steps));

@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Workbench;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -181,6 +182,13 @@ public sealed class DocumentActionExecutor(
                 probe);
 
             var result = await action.ExecuteAsync(context, token);
+            // 动作可能改了明细（取价、生成、调整……）：主表金额由框架按元数据统一补算，
+            // 处理器不自己算——否则同一个"加法"会随处理器数量各写一份。
+            if (definition.DetailTable is not null)
+            {
+                await MasterAmountRollup.ApplyAsync(connection, transaction, definition.MasterTable,
+                    definition.DetailTable, definition.MasterPkOrder, keyValues, token);
+            }
             await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, recordKey,
                 config.Key,
                 Describe(config, result, probe),

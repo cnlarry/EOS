@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EOS.API.Data.Workbench;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
@@ -132,23 +133,17 @@ internal static class ChangeApplyExecutor
         return affected;
     }
 
+    /// <summary>
+    /// 目标单据的主表金额按**同一份发现规则**重算（主表列 = 明细同名列 SUM）：
+    /// 跨单据回写（变更单 → 原单）也走 <see cref="MasterAmountRollup"/>，不在这里另写算式。
+    /// 主表汇率不参与——变更单把明细金额复制过去之后，结果应与"直接编辑原单再保存"一致。
+    /// </summary>
     private static async Task<int> RecalcMasterTotalsAsync(
         ServiceEffectContext context, ChangeApplyConfig cfg, List<EffectSqlParameter> parameters, CancellationToken token)
     {
         var plan = context.Plan;
         var prefixType = ServiceEffectSql.Q(cfg.PrefixType);
         var prefixNo = ServiceEffectSql.Q(cfg.PrefixNo);
-        var sub = $"(SELECT T.{prefixType}, T.{prefixNo}, SUM(T.AMOUNT*T.CURR_RATE) AMOUNT, "
-            + $"SUM(T.AMOUNT_TAX*T.CURR_RATE) AMOUNT_TAX, SUM(T.TAX_SUM*T.CURR_RATE) TAX_SUM "
-            + $"FROM dbo.{ServiceEffectSql.Q(cfg.DetailTarget)} T "
-            + $"WHERE T.{prefixType}=@ot AND T.{prefixNo}=@on "
-            + $"GROUP BY T.{prefixType}, T.{prefixNo}) S";
-        var sql = $"UPDATE {ServiceEffectSql.Q(cfg.MasterTarget)} SET "
-            + $"AMOUNT=ROUND(S.AMOUNT/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2), "
-            + $"AMOUNT_TAX=ROUND(S.AMOUNT_TAX/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2), "
-            + $"TAX_SUM=ROUND(S.TAX_SUM/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2) "
-            + $"FROM {sub} WHERE {ServiceEffectSql.Q(cfg.MasterTarget)}.{prefixType}=S.{prefixType} "
-            + $"AND {ServiceEffectSql.Q(cfg.MasterTarget)}.{prefixNo}=S.{prefixNo}";
         // Resolve the referenced original document key from the change master; the
         // master key parameters were already added by the caller's MasterKeyFilter.
         await using var read = new SqlCommand(
@@ -165,9 +160,10 @@ internal static class ChangeApplyExecutor
         await reader.DisposeAsync();
         if (string.IsNullOrWhiteSpace(typeValue) || string.IsNullOrWhiteSpace(noValue))
             throw new EffectConfigException("change-apply 变更主表缺少原单键。");
-        parameters.Add(new EffectSqlParameter("@ot", typeValue));
-        parameters.Add(new EffectSqlParameter("@on", noValue));
-        return await ExecRawAsync(context, sql, parameters, token);
+        var executed = await MasterAmountRollup.ApplyAsync(context.Connection, context.Transaction,
+            cfg.MasterTarget, cfg.DetailTarget, [cfg.PrefixType, cfg.PrefixNo],
+            [typeValue, noValue], token);
+        return executed > 0 ? 1 : 0;
     }
 
     private static async Task<int> ExecRawAsync(

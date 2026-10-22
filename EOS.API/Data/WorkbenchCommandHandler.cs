@@ -1396,9 +1396,9 @@ public sealed class WorkbenchCommandHandler(
 
     /// <summary>
     /// 主表金额汇总与余额字段初始化（明细聚合 + PREPAY/RECEIVE 余额）。
-    /// 主表 AMOUNT/AMOUNT_TAX/TAX_SUM 以本汇总为权威（对齐单据明细金额的通用口径），
-    /// 在保存后处理之后执行、会覆盖领域规则写入的同名列；明细行异币别折算未实现
-    /// （明细币别与主表一致时 SUM 与折算等价）。
+    /// 汇总列**不在此处枚举**：由 <see cref="MasterAmountRollup"/> 按「同名 + 同类型 + 金额角色」
+    /// 从元数据发现，与动作、批核/解批的收尾路径共用同一实现；这里只负责整表重算与余额列初始化。
+    /// 金额的唯一真源是明细行，明细行异币别不做折算——主表只把它加起来。
     /// </summary>
     private static async Task RecalculateMasterAmountsAsync(
         SqlConnection connection,
@@ -1410,29 +1410,8 @@ public sealed class WorkbenchCommandHandler(
         {
             return;
         }
-        var typeColumn = definition.MasterPkOrder[0];
-        var noColumn = definition.MasterPkOrder[1];
-        foreach (var column in new[] { "AMOUNT", "AMOUNT_TAX", "TAX_SUM" })
-        {
-            if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.DetailTable, column, token))
-            {
-                continue;
-            }
-            if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, column, token))
-            {
-                continue;
-            }
-            await using var command = new SqlCommand(
-                $"""
-                UPDATE m SET [{column}]=d.[{column}]
-                FROM dbo.[{definition.MasterTable}] m
-                INNER JOIN (SELECT [{typeColumn}],[{noColumn}],SUM([{column}]) AS [{column}]
-                            FROM dbo.[{definition.DetailTable}]
-                            GROUP BY [{typeColumn}],[{noColumn}]) d
-                  ON m.[{typeColumn}]=d.[{typeColumn}] AND m.[{noColumn}]=d.[{noColumn}];
-                """, connection, transaction);
-            await command.ExecuteNonQueryAsync(token);
-        }
+        await MasterAmountRollup.ApplyAsync(connection, transaction, definition.MasterTable,
+            definition.DetailTable, definition.MasterPkOrder, keyValues: null, token);
         if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "PREPAY_AMOUNT", token)
             && await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "AMOUNT", token))
         {

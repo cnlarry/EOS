@@ -1,6 +1,7 @@
 using System.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Workbench;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -11,8 +12,8 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 // 与既有实现同一件事（`btnCalc` → `P_PUR_PURCHASE_GETPRICE`），三处有意不同：
 //   ① 已注释掉的"依材质取价"分支不复活——既有实现注释掉它是有原因的（按 STUFF_ID 配对会把
 //      不同料号的计价串到一起），只保留"依品号"分支；
-//   ② 主表本位币汇率为 0 或空时拒绝而不是除零——既有实现直接 `AMOUNT/CURR_RATE`，汇率坏掉时
-//      整单金额会被算成 NULL 或报错，fail-closed 拦在前面；
+//   ② 主表金额＝明细同名列的裸 SUM，与保存路径同一口径（主表汇率不参与汇总）：让"单据金额"
+//      只有明细行这一个真源，不为它引入第二套算式，也不需要借汇率缺失去拦住什么；
 //   ③ 逐行回写而不是整表 UPDATE：没有厂商计价的行保留原价（只重算金额），有计价的行才改价。
 //      整表回写会把"无计价行的手工价"一并推平，这正是重算类操作最容易被做坏的地方。
 //
@@ -30,7 +31,6 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
     private const string TypeField = "PURCHASE_TYPE";
     private const string NoField = "PURCHASE_NO";
     private const string SupplierField = "SUPPLIER_ID";
-    private const string MasterRateField = "CURR_RATE";
     private const string FinishedField = "FINISHED_TAG";
     private const string ProField = "PRO_NO";
     private const string UnitField = "UNIT_ID";
@@ -66,8 +66,7 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
         foreach (var (table, column) in new[]
                  {
                      (MasterTable, TypeField), (MasterTable, NoField),
-                     (MasterTable, SupplierField), (MasterTable, MasterRateField),
-                     (MasterTable, FinishedField),
+                     (MasterTable, SupplierField), (MasterTable, FinishedField),
                      (MasterTable, AmountField), (MasterTable, AmountTaxField), (MasterTable, TaxSumField),
                      (DetailTable, TypeField), (DetailTable, NoField),
                      (DetailTable, ProField), (DetailTable, UnitField), (DetailTable, CurrField),
@@ -94,7 +93,7 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             throw new InvalidOperationException("缺少单据主键，禁止无条件取价。");
         }
 
-        var (supplier, masterRate, finished) = await ReadMasterAsync(context, type, no, token);
+        var (supplier, finished) = await ReadMasterAsync(context, type, no, token);
         if (finished)
         {
             throw new InvalidOperationException("该采购单已完工结案，单价是结算凭据，不能重新取价。");
@@ -102,10 +101,6 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
         if (supplier.Length == 0)
         {
             throw new InvalidOperationException("采购单未填厂商，无法按厂商计价取价。");
-        }
-        if (masterRate is null || Math.Abs(masterRate.Value) < 0.0000001)
-        {
-            throw new InvalidOperationException("主表本位币汇率缺失或为零，此时重算主表金额会除零，已拒绝。");
         }
 
         var rows = await ReadDetailRowsAsync(context, type, no, token);
@@ -128,8 +123,6 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             }
             await RecomputeRowAsync(context, type, no, current, amountDecimals, amountRounding, token);
         }
-        await RollupMasterAsync(context, type, no, masterRate.Value, amountDecimals, token);
-
         var unpriced = rows.Count - priced;
         return new DocumentActionResult(DocumentActionOutcome.Refreshed,
             $"已重新取价：明细 {rows.Count} 行，其中 {priced} 行按厂商计价更新单价"
@@ -139,12 +132,12 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
 
     private const string CurrRateField = "CURR_RATE";
 
-    private static async Task<(string Supplier, double? MasterRate, bool Finished)> ReadMasterAsync(
+    private static async Task<(string Supplier, bool Finished)> ReadMasterAsync(
         DocumentActionContext context, string type, string no, CancellationToken token)
     {
         var q = ServiceEffectSql.Q;
         await using var command = new SqlCommand(
-            $"SELECT ISNULL({q(SupplierField)}, N''), {q(MasterRateField)}, ISNULL({q(FinishedField)}, 0) "
+            $"SELECT ISNULL({q(SupplierField)}, N''), ISNULL({q(FinishedField)}, 0) "
             + $"FROM dbo.{q(MasterTable)} WHERE {q(TypeField)}=@type AND {q(NoField)}=@no;",
             context.Connection, context.Transaction);
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
@@ -155,8 +148,7 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
             throw new InvalidOperationException($"找不到采购单 {type}/{no}。");
         }
         return (reader.GetString(0).Trim(),
-            reader.IsDBNull(1) ? null : Convert.ToDouble(reader.GetValue(1)),
-            !reader.IsDBNull(2) && Convert.ToBoolean(reader.GetValue(2)));
+            !reader.IsDBNull(1) && Convert.ToBoolean(reader.GetValue(1)));
     }
 
     private sealed record DetailRow(
@@ -289,30 +281,6 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
         command.Parameters.Add("@unit", SqlDbType.NVarChar, 20).Value = row.UnitId;
         command.Parameters.Add("@curr", SqlDbType.NVarChar, 20).Value = row.CurrId;
         command.Parameters.Add("@tax", SqlDbType.NVarChar, 20).Value = row.TaxId;
-        await command.ExecuteNonQueryAsync(token);
-    }
-
-    /// <summary>主表金额＝明细按汇率折算求和÷主表汇率（与旧过程一致；主表汇率为 0 已在入口拦下）。</summary>
-    private static async Task RollupMasterAsync(
-        DocumentActionContext context, string type, string no, double masterRate,
-        int amountDecimals, CancellationToken token)
-    {
-        var q = ServiceEffectSql.Q;
-        var rate = masterRate.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
-        await using var command = new SqlCommand(
-            $"UPDATE dbo.{q(MasterTable)} SET {q(AmountField)}=ROUND(d.{q(AmountField)}/{rate}, @decimals), "
-            + $"{q(AmountTaxField)}=ROUND(d.{q(AmountTaxField)}/{rate}, @decimals), "
-            + $"{q(TaxSumField)}=ROUND(d.{q(TaxSumField)}/{rate}, @decimals), "
-            + $"{q("LAST_UPDATE_DATE")}=SYSDATETIME() "
-            + $"FROM (SELECT SUM(ISNULL({q(AmountField)}, 0)*ISNULL({q(CurrRateField)}, 0)) AS {q(AmountField)}, "
-            + $"SUM(ISNULL({q(AmountTaxField)}, 0)*ISNULL({q(CurrRateField)}, 0)) AS {q(AmountTaxField)}, "
-            + $"SUM(ISNULL({q(TaxSumField)}, 0)*ISNULL({q(CurrRateField)}, 0)) AS {q(TaxSumField)} "
-            + $"FROM dbo.{q(DetailTable)} WHERE {q(TypeField)}=@type AND {q(NoField)}=@no) d "
-            + $"WHERE {q(TypeField)}=@type AND {q(NoField)}=@no;",
-            context.Connection, context.Transaction);
-        command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
-        command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
-        command.Parameters.Add("@decimals", SqlDbType.Int).Value = amountDecimals;
         await command.ExecuteNonQueryAsync(token);
     }
 

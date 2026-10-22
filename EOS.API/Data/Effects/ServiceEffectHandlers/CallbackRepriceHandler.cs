@@ -151,13 +151,14 @@ public sealed class CallbackRepriceHandler : IEffectServiceHandler
         var cbDetail = ServiceEffectSql.Q(plan.MasterTable!.Replace("_M", "_D"));
         var cbType = ServiceEffectSql.Q(plan.MasterPkOrder[0]);
         var cbNo = ServiceEffectSql.Q(plan.MasterPkOrder[1]);
+        // 主表金额＝明细同名列的裸 SUM，与统一表单保存路径同一口径（主表汇率不参与汇总）：
+        // 回执/核价单批核回写的是"这批明细值多少钱"，不是"折成本位币多少钱"。
         var sub = $"(SELECT D.{typeCol}, D.{noCol}, "
-            + $"SUM(D.AMOUNT*D.CURR_RATE) AMOUNT, SUM(D.AMOUNT_TAX*D.CURR_RATE) AMOUNT_TAX, SUM(D.TAX_SUM*D.CURR_RATE) TAX_SUM "
+            + $"SUM(D.AMOUNT) AMOUNT, SUM(D.AMOUNT_TAX) AMOUNT_TAX, SUM(D.TAX_SUM) TAX_SUM "
             + $"FROM dbo.{detail} D WHERE EXISTS (SELECT 1 FROM dbo.{cbDetail} R "
             + $"WHERE R.{cbType}=@mt AND R.{cbNo}=@mn AND D.{typeCol}=R.S_R_TYPE AND D.{noCol}=R.S_R_NO) "
             + $"GROUP BY D.{typeCol}, D.{noCol}) S";
-        var sql = $"UPDATE {master} SET AMOUNT=ROUND(S.AMOUNT / {master}.CURR_RATE, 2), "
-            + $"AMOUNT_TAX=ROUND(S.AMOUNT_TAX / {master}.CURR_RATE, 2), TAX_SUM=ROUND(S.TAX_SUM / {master}.CURR_RATE, 2) "
+        var sql = $"UPDATE {master} SET AMOUNT=S.AMOUNT, AMOUNT_TAX=S.AMOUNT_TAX, TAX_SUM=S.TAX_SUM "
             + $"FROM {sub} WHERE {master}.{typeCol}=S.{typeCol} AND {master}.{noCol}=S.{noCol}";
         await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
         command.Parameters.AddWithValue("@mt", type);

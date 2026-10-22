@@ -20,7 +20,7 @@ namespace EOS.API.Tests;
 /// 采购单「重新取价」（`purchase-reprice`）真库验收：按厂商计价重算本单明细的单价与金额。
 ///
 /// 口径：有计价的行更新单价七件套，无计价的行保留原价（只重算金额）；金额按税种公式逐行重算，
-/// 主表按明细折算汇总；主表汇率为 0 拒绝（除零）；已完工结案拒绝；探路零写入（含审计）。
+/// 主表金额＝明细同名列的裸 `SUM`（主表汇率不参与，与保存路径同一口径）；已完工结案拒绝；探路零写入（含审计）。
 /// 不要求已批核（取价的正常时机在批核之前）。
 ///
 /// 夹具全自造（ZZRP 前缀），用完即删：不碰真实采购单与计价。
@@ -293,8 +293,30 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
         Assert.Equal(5d, (await DetailAmountsAsync(1)).Price, 6);
     }
 
+    /// <summary>
+    /// 主表金额必须等于明细同名列的裸 `SUM`：主表汇率改成 2 之后，折算算式会得到 27/2=13.5，
+    /// 裸 `SUM` 仍是 27。这条钉住"主表汇率不参与金额汇总"（改回折算即红）。
+    /// </summary>
     [Fact]
-    public async Task ZeroMasterRate_IsRefused()
+    public async Task MasterAmounts_UseBareSum_WhenMasterRateDiffers()
+    {
+        await using var connection = await OpenAsync();
+        await ExecAsync(connection,
+            $"UPDATE dbo.{MasterTable} SET CURR_RATE=2 WHERE PURCHASE_TYPE=@type AND PURCHASE_NO=@no;",
+            ("@type", TestType), ("@no", TestNo));
+
+        var result = await RunAsync();
+
+        Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
+        var master = await MasterAmountsAsync();
+        Assert.Equal(27d, master.Amount, 6);
+        Assert.Equal(30.51d, master.AmountTax, 6);
+        Assert.Equal(3.51d, master.TaxSum, 6);
+    }
+
+    /// <summary>主表汇率坏掉不阻止取价：金额汇总已不依赖汇率，拦它只会把币别数据问题报成"取价失败"。</summary>
+    [Fact]
+    public async Task BrokenMasterRate_DoesNotBlockReprice()
     {
         await using var connection = await OpenAsync();
         await ExecAsync(connection,
@@ -303,8 +325,9 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
 
         var result = await RunAsync();
 
-        Assert.Equal(DocumentActionStatus.Failed, result.Status);
-        Assert.Contains("汇率", result.ErrorMessage!);
+        Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
+        Assert.Equal(10d, (await DetailAmountsAsync(1)).Price, 6);
+        Assert.Equal(27d, (await MasterAmountsAsync()).Amount, 6);
     }
 
     [Fact]
