@@ -15,7 +15,8 @@ import {
 } from '../../lib/tanstackTable'
 // 仅此处需要 v9 原始的行数据约束（模块增强的泛型必须与 v9 声明逐字一致），桥接层对外给的是放宽口径
 import type { RowData as CoreRowData } from '@tanstack/react-table'
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './queryCondition'
@@ -56,6 +57,23 @@ const MEASURE_DATA_TYPES = new Set(['decimal', 'numeric', 'money', 'smallmoney',
 
 function defaultNumericAlign(dataType: string | undefined): string | undefined {
   return dataType && MEASURE_DATA_TYPES.has(dataType.toLowerCase()) ? 'text-end' : undefined
+}
+
+/** 列头拖到可视区边缘多宽内开始自动横向滚动，以及每帧最多滚多少像素 */
+const AUTOSCROLL_EDGE = 56
+const AUTOSCROLL_MAX_STEP = 14
+
+/**
+ * 拖动列头时要自动横向滚动的容器：从表头往上找第一个"横向确实能滚"的祖先。
+ * 滚动容器不一定是 `.erp-table-shell`（有的页面是 `.table-responsive`，也有页面级滚动区），
+ * 所以按实际溢出判断，不写死类名。
+ */
+function findHorizontalScrollHost(element: HTMLElement | null): HTMLElement | null {
+  for (let node = element?.parentElement ?? null; node; node = node.parentElement) {
+    const style = window.getComputedStyle(node)
+    if (/(auto|scroll)/.test(style.overflowX) && node.scrollWidth > node.clientWidth + 1) return node
+  }
+  return null
 }
 
 /** 表格自己处理按键前先排除这些"正在编辑的东西" */
@@ -423,7 +441,29 @@ export function ErpTable<TData>({
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
-  const [dragColId, setDragColId] = useState<string | null>(null)
+  /** 正在被拖起的列头（浮起预览显示这一列，源列同时变暗） */
+  const [draggingColumn, setDraggingColumn] = useState<{ id: string; label: string; width: number; height: number } | null>(null)
+  /**
+   * 落点：插槽 =「一整列」的轮廓（视口坐标，fixed），宽度取被拖列的列宽。
+   * 电子表格的插入位置画的就是整列轮廓而不是一根细线——它表达的是"这里会插进一整列"。
+   */
+  const [columnDropSlot, setColumnDropSlot] = useState<{ id: string; after: boolean; left: number; top: number; width: number; height: number } | null>(null)
+  const columnDropSlotRef = useRef<typeof columnDropSlot>(null)
+  const columnDragRef = useRef<{
+    id: string; label: string; startX: number; startY: number; x: number; y: number
+    offsetX: number; offsetY: number; width: number; height: number
+    active: boolean; target: { id: string; after: boolean } | null
+  } | null>(null)
+  const columnGhostRef = useRef<HTMLDivElement>(null)
+  /** 被拖起的整列高亮层（fixed，跟随源列 rect；滚动时同步重算） */
+  const columnLiftRef = useRef<HTMLDivElement>(null)
+  /** 本次拖拽要自动滚动的横向容器（拖动开始时按源列位置找一次） */
+  const scrollHostRef = useRef<HTMLElement | null>(null)
+  const autoScrollRef = useRef<{ raf: number | null; velocity: number }>({ raf: null, velocity: 0 })
+  const dragPointerRef = useRef({ x: 0, y: 0 })
+  /** 列顺序变化前每列的位置（落位动画 FLIP 的起点）与上一次的列顺序键 */
+  const preReorderRectsRef = useRef<Map<string, number> | null>(null)
+  const columnOrderKeyRef = useRef('')
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
   // 未受控排序：外部未传 sorting/onSortingChange 时用内部稳定状态，
   // 避免默认空数组每次渲染都是新引用导致 TanStack 状态循环（卡死路由过渡）
@@ -1160,28 +1200,302 @@ export function ErpTable<TData>({
     setOpenMenu(columnId)
   }
 
-  const reorderColumns = (dragId: string, targetId: string) => {
+  // 列头拖拽顺序自己实现（不用 HTML5 draggable）：原生拖影只有被拖的那个小节点，
+  // 抓不住整列、也没有落点反馈。这里用指针事件画一层浮起的列头预览跟手，目标列亮一条插入线。
+  const visibleColumnIds = table.getVisibleLeafColumns().map((column) => column.id)
+  const reorderableColumnIds = onColumnsReorder
+    ? visibleColumnIds.filter((id) => {
+        const meta = table.getColumn(id)?.columnDef.meta
+        return id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
+      })
+    : []
+  // 拖动事件挂在 window 上（渲染后触发），读的是这两份快照：每次渲染后同步，拿到的就是当前列集合
+  const visibleColumnIdsRef = useRef<string[]>([])
+  const reorderableColumnIdsRef = useRef<string[]>([])
+  useEffect(() => {
+    visibleColumnIdsRef.current = visibleColumnIds
+    reorderableColumnIdsRef.current = reorderableColumnIds
+  })
+
+  const positionColumnGhost = useCallback((x: number, y: number) => {
+    const session = columnDragRef.current
+    const ghost = columnGhostRef.current
+    if (!session || !ghost) return
+    ghost.style.transform = `translate3d(${x - session.offsetX}px, ${y - session.offsetY}px, 0)`
+  }, [])
+
+  /** 整列高亮层：贴着源列当前的 rect（滚动后 rect 会变，调用方负责重算） */
+  const positionColumnLift = useCallback(() => {
+    const session = columnDragRef.current
+    const host = shellRef.current
+    const lift = columnLiftRef.current
+    if (!session?.active || !host || !lift) return
+    const cell = Array.from(host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]'))
+      .find((candidate) => candidate.dataset.colKey === session.id)
+    if (!cell) return
+    const rect = cell.getBoundingClientRect()
+    // 整列一直盖到可见底边：优先用横向滚动容器的可视区，没有可滚容器就退到表格外壳
+    const view = (scrollHostRef.current ?? shellRef.current)?.getBoundingClientRect()
+    const bottom = view && view.top <= rect.top ? view.bottom : rect.bottom
+    lift.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`
+    lift.style.width = `${rect.width}px`
+    lift.style.height = `${Math.max(0, bottom - rect.top)}px`
+  }, [])
+
+  /** 指针落在哪一列的左/右半区；越出两端时贴到首列左侧、末列右侧。返回的竖直范围到表格可见底边 */
+  const columnDropTargetAt = useCallback((x: number) => {
+    const host = shellRef.current
+    if (!host) return null
+    const reorderable = reorderableColumnIdsRef.current
+    const view = (scrollHostRef.current ?? host).getBoundingClientRect()
+    // 插槽要盖住整列（表头 + 可见数据区），不是只有表头那一条
+    const spanOf = (top: number, bottom: number) => {
+      const end = view.top <= top ? view.bottom : bottom
+      return { top, height: Math.max(0, end - top) }
+    }
+    let first: { id: string; left: number; top: number; height: number } | null = null
+    let last: { id: string; right: number; top: number; height: number } | null = null
+    for (const cell of host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]')) {
+      const id = cell.dataset.colKey
+      if (!id || !reorderable.includes(id)) continue
+      const rect = cell.getBoundingClientRect()
+      if (rect.width <= 0) continue
+      const span = spanOf(rect.top, rect.bottom)
+      first ??= { id, left: rect.left, ...span }
+      last = { id, right: rect.right, ...span }
+      if (x >= rect.left && x <= rect.right) {
+        const after = x > rect.left + rect.width / 2
+        return { id, after, left: after ? rect.right : rect.left, ...span }
+      }
+    }
+    if (first && x < first.left) return { id: first.id, after: false, left: first.left, top: first.top, height: first.height }
+    return last ? { id: last.id, after: true, left: last.right, top: last.top, height: last.height } : null
+  }, [])
+
+  /** 拖动中的一次重定位：浮起预览、整列高亮、落点插槽都按当前指针重算 */
+  const refreshColumnDrag = useCallback((x: number, y: number) => {
+    const session = columnDragRef.current
+    if (!session?.active) return
+    dragPointerRef.current = { x, y }
+    positionColumnGhost(x, y)
+    positionColumnLift()
+    const hit = columnDropTargetAt(x)
+    const target = hit ? { id: hit.id, after: hit.after } : null
+    const changed = target?.id !== session.target?.id || target?.after !== session.target?.after
+    session.target = target
+    if (!changed) return
+    const slot = hit
+      ? { id: hit.id, after: hit.after, left: hit.left, top: hit.top, width: session.width, height: hit.height }
+      : null
+    columnDropSlotRef.current = slot
+    setColumnDropSlot(slot)
+  }, [columnDropTargetAt, positionColumnGhost, positionColumnLift])
+
+  /** 落位动画的起点：交换前每列的位置（列顺序真正变化时据此播放 FLIP） */
+  const captureColumnRects = useCallback(() => {
+    const host = shellRef.current
+    if (!host) return null
+    const rects = new Map<string, number>()
+    for (const cell of host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]')) {
+      const id = cell.dataset.colKey
+      if (id) rects.set(id, cell.getBoundingClientRect().left)
+    }
+    return rects
+  }, [])
+
+  /** 指针压在表格左右边缘时的横向自动滚动：一帧一步，滚动后立刻重算落点 */
+  const autoScrollStep = useCallback(() => {
+    const state = autoScrollRef.current
+    const host = scrollHostRef.current
+    const session = columnDragRef.current
+    if (!host || !session?.active || state.velocity === 0) {
+      state.raf = null
+      return
+    }
+    const before = host.scrollLeft
+    host.scrollLeft = before + state.velocity
+    // 已经滚到两端：停下，等指针再动（继续贴着边缘移动会重新启动）
+    if (host.scrollLeft === before) {
+      state.raf = null
+      return
+    }
+    refreshColumnDrag(dragPointerRef.current.x, dragPointerRef.current.y)
+    state.raf = requestAnimationFrame(autoScrollStep)
+  }, [refreshColumnDrag])
+
+  const commitColumnDrop = useCallback((dragId: string, target: { id: string; after: boolean }) => {
     if (!onColumnsReorder) return
-    const visibleIds = table.getVisibleLeafColumns().map((column) => column.id)
-    const draggableIds = visibleIds.filter((id) => {
-      const meta = table.getColumn(id)?.columnDef.meta
-      return id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
-    })
-    const from = draggableIds.indexOf(dragId)
-    const to = draggableIds.indexOf(targetId)
-    if (from < 0 || to < 0) return
-    const next = [...draggableIds]
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved)
+    const reorderable = reorderableColumnIdsRef.current
+    const from = reorderable.indexOf(dragId)
+    const targetIndex = reorderable.indexOf(target.id)
+    if (from < 0 || targetIndex < 0) return
+    // 先摘掉被拖的列，再按"目标列移动后的索引"落位；插回原位则视为没改
+    const next = [...reorderable]
+    next.splice(from, 1)
+    const insertAt = targetIndex - (from < targetIndex ? 1 : 0) + (target.after ? 1 : 0)
+    if (insertAt === from) return
+    next.splice(insertAt, 0, dragId)
+    // 拖回原处/在相邻列两侧来回放，顺序其实没变：不提交，免得白跑一次保存
+    if (next.every((id, index) => id === reorderable[index])) return
+    const reorderableSet = new Set(reorderable)
     let index = 0
-    const order = visibleIds.map((id) => {
-      const meta = table.getColumn(id)?.columnDef.meta
-      if (id === 'select' || meta?.frozenLeft || meta?.frozenRight) return id
-      return next[index++] ?? id
-    })
-    setDragColId(null)
+    const order = visibleColumnIdsRef.current.map((id) => (reorderableSet.has(id) ? next[index++] : id))
+    // 先记下交换前每列的位置：列顺序真正变化（父组件保存成功）时用它播放落位动画
+    preReorderRectsRef.current = captureColumnRects()
     onColumnsReorder(order)
+  }, [captureColumnRects, onColumnsReorder])
+
+  /** 按下表头：先只记账，移动超过阈值才真正"抓起"——点表头不该被当成拖拽 */
+  const beginColumnDrag = (event: ReactPointerEvent<HTMLElement>, columnId: string, label: string) => {
+    if (!onColumnsReorder || event.button !== 0) return
+    // 表头右侧的菜单箭头与列宽手柄各有各的手势，别被列拖拽吃掉
+    if ((event.target as HTMLElement).closest('button, .erp-col-resizer')) return
+    const cell = event.currentTarget.closest('th')
+    if (!cell) return
+    const rect = cell.getBoundingClientRect()
+    columnDragRef.current = {
+      id: columnId, label, startX: event.clientX, startY: event.clientY,
+      x: event.clientX, y: event.clientY,
+      offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
+      width: rect.width, height: rect.height, active: false, target: null,
+    }
+    // 自动滚动只认这一次拖拽的宿主：拖动过程中页面重渲染也不改判
+    scrollHostRef.current = findHorizontalScrollHost(event.currentTarget)
+    dragPointerRef.current = { x: event.clientX, y: event.clientY }
+    event.preventDefault()
   }
+
+  useEffect(() => {
+    if (!onColumnsReorder) return
+    const finish = (commit: boolean) => {
+      const session = columnDragRef.current
+      columnDragRef.current = null
+      if (autoScrollRef.current.raf != null) cancelAnimationFrame(autoScrollRef.current.raf)
+      autoScrollRef.current = { raf: null, velocity: 0 }
+      scrollHostRef.current = null
+      document.body.classList.remove('erp-column-drag-active')
+      const ghost = columnGhostRef.current
+      const slot = columnDropSlotRef.current
+      columnDropSlotRef.current = null
+      setColumnDropSlot(null)
+      if (ghost && slot && commit && session?.active && session.target) {
+        // 松手：预览滑进插槽并淡出，接上表格的列交换动画——不是"啪"地消失
+        ghost.style.transition = 'transform 200ms cubic-bezier(.25, 1, .5, 1), opacity 200ms ease-out'
+        ghost.style.transform = `translate3d(${slot.left}px, ${slot.top}px, 0)`
+        ghost.style.opacity = '0'
+        window.setTimeout(() => setDraggingColumn(null), 200)
+      } else {
+        setDraggingColumn(null)
+      }
+      if (commit && session?.active && session.target) commitColumnDrop(session.id, session.target)
+    }
+    const onMove = (event: PointerEvent) => {
+      const session = columnDragRef.current
+      if (!session) return
+      session.x = event.clientX
+      session.y = event.clientY
+      if (!session.active) {
+        // 3px 内算点击（表头也可以排序/开菜单，手指或触控板抖动不该启动拖拽）
+        if (Math.hypot(event.clientX - session.startX, event.clientY - session.startY) < 3) return
+        session.active = true
+        document.body.classList.add('erp-column-drag-active')
+        setDraggingColumn({ id: session.id, label: session.label, width: session.width, height: session.height })
+      }
+      refreshColumnDrag(event.clientX, event.clientY)
+      // 贴住表格左右边缘：越靠边滚得越快（二次曲线），指针移开边缘即停
+      const host = scrollHostRef.current
+      let velocity = 0
+      if (host) {
+        const rect = host.getBoundingClientRect()
+        const leftEdge = rect.left + AUTOSCROLL_EDGE
+        const rightEdge = rect.right - AUTOSCROLL_EDGE
+        if (event.clientX < leftEdge) {
+          velocity = -Math.round(2 + Math.min(1, (leftEdge - event.clientX) / AUTOSCROLL_EDGE) ** 2 * (AUTOSCROLL_MAX_STEP - 2))
+        } else if (event.clientX > rightEdge) {
+          velocity = Math.round(2 + Math.min(1, (event.clientX - rightEdge) / AUTOSCROLL_EDGE) ** 2 * (AUTOSCROLL_MAX_STEP - 2))
+        }
+      }
+      autoScrollRef.current.velocity = velocity
+      if (velocity !== 0 && autoScrollRef.current.raf == null) {
+        autoScrollRef.current.raf = requestAnimationFrame(autoScrollStep)
+      }
+    }
+    const onUp = () => finish(true)
+    const onCancel = () => finish(false)
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') finish(false)
+    }
+    // 拖动中任何容器滚动（自动滚动、用户滚轮、触控板）都要重算整列高亮与落点
+    const onScroll = () => refreshColumnDrag(dragPointerRef.current.x, dragPointerRef.current.y)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onCancel)
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onCancel)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', onScroll, true)
+      document.body.classList.remove('erp-column-drag-active')
+    }
+  }, [onColumnsReorder, commitColumnDrop, refreshColumnDrag, autoScrollStep])
+
+  // 预览与整列高亮刚挂上时先摆到位，免得第一帧从视口左上角"飞"过来（paint 前定位）
+  useLayoutEffect(() => {
+    const session = columnDragRef.current
+    if (!draggingColumn || !session) return
+    positionColumnGhost(session.x, session.y)
+    positionColumnLift()
+  }, [draggingColumn, positionColumnGhost, positionColumnLift])
+
+  // 列交换动画（FLIP）：父组件保存成功、列顺序真正变化的那一帧，把每列从旧位置平滑移过去。
+  // 表格列做不到"拖动时实时滑开让位"（会破坏列宽与冻结列），所以"落位"由这一帧的位移动画表达。
+  useLayoutEffect(() => {
+    const orderKey = visibleColumnIds.join('|')
+    const previousKey = columnOrderKeyRef.current
+    columnOrderKeyRef.current = orderKey
+    if (!previousKey || previousKey === orderKey) return
+    const before = preReorderRectsRef.current
+    preReorderRectsRef.current = null
+    const host = shellRef.current
+    if (!before || !host) return
+    // 每列只读一次表头位置，数据列共用同一个位移量（几十行也不会逐格测量）
+    const deltas = new Map<string, number>()
+    for (const cell of host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]')) {
+      const id = cell.dataset.colKey
+      if (!id) continue
+      const previousLeft = before.get(id)
+      if (previousLeft == null) continue
+      const delta = previousLeft - cell.getBoundingClientRect().left
+      if (Math.abs(delta) >= 0.5) deltas.set(id, delta)
+    }
+    if (deltas.size === 0) return
+    const moving: HTMLElement[] = []
+    for (const cell of host.querySelectorAll<HTMLElement>('thead th[data-col-key], td[data-col-id]')) {
+      const id = cell.dataset.colKey ?? cell.dataset.colId
+      const delta = id ? deltas.get(id) : undefined
+      if (delta == null) continue
+      cell.style.transition = 'none'
+      cell.style.transform = `translateX(${delta}px)`
+      moving.push(cell)
+    }
+    requestAnimationFrame(() => {
+      for (const cell of moving) {
+        cell.style.transition = 'transform 250ms cubic-bezier(.25, 1, .5, 1)'
+        cell.style.transform = ''
+      }
+      window.setTimeout(() => {
+        for (const cell of moving) {
+          cell.style.transition = ''
+          cell.style.transform = ''
+        }
+      }, 280)
+    })
+  })
 
   if (data.length === 0 && empty != null) return <>{empty}</>
 
@@ -1249,30 +1563,13 @@ export function ErpTable<TData>({
                     data-col-min-floor={meta?.minWidthFloor ? 'true' : undefined}
                     data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
                     data-col-autofit={meta?.autoWidth ? 'true' : undefined}
-                    className={[meta?.className ?? defaultNumericAlign(meta?.dataType), meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
+                    className={[meta?.className ?? defaultNumericAlign(meta?.dataType), meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : '', draggable ? 'is-column-draggable' : '', draggingColumn?.id === header.column.id ? 'is-column-dragging' : '', columnDropSlot?.id === header.column.id ? 'is-column-drop-target' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
+                    onPointerDown={draggable ? (event) => beginColumnDrag(event, header.column.id, headerLabel) : undefined}
                   >
                     {header.isPlaceholder ? null : menuItems.length > 0 || draggable ? (
-                      <div
-                        className="erp-header-inner"
-                        onDragOver={(event) => { if (draggable) event.preventDefault() }}
-                        onDrop={(event) => {
-                          if (draggable && dragColId && dragColId !== header.column.id) {
-                            event.preventDefault()
-                            reorderColumns(dragColId, header.column.id)
-                          }
-                        }}
-                      >
-                        <span
-                          className="erp-header-label"
-                          draggable={draggable}
-                          onDragStart={(event) => {
-                            if (!draggable) return
-                            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
-                            setDragColId(header.column.id)
-                          }}
-                          onDragEnd={() => setDragColId(null)}
-                        >
+                      <div className="erp-header-inner">
+                        <span className="erp-header-label">
                           {flexRender(header.column.columnDef.header, header.getContext())}
                         </span>
                         <button
@@ -1445,6 +1742,29 @@ export function ErpTable<TData>({
             )
           })() : null}
         </div>
+      )}
+      {draggingColumn && createPortal(
+        <div ref={columnLiftRef} className="erp-column-lift" aria-hidden="true" />,
+        document.body,
+      )}
+      {draggingColumn && createPortal(
+        <div
+          ref={columnGhostRef}
+          className="erp-column-drag-ghost"
+          style={{ width: draggingColumn.width, height: draggingColumn.height }}
+          aria-hidden="true"
+        >
+          <div className="erp-column-drag-ghost-inner">{draggingColumn.label}</div>
+        </div>,
+        document.body,
+      )}
+      {columnDropSlot && createPortal(
+        <div
+          className="erp-column-drop-slot"
+          style={{ left: columnDropSlot.left, top: columnDropSlot.top, width: columnDropSlot.width, height: columnDropSlot.height }}
+          aria-hidden="true"
+        />,
+        document.body,
       )}
     </div>
   )

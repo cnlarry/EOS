@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { firePointer, stubRect } from '../../test/pointer'
 import { ErpTable, computeVirtualWindow, parseNumericCell } from './ErpTable'
 
 interface Row {
@@ -306,15 +307,85 @@ describe('ErpTable', () => {
     expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ field: 'name', operator: 'eq', value: 'A' }))
   })
 
-  it('表头拖拽重排列顺序', () => {
+  it('表头指针拖拽：浮起预览跟手，落到目标列左半边即插到它前面', async () => {
     const onColumnsReorder = vi.fn()
     render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
-    const labels = Array.from(document.querySelectorAll('.erp-header-label')) as HTMLElement[]
-    const nameLabel = labels.find((el) => el.textContent === '名称')!
-    const idLabel = labels.find((el) => el.textContent === 'ID')!
-    fireEvent.dragStart(nameLabel)
-    fireEvent.dragOver(idLabel)
-    fireEvent.drop(idLabel)
+    const idTh = document.querySelector('th[data-col-key="id"]')!
+    const nameTh = document.querySelector('th[data-col-key="name"]')!
+    stubRect(idTh, 100, 100)
+    stubRect(nameTh, 200, 100)
+    const nameLabel = nameTh.querySelector('.erp-header-label') as HTMLElement
+
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 120, clientY: 12 })
+    // 拖动中：整列浮起（整列高亮层 + 列头预览 + 一整列的落点插槽）
+    expect(document.querySelector('.erp-column-lift')).toBeInTheDocument()
+    expect(document.querySelector('.erp-column-drag-ghost')?.textContent).toBe('名称')
+    const slot = document.querySelector('.erp-column-drop-slot') as HTMLElement
+    expect(slot).toBeInTheDocument()
+    // 插槽宽度 = 被拖列的列宽：落点表达的是"插进一整列"，不是一根细线
+    expect(slot.style.width).toBe('100px')
+    expect(nameTh).toHaveClass('is-column-dragging')
+
+    firePointer('pointerup', window, { clientX: 120, clientY: 12 })
+    expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
+    // 落点插槽立即收起；浮起预览先滑进插槽再淡出（200ms），故用 waitFor
+    expect(document.querySelector('.erp-column-drop-slot')).not.toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('.erp-column-drag-ghost')).not.toBeInTheDocument())
+    expect(document.querySelector('.erp-column-lift')).not.toBeInTheDocument()
+  })
+
+  it('表头没拖动超过阈值就松开不算重排', () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const nameLabel = document.querySelector('th[data-col-key="name"] .erp-header-label') as HTMLElement
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    firePointer('pointerup', window, { clientX: 251, clientY: 12 })
+    expect(onColumnsReorder).not.toHaveBeenCalled()
+    expect(document.querySelector('.erp-column-drag-ghost')).not.toBeInTheDocument()
+  })
+
+  it('拖到表格右边缘时自动向右滚动', async () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const scrollHost = document.querySelector('.table-responsive') as HTMLElement
+    let scrollLeft = 0
+    Object.defineProperty(scrollHost, 'scrollLeft', { configurable: true, get: () => scrollLeft, set: (value: number) => { scrollLeft = value } })
+    Object.defineProperty(scrollHost, 'scrollWidth', { configurable: true, value: 2000 })
+    Object.defineProperty(scrollHost, 'clientWidth', { configurable: true, value: 500 })
+    stubRect(scrollHost, 0, 500)
+    const nameTh = document.querySelector('th[data-col-key="name"]') as HTMLElement
+    stubRect(nameTh, 100, 100)
+    const originalGetComputedStyle = window.getComputedStyle
+    const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element) => {
+      // 只有这个容器声明"可横向滚动"：其余元素保持真实计算，别影响表格自身的滚动宿主探测
+      if (element === scrollHost) return { overflowX: 'auto' } as CSSStyleDeclaration
+      return originalGetComputedStyle.call(window, element)
+    })
+    try {
+      const nameLabel = nameTh.querySelector('.erp-header-label') as HTMLElement
+      firePointer('pointerdown', nameLabel, { clientX: 150, clientY: 12, button: 0 })
+      firePointer('pointermove', window, { clientX: 495, clientY: 12 })
+      // 边缘自动滚动走 requestAnimationFrame：等一两帧再断言
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      expect(scrollLeft).toBeGreaterThan(0)
+      firePointer('pointerup', window, { clientX: 495, clientY: 12 })
+    } finally {
+      styleSpy.mockRestore()
+    }
+  })
+
+  it('拖到目标列右半边插到它后面', () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const idTh = document.querySelector('th[data-col-key="id"]')!
+    const nameTh = document.querySelector('th[data-col-key="name"]')!
+    stubRect(idTh, 100, 100)
+    stubRect(nameTh, 200, 100)
+    const idLabel = idTh.querySelector('.erp-header-label') as HTMLElement
+    firePointer('pointerdown', idLabel, { clientX: 120, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 280, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 280, clientY: 12 })
     expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
   })
 

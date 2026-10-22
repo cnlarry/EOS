@@ -1760,7 +1760,66 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-left,
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-right { background: var(--tblr-bg-surface-secondary) !important; }
 .erp-data-table .erp-header-inner { display: inline-flex; align-items: center; gap: .3rem; }
-.erp-data-table .erp-header-label[draggable="true"] { cursor: grab; }
+/* 列头拖拽（ErpTable onColumnsReorder）：整列浮起跟手 + 落点画成「一整列」。
+   不用 HTML5 draggable——原生拖影只有被拖的那个小节点，抓不住整列，也没有落点反馈。 */
+.erp-data-table thead th.is-column-draggable { cursor: grab; touch-action: none; }
+/* 拖动中的源列：整列高亮层已经盖住它，这里把表头再压暗一档，表示"这一列被拎走了" */
+.erp-data-table thead th.is-column-dragging { background: var(--erp-active-bg) !important; opacity: .35; }
+.erp-data-table thead th.is-column-drop-target { background: var(--erp-active-bg) !important; }
+.erp-column-drag-active, .erp-column-drag-active * { cursor: grabbing !important; user-select: none !important; }
+.erp-column-drag-ghost { position: fixed; left: 0; top: 0; z-index: 1200; pointer-events: none; will-change: transform, opacity; }
+/* 被拖起的整列：从表头一直盖到表格可视底边，"整列被拎起来"看得见；
+   列头另有一层浮起预览（被拖走的其实是整列，预览只是它的"抓手"） */
+.erp-column-lift {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1198;
+  border: 1px solid color-mix(in srgb, var(--tblr-primary) 60%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--tblr-primary) 13%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 20%, transparent) inset;
+  pointer-events: none;
+  will-change: transform, width, height;
+}
+/* 浮起预览沿用表头本身的底色与字号，看起来像被"拎起来"的那一列头，而不是一个白盒子 */
+.erp-column-drag-ghost-inner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 .5rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tblr-primary) 70%, transparent);
+  border-left: 3px solid var(--tblr-primary);
+  border-radius: var(--erp-radius-sm);
+  background: var(--erp-table-header-bg);
+  color: var(--tblr-body-color);
+  font-size: var(--erp-font-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .22), 0 2px 6px rgba(0, 0, 0, .12);
+  animation: erp-column-lift .12s ease-out both;
+}
+/* 落点插槽：宽度就是被拖列的列宽，看起来是"这里会插进一整列"；电子表格的插入位置也是整列轮廓 */
+.erp-column-drop-slot {
+  position: fixed;
+  z-index: 1199;
+  border: 2px solid var(--tblr-primary);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--tblr-primary) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 22%, transparent) inset;
+  pointer-events: none;
+  animation: erp-column-slot-in .12s ease-out both;
+}
+@keyframes erp-column-lift {
+  from { transform: scale(.96) translateY(3px); opacity: .55; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes erp-column-slot-in {
+  from { opacity: .3; transform: scaleX(.94); }
+  to { opacity: 1; transform: scaleX(1); }
+}
 .erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
 .erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
 .erp-data-table .erp-header-menu-trigger.is-active { color: var(--tblr-primary); }

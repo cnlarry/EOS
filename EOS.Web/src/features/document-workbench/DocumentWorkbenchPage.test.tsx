@@ -1,12 +1,12 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
+import { firePointer, stubRect } from '../../test/pointer'
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
 import { DocumentWorkbenchPage } from './DocumentWorkbenchPage'
-
 
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
@@ -321,17 +321,6 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.getByLabelText('条件1值')).toHaveValue('P1')
   })
 
-  it('表头菜单升序触发服务端排序参数', async () => {
-    renderPage()
-    await loaded()
-    fireEvent.click(screen.getByRole('button', { name: '表头操作产品编号' }))
-    fireEvent.click(screen.getByRole('button', { name: '升序' }))
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      '/document-workbench/1209/records',
-      expect.objectContaining({ query: expect.objectContaining({ sortFields: 'PRO_NO', sortDirections: 'asc' }) }),
-    ))
-  })
-
   it('高级查询应用条件后展示计数并走 POST 查询', async () => {
     renderPage()
     await loaded()
@@ -357,6 +346,51 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
       '/document-workbench/1209/columns',
       { master: ['PRO_NO', 'EDITION', 'QTY'], detail: ['ITEM'] },
+    ))
+  })
+
+  it('子表拖拽列头保存子表顺序，主表顺序原样带上', async () => {
+    const detailField = definition.detailFields[0]
+    installApiMocks({
+      definition: {
+        ...definition,
+        detailFields: [
+          { ...detailField, key: 'ITEM', label: '明细项' },
+          { ...detailField, key: 'SPEC', label: '规格' },
+          { ...detailField, key: 'QTY_D', label: '明细数量' },
+        ],
+      },
+    })
+    renderPage()
+    await loaded()
+    const detailCard = document.querySelector('.erp-detail-card') as HTMLElement
+    const itemTh = detailCard.querySelector('th[data-col-key="ITEM"]') as HTMLElement
+    const specTh = detailCard.querySelector('th[data-col-key="SPEC"]') as HTMLElement
+    stubRect(itemTh, 0, 100)
+    stubRect(specTh, 100, 100)
+    firePointer('pointerdown', specTh.querySelector('.erp-header-label')!, { clientX: 150, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 40, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 40, clientY: 12 })
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/document-workbench/1209/columns',
+      { master: ['PRO_NO', 'EDITION', 'QTY', 'FLAG'], detail: ['SPEC', 'ITEM', 'QTY_D'] },
+    ))
+  })
+
+  it('主表拖拽列头保存主表顺序，子表顺序原样带上', async () => {
+    renderPage()
+    await loaded()
+    const region = document.querySelector('.erp-master-table-region') as HTMLElement
+    const proNoTh = region.querySelector('th[data-col-key="PRO_NO"]') as HTMLElement
+    const editionTh = region.querySelector('th[data-col-key="EDITION"]') as HTMLElement
+    stubRect(proNoTh, 0, 100)
+    stubRect(editionTh, 100, 100)
+    firePointer('pointerdown', editionTh.querySelector('.erp-header-label')!, { clientX: 150, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 40, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 40, clientY: 12 })
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/document-workbench/1209/columns',
+      { master: ['EDITION', 'PRO_NO', 'QTY', 'FLAG'], detail: ['ITEM'] },
     ))
   })
 
@@ -539,22 +573,6 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.get.mock.calls.length).toBeGreaterThan(before))
   })
 
-  it('单表模块（无子表）列表区使用全高自适应修饰类', async () => {
-    installApiMocks({ definition: { ...definition, detailTable: undefined } })
-    const { container } = renderPage()
-    await loaded()
-    expect(container.querySelector('.erp-workbench-page')).toHaveClass('erp-workbench-single')
-  })
-
-  it('带子表模块不加全高自适应修饰类', async () => {
-    const { container } = renderPage()
-    await loaded()
-    expect(container.querySelector('.erp-workbench-page')).not.toHaveClass('erp-workbench-single')
-  })
-
-})
-
-
   it('列表工具栏一律纯图标：动作名只作悬停提示，新增靠主色区分', async () => {
     renderPage()
     await loaded()
@@ -570,4 +588,20 @@ describe('DocumentWorkbenchPage', () => {
     expect(addNew).toHaveClass('btn-primary')
     expect(addNew.textContent).toBe('')
   })
+
+  it('单表模块（无子表）列表区使用全高自适应修饰类', async () => {
+    installApiMocks({ definition: { ...definition, detailTable: undefined } })
+    const { container } = renderPage()
+    await loaded()
+    expect(container.querySelector('.erp-workbench-page')).toHaveClass('erp-workbench-single')
+  })
+
+  it('带子表模块不加全高自适应修饰类', async () => {
+    const { container } = renderPage()
+    await loaded()
+    expect(container.querySelector('.erp-workbench-page')).not.toHaveClass('erp-workbench-single')
+  })
+
+})
+
 

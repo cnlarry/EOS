@@ -36,6 +36,15 @@ interface NavigationGroupDef { groupId:number; description:string; available:boo
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
+/**
+ * 拖拽列头后的落库顺序：新顺序在前，回调里没有的列按原顺序垫后。
+ * 保存列配置是替换语义（没传的列会被删掉），所以两个入口都按"整份列集"提交，不能只交被拖过的那部分。
+ */
+const applyColumnOrder=(current:string[],next:string[])=>{
+  const moved=next.filter(id=>id!=='select')
+  const seen=new Set(moved.map(id=>id.toLowerCase()))
+  return [...moved,...current.filter(key=>!seen.has(key.toLowerCase()))]
+}
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
 /**
  * 统一工作台列表页。
@@ -298,16 +307,23 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const fetchNextRowsRef=useRef(records.fetchNextPage)
   fetchNextRowsRef.current=records.fetchNextPage
   const loadMoreRows=useCallback(()=>{void fetchNextRowsRef.current()},[])
-  const handleColumnsReorder=useCallback(async(columnIds:string[])=>{
-    if(!definition.data)return
-    const master=columnIds.filter(id=>id!=='select')
-    const detail=(definition.data.detailFields??[]).map(field=>field.key)
+  // 列顺序与「选择列」的上下移动写同一份个人列配置（SYS_USER_COLUMN.F_IDX），拖完再打开选择列即同一顺序。
+  // 主表改序时明细顺序原样带上，反之亦然——保存是替换语义，两份都得交全。
+  const saveColumnOrder=useCallback(async(masterOrder:string[],detailOrder:string[])=>{
     try{
-      await saveColumns.mutateAsync({master,detail})
+      await saveColumns.mutateAsync({master:masterOrder,detail:detailOrder})
     }catch(error){
       window.alert(error instanceof Error?`保存列顺序失败：${error.message}`:'保存列顺序失败。')
     }
-  },[definition.data,saveColumns])
+  },[saveColumns])
+  const handleColumnsReorder=useCallback((columnIds:string[])=>{
+    if(!definition.data)return
+    void saveColumnOrder(applyColumnOrder(master.map(field=>field.key),columnIds),detail.map(field=>field.key))
+  },[definition.data,master,detail,saveColumnOrder])
+  const handleDetailColumnsReorder=useCallback((columnIds:string[])=>{
+    if(!definition.data)return
+    void saveColumnOrder(master.map(field=>field.key),applyColumnOrder(detail.map(field=>field.key),columnIds))
+  },[definition.data,master,detail,saveColumnOrder])
   if(definition.isPending)return <LoadingState label="正在加载单据定义…"/>
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
@@ -496,6 +512,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
           fitRef:detailFitRef,
           persistResize:false,
           onColumnResize:saveDetailWidth,
+          // 子表列顺序同样是个人列配置：拖列头即改「选择列」里子表字段的上下顺序
+          onColumnsReorder:handleDetailColumnsReorder,
         }}
       />}</section>}
     {columnsOpen&&<ErpColumnSelector
