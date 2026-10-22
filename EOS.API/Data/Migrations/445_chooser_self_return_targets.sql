@@ -13,6 +13,14 @@
 --
 -- 来源主键列（以 sys.indexes 实测为准，均为 nchar(20)）：
 --   BILLKIND.BILL_CODE / DEPOT.DEPOT_ID / HR_POLITY.POLITY_ID / UNIT.UNIT_ID / CURR.CURR_ID
+--
+-- 编号：本脚本原为 430_chooser_self_return_targets，与 430_retire_attendance_jobs_menu 撞号
+-- （两个文件同号，执行顺序只能靠文件名后缀决定）。现按「编号唯一」收口为 445，**内容未改**：
+-- 对已执行过 430 的库，这是一次幂等重放（① 按 NOT EXISTS 补缺，② 只把已停用的保持停用，
+-- ③ 重新标脏 14 个模块——它们本就该随本次修复重发布）。
+--
+-- 末尾顺带删除台账里旧资源名的那一行：改名不改台账会留下「磁盘无、台账有」的幽灵名，
+-- 迁移台账门禁 check-migration-journal.ps1 会判失败。
 -- ============================================================================
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -74,7 +82,7 @@ DECLARE @missing NVARCHAR(MAX) = (
              WHERE UPPER(LTRIM(RTRIM(t))) = UPPER(f.TargetColumn)));
 IF @missing IS NOT NULL
 BEGIN
-    RAISERROR(N'[430] 以下数据源仍缺自回填，回滚：%s', 16, 1, @missing);
+    RAISERROR(N'[445] 以下数据源仍缺自回填，回滚：%s', 16, 1, @missing);
     ROLLBACK TRANSACTION;
     RETURN;
 END
@@ -82,7 +90,7 @@ END
 -- 断言：停用的三条不得再处于启用态
 IF EXISTS (SELECT 1 FROM dbo.FIELD_DATASOURCE WHERE ID IN (276, 698, 700) AND ACTIVE_TAG = 1)
 BEGIN
-    RAISERROR(N'[430] 276/698/700 未全部停用，回滚', 16, 1);
+    RAISERROR(N'[445] 276/698/700 未全部停用，回滚', 16, 1);
     ROLLBACK TRANSACTION;
     RETURN;
 END
@@ -99,6 +107,11 @@ WHEN NOT MATCHED BY TARGET THEN
     INSERT (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
     VALUES (s.M_IDX, 1, N'EOS-MIG', SYSDATETIME());
 
-PRINT N'[430] 已补 10 条自回填、停用 3 条无效数据源（276/698/700）、标脏 14 个模块。';
+PRINT N'[445] 已补 10 条自回填、停用 3 条无效数据源（276/698/700）、标脏 14 个模块。';
 
 COMMIT;
+
+-- 台账去幽灵名（幂等）：新库里没有这一行，DELETE 命中 0 行即结束。
+DELETE FROM dbo.ERP_SCHEMA_JOURNAL
+ WHERE [scriptname] = N'EOS.API.Data.Migrations.430_chooser_self_return_targets.sql';
+PRINT N'[445] 旧台账行已清除：' + CONVERT(NVARCHAR(10), @@ROWCOUNT) + N' 行';

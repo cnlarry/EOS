@@ -877,8 +877,6 @@ IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.A
     INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.429_sfc_process_standard_time_assert.sql', GETDATE());
 IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.API.Data.Migrations.430_retire_attendance_jobs_menu.sql')
     INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.430_retire_attendance_jobs_menu.sql', GETDATE());
-IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.API.Data.Migrations.430_chooser_self_return_targets.sql')
-    INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.430_chooser_self_return_targets.sql', GETDATE());
 IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.API.Data.Migrations.431_non_numeric_float_columns.sql')
     INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.431_non_numeric_float_columns.sql', GETDATE());
 IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.API.Data.Migrations.432_hide_prepay_master_purchase_no.sql')
