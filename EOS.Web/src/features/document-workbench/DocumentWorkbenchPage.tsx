@@ -1,7 +1,7 @@
 import { IconFileExport, IconZoomScan } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '../../lib/tanstackTable'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
@@ -14,6 +14,7 @@ import { emptyQueryCondition, type QueryCondition } from '../../components/commo
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import type { RangeSummary } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { useToast } from '../../components/ui/toastContext'
 import { useColumnWidthSaver } from '../../hooks/useColumnWidthSaver'
 import { apiClient } from '../../services/api'
 import { moduleReadPermission } from '../auth/modulePermissions'
@@ -41,10 +42,38 @@ const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIn
  * 保存列配置是替换语义（没传的列会被删掉），所以两个入口都按"整份列集"提交，不能只交被拖过的那部分。
  */
 const applyColumnOrder=(current:string[],next:string[])=>{
-  const moved=next.filter(id=>id!=='select')
+  // 只把 current 里已有的键按 next 重排：next 可能来自上一次乐观草稿，里面还留着
+  // 后来被隐藏的列；直接拼进"可见列"会让选择列把隐藏字段也当成已选。
+  const allowed=new Set(current.map(key=>key.toLowerCase()))
+  const moved=next.filter(id=>id!=='select'&&allowed.has(id.toLowerCase()))
   const seen=new Set(moved.map(id=>id.toLowerCase()))
   return [...moved,...current.filter(key=>!seen.has(key.toLowerCase()))]
 }
+/**
+ * 把拖出来的列序套到字段数组上（乐观渲染用）。
+ * 顺序表里没有的字段（刚勾选的新列）按原顺序垫后；稳定排序，避免同 rank 的字段每次渲染互换。
+ */
+const applyFieldOrder=(fields:Field[],order:string[]|null)=>{
+  if(!order||order.length===0)return fields
+  const rank=new Map(order.map((key,index)=>[key.toLowerCase(),index]))
+  return [...fields].sort((a,b)=>(rank.get(a.key.toLowerCase())??Number.MAX_SAFE_INTEGER)-(rank.get(b.key.toLowerCase())??Number.MAX_SAFE_INTEGER))
+}
+/** 服务端定义是否已经回到草稿顺序：是的话乐观副本可以撤掉，别永远盖住服务端 */
+const sameColumnOrder=(order:string[]|null,keys:string[])=>{
+  if(!order||order.length!==keys.length)return false
+  return order.every((key,index)=>key.toLowerCase()===keys[index]!.toLowerCase())
+}
+interface ColumnOrderSnapshot { master:string[]; detail:string[] }
+interface ColumnOrderSaveOptions {
+  /** 拖前整份顺序：保存成功后用它提供「撤销」 */
+  undo?:ColumnOrderSnapshot
+  /** 成功后的提示文案（撤销自身用它，不再挂第二个「撤销」） */
+  successMessage?:string
+}
+/** 列顺序的连续状态共用一条轻提示：已调整 → 未保存 → 已撤销，不叠屏 */
+const COLUMN_ORDER_TOAST_KEY='workbench-column-order'
+const COLUMN_ORDER_ADJUSTED='列顺序已调整'
+const COLUMN_ORDER_UNDONE='已撤销列顺序调整'
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
 /**
  * 统一工作台列表页。
@@ -55,6 +84,7 @@ const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>ite
  */
 export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean } = {}) {
   const { hasPermission } = useAuth()
+  const toast=useToast()
   // 跨页面/跨模块一律走标签入口：原地 navigate 会把当前现场顶掉（ADR-040）
   const openTab=useOpenTab()
   /** 按模块声明的打开方式打开统一表单（新页签 / 弹窗 / 本页签） */
@@ -74,6 +104,15 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const [detailSort,setDetailSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
   const [queryOpen,setQueryOpen]=useState(false)
   const [columnsOpen,setColumnsOpen]=useState(false)
+  /**
+   * 列顺序的乐观副本：拖完立即按新顺序渲染，不等 PUT + 重新拉定义（那是整整两跳）。
+   * 服务端定义回到同一顺序后由下方 effect 撤掉；保存失败则回滚到拖前顺序。
+   */
+  const [columnOrderDraft,setColumnOrderDraft]=useState<{master:string[]|null;detail:string[]|null}>({master:null,detail:null})
+  const columnSaveSeqRef=useRef(0)
+  const columnSaveChainRef=useRef<Promise<void>>(Promise.resolve())
+  /** 页面是否还挂着：切模块/关标签后，迟到的保存失败不能往新页面上弹提示 */
+  const mountedRef=useRef(true)
   const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>(initialState.columnFilters)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>(initialState.conditions)
   const [conditions,setConditions]=useState<QueryCondition[]>(initialState.conditions.length?initialState.conditions:[emptyQueryCondition()])
@@ -98,12 +137,40 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   // 滚动加载模式下 pageSize 即每次抓取的块大小：50 ≈ 两屏缓冲，减少请求与“加载更多”闪烁
   const pageSize=50
   // 网格渲染全部显示列：服务端下发的集合即用户选择列，截断会让选择列与网格不一致
-  const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]),[definition.data])
-  const detail=useMemo(()=>uniqueFields(definition.data?.detailFields??[]),[definition.data])
+  const master=useMemo(()=>applyFieldOrder(uniqueFields(definition.data?.masterFields??[]),columnOrderDraft.master),[definition.data,columnOrderDraft.master])
+  const detail=useMemo(()=>applyFieldOrder(uniqueFields(definition.data?.detailFields??[]),columnOrderDraft.detail),[definition.data,columnOrderDraft.detail])
   const allowedMasterKeys=useMemo(()=>new Set(master.map(field=>field.key.toLowerCase())),[master])
   const safeSort=useMemo(()=>sort.filter(item=>allowedMasterKeys.has(item.id.toLowerCase())),[sort,allowedMasterKeys])
   const safeConditions=useMemo(()=>appliedConditions.filter(item=>allowedMasterKeys.has(item.field.toLowerCase())),[appliedConditions,allowedMasterKeys])
   const safeColumnFilters=useMemo(()=>Object.fromEntries(Object.entries(columnFilters).filter(([key])=>allowedMasterKeys.has(key.toLowerCase()))),[columnFilters,allowedMasterKeys])
+  // 服务端定义已经回到草稿顺序：乐观副本完成使命，撤掉它，避免永远盖住服务端（如另一端改了列配置）。
+  useEffect(()=>{
+    if(!definition.data)return
+    setColumnOrderDraft(current=>{
+      if(!current.master&&!current.detail)return current
+      const masterKeys=definition.data!.masterFields.map(field=>field.key)
+      const detailKeys=definition.data!.detailFields.map(field=>field.key)
+      const master=sameColumnOrder(current.master,masterKeys)?null:current.master
+      const detail=sameColumnOrder(current.detail,detailKeys)?null:current.detail
+      return master===current.master&&detail===current.detail?current:{master,detail}
+    })
+  },[definition.data])
+  // 换模块：上一张表的列序不能套到下一张表；旧的「撤销列顺序」也不再有效。
+  // 用 ref 记住上一次的模块号：toast 上下文一旦换了身份（Provider 重渲染）不能让这个
+  // effect 误跑，否则一有提示就被当成"换了模块"清掉。
+  const lastModuleIdRef=useRef<string|null>(null)
+  useEffect(()=>{
+    if(lastModuleIdRef.current===moduleId)return
+    lastModuleIdRef.current=moduleId
+    setColumnOrderDraft({master:null,detail:null})
+    toast.dismissKey(COLUMN_ORDER_TOAST_KEY)
+  },[moduleId,toast])
+  // 离开工作台：撤掉页面级提示，别让"撤销列顺序"跟着用户跑到别的页面
+  useEffect(()=>{
+    mountedRef.current=true
+    return ()=>{mountedRef.current=false}
+  },[])
+  useEffect(()=>()=>{toast.dismissKey(COLUMN_ORDER_TOAST_KEY)},[toast])
   const records=useInfiniteQuery({
     queryKey:['workbench',moduleId,'records',pageSize,safeConditions,keyword,safeSort,groupId,groupValue],
     queryFn:({pageParam})=>{const sq=sortQuery(safeSort);const group=groupId!=null&&groupValue!=null?`&groupId=${groupId}&groupValue=${encodeURIComponent(groupValue)}`:'';return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${pageParam}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}${group}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page:pageParam,pageSize,keyword:keyword||undefined,...sq,...(groupId!=null&&groupValue!=null?{groupId,groupValue}:{})}})},
@@ -147,17 +214,22 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const columnGroups=useMemo<ColumnSelectorGroup[]>(()=>{
     const current=columnSettings.data?.current
     if(!current)return []
-    const toGroup=(id:'master'|'detail',label:string):ColumnSelectorGroup=>({
-      id,
-      label,
-      fields:current[id].map(item=>({key:item.key,label:item.label})),
-      visibleKeys:current[id].filter(item=>item.isVisible).map(item=>item.key),
-      defaultKeys:(columnSettings.data?.defaults[id]??[]).filter(item=>item.isVisible).map(item=>item.key),
-    })
+    const toGroup=(id:'master'|'detail',label:string):ColumnSelectorGroup=>{
+      const visibleKeys=current[id].filter(item=>item.isVisible).map(item=>item.key)
+      const draftOrder=columnOrderDraft[id]
+      return {
+        id,
+        label,
+        fields:current[id].map(item=>({key:item.key,label:item.label})),
+        // 拖拽是乐观落位的：保存还没回来时打开「选择列」，也要看到刚拖出来的顺序
+        visibleKeys:draftOrder?applyColumnOrder(visibleKeys,draftOrder):visibleKeys,
+        defaultKeys:(columnSettings.data?.defaults[id]??[]).filter(item=>item.isVisible).map(item=>item.key),
+      }
+    }
     const groups=[toGroup('master','主表字段')]
     if(definition.data?.detailTable)groups.push(toGroup('detail','子表字段'))
     return groups
-  },[columnSettings.data,definition.data?.detailTable])
+  },[columnSettings.data,definition.data?.detailTable,columnOrderDraft])
 
   const masterColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>[
     checkboxSelectColumn<Record<string,unknown>>(),
@@ -309,21 +381,66 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const loadMoreRows=useCallback(()=>{void fetchNextRowsRef.current()},[])
   // 列顺序与「选择列」的上下移动写同一份个人列配置（SYS_USER_COLUMN.F_IDX），拖完再打开选择列即同一顺序。
   // 主表改序时明细顺序原样带上，反之亦然——保存是替换语义，两份都得交全。
-  const saveColumnOrder=useCallback(async(masterOrder:string[],detailOrder:string[])=>{
-    try{
-      await saveColumns.mutateAsync({master:masterOrder,detail:detailOrder})
-    }catch(error){
-      window.alert(error instanceof Error?`保存列顺序失败：${error.message}`:'保存列顺序失败。')
+  const persistColumnOrderRef=useRef<(masterOrder:string[],detailOrder:string[],options?:ColumnOrderSaveOptions)=>void>(()=>{})
+  const persistColumnOrder=useCallback((masterOrder:string[],detailOrder:string[],options:ColumnOrderSaveOptions={})=>{
+    // 先按新顺序渲染（乐观），再把整份列集交给服务端
+    setColumnOrderDraft({master:masterOrder,detail:detailOrder})
+    const seq=++columnSaveSeqRef.current
+    const run=async()=>{
+      try{
+        await saveColumns.mutateAsync({master:masterOrder,detail:detailOrder})
+        if(!mountedRef.current)return
+        const undo=options.undo
+        if(undo){
+          // 保存成功后才给撤销：失败时顺序已经回滚，不能再让「撤销」去覆盖服务端
+          toast.notify({
+            key:COLUMN_ORDER_TOAST_KEY,
+            message:COLUMN_ORDER_ADJUSTED,
+            action:{
+              label:'撤销',
+              onClick:()=>persistColumnOrderRef.current(undo.master,undo.detail,{successMessage:COLUMN_ORDER_UNDONE}),
+            },
+          })
+        }else if(options.successMessage){
+          toast.notify({key:COLUMN_ORDER_TOAST_KEY,message:options.successMessage,variant:'success',duration:2500})
+        }
+      }catch(error){
+        if(!mountedRef.current)return
+        // 只回滚最后一次拖拽：后面的拖拽已经覆盖了它，回滚反而会抹掉用户刚做的动作
+        if(seq!==columnSaveSeqRef.current)return
+        // 前面的保存是串行且等过定义回读的，此刻服务端/缓存的顺序就是可回滚的落点；
+        // 清掉乐观副本再拉一次定义，避免把"上一次也没存成功"的草稿当成已保存状态。
+        setColumnOrderDraft({master:null,detail:null})
+        void queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})
+        const message=error instanceof Error?error.message:'保存列顺序失败。'
+        // 非阻塞：同一 key 会把上面的「已调整」原地换成失败态，同时给出重试
+        toast.notify({
+          key:COLUMN_ORDER_TOAST_KEY,
+          message:`列顺序未保存，已恢复原顺序（${message}）`,
+          variant:'danger',
+          action:{label:'重试',onClick:()=>persistColumnOrderRef.current(masterOrder,detailOrder,options)},
+        })
+      }
     }
-  },[saveColumns])
+    // 串行保存：两次快速拖拽若并发 PUT，服务端最后落库的顺序由响应先后决定，可能不是用户最后看到的
+    const task=columnSaveChainRef.current.then(run,run)
+    columnSaveChainRef.current=task.catch(()=>{})
+  },[moduleId,queryClient,saveColumns,toast])
+  useLayoutEffect(()=>{persistColumnOrderRef.current=persistColumnOrder},[persistColumnOrder])
   const handleColumnsReorder=useCallback((columnIds:string[])=>{
     if(!definition.data)return
-    void saveColumnOrder(applyColumnOrder(master.map(field=>field.key),columnIds),detail.map(field=>field.key))
-  },[definition.data,master,detail,saveColumnOrder])
+    const currentMaster=master.map(field=>field.key)
+    const currentDetail=detail.map(field=>field.key)
+    const nextMaster=applyColumnOrder(currentMaster,columnIds)
+    persistColumnOrder(nextMaster,currentDetail,{undo:{master:currentMaster,detail:currentDetail}})
+  },[definition.data,master,detail,persistColumnOrder])
   const handleDetailColumnsReorder=useCallback((columnIds:string[])=>{
     if(!definition.data)return
-    void saveColumnOrder(master.map(field=>field.key),applyColumnOrder(detail.map(field=>field.key),columnIds))
-  },[definition.data,master,detail,saveColumnOrder])
+    const currentMaster=master.map(field=>field.key)
+    const currentDetail=detail.map(field=>field.key)
+    const nextDetail=applyColumnOrder(currentDetail,columnIds)
+    persistColumnOrder(currentMaster,nextDetail,{undo:{master:currentMaster,detail:currentDetail}})
+  },[definition.data,master,detail,persistColumnOrder])
   if(definition.isPending)return <LoadingState label="正在加载单据定义…"/>
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
@@ -376,7 +493,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       setFitting(false)
     }
   }
-  const handleExport=async(format:'csv'|'xls')=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const exportColumns=definition.data.masterFields.map(field=>field.key).join(',');const commonQuery={format,columns:exportColumns};const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:{...groupQuery,...commonQuery}}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery,...commonQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.${format==='xls'?'xls':'csv'}`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
+  const handleExport=async(format:'csv'|'xls')=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const exportColumns=master.map(field=>field.key).join(',');const commonQuery={format,columns:exportColumns};const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:{...groupQuery,...commonQuery}}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery,...commonQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.${format==='xls'?'xls':'csv'}`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const exportLabel=Object.keys(rowSelection).filter(id=>rowSelection[id]).length
   const exportDisabled=exportLabel===0
   const exportButton=<Button size="sm" className="erp-command-icon-btn" icon={<IconFileExport size={16}/>} loading={exporting} disabled={exportDisabled} title={exportLabel?`导出所选 (${exportLabel})`:'导出（请先选择要导出的行）'} aria-label={exportLabel?`导出所选 (${exportLabel})`:'导出'} onClick={()=>void handleExport('csv')}/>
@@ -525,7 +642,17 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       saving={saveColumns.isPending}
       onClose={()=>setColumnsOpen(false)}
       canSave={(selection)=>Boolean(selection.master?.length)}
-      onSave={async(selection)=>{await saveColumns.mutateAsync({master:selection.master??[],detail:selection.detail??[]});setColumnsOpen(false)}}
+      onSave={async(selection)=>{
+        // 拖拽保存可能还在队列里：先等它落库，否则"选择列"的整份列集可能被后到的拖拽 PUT 覆盖
+        await columnSaveChainRef.current
+        const masterOrder=selection.master??[]
+        const detailOrder=selection.detail??[]
+        await saveColumns.mutateAsync({master:masterOrder,detail:detailOrder})
+        setColumnOrderDraft({master:null,detail:null})
+        // 选择列可能增删了字段，拖拽前的整份列集已不能作为撤销目标
+        toast.dismissKey(COLUMN_ORDER_TOAST_KEY)
+        setColumnsOpen(false)
+      }}
     />}
     {queryOpen&&<ErpQueryBuilder
       open

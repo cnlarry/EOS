@@ -15,7 +15,7 @@ import {
 } from '../../lib/tanstackTable'
 // 仅此处需要 v9 原始的行数据约束（模块增强的泛型必须与 v9 声明逐字一致），桥接层对外给的是放宽口径
 import type { RowData as CoreRowData } from '@tanstack/react-table'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
@@ -62,6 +62,37 @@ function defaultNumericAlign(dataType: string | undefined): string | undefined {
 /** 列头拖到可视区边缘多宽内开始自动横向滚动，以及每帧最多滚多少像素 */
 const AUTOSCROLL_EDGE = 56
 const AUTOSCROLL_MAX_STEP = 14
+/** 按住边缘越久滚得越快：每帧再加这么多，封顶为额外 8px/帧 */
+const AUTOSCROLL_BOOST_STEP = 0.35
+const AUTOSCROLL_BOOST_MAX = 8
+
+/** 浮起预览的最大宽度：宽列整块跟手会盖住插入线，也容易顶到视口外 */
+const DRAG_GHOST_MAX_WIDTH = 200
+/** 拖动启动阈值：鼠标 4px / 触屏 6px，避免点表头时被当成拖拽 */
+const DRAG_START_MOUSE = 4
+const DRAG_START_TOUCH = 6
+/** 指针纵向离开表格可视区多少像素内仍算有效落点 */
+const DRAG_OUTSIDE_TOLERANCE = 16
+
+/** 拖动期间缓存的表头几何（视口坐标） */
+interface ColumnDragCell {
+  id: string
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+interface ColumnDragLayout {
+  cells: ColumnDragCell[]
+  reorderable: Set<string>
+  view: { left: number; top: number; right: number; bottom: number }
+  /** 表格底边；量不到时用落点列自己的底边兜底（jsdom / 尚未布局） */
+  tableBottom: number | null
+  /** 可画插入线的横向范围（让开冻结列） */
+  leftBound: number
+  rightBound: number
+}
 
 /**
  * 拖动列头时要自动横向滚动的容器：从表头往上找第一个"横向确实能滚"的祖先。
@@ -155,7 +186,10 @@ export interface ErpTableProps<TData extends RowData> {
    * 返回空数组则不渲染；固定项（复制/筛选）不受影响。
    */
   cellMenuExtra?: (context: { columnId: string; row: TData; value: unknown }) => { key: string; label: string; onClick: () => void }[]
-  /** 表头拖拽重排完成回调（新列顺序，含 select/冻结列）；不传则不启用拖拽重排 */
+  /**
+   * 列顺序重排回调（拖拽落位或表头菜单「左移/右移一列」；新列顺序含 select/冻结列）。
+   * 不传则不启用列重排。
+   */
   onColumnsReorder?: (columnIds: string[]) => void
   /** 客户端本地排序（TanStack 内置排序；服务端排序场景保持默认 false，由外部排序后传 data） */
   clientSideSorting?: boolean
@@ -441,29 +475,30 @@ export function ErpTable<TData>({
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
-  /** 正在被拖起的列头（浮起预览显示这一列，源列同时变暗） */
+  /** 正在被拖起的列（浮起预览只显示一个紧凑的列头卡片，不再复制整列） */
   const [draggingColumn, setDraggingColumn] = useState<{ id: string; label: string; width: number; height: number } | null>(null)
   /**
-   * 落点：插槽 =「一整列」的轮廓（视口坐标，fixed），宽度取被拖列的列宽。
-   * 电子表格的插入位置画的就是整列轮廓而不是一根细线——它表达的是"这里会插进一整列"。
+   * 落点：一条 2px 插入线（与电子表格的列插入指示同义）。
+   * 不用一整列色块——插槽与被拖列、整列高亮叠在一起会遮住数据，也说不清"插在哪边"。
    */
-  const [columnDropSlot, setColumnDropSlot] = useState<{ id: string; after: boolean; left: number; top: number; width: number; height: number } | null>(null)
-  const columnDropSlotRef = useRef<typeof columnDropSlot>(null)
+  const [columnDropLine, setColumnDropLine] = useState<{ id: string; after: boolean; left: number; top: number; height: number } | null>(null)
+  const columnDropLineRef = useRef<typeof columnDropLine>(null)
   const columnDragRef = useRef<{
     id: string; label: string; startX: number; startY: number; x: number; y: number
     offsetX: number; offsetY: number; width: number; height: number
     active: boolean; target: { id: string; after: boolean } | null
   } | null>(null)
   const columnGhostRef = useRef<HTMLDivElement>(null)
-  /** 被拖起的整列高亮层（fixed，跟随源列 rect；滚动时同步重算） */
-  const columnLiftRef = useRef<HTMLDivElement>(null)
+  /** 拖动期间缓存表头几何：pointermove 里量所有表头会强制同步布局，列多时拖动明显掉帧 */
+  const dragLayoutRef = useRef<ColumnDragLayout | null>(null)
+  const dragLayoutDirtyRef = useRef(false)
+  const ghostFadeTimerRef = useRef<number | null>(null)
+  /** 本次 pointerdown 时该列表头菜单是否已经打开：pointerdown 会先关闭菜单，pointerup 不能再把它弹回来 */
+  const headerMenuWasOpenRef = useRef(false)
   /** 本次拖拽要自动滚动的横向容器（拖动开始时按源列位置找一次） */
   const scrollHostRef = useRef<HTMLElement | null>(null)
-  const autoScrollRef = useRef<{ raf: number | null; velocity: number }>({ raf: null, velocity: 0 })
+  const autoScrollRef = useRef<{ raf: number | null; velocity: number; boost: number }>({ raf: null, velocity: 0, boost: 0 })
   const dragPointerRef = useRef({ x: 0, y: 0 })
-  /** 列顺序变化前每列的位置（落位动画 FLIP 的起点）与上一次的列顺序键 */
-  const preReorderRectsRef = useRef<Map<string, number> | null>(null)
-  const columnOrderKeyRef = useRef('')
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
   // 未受控排序：外部未传 sorting/onSortingChange 时用内部稳定状态，
   // 避免默认空数组每次渲染都是新引用导致 TanStack 状态循环（卡死路由过渡）
@@ -839,14 +874,14 @@ export function ErpTable<TData>({
     }
   }, [cellMenu])
 
-  // 列头菜单：点击菜单外关闭（触发按钮除外）
+  // 列头菜单：点击菜单外关闭（触发按钮除外）。点击页面其它区域也要关，
+  // 否则菜单会跟着表格一起"挂着"，把别处的点击吃掉。
   useEffect(() => {
     if (!openMenu) return
     const close = (event: PointerEvent) => {
       const target = event.target as Node
-      if (!shellRef.current?.contains(target)) return
       if ((target as HTMLElement).closest?.('.erp-header-menu-trigger')) return
-      if (shellRef.current.querySelector('.erp-header-menu')?.contains(target)) return
+      if (shellRef.current?.querySelector('.erp-header-menu')?.contains(target)) return
       setOpenMenu(null)
     }
     window.addEventListener('pointerdown', close)
@@ -858,13 +893,12 @@ export function ErpTable<TData>({
     }
   }, [openMenu])
 
-  // 列头筛选弹层：点击表格其它位置关闭
+  // 列头筛选弹层：点击弹层外（含页面其它区域）关闭
   useEffect(() => {
     if (!openFilter) return
     const close = (event: PointerEvent) => {
       const target = event.target as Node
-      if (!shellRef.current?.contains(target)) return
-      if (shellRef.current.querySelector('.erp-column-filter-popover')?.contains(target)) return
+      if (shellRef.current?.querySelector('.erp-column-filter-popover')?.contains(target)) return
       setOpenFilter(null)
     }
     window.addEventListener('pointerdown', close)
@@ -1224,107 +1258,162 @@ export function ErpTable<TData>({
     ghost.style.transform = `translate3d(${x - session.offsetX}px, ${y - session.offsetY}px, 0)`
   }, [])
 
-  /** 整列高亮层：贴着源列当前的 rect（滚动后 rect 会变，调用方负责重算） */
-  const positionColumnLift = useCallback(() => {
-    const session = columnDragRef.current
-    const host = shellRef.current
-    const lift = columnLiftRef.current
-    if (!session?.active || !host || !lift) return
-    const cell = Array.from(host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]'))
-      .find((candidate) => candidate.dataset.colKey === session.id)
-    if (!cell) return
-    const rect = cell.getBoundingClientRect()
-    // 整列一直盖到可见底边：优先用横向滚动容器的可视区，没有可滚容器就退到表格外壳
-    const view = (scrollHostRef.current ?? shellRef.current)?.getBoundingClientRect()
-    const bottom = view && view.top <= rect.top ? view.bottom : rect.bottom
-    lift.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`
-    lift.style.width = `${rect.width}px`
-    lift.style.height = `${Math.max(0, bottom - rect.top)}px`
-  }, [])
-
-  /** 指针落在哪一列的左/右半区；越出两端时贴到首列左侧、末列右侧。返回的竖直范围到表格可见底边 */
-  const columnDropTargetAt = useCallback((x: number) => {
+  /** 量一次表头几何（只在拖起、滚动、窗口尺寸变化时调用；不在 pointermove 里做） */
+  const captureColumnLayout = useCallback(() => {
     const host = shellRef.current
     if (!host) return null
-    const reorderable = reorderableColumnIdsRef.current
-    const view = (scrollHostRef.current ?? host).getBoundingClientRect()
-    // 插槽要盖住整列（表头 + 可见数据区），不是只有表头那一条
-    const spanOf = (top: number, bottom: number) => {
-      const end = view.top <= top ? view.bottom : bottom
-      return { top, height: Math.max(0, end - top) }
-    }
-    let first: { id: string; left: number; top: number; height: number } | null = null
-    let last: { id: string; right: number; top: number; height: number } | null = null
+    const viewEl = scrollHostRef.current ?? host
+    const viewRect = viewEl.getBoundingClientRect()
+    const cells: ColumnDragCell[] = []
+    let leftBound = viewRect.width > 0 ? viewRect.left : Number.NEGATIVE_INFINITY
+    let rightBound = viewRect.width > 0 ? viewRect.right : Number.POSITIVE_INFINITY
     for (const cell of host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]')) {
       const id = cell.dataset.colKey
-      if (!id || !reorderable.includes(id)) continue
+      if (!id) continue
       const rect = cell.getBoundingClientRect()
-      if (rect.width <= 0) continue
-      const span = spanOf(rect.top, rect.bottom)
-      first ??= { id, left: rect.left, ...span }
-      last = { id, right: rect.right, ...span }
-      if (x >= rect.left && x <= rect.right) {
-        const after = x > rect.left + rect.width / 2
-        return { id, after, left: after ? rect.right : rect.left, ...span }
-      }
+      cells.push({ id, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
+      if (cell.classList.contains('erp-frozen-left')) leftBound = Math.max(leftBound, rect.right)
+      if (cell.classList.contains('erp-frozen-right')) rightBound = Math.min(rightBound, rect.left)
     }
-    if (first && x < first.left) return { id: first.id, after: false, left: first.left, top: first.top, height: first.height }
-    return last ? { id: last.id, after: true, left: last.right, top: last.top, height: last.height } : null
+    // 冻结列把可画插入线的横向范围夹在中间；两端顺序颠倒时退回可视区
+    if (leftBound > rightBound) {
+      leftBound = viewRect.left
+      rightBound = viewRect.right
+    }
+    const tableRect = host.querySelector('table')?.getBoundingClientRect()
+    const layout: ColumnDragLayout = {
+      cells,
+      reorderable: new Set(reorderableColumnIdsRef.current),
+      view: { left: viewRect.left, top: viewRect.top, right: viewRect.right, bottom: viewRect.bottom },
+      tableBottom: tableRect && tableRect.height > 0 ? tableRect.bottom : null,
+      leftBound,
+      rightBound,
+    }
+    dragLayoutRef.current = layout
+    dragLayoutDirtyRef.current = false
+    return layout
   }, [])
 
-  /** 拖动中的一次重定位：浮起预览、整列高亮、落点插槽都按当前指针重算 */
+  /**
+   * 指针落在哪一列的左/右半区。指针还在被拖的那一列上时没有落点——
+   * 否则"在自己的右半边松手"会被算成"插到下一列后面"（一次没动却换了位置）。
+   */
+  const columnDropTargetAt = useCallback((x: number) => {
+    const session = columnDragRef.current
+    const layout = dragLayoutRef.current
+    if (!session?.active || !layout) return null
+    let first: ColumnDragCell | null = null
+    let last: ColumnDragCell | null = null
+    for (const cell of layout.cells) {
+      if (!layout.reorderable.has(cell.id) || cell.right - cell.left <= 0) continue
+      first ??= cell
+      last = cell
+      if (x >= cell.left && x <= cell.right) {
+        if (cell.id === session.id) return null
+        const after = x > cell.left + (cell.right - cell.left) / 2
+        return { id: cell.id, after, left: after ? cell.right : cell.left, top: cell.top, bottom: cell.bottom }
+      }
+    }
+    if (first && x < first.left) {
+      if (first.id === session.id) return null
+      return { id: first.id, after: false, left: first.left, top: first.top, bottom: first.bottom }
+    }
+    if (last && x > last.right) {
+      if (last.id === session.id) return null
+      return { id: last.id, after: true, left: last.right, top: last.top, bottom: last.bottom }
+    }
+    return null
+  }, [])
+
+  /** 指针是否还在表格的可视范围：拖到工具栏、侧栏、另一张表或页面空白处应当取消 */
+  const pointerInsideTable = useCallback((x: number, y: number) => {
+    const layout = dragLayoutRef.current
+    if (!layout) return false
+    const { left, right, top, bottom } = layout.view
+    // jsdom / 尚未布局时宽高为 0：不做边界限制，避免把测试与首帧误判成"表格外"
+    if (bottom <= top) return true
+    if (right > left && (x < left - AUTOSCROLL_EDGE || x > right + AUTOSCROLL_EDGE)) return false
+    return y >= top - DRAG_OUTSIDE_TOLERANCE && y <= bottom + DRAG_OUTSIDE_TOLERANCE
+  }, [])
+
+  /** 拖动中的一次重定位：浮起预览、插入线都按当前指针重算 */
   const refreshColumnDrag = useCallback((x: number, y: number) => {
     const session = columnDragRef.current
     if (!session?.active) return
+    if (dragLayoutDirtyRef.current) captureColumnLayout()
+    const layout = dragLayoutRef.current
+    if (!layout) return
     dragPointerRef.current = { x, y }
     positionColumnGhost(x, y)
-    positionColumnLift()
-    const hit = columnDropTargetAt(x)
+    const inside = pointerInsideTable(x, y)
+    document.body.classList.toggle('erp-column-drag-invalid', !inside)
+    const hit = inside ? columnDropTargetAt(x) : null
     const target = hit ? { id: hit.id, after: hit.after } : null
-    const changed = target?.id !== session.target?.id || target?.after !== session.target?.after
     session.target = target
-    if (!changed) return
-    const slot = hit
-      ? { id: hit.id, after: hit.after, left: hit.left, top: hit.top, width: session.width, height: hit.height }
-      : null
-    columnDropSlotRef.current = slot
-    setColumnDropSlot(slot)
-  }, [columnDropTargetAt, positionColumnGhost, positionColumnLift])
-
-  /** 落位动画的起点：交换前每列的位置（列顺序真正变化时据此播放 FLIP） */
-  const captureColumnRects = useCallback(() => {
-    const host = shellRef.current
-    if (!host) return null
-    const rects = new Map<string, number>()
-    for (const cell of host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]')) {
-      const id = cell.dataset.colKey
-      if (id) rects.set(id, cell.getBoundingClientRect().left)
+    if (!hit) {
+      if (columnDropLineRef.current) {
+        columnDropLineRef.current = null
+        setColumnDropLine(null)
+      }
+      return
     }
-    return rects
-  }, [])
+    const top = Math.max(hit.top, layout.view.top)
+    const bottom = layout.tableBottom == null
+      ? hit.bottom
+      : Math.max(top, Math.min(layout.view.bottom, layout.tableBottom))
+    // 插入线落在冻结列后面就画到冻结边界上：否则会盖在冻结列上，看起来像能插进冻结区
+    const left = Math.min(Math.max(hit.left, layout.leftBound), layout.rightBound)
+    const line = { id: hit.id, after: hit.after, left, top, height: Math.max(0, bottom - top) }
+    const previous = columnDropLineRef.current
+    if (previous && previous.id === line.id && previous.after === line.after
+      && previous.left === line.left && previous.top === line.top && previous.height === line.height) return
+    columnDropLineRef.current = line
+    setColumnDropLine(line)
+  }, [captureColumnLayout, columnDropTargetAt, pointerInsideTable, positionColumnGhost])
 
-  /** 指针压在表格左右边缘时的横向自动滚动：一帧一步，滚动后立刻重算落点 */
+  /** 指针压在表格左右边缘时的横向自动滚动：一帧一步，按住越久加速度越大 */
   const autoScrollStep = useCallback(() => {
     const state = autoScrollRef.current
     const host = scrollHostRef.current
     const session = columnDragRef.current
     if (!host || !session?.active || state.velocity === 0) {
       state.raf = null
+      state.boost = 0
       return
     }
+    const direction = Math.sign(state.velocity)
+    const step = direction * Math.min(
+      AUTOSCROLL_MAX_STEP + AUTOSCROLL_BOOST_MAX,
+      Math.abs(state.velocity) + state.boost,
+    )
     const before = host.scrollLeft
-    host.scrollLeft = before + state.velocity
+    host.scrollLeft = before + step
     // 已经滚到两端：停下，等指针再动（继续贴着边缘移动会重新启动）
     if (host.scrollLeft === before) {
       state.raf = null
+      state.boost = 0
       return
     }
+    state.boost = Math.min(AUTOSCROLL_BOOST_MAX, state.boost + AUTOSCROLL_BOOST_STEP)
+    // 滚动改变了表头在视口里的 left，下一帧重新量一次（不在 pointermove 里量）
+    dragLayoutDirtyRef.current = true
     refreshColumnDrag(dragPointerRef.current.x, dragPointerRef.current.y)
     state.raf = requestAnimationFrame(autoScrollStep)
   }, [refreshColumnDrag])
 
+  /** 把"可重排列的新顺序"还原成整行可见列顺序（含 select/冻结列）后交给父组件 */
+  const emitColumnOrder = useCallback((next: string[]) => {
+    if (!onColumnsReorder) return
+    const reorderableSet = new Set(reorderableColumnIdsRef.current)
+    let index = 0
+    const order = visibleColumnIdsRef.current.map((id) => (reorderableSet.has(id) ? next[index++] : id))
+    onColumnsReorder(order)
+  }, [onColumnsReorder])
+
   const commitColumnDrop = useCallback((dragId: string, target: { id: string; after: boolean }) => {
     if (!onColumnsReorder) return
+    // 目标就是自己：没有可提交的位移（落点判定之外的最后一道保险）
+    if (target.id === dragId) return
     const reorderable = reorderableColumnIdsRef.current
     const from = reorderable.indexOf(dragId)
     const targetIndex = reorderable.indexOf(target.id)
@@ -1337,57 +1426,119 @@ export function ErpTable<TData>({
     next.splice(insertAt, 0, dragId)
     // 拖回原处/在相邻列两侧来回放，顺序其实没变：不提交，免得白跑一次保存
     if (next.every((id, index) => id === reorderable[index])) return
-    const reorderableSet = new Set(reorderable)
-    let index = 0
-    const order = visibleColumnIdsRef.current.map((id) => (reorderableSet.has(id) ? next[index++] : id))
-    // 先记下交换前每列的位置：列顺序真正变化（父组件保存成功）时用它播放落位动画
-    preReorderRectsRef.current = captureColumnRects()
-    onColumnsReorder(order)
-  }, [captureColumnRects, onColumnsReorder])
+    emitColumnOrder(next)
+  }, [emitColumnOrder, onColumnsReorder])
+
+  /** 表头菜单里的精确调序（一次一列），给不方便拖拽/需要键盘操作的场景兜底 */
+  const moveColumn = useCallback((columnId: string, delta: -1 | 1) => {
+    const reorderable = reorderableColumnIdsRef.current
+    const from = reorderable.indexOf(columnId)
+    const to = from + delta
+    if (from < 0 || to < 0 || to >= reorderable.length) return
+    const next = [...reorderable]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    emitColumnOrder(next)
+  }, [emitColumnOrder])
 
   /** 按下表头：先只记账，移动超过阈值才真正"抓起"——点表头不该被当成拖拽 */
   const beginColumnDrag = (event: ReactPointerEvent<HTMLElement>, columnId: string, label: string) => {
-    if (!onColumnsReorder || event.button !== 0) return
-    // 表头右侧的菜单箭头与列宽手柄各有各的手势，别被列拖拽吃掉
-    if ((event.target as HTMLElement).closest('button, .erp-col-resizer')) return
+    headerMenuWasOpenRef.current = false
+    if (!onColumnsReorder || event.button !== 0 || event.defaultPrevented) return
+    // 表头里的按钮/链接、表头菜单/筛选弹层与列宽手柄各有各的手势，别被列拖拽吃掉
+    if ((event.target as HTMLElement).closest('a, button, input, select, textarea, label, [contenteditable="true"], [role="button"], .erp-col-resizer, .erp-header-menu, .erp-column-filter-popover')) return
     const cell = event.currentTarget.closest('th')
     if (!cell) return
     const rect = cell.getBoundingClientRect()
+    // 记下"按下时这张表头的菜单是否开着"：window 上的外部点击关闭逻辑会在本轮 pointerdown
+    // 先把菜单关掉，pointerup 若还按 openMenu 判断就会把同一次点击误判成"重新打开"。
+    headerMenuWasOpenRef.current = openMenu === columnId
+    // 上一次落位后 100ms 内又按下表头：先结束上一轮的预览状态。
+    // 不能只清计时器——那会在"只是点一下、没有真正拖动"时把旧预览永远留在屏幕上。
+    if (ghostFadeTimerRef.current != null) {
+      window.clearTimeout(ghostFadeTimerRef.current)
+      ghostFadeTimerRef.current = null
+      setDraggingColumn(null)
+    }
+    // 预览宽度封顶：宽列整块跟手会盖住插入线，也容易顶到视口外
+    const ghostWidth = Math.max(1, Math.min(rect.width, DRAG_GHOST_MAX_WIDTH))
     columnDragRef.current = {
       id: columnId, label, startX: event.clientX, startY: event.clientY,
       x: event.clientX, y: event.clientY,
-      offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
-      width: rect.width, height: rect.height, active: false, target: null,
+      offsetX: Math.min(Math.max(event.clientX - rect.left, 0), Math.max(0, ghostWidth - 24)),
+      offsetY: event.clientY - rect.top,
+      width: ghostWidth, height: rect.height, active: false, target: null,
     }
-    // 自动滚动只认这一次拖拽的宿主：拖动过程中页面重渲染也不改判
+    // 自动滚动与表头几何只认这一次拖拽的宿主：拖动过程中页面重渲染也不改判
     scrollHostRef.current = findHorizontalScrollHost(event.currentTarget)
+    dragLayoutRef.current = null
+    dragLayoutDirtyRef.current = false
     dragPointerRef.current = { x: event.clientX, y: event.clientY }
     event.preventDefault()
   }
 
+  /**
+   * 单击表头打开表头菜单：把 13px 小箭头的命中区扩到整块表头。
+   * 用 pointerup 而不是 click——pointerdown 的 preventDefault 会吞掉兼容 click，pointerup 仍会到达；
+   * 拖拽超过阈值后 active=true，这里直接让位给落位逻辑，不会在拖完时误弹菜单。
+   */
+  const openHeaderMenuFromHeader = (event: ReactPointerEvent<HTMLElement>, columnId: string) => {
+    // 只认"从这块表头按下"的手势：从单元格/菜单里拖出来落在表头上不算单击
+    if (!columnDragRef.current) return
+    const wasOpen = headerMenuWasOpenRef.current
+    headerMenuWasOpenRef.current = false
+    if (event.button > 0 || columnDragRef.current.active) return
+    // 表头菜单/筛选弹层/列宽手柄/自定义表头控件各有自己的点击语义
+    if ((event.target as HTMLElement).closest('button, a, input, select, textarea, label, [contenteditable="true"], [role="button"], .erp-col-resizer, .erp-header-menu, .erp-column-filter-popover')) return
+    const cell = event.currentTarget.closest('th')
+    if (!cell) return
+    if (wasOpen || openMenu === columnId) {
+      setOpenMenu(null)
+      return
+    }
+    openHeaderMenu(columnId, cell)
+  }
+
+  // 落位要读最新的提交函数，但监听器不该因为它换身份而重建（否则拖动中一次外部重渲染
+  // 会拆掉监听器、丢掉 grabbing 光标）。经 ref 取用，effect 只依赖稳定回调。
+  const commitColumnDropRef = useRef(commitColumnDrop)
+  useLayoutEffect(() => { commitColumnDropRef.current = commitColumnDrop }, [commitColumnDrop])
+  // 只关心"能不能拖"这个布尔值：onColumnsReorder 的函数身份会随父组件列数组变化，
+  // 若进 effect 依赖，落位后的父组件重渲染会在淡出计时器还没到点时把它清掉，预览就卡在屏幕上。
+  const reorderEnabled = Boolean(onColumnsReorder)
+
   useEffect(() => {
-    if (!onColumnsReorder) return
+    if (!reorderEnabled) return
     const finish = (commit: boolean) => {
       const session = columnDragRef.current
+      // 同一页可能有多张 ErpTable（主表 + 子表）：没有拖拽的实例也会收到 window 的 pointerup，
+      // 不能让它去清 body 上的全局拖拽状态、把另一张表正在进行的拖拽打断。
+      if (!session) return
       columnDragRef.current = null
       if (autoScrollRef.current.raf != null) cancelAnimationFrame(autoScrollRef.current.raf)
-      autoScrollRef.current = { raf: null, velocity: 0 }
+      autoScrollRef.current = { raf: null, velocity: 0, boost: 0 }
       scrollHostRef.current = null
-      document.body.classList.remove('erp-column-drag-active')
+      dragLayoutRef.current = null
+      dragLayoutDirtyRef.current = false
+      document.body.classList.remove('erp-column-drag-active', 'erp-column-drag-invalid')
       const ghost = columnGhostRef.current
-      const slot = columnDropSlotRef.current
-      columnDropSlotRef.current = null
-      setColumnDropSlot(null)
-      if (ghost && slot && commit && session?.active && session.target) {
-        // 松手：预览滑进插槽并淡出，接上表格的列交换动画——不是"啪"地消失
-        ghost.style.transition = 'transform 200ms cubic-bezier(.25, 1, .5, 1), opacity 200ms ease-out'
-        ghost.style.transform = `translate3d(${slot.left}px, ${slot.top}px, 0)`
-        ghost.style.opacity = '0'
-        window.setTimeout(() => setDraggingColumn(null), 200)
+      columnDropLineRef.current = null
+      setColumnDropLine(null)
+      if (session?.active) {
+        // 松手只让预览快速淡出：列顺序是立刻换的，不再做"滑进插槽"的 200ms 拖尾
+        if (ghost) {
+          ghost.style.transition = 'opacity 100ms ease-out'
+          ghost.style.opacity = '0'
+        }
+        if (ghostFadeTimerRef.current != null) window.clearTimeout(ghostFadeTimerRef.current)
+        ghostFadeTimerRef.current = window.setTimeout(() => {
+          ghostFadeTimerRef.current = null
+          setDraggingColumn(null)
+        }, 100)
       } else {
         setDraggingColumn(null)
       }
-      if (commit && session?.active && session.target) commitColumnDrop(session.id, session.target)
+      if (commit && session?.active && session.target) commitColumnDropRef.current(session.id, session.target)
     }
     const onMove = (event: PointerEvent) => {
       const session = columnDragRef.current
@@ -1395,26 +1546,32 @@ export function ErpTable<TData>({
       session.x = event.clientX
       session.y = event.clientY
       if (!session.active) {
-        // 3px 内算点击（表头也可以排序/开菜单，手指或触控板抖动不该启动拖拽）
-        if (Math.hypot(event.clientX - session.startX, event.clientY - session.startY) < 3) return
+        // 阈值内算点击（表头也可以排序/开菜单，手指或触控板抖动不该启动拖拽）
+        const threshold = event.pointerType === 'touch' ? DRAG_START_TOUCH : DRAG_START_MOUSE
+        if (Math.hypot(event.clientX - session.startX, event.clientY - session.startY) < threshold) return
         session.active = true
         document.body.classList.add('erp-column-drag-active')
+        captureColumnLayout()
         setDraggingColumn({ id: session.id, label: session.label, width: session.width, height: session.height })
       }
       refreshColumnDrag(event.clientX, event.clientY)
-      // 贴住表格左右边缘：越靠边滚得越快（二次曲线），指针移开边缘即停
+      // 贴住表格左右边缘：越靠边滚得越快（二次曲线），指针移开边缘即停。
+      // 指针纵向离开表格时不再滚动——那时松手是取消，不该继续把视口推向别处。
+      const layout = dragLayoutRef.current
       const host = scrollHostRef.current
       let velocity = 0
-      if (host) {
-        const rect = host.getBoundingClientRect()
-        const leftEdge = rect.left + AUTOSCROLL_EDGE
-        const rightEdge = rect.right - AUTOSCROLL_EDGE
+      if (host && layout && pointerInsideTable(event.clientX, event.clientY)) {
+        const leftEdge = layout.view.left + AUTOSCROLL_EDGE
+        const rightEdge = layout.view.right - AUTOSCROLL_EDGE
         if (event.clientX < leftEdge) {
           velocity = -Math.round(2 + Math.min(1, (leftEdge - event.clientX) / AUTOSCROLL_EDGE) ** 2 * (AUTOSCROLL_MAX_STEP - 2))
         } else if (event.clientX > rightEdge) {
           velocity = Math.round(2 + Math.min(1, (event.clientX - rightEdge) / AUTOSCROLL_EDGE) ** 2 * (AUTOSCROLL_MAX_STEP - 2))
         }
       }
+      // 方向变了或离开边缘就重新起速；沿同一边继续按住则保留已累积的加速度
+      const previousDirection = Math.sign(autoScrollRef.current.velocity)
+      if (velocity === 0 || Math.sign(velocity) !== previousDirection) autoScrollRef.current.boost = 0
       autoScrollRef.current.velocity = velocity
       if (velocity !== 0 && autoScrollRef.current.raf == null) {
         autoScrollRef.current.raf = requestAnimationFrame(autoScrollStep)
@@ -1425,14 +1582,24 @@ export function ErpTable<TData>({
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') finish(false)
     }
-    // 拖动中任何容器滚动（自动滚动、用户滚轮、触控板）都要重算整列高亮与落点
-    const onScroll = () => refreshColumnDrag(dragPointerRef.current.x, dragPointerRef.current.y)
+    // 拖动中任何容器滚动（自动滚动、用户滚轮、触控板）都要重算插入线位置
+    const onScroll = () => {
+      if (!columnDragRef.current?.active) return
+      dragLayoutDirtyRef.current = true
+      refreshColumnDrag(dragPointerRef.current.x, dragPointerRef.current.y)
+    }
+    const onResize = () => {
+      if (!columnDragRef.current?.active) return
+      dragLayoutDirtyRef.current = true
+      refreshColumnDrag(dragPointerRef.current.x, dragPointerRef.current.y)
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
     window.addEventListener('blur', onCancel)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
@@ -1440,62 +1607,31 @@ export function ErpTable<TData>({
       window.removeEventListener('blur', onCancel)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('scroll', onScroll, true)
-      document.body.classList.remove('erp-column-drag-active')
+      window.removeEventListener('resize', onResize)
+      document.body.classList.remove('erp-column-drag-active', 'erp-column-drag-invalid')
+      if (ghostFadeTimerRef.current != null) {
+        window.clearTimeout(ghostFadeTimerRef.current)
+        ghostFadeTimerRef.current = null
+      }
     }
-  }, [onColumnsReorder, commitColumnDrop, refreshColumnDrag, autoScrollStep])
+  }, [reorderEnabled, refreshColumnDrag, autoScrollStep, captureColumnLayout, pointerInsideTable])
 
-  // 预览与整列高亮刚挂上时先摆到位，免得第一帧从视口左上角"飞"过来（paint 前定位）
+  // 预览刚挂上时先摆到位，免得第一帧从视口左上角"飞"过来（paint 前定位）
   useLayoutEffect(() => {
     const session = columnDragRef.current
     if (!draggingColumn || !session) return
+    const ghost = columnGhostRef.current
+    // 连续两次拖动可能复用同一个 portal 节点：把上一轮淡出留下的内联样式清掉
+    if (ghost) {
+      ghost.style.transition = ''
+      ghost.style.opacity = ''
+    }
     positionColumnGhost(session.x, session.y)
-    positionColumnLift()
-  }, [draggingColumn, positionColumnGhost, positionColumnLift])
+  }, [draggingColumn, positionColumnGhost])
 
-  // 列交换动画（FLIP）：父组件保存成功、列顺序真正变化的那一帧，把每列从旧位置平滑移过去。
-  // 表格列做不到"拖动时实时滑开让位"（会破坏列宽与冻结列），所以"落位"由这一帧的位移动画表达。
-  useLayoutEffect(() => {
-    const orderKey = visibleColumnIds.join('|')
-    const previousKey = columnOrderKeyRef.current
-    columnOrderKeyRef.current = orderKey
-    if (!previousKey || previousKey === orderKey) return
-    const before = preReorderRectsRef.current
-    preReorderRectsRef.current = null
-    const host = shellRef.current
-    if (!before || !host) return
-    // 每列只读一次表头位置，数据列共用同一个位移量（几十行也不会逐格测量）
-    const deltas = new Map<string, number>()
-    for (const cell of host.querySelectorAll<HTMLTableCellElement>('thead th[data-col-key]')) {
-      const id = cell.dataset.colKey
-      if (!id) continue
-      const previousLeft = before.get(id)
-      if (previousLeft == null) continue
-      const delta = previousLeft - cell.getBoundingClientRect().left
-      if (Math.abs(delta) >= 0.5) deltas.set(id, delta)
-    }
-    if (deltas.size === 0) return
-    const moving: HTMLElement[] = []
-    for (const cell of host.querySelectorAll<HTMLElement>('thead th[data-col-key], td[data-col-id]')) {
-      const id = cell.dataset.colKey ?? cell.dataset.colId
-      const delta = id ? deltas.get(id) : undefined
-      if (delta == null) continue
-      cell.style.transition = 'none'
-      cell.style.transform = `translateX(${delta}px)`
-      moving.push(cell)
-    }
-    requestAnimationFrame(() => {
-      for (const cell of moving) {
-        cell.style.transition = 'transform 250ms cubic-bezier(.25, 1, .5, 1)'
-        cell.style.transform = ''
-      }
-      window.setTimeout(() => {
-        for (const cell of moving) {
-          cell.style.transition = ''
-          cell.style.transform = ''
-        }
-      }, 280)
-    })
-  })
+  // 列顺序不做整表 FLIP：父组件现在是乐观更新，落手即换序；再给所有 <td> 逐个写
+  // transform 会把整张表拖进 250ms 的重绘，列多/行多时反而显得"慢半拍"。
+  // 电子表格换列也是立即到位——插入线消失、列就位，不再补一段位移动画。
 
   if (data.length === 0 && empty != null) return <>{empty}</>
 
@@ -1526,7 +1662,8 @@ export function ErpTable<TData>({
                   ? header.column.columnDef.header
                   : header.column.id
                 const filterActive = Boolean(columnFilterValue?.[header.column.id])
-                const menuItems: { key: string; label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void }[] = []
+                const draggable = Boolean(onColumnsReorder) && header.column.id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
+                const menuItems: { key: string; label: string; disabled?: boolean; onClick: (event: MouseEvent<HTMLButtonElement>) => void }[] = []
                 if (header.column.getCanSort() && (onSortingChange || clientSideSorting)) {
                   const applySort = (event: MouseEvent<HTMLButtonElement>, desc: boolean) => {
                     const id = header.column.id
@@ -1552,8 +1689,15 @@ export function ErpTable<TData>({
                   menuItems.push({ key: 'filter', label: '筛选', onClick: () => openColumnFilter(header.column.id) })
                 }
                 for (const item of meta?.headerMenu ?? []) menuItems.push({ key: item.label, label: item.label, onClick: () => item.onClick() })
+                if (draggable) {
+                  // 与拖拽写同一份列顺序：菜单调序是精确/键盘可达的兜底入口
+                  const position = reorderableColumnIds.indexOf(header.column.id)
+                  menuItems.push(
+                    { key: 'move-left', label: '左移一列', disabled: position <= 0, onClick: () => moveColumn(header.column.id, -1) },
+                    { key: 'move-right', label: '右移一列', disabled: position < 0 || position >= reorderableColumnIds.length - 1, onClick: () => moveColumn(header.column.id, 1) },
+                  )
+                }
                 const sortIndex = resolvedSorting.findIndex((item) => item.id === header.column.id)
-                const draggable = Boolean(onColumnsReorder) && header.column.id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
                 return (
                   <th
                     key={header.id}
@@ -1563,9 +1707,10 @@ export function ErpTable<TData>({
                     data-col-min-floor={meta?.minWidthFloor ? 'true' : undefined}
                     data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
                     data-col-autofit={meta?.autoWidth ? 'true' : undefined}
-                    className={[meta?.className ?? defaultNumericAlign(meta?.dataType), meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : '', draggable ? 'is-column-draggable' : '', draggingColumn?.id === header.column.id ? 'is-column-dragging' : '', columnDropSlot?.id === header.column.id ? 'is-column-drop-target' : ''].filter(Boolean).join(' ') || undefined}
+                    className={[meta?.className ?? defaultNumericAlign(meta?.dataType), meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : '', draggable ? 'is-column-draggable' : '', draggingColumn?.id === header.column.id ? 'is-column-dragging' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                     onPointerDown={draggable ? (event) => beginColumnDrag(event, header.column.id, headerLabel) : undefined}
+                    onPointerUp={draggable ? (event) => openHeaderMenuFromHeader(event, header.column.id) : undefined}
                   >
                     {header.isPlaceholder ? null : menuItems.length > 0 || draggable ? (
                       <div className="erp-header-inner">
@@ -1576,7 +1721,8 @@ export function ErpTable<TData>({
                           type="button"
                           className={`erp-header-menu-trigger ${sorted ? 'is-active' : ''} ${filterActive ? 'is-filtered' : ''}`}
                           aria-label={`表头操作${headerLabel}`}
-                          title="排序 / 筛选"
+                          aria-expanded={openMenu === header.column.id}
+                          title="表头操作：排序 / 筛选 / 列调序"
                           onClick={(event) => (openMenu === header.column.id ? setOpenMenu(null) : openHeaderMenu(header.column.id, event.currentTarget))}
                         >
                           {sorted === 'asc' ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
@@ -1595,17 +1741,23 @@ export function ErpTable<TData>({
                         onClick={(event) => event.stopPropagation()}
                       >
                         {menuItems.map((item) => (
-                          <button
-                            key={item.key}
-                            type="button"
-                            className="dropdown-item"
-                            onClick={(event) => {
-                              item.onClick(event)
-                              setOpenMenu(null)
-                            }}
-                          >
-                            {item.label}
-                          </button>
+                          <Fragment key={item.key}>
+                            {item.key === 'move-left' && <div className="dropdown-divider" />}
+                            <button
+                              type="button"
+                              className="dropdown-item"
+                              disabled={item.disabled}
+                              onClick={(event) => {
+                                // 菜单项点完就把焦点还给表头按钮：键盘用户调完一列还能接着按方向/回车
+                                const trigger = event.currentTarget.closest('th')?.querySelector<HTMLButtonElement>('.erp-header-menu-trigger')
+                                item.onClick(event)
+                                setOpenMenu(null)
+                                trigger?.focus()
+                              }}
+                            >
+                              {item.label}
+                            </button>
+                          </Fragment>
                         ))}
                       </div>
                     )}
@@ -1744,10 +1896,6 @@ export function ErpTable<TData>({
         </div>
       )}
       {draggingColumn && createPortal(
-        <div ref={columnLiftRef} className="erp-column-lift" aria-hidden="true" />,
-        document.body,
-      )}
-      {draggingColumn && createPortal(
         <div
           ref={columnGhostRef}
           className="erp-column-drag-ghost"
@@ -1758,10 +1906,10 @@ export function ErpTable<TData>({
         </div>,
         document.body,
       )}
-      {columnDropSlot && createPortal(
+      {columnDropLine && createPortal(
         <div
-          className="erp-column-drop-slot"
-          style={{ left: columnDropSlot.left, top: columnDropSlot.top, width: columnDropSlot.width, height: columnDropSlot.height }}
+          className="erp-column-drop-line"
+          style={{ left: columnDropLine.left, top: columnDropLine.top, height: columnDropLine.height }}
           aria-hidden="true"
         />,
         document.body,

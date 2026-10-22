@@ -13,6 +13,8 @@ const EXIT_DURATION = 220
 
 interface ToastItem {
   id: string
+  /** 业务键：同键提示原地更新 */
+  key?: string
   message: ReactNode
   variant: ToastVariant
   duration: number
@@ -52,21 +54,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, EXIT_DURATION)
   }, [])
 
-  const notify = useCallback(({ message, variant = 'info', duration, action }: ToastOptions) => {
+  const notify = useCallback(({ key, message, variant = 'info', duration, action }: ToastOptions) => {
     const effectiveDuration = duration ?? (action ? ACTION_DURATION : DEFAULT_DURATION)
     setToasts((current) => {
-      // 正在淡出的那条不参与去重：它马上要消失，重新触发应当开一条新的
-      const same = current.find((toast) => !toast.leaving && toast.message === message && toast.variant === variant)
+      // 正在淡出的那条不参与去重：它马上要消失，重新触发应当开一条新的。
+      // 带业务键的提示按 key 命中（同一件事的不同阶段原地换文案/语义/动作）；
+      // 不带的仍按「文案 + 语义」去重（既有行为）。
+      const same = current.find((toast) => !toast.leaving
+        && (key ? toast.key === key : toast.message === message && toast.variant === variant))
       if (same) {
-        return current.map((toast) => (toast.id === same.id ? { ...toast, duration: effectiveDuration, action, serial: toast.serial + 1 } : toast))
+        return current.map((toast) => (toast.id === same.id
+          ? { ...toast, key, message, variant, duration: effectiveDuration, action, serial: toast.serial + 1 }
+          : toast))
       }
       seq.current += 1
-      const next: ToastItem[] = [...current, { id: `toast-${seq.current}`, message, variant, duration: effectiveDuration, action, serial: 0, leaving: false }]
+      const next: ToastItem[] = [...current, { id: `toast-${seq.current}`, key, message, variant, duration: effectiveDuration, action, serial: 0, leaving: false }]
       return next.length > MAX_VISIBLE ? next.slice(next.length - MAX_VISIBLE) : next
     })
   }, [])
 
-  const api = useMemo(() => ({ notify, dismiss }), [notify, dismiss])
+  const dismissKey = useCallback((key: string) => {
+    // 立即摘掉：这是"旧状态已失效"的清理，不需要淡出；也避免延迟计时器误删同键的新提示
+    setToasts((current) => current.filter((toast) => toast.key !== key))
+  }, [])
+
+  const api = useMemo(() => ({ notify, dismiss, dismissKey }), [notify, dismiss, dismissKey])
 
   return (
     <ToastContext.Provider value={api}>

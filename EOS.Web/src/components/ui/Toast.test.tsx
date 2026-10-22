@@ -21,6 +21,40 @@ function WarningTrigger() {
   )
 }
 
+function KeyedTrigger() {
+  const { notify, dismissKey } = useToast()
+  return (
+    <>
+      <button type="button" onClick={() => notify({
+        key: 'column-order',
+        message: '列顺序已调整',
+        action: { label: '撤销', onClick: () => undefined },
+      })}>
+        调整
+      </button>
+      <button type="button" onClick={() => notify({
+        key: 'column-order',
+        message: '列顺序未保存',
+        variant: 'danger',
+        action: { label: '重试', onClick: () => undefined },
+      })}>
+        失败
+      </button>
+      <button type="button" onClick={() => notify({
+        key: 'column-order',
+        message: '已撤销列顺序调整',
+        variant: 'success',
+        duration: 2000,
+      })}>
+        撤销提示
+      </button>
+      <button type="button" onClick={() => dismissKey('column-order')}>
+        清掉
+      </button>
+    </>
+  )
+}
+
 describe('ToastProvider', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -89,6 +123,35 @@ describe('ToastProvider', () => {
     fireEvent.click(screen.getByRole('button', { name: '成功' }))
     act(() => { vi.advanceTimersByTime(60_000) })
     expect(screen.getByRole('status')).toHaveTextContent('保存成功')
+  })
+
+  it('带业务键的提示原地更新：文案、语义、动作一起换，不叠新条', () => {
+    render(<ToastProvider><KeyedTrigger /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: '调整' }))
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveTextContent('列顺序已调整')
+    expect(screen.getByRole('button', { name: '撤销' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '失败' }))
+    // 同 key 命中后改成 danger（role 从 status 变 alert），仍然只有一条
+    expect(screen.queryAllByRole('status')).toHaveLength(0)
+    const failed = screen.getByRole('alert')
+    expect(failed).toHaveTextContent('列顺序未保存')
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '撤销提示' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('已撤销列顺序调整')
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
+  })
+
+  it('dismissKey 按业务键立即清掉提示', () => {
+    render(<ToastProvider><KeyedTrigger /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: '调整' }))
+    expect(screen.getByRole('status')).toHaveTextContent('列顺序已调整')
+
+    fireEvent.click(screen.getByRole('button', { name: '清掉' }))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('不在 ToastProvider 内使用直接报错', () => {

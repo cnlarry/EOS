@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react'
+import { fireEvent, render, waitFor } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useColumnResize } from './useColumnResize'
@@ -18,22 +18,40 @@ interface HarnessProps {
   fixedColumn?: boolean
   /** 首列启用编辑态列宽下限（data-col-min-floor=true），模拟表单明细录入列 */
   floorColumn?: boolean
+  /** 反转列顺序，模拟列头拖拽重排后的 DOM */
+  reversed?: boolean
 }
 
-function Harness({ storageKey, persist, onColumnResize, minWidths, fitRef, fixedColumn, floorColumn }: HarnessProps) {
+function Harness({ storageKey, persist, onColumnResize, minWidths, fitRef, fixedColumn, floorColumn, reversed }: HarnessProps) {
   const ref = useRef<HTMLTableElement>(null)
   useColumnResize(ref, storageKey, { persist: persist ?? true, onColumnResize, fitRef })
+  const columns = [
+    { key: 'a', label: 'A', minWidth: minWidths?.a, floor: floorColumn },
+    { key: 'b', label: 'B', minWidth: minWidths?.b, floor: false },
+  ]
+  if (reversed) columns.reverse()
   return (
     <table ref={ref}>
       <thead>
         <tr>
-          <th data-col-key="a" data-col-min-width={minWidths?.a} data-col-min-floor={floorColumn ? 'true' : undefined}>{'A'}</th>
-          <th data-col-key="b" data-col-min-width={minWidths?.b}>{'B'}</th>
+          {columns.map((column) => (
+            <th
+              key={column.key}
+              data-col-key={column.key}
+              data-col-min-width={column.minWidth}
+              data-col-min-floor={column.floor ? 'true' : undefined}
+            >
+              {column.label}
+            </th>
+          ))}
           {fixedColumn && <th data-col-key="select" data-col-min-width={40} data-col-resizable="false">{'选择'}</th>}
         </tr>
       </thead>
       <tbody>
-        <tr><td>{'aaa'}</td><td>{'bb'}</td>{fixedColumn && <td>{'☐'}</td>}</tr>
+        <tr>
+          {columns.map((column) => <td key={column.key}>{column.key === 'a' ? 'aaa' : 'bb'}</td>)}
+          {fixedColumn && <td>{'☐'}</td>}
+        </tr>
       </tbody>
     </table>
   )
@@ -70,6 +88,16 @@ describe('useColumnResize', () => {
     expect((cols[1] as HTMLTableColElement).style.width).toBe('80px')
     expect(table.style.tableLayout).toBe('fixed')
     expect(table.querySelectorAll('.erp-col-resizer').length).toBe(2)
+  })
+
+  it('列顺序重排后，列宽仍跟着列键而不是跟着位置', async () => {
+    const { container, rerender } = render(<Harness storageKey="t1" minWidths={{ a: 120, b: 80 }} />)
+    const table = container.querySelector('table')!
+    const widths = () => [...table.querySelectorAll('colgroup col')].map((col) => (col as HTMLTableColElement).style.width)
+    expect(widths().slice(0, 2)).toEqual(['120px', '80px'])
+
+    rerender(<Harness storageKey="t1" minWidths={{ a: 120, b: 80 }} reversed />)
+    await waitFor(() => expect(widths().slice(0, 2)).toEqual(['80px', '120px']))
   })
 
   it('拖拽手柄持久化宽度并触发 onColumnResize', () => {

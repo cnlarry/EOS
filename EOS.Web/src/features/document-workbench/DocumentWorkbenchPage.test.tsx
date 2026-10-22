@@ -5,6 +5,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
+import { ToastProvider } from '../../components/ui/Toast'
 import { useAuth } from '../auth/authContext'
 import { DocumentWorkbenchPage } from './DocumentWorkbenchPage'
 
@@ -108,6 +109,7 @@ function installApiMocks(overrides: {
 
 function renderPage(initialEntry = '/workbench/1209') {
   return renderWithProviders(
+    <ToastProvider>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/workbench/:moduleId" element={<DocumentWorkbenchPage />} />
@@ -117,7 +119,8 @@ function renderPage(initialEntry = '/workbench/1209') {
           <Route path="/workbench/:moduleId/view/*" element={<div>VIEW_FORM</div>} />
         </Routes>
       </MemoryRouter>
-)
+    </ToastProvider>,
+  )
 }
 
 async function loaded() {
@@ -392,6 +395,102 @@ describe('DocumentWorkbenchPage', () => {
       '/document-workbench/1209/columns',
       { master: ['EDITION', 'PRO_NO', 'QTY', 'FLAG'], detail: ['ITEM'] },
     ))
+  })
+
+  it('拖拽落位先按新顺序渲染，不等保存返回', async () => {
+    let resolvePut: (() => void) | undefined
+    apiClientMock.put.mockImplementation(() => new Promise<void>((resolve) => { resolvePut = resolve }))
+    renderPage()
+    await loaded()
+    const region = document.querySelector('.erp-master-table-region') as HTMLElement
+    const proNoTh = region.querySelector('th[data-col-key="PRO_NO"]') as HTMLElement
+    const editionTh = region.querySelector('th[data-col-key="EDITION"]') as HTMLElement
+    stubRect(proNoTh, 0, 100)
+    stubRect(editionTh, 100, 100)
+    const headerKeys = () => [...region.querySelectorAll('thead th[data-col-key]')].map((th) => th.getAttribute('data-col-key'))
+
+    firePointer('pointerdown', editionTh.querySelector('.erp-header-label')!, { clientX: 150, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 40, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 40, clientY: 12 })
+    // PUT 还悬着，表头已经按拖出来的顺序重排（乐观落位）
+    await waitFor(() => expect(headerKeys()).toEqual(['select', 'EDITION', 'PRO_NO', 'QTY', 'FLAG']))
+    await act(async () => { resolvePut?.() })
+  })
+
+  it('列顺序调整成功后可在提示里撤销，撤销落库并恢复原顺序', async () => {
+    renderPage()
+    await loaded()
+    const region = document.querySelector('.erp-master-table-region') as HTMLElement
+    const proNoTh = region.querySelector('th[data-col-key="PRO_NO"]') as HTMLElement
+    const editionTh = region.querySelector('th[data-col-key="EDITION"]') as HTMLElement
+    stubRect(proNoTh, 0, 100)
+    stubRect(editionTh, 100, 100)
+    const headerKeys = () => [...region.querySelectorAll('thead th[data-col-key]')].map((th) => th.getAttribute('data-col-key'))
+
+    firePointer('pointerdown', editionTh.querySelector('.erp-header-label')!, { clientX: 150, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 40, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 40, clientY: 12 })
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/document-workbench/1209/columns',
+      { master: ['EDITION', 'PRO_NO', 'QTY', 'FLAG'], detail: ['ITEM'] },
+    ))
+    expect(await screen.findByText('列顺序已调整')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenLastCalledWith(
+      '/document-workbench/1209/columns',
+      { master: ['PRO_NO', 'EDITION', 'QTY', 'FLAG'], detail: ['ITEM'] },
+    ))
+    await waitFor(() => expect(headerKeys()).toEqual(['select', 'PRO_NO', 'EDITION', 'QTY', 'FLAG']))
+    expect(await screen.findByText('已撤销列顺序调整')).toBeInTheDocument()
+  })
+
+  it('列顺序保存失败时回滚并给出非阻塞重试，重试成功后恢复新顺序', async () => {
+    let rejectFirst: ((error: unknown) => void) | undefined
+    let attempts = 0
+    apiClientMock.put.mockImplementation(() => {
+      attempts += 1
+      if (attempts === 1) return new Promise<void>((_, reject) => { rejectFirst = reject })
+      return Promise.resolve(undefined)
+    })
+    renderPage()
+    await loaded()
+    const region = document.querySelector('.erp-master-table-region') as HTMLElement
+    const proNoTh = region.querySelector('th[data-col-key="PRO_NO"]') as HTMLElement
+    const editionTh = region.querySelector('th[data-col-key="EDITION"]') as HTMLElement
+    stubRect(proNoTh, 0, 100)
+    stubRect(editionTh, 100, 100)
+    const headerKeys = () => [...region.querySelectorAll('thead th[data-col-key]')].map((th) => th.getAttribute('data-col-key'))
+
+    firePointer('pointerdown', editionTh.querySelector('.erp-header-label')!, { clientX: 150, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 40, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 40, clientY: 12 })
+    await waitFor(() => expect(headerKeys()).toEqual(['select', 'EDITION', 'PRO_NO', 'QTY', 'FLAG']))
+    await act(async () => { rejectFirst?.(new ApiError(500, { code: 'X', message: '保存挂了' })) })
+    await waitFor(() => expect(headerKeys()).toEqual(['select', 'PRO_NO', 'EDITION', 'QTY', 'FLAG']))
+    const failure = await screen.findByRole('alert')
+    expect(failure).toHaveTextContent('列顺序未保存，已恢复原顺序')
+    expect(failure).toHaveTextContent('保存挂了')
+
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await waitFor(() => expect(attempts).toBe(2))
+    await waitFor(() => expect(headerKeys()).toEqual(['select', 'EDITION', 'PRO_NO', 'QTY', 'FLAG']))
+    expect(await screen.findByText('列顺序已调整')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('表头菜单「右移一列」走同一份列顺序保存，并立即换序', async () => {
+    renderPage()
+    await loaded()
+    const region = document.querySelector('.erp-master-table-region') as HTMLElement
+    fireEvent.click(screen.getByRole('button', { name: '表头操作产品编号' }))
+    fireEvent.click(screen.getByRole('button', { name: '右移一列' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/document-workbench/1209/columns',
+      { master: ['EDITION', 'PRO_NO', 'QTY', 'FLAG'], detail: ['ITEM'] },
+    ))
+    expect([...region.querySelectorAll('thead th[data-col-key]')].map((th) => th.getAttribute('data-col-key')))
+      .toEqual(['select', 'EDITION', 'PRO_NO', 'QTY', 'FLAG'])
   })
 
   it('显示列超过 30 列时不截断（第 31 列起仍渲染表头）', async () => {

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { firePointer, stubRect } from '../../test/pointer'
@@ -59,6 +60,25 @@ function buildColumns(): ColumnDef<Row, unknown>[] {
     { accessorKey: 'id', header: 'ID', enableSorting: false },
     { id: 'name', accessorKey: 'name', header: '名称' },
   ]
+}
+
+/**
+ * 父组件在落位回调里 setState 的典型写法：回调是内联箭头，每次重渲染都换身份。
+ * 用它验证 ErpTable 的拖动监听器不会因回调换身份而重建（重建会清掉预览的淡出计时器）。
+ */
+function ReorderCallbackHarness() {
+  const [lastOrder, setLastOrder] = useState<string[] | null>(null)
+  return (
+    <>
+      <ErpTable
+        columns={buildColumns()}
+        data={rows}
+        getRowId={(row) => row.id}
+        onColumnsReorder={(ids) => setLastOrder(ids)}
+      />
+      <div data-testid="last-order">{lastOrder?.join(',') ?? ''}</div>
+    </>
+  )
 }
 
 describe('ErpTable', () => {
@@ -318,21 +338,20 @@ describe('ErpTable', () => {
 
     firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
     firePointer('pointermove', window, { clientX: 120, clientY: 12 })
-    // 拖动中：整列浮起（整列高亮层 + 列头预览 + 一整列的落点插槽）
-    expect(document.querySelector('.erp-column-lift')).toBeInTheDocument()
+    // 拖动中：只浮起一个列头预览 + 一条 2px 插入线；不再复制整列、也不再铺整列色块
     expect(document.querySelector('.erp-column-drag-ghost')?.textContent).toBe('名称')
-    const slot = document.querySelector('.erp-column-drop-slot') as HTMLElement
-    expect(slot).toBeInTheDocument()
-    // 插槽宽度 = 被拖列的列宽：落点表达的是"插进一整列"，不是一根细线
-    expect(slot.style.width).toBe('100px')
+    const line = document.querySelector('.erp-column-drop-line') as HTMLElement
+    expect(line).toBeInTheDocument()
+    // 落点在 id 列左边界（100px），不是与被拖列同宽的整列轮廓
+    expect(line.style.left).toBe('100px')
+    expect(document.querySelector('.erp-column-lift')).not.toBeInTheDocument()
     expect(nameTh).toHaveClass('is-column-dragging')
 
     firePointer('pointerup', window, { clientX: 120, clientY: 12 })
     expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
-    // 落点插槽立即收起；浮起预览先滑进插槽再淡出（200ms），故用 waitFor
-    expect(document.querySelector('.erp-column-drop-slot')).not.toBeInTheDocument()
+    // 插入线立即收起；浮起预览快速淡出（100ms），故用 waitFor
+    expect(document.querySelector('.erp-column-drop-line')).not.toBeInTheDocument()
     await waitFor(() => expect(document.querySelector('.erp-column-drag-ghost')).not.toBeInTheDocument())
-    expect(document.querySelector('.erp-column-lift')).not.toBeInTheDocument()
   })
 
   it('表头没拖动超过阈值就松开不算重排', () => {
@@ -343,6 +362,103 @@ describe('ErpTable', () => {
     firePointer('pointerup', window, { clientX: 251, clientY: 12 })
     expect(onColumnsReorder).not.toHaveBeenCalled()
     expect(document.querySelector('.erp-column-drag-ghost')).not.toBeInTheDocument()
+  })
+
+  it('落位后父组件因回调换身份重渲染，浮起预览仍会淡出', async () => {
+    render(<ReorderCallbackHarness />)
+    const idTh = document.querySelector('th[data-col-key="id"]')!
+    const nameTh = document.querySelector('th[data-col-key="name"]')!
+    stubRect(idTh, 100, 100)
+    stubRect(nameTh, 200, 100)
+    const nameLabel = nameTh.querySelector('.erp-header-label') as HTMLElement
+
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 120, clientY: 12 })
+    firePointer('pointerup', window, { clientX: 120, clientY: 12 })
+    expect(screen.getByTestId('last-order')).toHaveTextContent('select,name,id')
+    // 回调 setState 让父组件重渲染、内联回调换身份：监听器 effect 不应重建，
+    // 否则 100ms 的淡出计时器会在清理函数里被清掉，预览与源表头会一直停在"拖动中"
+    await waitFor(() => expect(document.querySelector('.erp-column-drag-ghost')).not.toBeInTheDocument())
+    expect(nameTh).not.toHaveClass('is-column-dragging')
+  })
+
+  it('表头菜单可左移/右移一列，边界项禁用', () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    // 可重排列是 id、name；id 在首位，name 在末位
+    fireEvent.click(screen.getByRole('button', { name: '表头操作ID' }))
+    expect(screen.getByRole('button', { name: '左移一列' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '右移一列' })).not.toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '右移一列' }))
+    expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
+    // 菜单项点完焦点回到表头按钮，键盘用户不用重新 Tab 一遍
+    expect(screen.getByRole('button', { name: '表头操作ID' })).toHaveFocus()
+
+    fireEvent.click(screen.getByRole('button', { name: '表头操作名称' }))
+    expect(screen.getByRole('button', { name: '左移一列' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: '右移一列' })).toBeDisabled()
+  })
+
+  it('单击表头空白区打开表头菜单，拖动时不打开', () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const idTh = document.querySelector('th[data-col-key="id"]')!
+    const nameTh = document.querySelector('th[data-col-key="name"]')!
+    stubRect(idTh, 100, 100)
+    stubRect(nameTh, 200, 100)
+    const nameLabel = nameTh.querySelector('.erp-header-label') as HTMLElement
+
+    // 单击（未越过 4px 阈值）：整块表头都能开菜单
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    firePointer('pointerup', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    expect(screen.getByRole('button', { name: '右移一列' })).toBeInTheDocument()
+    // 再单击同一个表头：收起
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    firePointer('pointerup', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    expect(screen.queryByRole('button', { name: '右移一列' })).not.toBeInTheDocument()
+
+    // 真正拖动后即使指针回到表头上松开，也不弹菜单
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 120, clientY: 12 })
+    firePointer('pointerup', nameLabel, { clientX: 120, clientY: 12 })
+    expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
+    expect(screen.queryByRole('button', { name: '右移一列' })).not.toBeInTheDocument()
+  })
+
+  it('在源列自己的右半边松手不算重排', () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const nameTh = document.querySelector('th[data-col-key="name"]')!
+    const idTh = document.querySelector('th[data-col-key="id"]')!
+    stubRect(idTh, 100, 100)
+    stubRect(nameTh, 200, 100)
+    const nameLabel = nameTh.querySelector('.erp-header-label') as HTMLElement
+
+    firePointer('pointerdown', nameLabel, { clientX: 250, clientY: 12, button: 0 })
+    // 指针仍在 name 列内（右半边）：这里没有落点，松手应保持原位
+    firePointer('pointermove', window, { clientX: 280, clientY: 12 })
+    expect(document.querySelector('.erp-column-drop-line')).not.toBeInTheDocument()
+    firePointer('pointerup', window, { clientX: 280, clientY: 12 })
+    expect(onColumnsReorder).not.toHaveBeenCalled()
+  })
+
+  it('拖到表格外松手取消，不提交重排', async () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const shell = document.querySelector('.erp-table-shell') as HTMLElement
+    const nameTh = document.querySelector('th[data-col-key="name"]') as HTMLElement
+    stubRect(shell, 0, 600, 0, 300)
+    stubRect(nameTh, 100, 100)
+    const nameLabel = nameTh.querySelector('.erp-header-label') as HTMLElement
+
+    firePointer('pointerdown', nameLabel, { clientX: 150, clientY: 12, button: 0 })
+    firePointer('pointermove', window, { clientX: 120, clientY: 500 })
+    expect(document.querySelector('.erp-column-drop-line')).not.toBeInTheDocument()
+    expect(document.body).toHaveClass('erp-column-drag-invalid')
+    firePointer('pointerup', window, { clientX: 120, clientY: 500 })
+    expect(onColumnsReorder).not.toHaveBeenCalled()
+    expect(document.body).not.toHaveClass('erp-column-drag-invalid')
+    await waitFor(() => expect(document.querySelector('.erp-column-drag-ghost')).not.toBeInTheDocument())
   })
 
   it('拖到表格右边缘时自动向右滚动', async () => {

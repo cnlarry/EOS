@@ -1760,37 +1760,31 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-left,
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-right { background: var(--tblr-bg-surface-secondary) !important; }
 .erp-data-table .erp-header-inner { display: inline-flex; align-items: center; gap: .3rem; }
-/* 列头拖拽（ErpTable onColumnsReorder）：整列浮起跟手 + 落点画成「一整列」。
-   不用 HTML5 draggable——原生拖影只有被拖的那个小节点，抓不住整列，也没有落点反馈。 */
+/* 列头文字：拖拽/列宽手势挂在 th 上，文字只跟随 th 的光标，不再单独设手势 */
+.erp-data-table .erp-header-label { cursor: inherit; }
+/* 列头拖拽（ErpTable onColumnsReorder）：一个紧凑的列头预览跟手 + 一条 2px 插入线。
+   不用 HTML5 draggable——原生拖影只有节点本身，抓不住整列，也没有落点反馈；
+   也不把落点画成一整列色块——Excel 的列插入指示就是一条线，色块会遮住数据、说不清插在哪边。 */
 .erp-data-table thead th.is-column-draggable { cursor: grab; touch-action: none; }
-/* 拖动中的源列：整列高亮层已经盖住它，这里把表头再压暗一档，表示"这一列被拎走了" */
-.erp-data-table thead th.is-column-dragging { background: var(--erp-active-bg) !important; opacity: .35; }
-.erp-data-table thead th.is-column-drop-target { background: var(--erp-active-bg) !important; }
+/* 拖动中的源列：只把表头内容压暗、底色微微提亮，表示"这一列被拎走了"。
+   不给整块 th 设 opacity——表头是 sticky 的，半透明会把下面滚动经过的数据透出来。 */
+.erp-data-table thead th.is-column-dragging { background: var(--erp-active-bg) !important; }
+.erp-data-table thead th.is-column-dragging .erp-header-inner { opacity: .45; }
+/* 被拎起的列不再显示列宽手柄：拖动中它既不可用，也会和插入线抢注意力 */
+.erp-data-table thead th.is-column-dragging .erp-col-resizer { opacity: 0; }
 .erp-column-drag-active, .erp-column-drag-active * { cursor: grabbing !important; user-select: none !important; }
+/* 拖出表格（工具栏/另一张表/页面空白）：松手即取消，光标明确说"这里不能放" */
+.erp-column-drag-invalid, .erp-column-drag-invalid * { cursor: no-drop !important; }
+.erp-column-drag-invalid .erp-column-drag-ghost-inner { opacity: .55; }
 .erp-column-drag-ghost { position: fixed; left: 0; top: 0; z-index: 1200; pointer-events: none; will-change: transform, opacity; }
-/* 被拖起的整列：从表头一直盖到表格可视底边，"整列被拎起来"看得见；
-   列头另有一层浮起预览（被拖走的其实是整列，预览只是它的"抓手"） */
-.erp-column-lift {
-  position: fixed;
-  left: 0;
-  top: 0;
-  z-index: 1198;
-  border: 1px solid color-mix(in srgb, var(--tblr-primary) 60%, transparent);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--tblr-primary) 13%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 20%, transparent) inset;
-  pointer-events: none;
-  will-change: transform, width, height;
-}
-/* 浮起预览沿用表头本身的底色与字号，看起来像被"拎起来"的那一列头，而不是一个白盒子 */
+/* 浮起预览：只取列头高度、宽度封顶（JS 钳到 200px），看起来像拎起来的那一列头，不是一整个白盒子 */
 .erp-column-drag-ghost-inner {
   display: flex;
   align-items: center;
   height: 100%;
-  padding: 0 .5rem;
+  padding: 0 .55rem;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--tblr-primary) 70%, transparent);
-  border-left: 3px solid var(--tblr-primary);
+  border: 1px solid color-mix(in srgb, var(--tblr-primary) 55%, transparent);
   border-radius: var(--erp-radius-sm);
   background: var(--erp-table-header-bg);
   color: var(--tblr-body-color);
@@ -1798,27 +1792,35 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, .22), 0 2px 6px rgba(0, 0, 0, .12);
-  animation: erp-column-lift .12s ease-out both;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .12);
+  animation: erp-column-ghost-in .1s ease-out;
 }
-/* 落点插槽：宽度就是被拖列的列宽，看起来是"这里会插进一整列"；电子表格的插入位置也是整列轮廓 */
-.erp-column-drop-slot {
+/* 插入线：宽度 2px，上下各一个短横帽，和电子表格的列插入标记同义 */
+.erp-column-drop-line {
   position: fixed;
   z-index: 1199;
-  border: 2px solid var(--tblr-primary);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--tblr-primary) 10%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 22%, transparent) inset;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--tblr-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 22%, transparent);
   pointer-events: none;
-  animation: erp-column-slot-in .12s ease-out both;
 }
-@keyframes erp-column-lift {
-  from { transform: scale(.96) translateY(3px); opacity: .55; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
+.erp-column-drop-line::before,
+.erp-column-drop-line::after {
+  position: absolute;
+  left: -3px;
+  width: 8px;
+  height: 3px;
+  content: '';
+  border-radius: 2px;
+  background: inherit;
 }
-@keyframes erp-column-slot-in {
-  from { opacity: .3; transform: scaleX(.94); }
-  to { opacity: 1; transform: scaleX(1); }
+.erp-column-drop-line::before { top: 0; }
+.erp-column-drop-line::after { bottom: 0; }
+@keyframes erp-column-ghost-in {
+  from { opacity: .6; transform: scale(.98); }
+  to { opacity: 1; transform: scale(1); }
 }
 .erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
 .erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
