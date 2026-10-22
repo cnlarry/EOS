@@ -509,6 +509,16 @@ try {
             }
             Pop-Location
         }
+        # 前端这两条门禁在 CI 里是硬门禁，发布前也必须跑：漏跑会表现为「标签已经推出去，
+        # 而 CI 在这两步上红着」——v0.8.0 就这么漏过（页面外壳把组件自带的用例判成手抄骨架）。
+        if ($script:exitCode -eq 0) {
+            pwsh scripts/check-page-shell.ps1 | Out-Host
+            if ($LASTEXITCODE -ne 0) { Fail 'scripts/check-page-shell.ps1 失败（前端页面外壳）' }
+        }
+        if ($script:exitCode -eq 0) {
+            pwsh scripts/check-css-classes.ps1 | Out-Host
+            if ($LASTEXITCODE -ne 0) { Fail 'scripts/check-css-classes.ps1 失败（erp-* 类名无定义）' }
+        }
         if ($script:exitCode -eq 0) { Pass '编译与静态检查通过' }
     }
 
