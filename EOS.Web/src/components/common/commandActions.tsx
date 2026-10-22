@@ -13,7 +13,6 @@ import {
   IconEye,
   IconFileExport,
   IconFileUpload,
-  IconHelpCircle,
   IconHistory,
   IconLock,
   IconLockOpen,
@@ -23,7 +22,6 @@ import {
   IconRefresh,
   IconReportAnalytics,
   IconRotateClockwise,
-  IconSearch,
   IconTrash,
   IconX,
 } from '@tabler/icons-react'
@@ -53,7 +51,6 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   // 它不随单据级动作集出现，按"本模块有没有可见报表"自己决定出不出现。
   report: { icon: <IconReportAnalytics size={16} />, title: '报表' },
   export: { icon: <IconFileExport size={16} />, title: '导出' },
-  search: { icon: <IconSearch size={16} />, title: '通用查询' },
   attach: { icon: <IconPaperclip size={16} />, title: '附件' },
   refresh: { icon: <IconRefresh size={16} />, title: '刷新' },
   back: { icon: <IconArrowLeft size={16} />, title: '返回' },
@@ -61,8 +58,7 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   columns: { icon: <IconColumns size={16} />, title: '选择列' },
   fit: { icon: <IconArrowAutofitWidth size={16} />, title: '自适应列宽' },
   upload: { icon: <IconFileUpload size={16} />, title: '上传' },
-  // Browse-mode navigation (previous/next by current list order) and help (列表帮助弹窗)
+  // Browse-mode navigation (previous/next by current list order)
   prior: { icon: <IconArrowUp size={16} />, title: '上一条' },
   next: { icon: <IconArrowDown size={16} />, title: '下一条' },
-  help: { icon: <IconHelpCircle size={16} />, title: '帮助' },
 }

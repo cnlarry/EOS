@@ -1794,10 +1794,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 工作台滚动加载进度条（footer 提示已加载占比） */
 .erp-load-progress { height: 3px; min-width: 48px; border-radius: 2px; background: var(--tblr-border-color-translucent); overflow: hidden; }
 .erp-load-progress-bar { height: 100%; border-radius: 2px; background: var(--tblr-primary); }
-/* 列表操作帮助弹窗条目间距 */
-.erp-help-list { padding-left: 18px; }
-.erp-help-list li { margin-bottom: 6px; }
-.erp-help-list li:last-child { margin-bottom: 0; }
 .erp-detail-card .table { font-size: var(--erp-font-sm); }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: var(--erp-font-sm); }

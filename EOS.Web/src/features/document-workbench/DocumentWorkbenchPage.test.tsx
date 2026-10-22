@@ -292,23 +292,23 @@ describe('DocumentWorkbenchPage', () => {
     ))
   })
 
-  it('启用通用查询的模块只显示一个通用查询按钮（未选中/选中行均不重复）', async () => {
-    installApiMocks({ definition: { ...definition, searchMaster: true, searchDetail: false } })
-    renderPage()
-    await loaded()
-    const count = () => screen.getAllByRole('button', { name: '通用查询' }).length
-    expect(count()).toBe(1)
-    // 选中行后命令栏状态变化，但通用查询仍只有一个
-    fireEvent.click(screen.getByText('P1'))
-    await waitFor(() => expect(screen.getByRole('button', { name: /导出所选 \(1\)/ })).toBeInTheDocument())
-    expect(count()).toBe(1)
-  })
-
-  it('未启用通用查询的模块不显示通用查询按钮', async () => {
-    installApiMocks({ definition: { ...definition, searchMaster: false, searchDetail: false } })
+  it('列表工具栏不提供通用查询与帮助入口（检索中心不是列表工具，帮助不占工具栏）', async () => {
+    installApiMocks({ definition: { ...definition, searchMaster: true, searchDetail: true } })
     renderPage()
     await loaded()
     expect(screen.queryByRole('button', { name: '通用查询' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '帮助' })).not.toBeInTheDocument()
+  })
+
+  it('表头菜单升序触发服务端排序参数', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '表头操作产品编号' }))
+    fireEvent.click(screen.getByRole('button', { name: '升序' }))
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/document-workbench/1209/records',
+      expect.objectContaining({ query: expect.objectContaining({ sortFields: 'PRO_NO', sortDirections: 'asc' }) }),
+    ))
   })
 
   it('从列头/单元格设的筛选在高级查询弹窗里可见（角标与弹窗草稿同源）', async () => {

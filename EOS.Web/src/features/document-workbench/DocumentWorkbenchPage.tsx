@@ -69,7 +69,6 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const [conditions,setConditions]=useState<QueryCondition[]>(initialState.conditions.length?initialState.conditions:[emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
-  const [helpOpen,setHelpOpen]=useState(false)
   const [groupDefs,setGroupDefs]=useState<NavigationGroupDef[]|null>(null)
   const [groupValues,setGroupValues]=useState<string[]|null>(null)
   const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
@@ -382,7 +381,6 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     const navIndex=navKeys.findIndex(candidate=>candidate.every((value,i)=>value===key[i]))
     openForm(workbenchView(moduleId,key),{openMode:definition.data.formOpenMode,...formShellHint(),state:{navKeys,navIndex}})
   }
-  const openSearchCenter=()=>{openTab(`/search-center/${moduleId}`,{locate:true})}
   // 列表工具条只留「新增」+ 列表自身工具（导出 / 查询）：单据级动作
   // （编辑/复制/删除/批核/结案/打印…）全在统一表单的浏览态工具条里，破坏性动作必须先打开单据看细节。
   // （曾经这套内容由 `MODULES.FORM_BUTTONS` 白名单裁剪，该列已随迁移 320 退役且全库为空；
@@ -465,11 +463,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
           )}] satisfies ErpCommandItem[]:[]),
           {action:'fit',loading:fitting,onClick:()=>void fitAllColumns()},
           ...businessItems.filter(item=>item.action!=='new'),
-          ...((definition.data?.searchMaster||definition.data?.searchDetail)&&!businessItems.some(item=>item.action==='search')
-            ?[{action:'search',onClick:openSearchCenter}] satisfies ErpCommandItem[]
-            :[]),
           {action:'refresh',onClick:()=>{void records.refetch();if(active)void details.refetch()}},
-          {action:'help',onClick:()=>setHelpOpen(true)},
           ...businessItems.filter(item=>item.action==='new'),
         ]} />
       </>}
@@ -558,16 +552,6 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setColumnFilters({});setQueryOpen(false)}}
       onClose={()=>setQueryOpen(false)}
     />}
-    {helpOpen&&<Modal title="列表操作帮助" onClose={()=>setHelpOpen(false)}>
-      <ul className="mb-0 erp-help-list">
-        <li><strong>选择 / 浏览：</strong>单击行选中并加载该行明细（首列复选框可多选）；双击行进入浏览页。</li>
-        <li><strong>表头：</strong>点击右侧箭头排序或筛选；拖动表头文字调整列顺序；拖动列右边线调整宽度；双击列右边线自动适配列宽。</li>
-        <li><strong>复制：</strong>选中行后按 Ctrl+C，或右键单元格选择“复制单元格 / 复制本行 / 复制选中行”（TSV，可直接粘贴进 Excel）。</li>
-        <li><strong>复制一块区域：</strong>在单元格上按住鼠标拖出一个矩形，或先点一格再 Shift+点另一格，然后 Ctrl+C——复制的是一块数据、不带表头；Esc 取消选区。</li>
-        <li><strong>键盘导航：</strong>↑ ↓ / Home / End / PageUp / PageDown 移动活动行，Enter 打开浏览；有选区时方向键在选区内移动，按住 Shift 扩选。</li>
-        <li><strong>加载更多：</strong>滚动到底部自动加载下一页；底部进度条显示已加载占比。</li>
-      </ul>
-    </Modal>}
   </div>
 }
 
