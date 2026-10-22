@@ -113,6 +113,15 @@ describe('ErpTable', () => {
     expect(screen.queryByLabelText('表头操作ID')).not.toBeInTheDocument()
   })
 
+  it('数据行按显示行号隔行标记（第 2/4/6… 行）', () => {
+    const four = [1, 2, 3, 4].map((id) => ({ id: String(id), name: `N${id}` }))
+    const { container } = render(<ErpTable columns={buildColumns()} data={four} getRowId={(row) => row.id} />)
+    // ErpTable 自己按 row.index 标记，并声明关闭手写表格的 nth-child 兜底
+    expect(container.querySelector('table')).toHaveClass('erp-table-js-striped')
+    const striped = [...container.querySelectorAll('tbody tr')].map((tr) => tr.classList.contains('erp-row-striped'))
+    expect(striped).toEqual([false, true, false, true])
+  })
+
   it('行点击回调携带原始行数据', () => {
     const onRowClick = vi.fn()
     render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onRowClick={onRowClick} />)

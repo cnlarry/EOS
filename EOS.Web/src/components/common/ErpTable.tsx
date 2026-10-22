@@ -317,10 +317,14 @@ function BodyRowInner<TData extends CoreRowData>({
   onCellContextMenu,
 }: BodyRowProps<TData>) {
   const rangeBounds = range ? normalizeRange(range) : null
+  // 隔行底色按「显示行号」标记（第 2/4/6… 行），不用 CSS nth-child：
+  // 虚拟化的上下占位行也是 <tr>，nth-child 会把它们算进去、把整表奇偶翻掉。
+  const striped = row.index % 2 === 1
   const className = [
     selected ? 'table-active' : '',
     active ? 'erp-row-active' : '',
     focused ? 'erp-row-focus' : '',
+    striped ? 'erp-row-striped' : '',
     rowClass ?? '',
   ].filter(Boolean).join(' ')
   return (
@@ -1645,7 +1649,7 @@ export function ErpTable<TData>({
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
     >
-      <ErpDataTable responsive={responsive} resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''}`.trim()} persistResize={persistResize} onColumnResize={onColumnResize} fitRef={fitRef}>
+      <ErpDataTable responsive={responsive} resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''} erp-table-js-striped`.trim()} persistResize={persistResize} onColumnResize={onColumnResize} fitRef={fitRef}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>

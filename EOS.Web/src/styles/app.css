@@ -41,11 +41,17 @@
      --tblr-bg-surface-secondary——后者在浅色下几乎等于白，看不出层次。
      不用 --tblr-bg-surface-tertiary：它是 color-mix(…, transparent)，会透。 */
   --erp-table-header-bg: color-mix(in srgb, var(--tblr-body-color) 5%, var(--tblr-bg-surface));
+
+  /* 电子表格隔行底色：奇数显示行（第 2/4/6… 行）一档极浅底。
+     浅色下必须比 hover 的 --tblr-bg-surface-secondary 更轻，否则悬停时"变亮"而不是"变深"；
+     深色下用 body-color 把卡面略微提亮。两个主题各自取值，页面不要写死颜色。 */
+  --erp-table-stripe-bg: color-mix(in srgb, var(--tblr-primary) 2%, var(--tblr-bg-surface));
 }
 [data-bs-theme='dark'] {
   --erp-active-bg: color-mix(in srgb, var(--tblr-primary) 26%, var(--tblr-bg-surface));
   --erp-active-fg: color-mix(in srgb, var(--tblr-primary) 45%, #fff);
   --erp-active-bar: color-mix(in srgb, var(--tblr-primary) 70%, #fff);
+  --erp-table-stripe-bg: color-mix(in srgb, var(--tblr-body-color) 3.5%, var(--tblr-bg-surface));
 }
 
 /* 弹窗正文字体统一 12px（标题/按钮等特殊元素除外） */
@@ -1759,6 +1765,26 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-data-table tbody tr:not(.erp-row-active):hover td { background: var(--tblr-bg-surface-secondary); }
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-left,
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-right { background: var(--tblr-bg-surface-secondary) !important; }
+/* 电子表格隔行底色：只给奇数显示行（第 2/4/6… 行），颜色由 --erp-table-stripe-bg
+   在浅色/深色各给一档。与悬停、选中（table-active / erp-row-active）、区域选择互斥，
+   避免底色互相覆盖；冻结列单独补同色，否则横向滚动时左侧勾选/右侧操作列会断行。 */
+.erp-data-table tbody tr.erp-row-striped:not(.erp-row-active):not(.table-active):not(:hover) td:not(.erp-cell-range) {
+  background: var(--erp-table-stripe-bg);
+}
+.erp-data-table tbody tr.erp-row-striped:not(.erp-row-active):not(.table-active):not(:hover) .erp-frozen-left:not(.erp-cell-range),
+.erp-data-table tbody tr.erp-row-striped:not(.erp-row-active):not(.table-active):not(:hover) .erp-frozen-right:not(.erp-cell-range) {
+  background: var(--erp-table-stripe-bg) !important;
+}
+/* 手写行（ErpDataTable / 自定义页）没有 row.index，按 DOM 行序兜底；
+   ErpTable 会带 .erp-table-js-striped，用自己的 row.index 标记，避免两套规则打架。
+   注意：手写表格不要做虚拟化——占位行会被 nth-child 计入，虚拟化请用 ErpTable。 */
+.erp-data-table:not(.erp-table-js-striped) tbody tr:nth-child(even):not(.erp-virtual-spacer):not(.erp-row-active):not(.table-active):not(:hover) td:not(.erp-cell-range) {
+  background: var(--erp-table-stripe-bg);
+}
+.erp-data-table:not(.erp-table-js-striped) tbody tr:nth-child(even):not(.erp-virtual-spacer):not(.erp-row-active):not(.table-active):not(:hover) .erp-frozen-left:not(.erp-cell-range),
+.erp-data-table:not(.erp-table-js-striped) tbody tr:nth-child(even):not(.erp-virtual-spacer):not(.erp-row-active):not(.table-active):not(:hover) .erp-frozen-right:not(.erp-cell-range) {
+  background: var(--erp-table-stripe-bg) !important;
+}
 .erp-data-table .erp-header-inner { display: inline-flex; align-items: center; gap: .3rem; }
 /* 列头文字：拖拽/列宽手势挂在 th 上，文字只跟随 th 的光标，不再单独设手势 */
 .erp-data-table .erp-header-label { cursor: inherit; }
