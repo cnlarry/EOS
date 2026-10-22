@@ -391,9 +391,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const handleExport=async(format:'csv'|'xls')=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const exportColumns=definition.data.masterFields.map(field=>field.key).join(',');const commonQuery={format,columns:exportColumns};const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:{...groupQuery,...commonQuery}}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery,...commonQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.${format==='xls'?'xls':'csv'}`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const exportLabel=Object.keys(rowSelection).filter(id=>rowSelection[id]).length
   const exportDisabled=exportLabel===0
-  const exportButton=<Button size="sm" className="erp-command-btn" icon={<IconFileExport size={16}/>} loading={exporting} disabled={exportDisabled} title={exportLabel?`导出所选 (${exportLabel})`:'请先选择要导出的行'} onClick={()=>void handleExport('csv')}>
-    {exportLabel?`导出所选 (${exportLabel})`:'导出'}
-  </Button>
+  const exportButton=<Button size="sm" className="erp-command-icon-btn" icon={<IconFileExport size={16}/>} loading={exporting} disabled={exportDisabled} title={exportLabel?`导出所选 (${exportLabel})`:'导出（请先选择要导出的行）'} aria-label={exportLabel?`导出所选 (${exportLabel})`:'导出'} onClick={()=>void handleExport('csv')}/>
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
   return <div className={`erp-base-page erp-page-fill erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
@@ -417,8 +415,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       empty={keyword?<EmptyState title="未找到匹配记录" description={`没有找到与“${keyword}”匹配的${definition.data.title}记录，可尝试其它关键词或清除搜索。`}/>:null}
       search={<ErpSearchBox value={keyword} onChange={changeKeyword} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索" />}
       actions={<>
-        <ErpCommandBar items={[
-          {action:'query',onClick:()=>setQueryOpen(true),title:appliedConditions.length?`高级查询 (${appliedConditions.length})`:'高级查询'},
+        <ErpCommandBar iconOnly items={[
+          {action:'query',onClick:openQueryBuilder,title:safeConditions.length?`高级查询 (${safeConditions.length})`:'高级查询',badge:safeConditions.length},
           {action:'columns',onClick:()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}},
           ...(groupDefs&&groupDefs.length>0?[{action:'group',render:()=>(
             <div className="dropdown erp-group-dropdown">

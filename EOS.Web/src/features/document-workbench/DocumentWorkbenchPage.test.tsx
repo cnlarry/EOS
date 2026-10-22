@@ -545,3 +545,19 @@ describe('DocumentWorkbenchPage', () => {
 })
 
 
+  it('列表工具栏一律纯图标：动作名只作悬停提示，新增靠主色区分', async () => {
+    renderPage()
+    await loaded()
+    // 纯图标 = 按钮内没有可见文字（动作名只在 title / aria-label 上）
+    for (const name of ['刷新', '选择列', '自适应列宽', '高级查询']) {
+      const button = screen.getByRole('button', { name })
+      expect(button).toHaveClass('erp-command-icon-btn')
+      expect(button).toHaveAttribute('title', name)
+      expect(button.textContent).toBe('')
+    }
+    const addNew = screen.getByRole('button', { name: '新增' })
+    expect(addNew).toHaveClass('erp-command-icon-btn')
+    expect(addNew).toHaveClass('btn-primary')
+    expect(addNew.textContent).toBe('')
+  })
+

@@ -1361,23 +1361,27 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    线由页面的 rowClassName 在"没按列排序"时挂上——一按列重排，同模块的行散开，线就该收起来 */
 .erp-module-block-start > td { border-top: 2px solid var(--tblr-border-color); }
 /* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称）；
-   ErpCommandBar 按钮（.erp-command-btn）为图标+文字、工具栏纯图标触发器
-   （.erp-command-icon-btn，分组/导出分割）为 28px，均豁免此强制方块尺寸 */
+   ErpCommandBar 的 `iconOnly` 模式（列表工具栏）与工具栏纯图标触发器
+   （.erp-command-icon-btn，分组/导出分割）都是 28×28，故该强制方块尺寸对它们无副作用；
+   单据工具栏仍走 .erp-command-btn（图标+文字） */
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) svg { width: 16px; height: 16px; }
-/* 统一命令栏（ErpCommandBar）图标+文字按钮：图标 16px + 动作名（新增/编辑/批核/打印等），
-   统一 28px 高、左右 10px 内边距、宽度随内容自适应（不设固定宽度），
-   供工作台/表单/列表在任意容器内保持同一表意与尺寸 */
+/* 图标+文字按钮（ErpCommandBar 默认模式，单据工具栏）：图标 16px + 动作名（新增/编辑/批核/打印等），
+   统一 28px 高、左右 10px 内边距、宽度随内容自适应（不设固定宽度） */
 .erp-command-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: var(--erp-radius-md); white-space: nowrap; }
 .erp-command-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
-/* 工具栏纯图标触发器（分组/导出分割下拉等）：28×28、圆角、图标 16px，与 .erp-command-btn 高度对齐 */
-.erp-command-icon-btn { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
+/* 工具栏纯图标按钮（列表工具栏 ErpCommandBar `iconOnly`、分组/导出等触发器）：
+   28×28 方形圆角、图标 16px、动作名只作 hover 提示——动作名长短不再撑出不同宽度 */
+.erp-command-icon-btn { position: relative; width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
 .erp-command-icon-btn svg { width: 16px; height: 16px; }
 .erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: var(--erp-font-sm); }
 .erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: var(--erp-font-sm); text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
 /* 命令栏右侧按钮区：允许换行——按钮多的页（权限矩阵、版式设计器）在窄视口下
    不横向溢出，放得下时仍是一行，视觉与单行时一致 */
+/* 纯图标按钮的角标（如"高级查询已生效 N 条条件"）：挤在图标按钮右上角外沿，
+   不额外占工具栏宽度；按钮间 gap 5px，角标溢出 4px 不会压到相邻按钮 */
+.erp-command-badge { position: absolute; top: -4px; right: -4px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: var(--erp-radius-pill); background: var(--tblr-primary); color: var(--tblr-white); font-size: 9px; font-weight: 600; line-height: 13px; text-align: center; pointer-events: none; }
 .erp-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-left: auto; flex-wrap: wrap; }
 .erp-list-global-search input { min-width: 0; }
 .erp-list-global-search kbd { flex: 0 0 auto; }
