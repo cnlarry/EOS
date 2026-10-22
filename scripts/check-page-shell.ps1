@@ -66,7 +66,10 @@ try {
     $classNameOwners = @(
         'components/common/ErpListCard.tsx',
         'components/common/ErpDataTable.tsx',
-        'components/common/ResizableTable.tsx'
+        'components/common/ResizableTable.tsx',
+        # 组件自己的用例要断言"组件产出的就是这套骨架"——它引用的类名是**契约**，
+        # 不是页面手抄骨架。判据仍是"这条类名只由统一组件产出"，用例正是在守这件事。
+        'components/common/ErpDataTable.test.tsx'
     )
 
     function Remove-SourceComments([string] $text) {
