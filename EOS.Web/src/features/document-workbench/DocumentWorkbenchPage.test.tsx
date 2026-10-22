@@ -311,6 +311,16 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.queryByRole('button', { name: '通用查询' })).not.toBeInTheDocument()
   })
 
+  it('从列头/单元格设的筛选在高级查询弹窗里可见（角标与弹窗草稿同源）', async () => {
+    const condition = { field: 'PRO_NO', operator: 'contains', value: 'P1', valueTo: '', logic: 'and' }
+    renderPage(`/workbench/1209?q=${encodeURIComponent(JSON.stringify([condition]))}`)
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '高级查询 (1)' }))
+    expect(screen.getByLabelText('条件1字段')).toHaveValue('PRO_NO')
+    expect(screen.getByLabelText('条件1运算符')).toHaveValue('contains')
+    expect(screen.getByLabelText('条件1值')).toHaveValue('P1')
+  })
+
   it('表头菜单升序触发服务端排序参数', async () => {
     renderPage()
     await loaded()

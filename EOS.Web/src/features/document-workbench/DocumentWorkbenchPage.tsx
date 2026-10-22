@@ -66,7 +66,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const [columnsOpen,setColumnsOpen]=useState(false)
   const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>(initialState.columnFilters)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>(initialState.conditions)
-  const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
+  const [conditions,setConditions]=useState<QueryCondition[]>(initialState.conditions.length?initialState.conditions:[emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
   const [helpOpen,setHelpOpen]=useState(false)
@@ -282,6 +282,27 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const widthSaveRunning=useRef(false)
   // 列宽是操作习惯：写个人层（SYS_USER_COLUMN.F_WIDTH，与"选择列"同一批行），有模块浏览权即可；字段元数据里的宽度是所有人的
   // 默认值，只在字段设置面改，不随拖拽变动。
+  /**
+   * 打开高级查询：草稿从"已生效条件"起步。列头/单元格右键筛选与高级查询是同一批条件的两个视图
+   * （`handleColumnFilterChange` 双向同步），草稿若从空行起步，刚设的筛选在弹窗里就看不到。
+   */
+  const openQueryBuilder=useCallback(()=>{
+    setConditions(appliedConditions.length?appliedConditions.map(item=>({...item})):[emptyQueryCondition()])
+    setQueryOpen(true)
+  },[appliedConditions])
+  /** 应用高级查询：列头筛选标记按新条件重建，否则在弹窗里删掉的条件仍会显示筛选态 */
+  const applyQueryConditions=useCallback((next:QueryCondition[])=>{
+    setAppliedConditions(next)
+    setColumnFilters(current=>{
+      const result:Record<string,QueryCondition>={}
+      for(const key of Object.keys(current)){
+        const hit=next.find(item=>item.field.toLowerCase()===key.toLowerCase())
+        if(hit)result[key]=hit
+      }
+      return result
+    })
+    setQueryOpen(false)
+  },[])
   const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
     widthSaveQueue.current.push({detail:detailTable,fieldKey,width})
     if(widthSaveRunning.current)return
@@ -533,7 +554,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
       fields={master.filter(field=>field.isQueryable).map(field=>({key:field.key,label:field.label}))}
       conditions={conditions}
       onChange={setConditions}
-      onApply={()=>{setAppliedConditions(conditions);setQueryOpen(false)}}
+      onApply={()=>applyQueryConditions(conditions)}
       onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setColumnFilters({});setQueryOpen(false)}}
       onClose={()=>setQueryOpen(false)}
     />}
