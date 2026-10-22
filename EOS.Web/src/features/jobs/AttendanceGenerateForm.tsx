@@ -40,7 +40,7 @@ export function AttendanceGenerateForm({ mode, title, description }: AttendanceG
   })
 
   return (
-    <div className="erp-job-page">
+    <div className="erp-base-page">
       <JobCard
         ariaLabel={title}
         title={title}

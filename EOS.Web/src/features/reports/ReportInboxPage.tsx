@@ -156,7 +156,7 @@ export function ReportInboxPage() {
   const unreadCount = (inbox.data ?? []).filter((item) => !item.read).length
 
   return (
-    <div className="erp-report-inbox-page">
+    <div className="erp-base-page erp-report-inbox-page">
       <div className="erp-inbox-toolbar">
         <Button variant="ghost" size="sm" icon={<IconArrowLeft size={16} />} onClick={() => navigate('/report-center')}>
           报表中心

@@ -77,7 +77,7 @@ export function FieldAuditPage() {
   const errorMessage = describeApiError(result.error, '发生未知错误，请稍后重试。')
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="字段元数据审计"
         search={(

@@ -524,7 +524,7 @@ export function ModuleButtonsPage() {
     : authByKey.get(authorizationKey(authTarget.moduleId, authTarget.effectKey)) ?? null
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="自定义按钮"
         search={(

@@ -290,7 +290,7 @@ export function BomTreePage() {
   const hasRows = (tree.data?.rows ?? []).length > 0
 
   return (
-    <div className="erp-full-list-page erp-bom-tree-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page erp-bom-tree-page">
       <ErpListCard
         // 页签放左上角（`search` 槽在命令栏左侧），右侧仍是命令栏——与统一工作台的
         // "左筛选、右动作"同一行布局。用页签而不是按钮：两者是同一份数据的两个视图，

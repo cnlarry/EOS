@@ -121,7 +121,7 @@ export function UserGroupAdminPage() {
   ], [navigate, remove.isPending, confirmRemove])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="用户组管理查询"
         listId="user-group-admin-groups"

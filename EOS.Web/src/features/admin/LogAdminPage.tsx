@@ -179,7 +179,7 @@ export function LogAdminPage() {
   const unavailable = logs.data?.unavailable ?? []
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="运行日志查询"
         search={(

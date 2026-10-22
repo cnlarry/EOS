@@ -50,7 +50,11 @@ try {
     $checks = @(
         @{ Name = '页面根写死视口高度（calc(100dvh…)）'; Regex = 'calc\(\s*100dvh' },
         @{ Name = '手写弹窗遮罩（rgba(0, 0, 0, 0.4)）'; Regex = 'rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0?\.4\s*\)' },
-        @{ Name = '手拼卡内工具条（card-header + py- / d-flex）'; Regex = 'card-header\s+(py-|d-flex)' }
+        @{ Name = '手拼卡内工具条（card-header + py- / d-flex）'; Regex = 'card-header\s+(py-|d-flex)' },
+        # 页面根必须挂 `erp-base-page`（满屏/流式骨架的唯一入口）：漏挂的页面会退回"各页自己算高度"，
+        # 表现为不占满、出页级滚动条、边距与别的页不一致——正是这一条门禁要拦的。
+        # 登录页不在工作区内（自管 100vh），排除。
+        @{ Name = '页面根未挂 erp-base-page（app.css 的页面骨架类）'; Regex = '^(?!.*erp-base-page).*className=[^>]*\berp-(?!(?:login|error)-page)(?:[a-z0-9]+(?:-[a-z0-9]+)*-page|designer(?![-\w])|dashboard(?![-\w]))' }
     )
 
     # 「手抄骨架」判据：这两个类名只应由统一组件产出，别处手写就是抄了骨架没复用组件
@@ -103,7 +107,9 @@ try {
             '<div className="card-header erp-card-toolbar">',
             '<div className="card-header">',
             '<ErpListCard ariaLabel="字段设置工具栏" search={<span>x</span>}>',
-            '<ErpDataTable className="erp-designer-detail-table">'
+            '<ErpDataTable className="erp-designer-detail-table">',
+            '<div className="erp-base-page erp-page-fill erp-workbench-page">',
+            '<div className="erp-base-page erp-dashboard">'
         )
         foreach ($sample in $positive) {
             if (@(Get-ShellHits $sample).Count -eq 0) {
@@ -123,6 +129,14 @@ try {
 
     $files = Get-ChildItem -LiteralPath $SrcDir -Recurse -Include *.ts, *.tsx -File |
         Where-Object { $_.FullName -notmatch '[\\/]node_modules[\\/]' }
+    # 「页面根未挂 erp-base-page」的具名例外：这几处是把骨架类当**子区域布局**复用
+    # （模型管理页的分区、版式设计器的加载态），不是页面根，不该要求它们挂 erp-base-page。
+    # 键是"相对路径 + 该行类名签名"，不记行号——行号会漂移，签名不会。
+    $basePageExemptions = @(
+        'features/assistant-admin/ModelAdminPage.tsx|erp-workbench-page erp-model-admin-page',
+        'features/assistant-admin/ModelAdminPage.tsx|erp-workbench-page erp-workbench-even',
+        'features/form-designer/FormDesignerPage.tsx|erp-designer erp-designer-loading'
+    )
     $found = @()
     foreach ($file in $files) {
         $text = Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8
@@ -130,6 +144,9 @@ try {
         # 组件定义文件豁免「手抄骨架」判据——那两个类名本来就由它们产出
         $isOwner = $classNameOwners -contains $relative
         foreach ($hit in (Get-ShellHits $text (-not $isOwner))) {
+            if ($hit.Name -like '页面根未挂*' -and ($basePageExemptions | Where-Object { $hit.Text -like "*$($_ -replace '^[^|]+\|', '')*" -and $_ -like "$relative|*" })) {
+                continue
+            }
             $found += [pscustomobject]@{
                 Where = "$relative`:$($hit.Line)"
                 Name  = $hit.Name

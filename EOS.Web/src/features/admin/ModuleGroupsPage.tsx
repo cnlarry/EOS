@@ -384,7 +384,7 @@ export function ModuleGroupsPage() {
     : (detail.data?.groups ?? []).find((group) => group.groupId === editor.groupId) ?? null
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="模块分组"
         search={(

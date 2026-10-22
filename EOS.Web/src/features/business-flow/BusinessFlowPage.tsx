@@ -547,7 +547,7 @@ export function BusinessFlowPage() {
   )
 
   return (
-    <div className="erp-flow-page">
+    <div className="erp-base-page erp-page-fill erp-flow-page">
       {inLink ? (
         /* 第三级：页签面板本身就是容器（标签行 + 一圈边框的内容面板），外面不再套卡片——
            套一层会出现"卡片边框 + 面板边框"叠成粗边框的观感。页头（标题 / 摘要 / 动作 / 开关 / 图例）

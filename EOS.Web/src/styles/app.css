@@ -512,39 +512,32 @@ button, input, select { font: inherit; }
    grid 形态、固定高度、媒体查询下的退让等）。差异项写在本文件各自区块里，
    都在本段之后，同特异性下后出现者生效，故能覆盖这里的声明。
    ========================================================================== */
-.erp-menu-admin,
-.erp-config-workbench,
-.erp-profile-page,
-.erp-full-list-page,
-.erp-import-page,
-.erp-search-center-page,
-.erp-field-editor-page,
-.erp-catalog-page,
-.erp-report-page,
-.erp-report-inbox-page,
-.erp-flow-page,
-.erp-workbench-page,
-.erp-job-page,
-.erp-form-page,
-.erp-dashboard,
-.erp-assistant-page,
-.erp-designer {
+/* ============================================================================
+   页面级几何（唯一事实源）
+   ----------------------------------------------------------------------------
+   所有工作区页面（含定制页）的页面根**必须**同时挂两个类：
+
+     .erp-base-page   页面根骨架：竖排、占满工作区、区块间距 10px
+     .erp-page-fill   形态：满屏（页级不出滚动条，滚动交给内部区域）
+
+   不挂 `.erp-page-fill` 的页面是**流式页**：内容可高于视口，由标签面板
+   （`.erp-tab-panel`）出页级滚动条。两种形态都必须显式选一个——门禁
+   `scripts/check-page-shell.ps1` 校验页面根同时带 `erp-base-page` 与两者之一。
+
+   **四周 10px 不在这里出**：由外壳的两层给——`.erp-tab-panel` 出上下、
+   `.erp-tab-panel > .container-fluid` 出左右。页面根**不得再写 padding/margin
+   间距工具类**（Bootstrap 的 `p-*`/`m-*` 带 !important，会静默压掉外壳的 10px，
+   叠成 20px 或直接贴边）。
+   ========================================================================== */
+.erp-base-page {
   display: flex;
   flex-direction: column;
   gap: var(--erp-block-gap);
   flex: 1 1 auto;
   min-height: 0;
 }
-/* 全高裁溢出页：卡片铺满页根高度、页级不出滚动条（滚动交给卡内的表格区）。
-   这五个页面此前各自覆写同一对声明，现集中在这一处；各自的差异项留在本文件各区
-   （导入页的 grid 行高、模型管理页把 min-height 收回到 0）。 */
-.erp-full-list-page,
-.erp-catalog-page,
-.erp-report-page,
-.erp-flow-page,
-.erp-workbench-page,
-.erp-import-page,
-.erp-config-workbench {
+/* 满屏页：页根裁溢出，滚动只能发生在内部区域（列表卡的表格区 / 表单卡 / 设计器画布） */
+.erp-base-page.erp-page-fill {
   min-height: 320px;
   overflow: hidden;
 }
@@ -557,45 +550,39 @@ button, input, select { font: inherit; }
   flex: 1 1 auto;
   min-height: 0;
 }
-/* 满屏表格页的卡片：撑满页根并把滚动交给内部。固定高度的卡片（工作台子表、
-   模型管理的分区卡）不在此列，各自声明 */
-.erp-full-list-page > .erp-list-card,
-.erp-report-page > .erp-list-card,
-.erp-flow-page > .erp-list-card,
-.erp-field-editor-page > .erp-list-card,
-.erp-workbench-page > .erp-list-card,
+/* 满屏页里的卡片：撑满页根并把滚动交给内部。固定高度的卡片（工作台子表、
+   模型管理的分区卡）不在此列，各自声明。
+   判据是"卡片的直接父级是页面根"——中间多套一层容器（如 dashboard 的分栏）不套用这条。 */
+.erp-base-page > .erp-list-card,
+.erp-base-page > .erp-form-card,
 .erp-dashboard-pane .erp-list-card,
 .erp-dashboard-started > .erp-list-card,
-.erp-catalog-card,
-.erp-import-page > .erp-list-card,
-.erp-config-workbench > .erp-list-card,
-.erp-form-page > .erp-form-card {
+.erp-catalog-card {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-/* 上面这些卡片里的表格区：页内唯一滚动容器（表头吸顶随之滚动） */
-.erp-full-list-page .erp-list-card .erp-table-shell,
-.erp-report-page > .erp-list-card .erp-table-shell,
+/* 满屏页里"表格区就是卡片直接子项"的情形：表格区是页内唯一滚动容器（表头随其吸顶）。
+   刻意用直接子选择器：工作台这类把表格包在 `.erp-master-table-region` 里的页面自带滚动容器，
+   两个都设 overflow 会变成双层滚动条。 */
+.erp-page-fill > .erp-list-card > .erp-table-shell,
 .erp-dashboard-pane .erp-list-card .erp-table-shell,
 .erp-dashboard-started > .erp-list-card .erp-table-shell {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
-.erp-full-list-page .erp-list-card .table-responsive,
-.erp-report-page > .erp-list-card .table-responsive,
+.erp-page-fill > .erp-list-card > .erp-table-shell .table-responsive,
 .erp-dashboard-pane .erp-list-card .table-responsive,
 .erp-dashboard-started > .erp-list-card .table-responsive {
   overflow: visible;
 }
-.erp-full-list-page .erp-data-table thead th,
-.erp-report-page .erp-data-table thead th,
+/* 满屏页里的表头一律吸顶（滚动的是它下面那层容器） */
+.erp-page-fill .erp-data-table thead th,
 .erp-dashboard-pane .erp-data-table thead th,
-.erp-dashboard-started .erp-data-table thead th,
-.erp-workbench-page .erp-data-table thead th {
+.erp-dashboard-started .erp-data-table thead th {
   position: sticky;
   top: 0;
   z-index: 3;
@@ -1014,7 +1001,7 @@ button, input, select { font: inherit; }
    卡片高度随内容（选模块后多出来的一行摘要、一次定义请求的加载态）涨落，会连带把页面撑开再缩回，
    看上去就是"选中时抖一下"；更糟的是页面级滚动条随之出现/消失，它会吃掉约 15px 宽度，
    整页跟着横向重排。d-grid 的 display 带 !important，故这里不动 display，只给行高让卡片撑满。 */
-.erp-import-page { grid-template-rows: minmax(0, 1fr); }
+.erp-import-page { min-height: 0; }
 /* 顶部留白比其余三边多 6px：进度条是这一页的开头，贴上边框会显得被卡片压住 */
 .erp-import-body { display: flex; flex-direction: column; gap: var(--erp-block-gap); padding: 16px var(--erp-block-gap) var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }
 .erp-import-track { display: flex; width: 100%; margin: 0; padding: 0; list-style: none; flex: 0 0 auto; }
@@ -1811,17 +1798,16 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: var(--erp-font-sm); }
 
-/* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动）。
-   主表卡与明细卡之间的间隙取 10px，与全站留白口径（--erp-workspace-gap、页面顶部留白、
-   标签面板 padding、工具栏下边距）一致，不再用 8px。
-   页根的 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
-.erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; margin-bottom: 6px; }
-.erp-workbench-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
-/* 子表卡按工作台高度 30% 分配（150~260px 区间），主表占满剩余空间 */
-.erp-workbench-page > .erp-detail-card { flex: 0 0 30%; min-height: 150px; max-height: 260px; display: flex; flex-direction: column; overflow: hidden; }
-/* 子表卡内部：erp-table-shell 是唯一滚动容器（内容过多时出现上下滚动条），表头 sticky 跟随其滚动 */
-.erp-workbench-page > .erp-detail-card .erp-table-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
-.erp-workbench-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow: visible; border-radius: var(--tblr-border-radius); }
+/* 满屏页的「主表 + 子表」高度分配（任何页面只要页面根下是列表卡 + 明细卡就套用，
+   不再只对工作台生效）：
+   - 主表卡占满剩余高度，主表区（`.erp-master-table-region`）是它的滚动容器；
+   - 明细卡取 30%（150~260px 区间），内部表格区自己滚。
+   两者都不随内容撑高，所以整页永远不越过工作区、也永远不出页级滚动条。 */
+.erp-base-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; margin-bottom: 6px; }
+.erp-base-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
+.erp-base-page > .erp-detail-card { flex: 0 0 30%; min-height: 150px; max-height: 260px; display: flex; flex-direction: column; overflow: hidden; }
+.erp-base-page > .erp-detail-card .erp-table-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.erp-base-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow: visible; border-radius: var(--tblr-border-radius); }
 /* 工作台「分组」下拉：这个类名被 JS 当作「点击到外区域就收起」的判据
    （DocumentWorkbenchPage 的 closest('.erp-group-dropdown')），删不得——这里补上显式定义，
    兼作下拉的定位锚点（Tabler 的 .dropdown 也给了相对定位，但不该靠第三方类兜住自家判据） */

@@ -36,7 +36,7 @@ export function AssistantPage() {
   })
 
   return (
-    <div className="erp-assistant-page">
+    <div className="erp-base-page erp-assistant-page">
       <AssistantPanel variant="page" onCollapse={collapse} />
     </div>
   )

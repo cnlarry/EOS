@@ -299,7 +299,7 @@ export function BomProductListPage() {
 
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
           listId="bom-product-list"
           columns={columns}

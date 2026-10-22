@@ -133,7 +133,7 @@ export function FieldAdminPage() {
   ], [confirmDelete, remove.isPending, remove.variables, selectedField, tableId, navigate])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="字段维护查询与操作"
         search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }} debounceMs={300} placeholder="搜索字段名或标题" ariaLabel="搜索字段" />}

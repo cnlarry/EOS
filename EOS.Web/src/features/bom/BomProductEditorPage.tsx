@@ -384,7 +384,7 @@ export function BomProductEditorPage() {
   }
 
   return (
-    <div className="erp-form-page erp-bom-form-page">
+    <div className="erp-base-page erp-form-page erp-bom-form-page">
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
       <section className="card erp-form-card">
         <div className="card-body">

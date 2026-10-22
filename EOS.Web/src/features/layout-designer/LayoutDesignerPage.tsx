@@ -793,7 +793,7 @@ export function LayoutDesignerPage() {
   const selected = selectedElements[0] ?? null
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListCard
         ariaLabel="版式设计器工具栏"
         search={(

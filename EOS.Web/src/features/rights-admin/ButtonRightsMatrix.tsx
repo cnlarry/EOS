@@ -215,7 +215,7 @@ export function ButtonRightsMatrix({ open, mode, targetId, title, onClose, onSav
 
   if (variant === 'page') {
     return (
-      <div className="erp-full-list-page">
+      <div className="erp-base-page erp-page-fill erp-full-list-page">
         <ErpListCard
           ariaLabel="按钮授权工具栏"
           search={(

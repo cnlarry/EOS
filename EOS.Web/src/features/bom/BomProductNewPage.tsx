@@ -97,7 +97,7 @@ export function BomProductNewPage() {
   const copyInvalid = copySource.trim() !== '' && !EDITION_PATTERN.test(copyEdition.trim())
 
   return (
-    <div className="erp-form-page erp-bom-form-page">
+    <div className="erp-base-page erp-form-page erp-bom-form-page">
       {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
       <section className="card erp-form-card">
         <div className="card-body">

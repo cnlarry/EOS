@@ -191,7 +191,7 @@ export function ReportCenterPage() {
   )
 
   return (
-    <div className="erp-catalog-page">
+    <div className="erp-base-page erp-page-fill erp-catalog-page">
       <section className="card erp-catalog-card">
         <header className="erp-catalog-head">
           <div className="erp-catalog-title">

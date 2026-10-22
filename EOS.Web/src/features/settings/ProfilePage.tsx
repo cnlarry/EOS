@@ -61,7 +61,7 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="erp-profile-page">
+    <div className="erp-base-page">
       <section className="card">
         <div className="card-header"><h2 className="card-title">账号信息</h2></div>
         <div className="card-body">

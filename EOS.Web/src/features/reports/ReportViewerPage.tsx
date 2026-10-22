@@ -333,7 +333,7 @@ export function ReportViewerPage({
   const rowCount = result.data?.rows?.length ?? 0
 
   return (
-    <div className="erp-report-page">
+    <div className="erp-base-page erp-page-fill erp-report-page">
       <header className="erp-report-head">
         <Button variant="ghost" size="sm" icon={<IconArrowLeft size={16} />} onClick={() => navigate('/report-center')}>
           报表中心

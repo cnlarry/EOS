@@ -183,7 +183,7 @@ export function FlowMonitorPage() {
   const selected = detail.data?.monitor
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="流程监控"
         search={null}

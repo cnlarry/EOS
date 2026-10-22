@@ -431,7 +431,7 @@ export function FlowDesignPage() {
   const errorMessage = describeApiError(list.error, '加载失败，请稍后重试。')
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <div className="erp-flow-split">
         <div className="card d-flex flex-column" style={{ width: 460 }}>
           <div className="card-header erp-card-toolbar">

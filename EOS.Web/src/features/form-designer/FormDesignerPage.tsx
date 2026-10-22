@@ -564,7 +564,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
 
   if (loadError) {
     return (
-      <div className="erp-designer">
+      <div className="erp-base-page erp-designer">
         <div className="erp-designer-shell">
           <div className="erp-designer-toolbar">
             <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void load()}>
@@ -595,7 +595,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     : normalizeFormOpenMode(draft.openMode) === 'NEWTAB' ? '新页签' : '本页签'
 
   return (
-    <div className="erp-designer">
+    <div className="erp-base-page erp-designer">
       {/* 工具栏与画布收进同一张白卡：与整页统一表单同一层次——卡内命令栏、底部分割线、内容在下。
           弹窗（表单呈现 / 选择器）是 position: fixed，不受这张卡的 overflow 裁剪。 */}
       <div className="erp-designer-shell">

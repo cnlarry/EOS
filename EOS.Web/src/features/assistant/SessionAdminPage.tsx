@@ -195,7 +195,7 @@ export function SessionAdminPage() {
   ], [archive, confirmDelete, openSession, remove])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="会话管理查询与操作"
         search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }}

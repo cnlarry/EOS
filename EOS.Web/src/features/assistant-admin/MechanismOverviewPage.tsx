@@ -79,7 +79,7 @@ export function MechanismOverviewPage() {
   ], [])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListCard
         ariaLabel="助手机制与工具总览"
         header={<div className="card-header erp-card-toolbar">

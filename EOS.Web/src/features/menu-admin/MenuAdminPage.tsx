@@ -1078,7 +1078,7 @@ export function MenuAdminPage() {
   const errorMessage = describeApiError(modules.error, '发生未知错误，请稍后重试。')
 
   return (
-    <div className="erp-menu-admin">
+    <div className="erp-base-page erp-menu-admin">
       <ErpListCard
         ariaLabel="菜单管理工具栏"
         search={<strong>{selected ? `已选择：${selected.M_DESC}（ID：${selected.M_IDX}）` : '已选择：—'}</strong>}

@@ -396,7 +396,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   </Button>
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
-  return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
+  return <div className={`erp-base-page erp-page-fill erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
     <ErpListGrid
       ariaLabel="单据列表查询与操作"
       listId={`workbench-${moduleId}-master`}

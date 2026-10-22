@@ -363,7 +363,7 @@ export function DepotStockPolicyPage() {
   const canModify = selected && selected.depotId !== '*'
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="库存策略"
         listId="depot-stock-policy"

@@ -137,7 +137,7 @@ export function AssistantSettingsPage() {
   })
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListCard
         ariaLabel="助手设置"
         actions={<>

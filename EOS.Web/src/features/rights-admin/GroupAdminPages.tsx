@@ -181,7 +181,7 @@ export function GroupMembersPage() {
   ], [])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="组成员管理"
         listId={`user-group-members-${id}`}

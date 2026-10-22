@@ -279,7 +279,7 @@ export function UserAdminPage() {
   ], [currentUserId, status, navigate])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       {groupSaveError && <div className="alert alert-danger py-2 mb-2" role="alert">{groupSaveError}</div>}
       <ErpListGrid
         ariaLabel="用户管理查询"

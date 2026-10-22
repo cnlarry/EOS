@@ -1930,7 +1930,7 @@ export function FormEditorPage() {
   const formPage = (
     // 整页方式与弹窗方式共用这份内容；只有整页要把"工具栏 + 页签 + 字段区"收进同一张白卡
     // （弹窗的工具栏已经由窗体第一行承担，再套一层卡会变成两层框）。
-    <div className={`erp-form-page${inDialog ? '' : ' erp-form-page-full'}`}>
+    <div className={`erp-base-page erp-form-page${inDialog ? '' : ' erp-base-page erp-form-page-full'}`}>
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
       {warnings && warnings.length > 0 ? (
         <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">

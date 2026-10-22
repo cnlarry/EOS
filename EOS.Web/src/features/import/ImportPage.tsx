@@ -588,14 +588,14 @@ export function ImportPage() {
 
   if (targets.isPending) {
     return (
-      <div className="d-grid erp-import-page">
+      <div className="erp-base-page erp-page-fill erp-import-page">
         <ErpListCard ariaLabel="基本资料导入" search={null}><LoadingState label="正在加载可导入模块…" /></ErpListCard>
       </div>
     )
   }
   if (targets.isError) {
     return (
-      <div className="d-grid erp-import-page">
+      <div className="erp-base-page erp-page-fill erp-import-page">
         <ErpListCard ariaLabel="基本资料导入" search={null}>
           <ErrorState message={describeApiError(targets.error, '导入功能加载失败。')} onRetry={() => void targets.refetch()} />
         </ErpListCard>
@@ -612,7 +612,7 @@ export function ImportPage() {
   ]
 
   return (
-    <div className="d-grid erp-import-page">
+    <div className="erp-base-page erp-page-fill erp-import-page">
       <ErpListCard ariaLabel="基本资料导入">
         <div className="erp-import-body">
           <ol className="erp-import-track" aria-label="导入步骤">

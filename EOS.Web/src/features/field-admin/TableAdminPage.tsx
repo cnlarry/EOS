@@ -148,7 +148,7 @@ export function TableAdminPage() {
   ], [confirmDelete, navigate, remove.isPending, remove.variables, selectedTable])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListGrid
         ariaLabel="数据表维护查询"
         search={(

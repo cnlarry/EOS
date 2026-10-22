@@ -23,7 +23,7 @@ export function AttendanceAdjustWagePage() {
   })
 
   return (
-    <div className="erp-job-page">
+    <div className="erp-base-page">
       <JobCard
         ariaLabel="依薪资调整考勤"
         title="依薪资调整考勤"

@@ -12,7 +12,7 @@ export function MrpRecalcPage() {
   const action = useJobAction(() => apiClient.post<MrpRecalcResult>('/jobs/mrp-recalc'))
 
   return (
-    <div className="erp-job-page">
+    <div className="erp-base-page">
       <JobCard
         ariaLabel="产品可用库存重计"
         title="产品可用库存重计"

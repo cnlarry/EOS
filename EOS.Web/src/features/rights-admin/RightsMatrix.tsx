@@ -517,7 +517,7 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
 
   if (variant === 'page') {
     return (
-      <div className="erp-menu-admin">
+      <div className="erp-base-page erp-menu-admin">
         <ErpListCard
           ariaLabel="权限矩阵工具栏"
           search={<span className="fw-semibold small">{headerTitle}</span>}

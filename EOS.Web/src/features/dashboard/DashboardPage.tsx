@@ -195,7 +195,7 @@ export function DashboardPage() {
   ]
 
   return (
-    <div className="erp-dashboard">
+    <div className="erp-base-page erp-dashboard">
       <div className="erp-dashboard-metrics">
         <article className="card erp-metric-card">
           <div className="card-body">

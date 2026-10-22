@@ -129,7 +129,7 @@ export function KbAdminPage() {
   ], [confirmDelete, remove])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <ErpListCard
         ariaLabel="知识库管理查询与操作"
         search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300}

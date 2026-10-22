@@ -557,7 +557,7 @@ export function ReportAdminPage() {
   const sortsError = describeApiError(sorts.error, '加载失败。')
 
   return (
-    <div className="erp-workbench-page">
+    <div className="erp-base-page erp-page-fill erp-workbench-page">
       <ErpListGrid
         ariaLabel="报表定义查询"
         listId="report-admin-reports"

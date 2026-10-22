@@ -103,7 +103,7 @@ export function ConfigWorkbench({
   // 整页在白色圆角卡片内、顶部走标准命令栏（ErpListCard）：
   // 与全站列表页同一套外壳，模块清单与配置区两栏走 card-body（几何在 app.css 一处定义）
   return (
-    <div className="erp-config-workbench">
+    <div className="erp-base-page erp-page-fill erp-config-workbench">
       <ErpListCard
         ariaLabel="配置面工具栏"
         search={(

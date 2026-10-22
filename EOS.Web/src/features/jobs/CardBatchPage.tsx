@@ -30,7 +30,7 @@ export function CardBatchPage() {
   })
 
   return (
-    <div className="erp-job-page">
+    <div className="erp-base-page">
       <JobCard
         ariaLabel="员工批量发卡"
         title="员工批量发卡"

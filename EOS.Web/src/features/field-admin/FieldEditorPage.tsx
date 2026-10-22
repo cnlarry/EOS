@@ -182,7 +182,7 @@ export function FieldEditorRoute() {
   const copySourceLabel = copyFrom ? (fieldDescriptionOf(copyFrom) || copyFrom) : ''
 
   return (
-    <div className="erp-field-editor-page">
+    <div className="erp-base-page erp-field-editor-page">
       <ErpListCard
         ariaLabel="字段设置工具栏"
         search={(

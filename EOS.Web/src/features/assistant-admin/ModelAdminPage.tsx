@@ -506,7 +506,7 @@ export function ModelAdminPage() {
   }, [activate, confirmRemoveModel, items, removeModel])
 
   return (
-    <div className="erp-full-list-page">
+    <div className="erp-base-page erp-page-fill erp-full-list-page">
       <TabbedPanel label="模型与用量" className="erp-page-tabs"
         tabs={PAGE_TABS} activeKey={tab} onActiveKeyChange={setTab}>
         {tab === 'models' ? (
