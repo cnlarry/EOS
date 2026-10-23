@@ -20,6 +20,57 @@ namespace EOS.API.Data;
 /// </summary>
 public sealed class ReportRepository(DbConnectionFactory connections, ILogger<ReportRepository> logger)
 {
+    /// <summary>
+    /// 语义层口径（度量定义）：定义一次、机器可读、报表与 Agent 共同消费。
+    /// 读数路径回接 <see cref="WorkbenchSql.ReadRowsAsync"/>，不在这里另写 Reader→对象循环。
+    /// </summary>
+    public sealed record ReportMetricRow(
+        string MetricId,
+        string MetricName,
+        string Definition,
+        string? SourceTable,
+        IReadOnlyList<string> DimensionKeys,
+        string? Domain,
+        int Version,
+        string? Description);
+
+    /// <summary>列出全部已定义的度量口径（按域、编号排序）。</summary>
+    public async Task<IReadOnlyList<ReportMetricRow>> ListMetricsAsync(CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT METRIC_ID, METRIC_NAME, DEFINITION, SOURCE_TABLE,
+                   LTRIM(RTRIM(ISNULL(DIMENSION_KEYS,''))) AS DIMENSION_KEYS,
+                   LTRIM(RTRIM(ISNULL(DOMAIN,''))) AS DOMAIN,
+                   VERSION, LTRIM(RTRIM(ISNULL(DESCRIPTION,''))) AS DESCRIPTION
+            FROM dbo.REPORT_METRIC WITH (NOLOCK)
+            ORDER BY DOMAIN, METRIC_ID;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        var rows = await WorkbenchSql.ReadRowsAsync(command, token);
+        return rows.Select(row => new ReportMetricRow(
+            Text(row, "METRIC_ID"),
+            Text(row, "METRIC_NAME"),
+            Text(row, "DEFINITION"),
+            NullableText(row, "SOURCE_TABLE"),
+            SplitKeys(NullableText(row, "DIMENSION_KEYS")),
+            NullableText(row, "DOMAIN"),
+            Convert.ToInt32(row["VERSION"] ?? 0),
+            NullableText(row, "DESCRIPTION"))).ToList();
+    }
+
+    private static string Text(IReadOnlyDictionary<string, object?> row, string column)
+        => NullableText(row, column) ?? string.Empty;
+
+    private static string? NullableText(IReadOnlyDictionary<string, object?> row, string column)
+        => row.TryGetValue(column, out var value) && value is not null ? Convert.ToString(value) : null;
+
+    private static IReadOnlyList<string> SplitKeys(string? keys)
+        => string.IsNullOrWhiteSpace(keys)
+            ? Array.Empty<string>()
+            : keys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     private static readonly Regex FieldRef = new(@"^\s*(\w+)\.(\w+)\s*$", RegexOptions.Compiled);
     private static readonly Regex SelectExpression = new(@"\{([^}]+)\}=(true|false|[+-]?\d+(?:\.\d+)?|'[^']*')\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex SelectSourcePattern = new(@"^\s*select\s+(\w+)\s+C_ID\s*,\s*(\w+)\s+C_VALUE\s+from\s+(\w+)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
