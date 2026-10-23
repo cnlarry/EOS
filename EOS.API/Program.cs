@@ -283,6 +283,7 @@ builder.Services.AddScoped<EOS.API.Data.Workbench.IUnifiedFormCapabilitySource, 
 builder.Services.AddScoped<EOS.API.Data.Workbench.WorkbenchAccessPolicy>();
 builder.Services.AddScoped<EOS.API.Data.Workbench.AgentWriteContext>();
 builder.Services.AddScoped<ReportRepository>();
+builder.Services.AddScoped<EOS.API.Data.Workbench.NumericContextReader>();
 builder.Services.AddScoped<PrintSettingsRepository>();
 builder.Services.AddScoped<SystemParameterService>();
 builder.Services.AddScoped<ReportAdminRepository>();

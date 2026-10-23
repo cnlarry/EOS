@@ -11,7 +11,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, DbConnectionFactory connections, ChooserMemoryRepository chooserMemory, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, ChooserMemoryRepository chooserMemory, NumericContextReader numericContext, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     /// <summary>当前请求的用户号（授权判定与数据装配的主体）。</summary>
     private string? UserId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -77,46 +77,19 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(!decision.Allowed)return Denied(decision.Denial!);
         var definition=decision.Value!.Definition;
 
-        var currencyDecimals=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
-        var currencyRounding=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-        var unitDecimals=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
-        var fieldRoles=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-
-        await using var connection=connections.Create();
-        await connection.OpenAsync(token);
-
-        await using(var command=new SqlCommand("SELECT LTRIM(RTRIM(CURR_ID)),DECIMAL_PLACES,ROUNDING_METHOD FROM dbo.CURR",connection))
-        await using(var reader=await command.ExecuteReaderAsync(token))
+        // 数值上下文（币别/单位精度、字段数值语义）的读取在 NumericContextReader：
+        // 控制器只做授权与契约，不持有数据访问（ADR-036 批 1 第 5 项）。
+        var tables = definition.DetailTable is null
+            ? new[] { definition.MasterTable }
+            : new[] { definition.MasterTable, definition.DetailTable };
+        var context = await numericContext.ReadAsync(tables, token);
+        return Ok(new
         {
-            while(await reader.ReadAsync(token))
-            {
-                var id=reader.GetString(0).Trim();
-                currencyDecimals[id]=reader.IsDBNull(1)?2:Convert.ToInt32(reader.GetValue(1));
-                currencyRounding[id]=reader.IsDBNull(2)?"AwayFromZero":Convert.ToString(reader.GetValue(2))??"AwayFromZero";
-            }
-        }
-
-        await using(var command=new SqlCommand("SELECT LTRIM(RTRIM(UNIT_ID)),DECIMAL_PLACES FROM dbo.UNIT",connection))
-        await using(var reader=await command.ExecuteReaderAsync(token))
-        {
-            while(await reader.ReadAsync(token))
-            {
-                unitDecimals[reader.GetString(0).Trim()]=reader.IsDBNull(1)?3:Convert.ToInt32(reader.GetValue(1));
-            }
-        }
-
-        var tables=definition.DetailTable is null
-            ?new[]{definition.MasterTable}
-            :new[]{definition.MasterTable,definition.DetailTable};
-        var placeholders=string.Join(",",tables.Select((_,index)=>$"@t{index}"));
-        await using(var command=new SqlCommand($"SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(NUMERIC_ROLE,''))) FROM dbo.FIELDS WHERE T_ID IN ({placeholders}) AND ISNULL(NUMERIC_ROLE,'')<>''",connection))
-        {
-            for(var index=0;index<tables.Length;index++)command.Parameters.AddWithValue($"@t{index}",tables[index]);
-            await using var reader=await command.ExecuteReaderAsync(token);
-            while(await reader.ReadAsync(token))fieldRoles[reader.GetString(0).Trim()]=reader.GetString(1).Trim();
-        }
-
-        return Ok(new{currencyDecimals,currencyRounding,unitDecimals,fieldRoles});
+            currencyDecimals = context.CurrencyDecimals,
+            currencyRounding = context.CurrencyRounding,
+            unitDecimals = context.UnitDecimals,
+            fieldRoles = context.FieldRoles,
+        });
     }
 
     [HttpGet("record")]

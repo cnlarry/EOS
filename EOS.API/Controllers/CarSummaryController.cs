@@ -13,7 +13,7 @@ namespace EOS.API.Controllers;
 [Authorize]
 [Route("api/v1/car-summary")]
 public sealed class CarSummaryController(
-    DbConnectionFactory connections,
+    ReportRepository reports,
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
@@ -42,14 +42,7 @@ public sealed class CarSummaryController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_MONTH","月份格式应为 yyyy-MM。"));
         if(string.CompareOrdinal(m1,m2)>0)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RANGE","起始月份不能大于结束月份。"));
-        await using var connection=connections.Create();
-        await connection.OpenAsync(token);
-        await using var command=new SqlCommand("EXEC dbo.RPT_CAR_SUMMARY @car_id_1=@f,@car_id_2=@t,@ym_1=@m1,@ym_2=@m2;",connection);
-        command.Parameters.Add("@f",SqlDbType.NChar,40).Value=from;
-        command.Parameters.Add("@t",SqlDbType.NChar,40).Value=to;
-        command.Parameters.Add("@m1",SqlDbType.Char,7).Value=m1;
-        command.Parameters.Add("@m2",SqlDbType.Char,7).Value=m2;
-        var rows=await WorkbenchSql.ReadRowsAsync(command,token);
+        var rows=await reports.QueryCarSummaryAsync(from,to,m1,m2,token);
         return Ok(new{Columns=rows.Count>0?rows[0].Keys.ToList():new List<string>{"CAR_ID","YM_RPT","RUN_METER","FILLOIL_METER","FILLOIL_TOTAL","FILLOIL_AMOUNT","REPAIR_AMOUNT"},Rows=rows,Count=rows.Count});
     }
 }

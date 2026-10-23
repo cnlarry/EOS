@@ -70,13 +70,17 @@ public static class MrpRecalcService
     /// <summary>分片写回的每组行数：一条语句包住一批产品，避免"一个产品一条语句"的往返放大。</summary>
     private const int ApplyChunkSize = 200;
 
-    /// <summary>在调用方事务内执行重算；返回受影响行数合计（仅用于观测，不作为判据）。</summary>
+    /// <summary>
+    /// 在调用方事务内执行重算；返回受影响行数合计（仅用于观测，不作为判据）。
+    /// <paramref name="commandTimeoutSeconds"/> 为 0 时用连接默认值——作业入口会显式给一个较大的值，
+    /// 因为整批产品重算可能远超默认 30 秒。
+    /// </summary>
     public static async Task<int> RecalcAsync(
-        SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
+        SqlConnection connection, SqlTransaction? transaction, CancellationToken token, int commandTimeoutSeconds = 0)
     {
-        var affected = await ExecuteAsync(ResetSql, connection, transaction, token);
+        var affected = await ExecuteAsync(ResetSql, connection, transaction, token, commandTimeoutSeconds);
         affected += await ApplyStockQuantityAsync(connection, transaction, token);
-        affected += await ExecuteAsync(RecalcSql, connection, transaction, token);
+        affected += await ExecuteAsync(RecalcSql, connection, transaction, token, commandTimeoutSeconds);
         return affected;
     }
 
@@ -120,9 +124,10 @@ public static class MrpRecalcService
     }
 
     private static async Task<int> ExecuteAsync(
-        string sql, SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
+        string sql, SqlConnection connection, SqlTransaction? transaction, CancellationToken token, int commandTimeoutSeconds = 0)
     {
         await using var command = new SqlCommand(sql, connection, transaction);
+        if (commandTimeoutSeconds > 0) command.CommandTimeout = commandTimeoutSeconds;
         return await command.ExecuteNonQueryAsync(token);
     }
 }

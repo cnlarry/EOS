@@ -46,11 +46,7 @@ public sealed class JobsController(
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            await using var command = new SqlCommand(MrpRecalcService.RecalcSql, connection, transaction)
-            {
-                CommandTimeout = MrpRecalcCommandTimeoutSeconds,
-            };
-            await command.ExecuteNonQueryAsync(token);
+            await MrpRecalcService.RecalcAsync(connection, transaction, token, MrpRecalcCommandTimeoutSeconds);
             await transaction.CommitAsync(token);
         }
         catch

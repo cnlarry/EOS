@@ -34,6 +34,24 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         int Version,
         string? Description);
 
+    /// <summary>
+    /// 车辆汇总（模块 199901）：调用 <c>dbo.RPT_CAR_SUMMARY</c>，参数为车牌范围与月份范围（yyyy-MM）。
+    /// 过程是旧系统遗留的汇总实现，保留过程本身，本方法只负责取数与参数化——控制器不再持有命令。
+    /// </summary>
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> QueryCarSummaryAsync(
+        string carIdFrom, string carIdTo, string monthFrom, string monthTo, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "EXEC dbo.RPT_CAR_SUMMARY @car_id_1=@f,@car_id_2=@t,@ym_1=@m1,@ym_2=@m2;", connection);
+        command.Parameters.Add("@f", SqlDbType.NChar, 40).Value = carIdFrom;
+        command.Parameters.Add("@t", SqlDbType.NChar, 40).Value = carIdTo;
+        command.Parameters.Add("@m1", SqlDbType.Char, 7).Value = monthFrom;
+        command.Parameters.Add("@m2", SqlDbType.Char, 7).Value = monthTo;
+        return await WorkbenchSql.ReadRowsAsync(command, token);
+    }
+
     /// <summary>列出全部已定义的度量口径（按域、编号排序）。</summary>
     public async Task<IReadOnlyList<ReportMetricRow>> ListMetricsAsync(CancellationToken token)
     {
