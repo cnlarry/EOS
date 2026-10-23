@@ -102,6 +102,8 @@ jobs:
         run: ./scripts/check-migration-numbers.ps1
       - name: 标识符白名单单入口
         run: ./scripts/check-identifier-single-source.ps1
+      - name: 控制器边界（无内联 SQL）
+        run: ./scripts/check-controller-sql-boundary.ps1
       - name: 助手可代理动作注册表
         run: ./scripts/check-assistant-action-registry.ps1
       - name: 助手动作阈值与红线
