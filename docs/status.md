@@ -90,15 +90,20 @@ M6 单据流转适配 / M7 质量门 / M8a 只读诊断探针 / M8 配置写 / M
 S0–S6 + 四个收尾批全部验收通过（2026-09-30），工具数收敛在 27。
 **未结项以 ADR-016 正文「已知缺口与待办」为唯一事实源**（当前 5 条），本文件不复述。
 
-### 4.6 ADR-036 共享原语单一真源（已拍板，批 1 进行中）
+### 4.6 ADR-036 共享原语单一真源（已拍板，批 1 收口、批 2 起步）
 
-§8 五项按建议落定（批 1 先做第 1–3 项、分页上限统一 200、分页响应形状本轮统一、门禁先只加 C、门禁独立成脚本）。
-**批 1 第 1 项已落地**：助手侧四处正则（`ChangeSetService` / `MetricDefinitionValidator` / `ResolveMetricTool` /
-`DiagnoseModuleTool`）与 `DiagnosisRuleParser` 的松口径（`^[A-Za-z0-9_]+$`，允许数字开头、无长度上限）
-全部回接 `WorkbenchSql.Identifier`；门禁 C 落位 `scripts/check-identifier-single-source.ps1`（`-SelfTest` 正反自检）
-并进 CI。验证：后端离线 **2067/2067**、度量与诊断相关用例 **124/124**（含 Integration 类）、
-`dotnet build` 0 警 0 错。**批 1 第 2–3 项（`WorkflowEngine` / `PrintService` 的物理列查询与主键读行回接）
-与第 4–5 项（分页钳制提升、控制器内联 SQL 下沉）未开工**；批 2、批 3 见 ADR-036 第 4 节。
+§8 五项按建议落定（分页上限统一 200、分页响应形状本轮统一、门禁独立成脚本）。
+**批 1 五项已收口**：标识符白名单回接 `WorkbenchSql.Identifier`；`WorkflowEngine` / `PrintService`
+的物理列查询与主键读行回接共享原语；页大小口径收敛到 `PageWindow`（10–200，子表 500 为具名例外）；
+控制器内联 SQL 全部下沉到 `Data/` 对应的仓储；报表中心目录与用户状态下沉后，`REPORT_TAG` 可见性判据
+从报表权、打印面板清单、报表中心目录三份收成 `Data/Reports/ModuleReportVisibility.cs` 一处
+（离线用例守着"只许一处"）。
+**门禁 A/B/C 三条均已落位并进 CI**（`check-controller-sql-boundary` / `check-controller-permission-boundary` /
+`check-identifier-single-source`，均带 `-SelfTest`），B 的存量从 25 个控制器减到 21 个，按具名冻结、只减不增。
+**批 2 第 6 项（权限门收敛）已起步**：`IPermissionService` 增 `GetReportAsync`，报表系三个控制器与
+`AssistantAdminController` 不再直接持有权限仓储，`ReportController` 的 7 处权限门收成一处
+（403 / 防探测 404 / 401 三种口径保持原样）。**未开工**：批 2 其余各项（异常→错误码收敛、
+`FIELDS` 读取原语、分页响应形状）与批 3 全部。
 
 ## 5. 待决策 / 需顾问确认
 
