@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: 32886d99faebf9c6 -->
+<!-- inventory-fingerprint: c71984945d866be3 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,7 +21,7 @@
 
 ## 一、总览
 
-- 入库脚本 **92** 个：门禁（CI） 20 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 32
+- 入库脚本 **93** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 32
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**13** 个，见第七节
@@ -50,7 +50,8 @@
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 6 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 6 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
-| `check-controller-sql-boundary.ps1` | 静态门禁：控制器不得持有数据访问（ADR-036 §5 断言 A）。 | 仅静态 | 2 |
+| `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 3 |
+| `check-controller-sql-boundary.ps1` | 静态门禁：控制器不得持有数据访问（ADR-036 §5 断言 A）。 | 仅静态 | 3 |
 | `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 7 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
 | `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 11 |
@@ -59,7 +60,7 @@
 | `check-migration-numbers.ps1` | 迁移编号唯一性门禁：同一个编号只能对应一个迁移脚本，且文件名必须符合 `NNN_描述.sql`。 | 仅静态 | 5 |
 | `check-numeric-column-types.ps1` | 静态门禁：迁移脚本不得新增 float 列。 | 仅静态 | 4 |
 | `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 8 |
-| `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 8 |
+| `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 9 |
 | `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 2 |
 | `check-tab-navigation.ps1` | 前端「工作区导航」门禁：跨模块跳转与返回只允许一种写法（ADR-040）。 | 仅静态 | 3 |
 | `check-workbench-policy-single-entry.ps1` | 统一工作台策略层单入口门禁：授权/名单/幂等判定不得回到控制器，且策略服务必须是共享入口。 | 仅静态 | 5 |

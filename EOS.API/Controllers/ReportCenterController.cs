@@ -9,9 +9,8 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// 报表中心：目录（按归属模块分组 + 收藏/最近使用标记）与用户状态维护。
-/// 数据访问在 <see cref="ReportCenterRepository"/>；本控制器只做参数校验与授权
-/// （ADR-036 批 1 第 5 项）。可见性口径的单一真源是归属模块的 <c>REPORT_TAG</c>，
-/// 与 <c>ModuleRightsRepository.GetModuleReportTagAsync</c> 同口径。
+/// 数据访问与可见性口径（归属模块的 <c>REPORT_TAG</c>）都在 <see cref="ReportCenterRepository"/>；
+/// 本控制器只做参数校验与授权（ADR-036 批 1 第 5 项）。
 /// </summary>
 [ApiController]
 [Authorize]
