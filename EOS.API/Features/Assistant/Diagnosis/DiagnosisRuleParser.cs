@@ -1,5 +1,5 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
+using EOS.API.Data;
 
 namespace EOS.API.Features.Assistant.Diagnosis;
 
@@ -15,8 +15,6 @@ namespace EOS.API.Features.Assistant.Diagnosis;
 /// </summary>
 internal static class DiagnosisRuleParser
 {
-    private static readonly Regex SafeIdentifierPattern = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
-
     /// <summary>可只读判定的引用目标（单键、主表域、无 join/targets/mismatch/refCondition）。</summary>
     internal sealed record ReferenceTarget(
         string Table,
@@ -25,8 +23,12 @@ internal static class DiagnosisRuleParser
         string? ActiveTagField,
         int ActiveTagExpect);
 
+    /// <summary>
+    /// 标识符判据与工作台共用一处实现（<see cref="WorkbenchSql.Identifier"/>）：
+    /// 诊断规则里的表名/字段名最终会拼进 SQL，两套口径一旦分叉，宽松的那套就是注入面。
+    /// </summary>
     internal static bool IsSafeIdentifier(string? value) =>
-        !string.IsNullOrWhiteSpace(value) && SafeIdentifierPattern.IsMatch(value);
+        !string.IsNullOrWhiteSpace(value) && WorkbenchSql.Identifier.IsMatch(value);
 
     internal static IReadOnlyList<DiagnosisRule> Parse(JsonElement? rules)
     {

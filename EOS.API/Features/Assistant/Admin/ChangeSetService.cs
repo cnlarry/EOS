@@ -38,8 +38,6 @@ public sealed class ChangeSetService(
     IModulePlanCatalog catalog, IChangeSetWriter writer,
     DbConnectionFactory? connections = null, WorkbenchDefinitionValidator? validator = null)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
-
     public async Task<ChangeSetTrial> TrialAsync(JsonElement changeset, CancellationToken token)
     {
         var errors = new List<string>();
@@ -190,7 +188,7 @@ public sealed class ChangeSetService(
 
         var table = tableEl.GetString()!.Trim();
         var action = actionEl.GetString()!.Trim();
-        if (!Identifier.IsMatch(table))
+        if (!WorkbenchSql.Identifier.IsMatch(table))
         {
             return new(table, action, "blocked", wouldCreate, wouldSkip, [$"非法表名：{table}。"]);
         }
@@ -230,7 +228,7 @@ public sealed class ChangeSetService(
             return new(table, action, "blocked", wouldCreate, wouldSkip, ["add_fields 须提供非空 fields 数组。"]);
         }
 
-        var illegal = fields.Where(field => !Identifier.IsMatch(field)).ToArray();
+        var illegal = fields.Where(field => !WorkbenchSql.Identifier.IsMatch(field)).ToArray();
         if (illegal.Length > 0)
         {
             return new(table, action, "blocked", wouldCreate, wouldSkip,

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using EOS.API.Data;
+
 namespace EOS.API.Features.Assistant.Metrics;
 
 /// <summary>
@@ -60,11 +62,9 @@ public sealed record MetricValidationResult(bool Ok, string? Error, MetricRowFil
 /// </summary>
 public sealed class MetricDefinitionValidator(IMetricSchemaProbe probe)
 {
-    private const string IdentifierPattern = "^[A-Za-z_][A-Za-z0-9_]{0,127}$";
-
     public async Task<MetricValidationResult> ValidateAsync(MetricValidationInput input, CancellationToken token)
     {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(input.SourceTable, IdentifierPattern))
+        if (!WorkbenchSql.Identifier.IsMatch(input.SourceTable))
         {
             return MetricValidationResult.Fail($"来源表名不符合标识符规则：{input.SourceTable}");
         }
@@ -246,7 +246,7 @@ public sealed class MetricDefinitionValidator(IMetricSchemaProbe probe)
 
         foreach (var join in joinColumns)
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(join, IdentifierPattern))
+            if (!WorkbenchSql.Identifier.IsMatch(join))
             {
                 return (null, $"行过滤关联列不符合标识符规则：{join}");
             }
@@ -259,7 +259,7 @@ public sealed class MetricDefinitionValidator(IMetricSchemaProbe probe)
         var compiled = new List<MetricFilterCondition>(conditions.Count);
         foreach (var condition in conditions)
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(condition.Column, IdentifierPattern))
+            if (!WorkbenchSql.Identifier.IsMatch(condition.Column))
             {
                 return (null, $"行过滤列不符合标识符规则：{condition.Column}");
             }

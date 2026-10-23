@@ -100,6 +100,8 @@ jobs:
         run: ./scripts/check-numeric-column-types.ps1
       - name: 迁移编号唯一性
         run: ./scripts/check-migration-numbers.ps1
+      - name: 标识符白名单单入口
+        run: ./scripts/check-identifier-single-source.ps1
       - name: 助手可代理动作注册表
         run: ./scripts/check-assistant-action-registry.ps1
       - name: 助手动作阈值与红线

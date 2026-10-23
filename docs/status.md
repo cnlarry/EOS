@@ -90,6 +90,16 @@ M6 单据流转适配 / M7 质量门 / M8a 只读诊断探针 / M8 配置写 / M
 S0–S6 + 四个收尾批全部验收通过（2026-09-30），工具数收敛在 27。
 **未结项以 ADR-016 正文「已知缺口与待办」为唯一事实源**（当前 5 条），本文件不复述。
 
+### 4.6 ADR-036 共享原语单一真源（已拍板，批 1 进行中）
+
+§8 五项按建议落定（批 1 先做第 1–3 项、分页上限统一 200、分页响应形状本轮统一、门禁先只加 C、门禁独立成脚本）。
+**批 1 第 1 项已落地**：助手侧四处正则（`ChangeSetService` / `MetricDefinitionValidator` / `ResolveMetricTool` /
+`DiagnoseModuleTool`）与 `DiagnosisRuleParser` 的松口径（`^[A-Za-z0-9_]+$`，允许数字开头、无长度上限）
+全部回接 `WorkbenchSql.Identifier`；门禁 C 落位 `scripts/check-identifier-single-source.ps1`（`-SelfTest` 正反自检）
+并进 CI。验证：后端离线 **2067/2067**、度量与诊断相关用例 **124/124**（含 Integration 类）、
+`dotnet build` 0 警 0 错。**批 1 第 2–3 项（`WorkflowEngine` / `PrintService` 的物理列查询与主键读行回接）
+与第 4–5 项（分页钳制提升、控制器内联 SQL 下沉）未开工**；批 2、批 3 见 ADR-036 第 4 节。
+
 ## 5. 待决策 / 需顾问确认
 
 | 项 | 状态/进入条件 |

@@ -233,8 +233,7 @@ public sealed class ResolveMetricTool(
 
         foreach (var property in dimensionsElement.EnumerateObject())
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(property.Name,
-                    "^[A-Za-z_][A-Za-z0-9_]{0,127}$"))
+            if (!WorkbenchSql.Identifier.IsMatch(property.Name))
             {
                 return ([], $"维度名不符合标识符规则：{property.Name}");
             }

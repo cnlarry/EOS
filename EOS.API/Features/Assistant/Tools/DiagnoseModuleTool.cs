@@ -92,7 +92,7 @@ public sealed class DiagnoseModuleTool(
             if (item.ValueKind != JsonValueKind.Object) return ToolExecutionResult.Deny("tables 数组元素须为对象。");
             var table = item.TryGetProperty("table", out var tableEl) && tableEl.ValueKind == JsonValueKind.String
                 ? tableEl.GetString()!.Trim() : string.Empty;
-            if (table.Length == 0 || !System.Text.RegularExpressions.Regex.IsMatch(table, "^[A-Za-z_][A-Za-z0-9_]{0,127}$"))
+            if (table.Length == 0 || !WorkbenchSql.Identifier.IsMatch(table))
                 return ToolExecutionResult.Deny($"非法表名：{table}。");
             var fields = new List<PlanFieldRequest>();
             if (item.TryGetProperty("fields", out var fieldsEl) && fieldsEl.ValueKind == JsonValueKind.Array)
@@ -100,7 +100,7 @@ public sealed class DiagnoseModuleTool(
                 foreach (var fieldEl in fieldsEl.EnumerateArray())
                 {
                     var field = fieldEl.ValueKind == JsonValueKind.String ? fieldEl.GetString()!.Trim() : string.Empty;
-                    if (field.Length == 0 || !System.Text.RegularExpressions.Regex.IsMatch(field, "^[A-Za-z_][A-Za-z0-9_]{0,127}$"))
+                    if (field.Length == 0 || !WorkbenchSql.Identifier.IsMatch(field))
                         return ToolExecutionResult.Deny($"非法字段名：{field}（表 {table}）。");
                     fields.Add(new(field));
                 }
