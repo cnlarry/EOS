@@ -212,7 +212,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         if(definition.Aggregate is not null)
             return await RunAggregateAsync(definition,request.Values,request.ValuesTo,definition.SortFields,token);
         page=Math.Max(1,page);
-        pageSize=Math.Clamp(pageSize,10,200);
+        pageSize=PageWindow.NormalizePageSize(pageSize);
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var physicalColumns=await GetPhysicalColumnsAsync(connection,definition.MasterTable,token);

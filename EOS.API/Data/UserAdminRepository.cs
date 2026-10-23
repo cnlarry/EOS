@@ -28,7 +28,7 @@ public sealed class UserAdminRepository(
     {
         using var timing = DbTimingCollector.Instance.Measure();
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 10, 100);
+        pageSize = PageWindow.NormalizePageSize(pageSize);
         var pattern = $"%{keyword?.Trim() ?? ""}%";
         await using var connection = connections.Create();
         await connection.OpenAsync(token);

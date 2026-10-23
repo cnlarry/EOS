@@ -23,13 +23,11 @@ public sealed class WorkbenchQueryComposer(
     ILogger<WorkbenchQueryComposer> logger)
 {
     /// <summary>列表页每页行上限：列表只需要够一屏的量，翻页是正常路径。</summary>
-    private const int MaxMasterPageSize = 100;
 
     /// <summary>
     /// 子表（明细）行上限。明细一次性整页给出、没有翻页入口，
     /// 上限即"这一屏能装下的最大单据"——取 500 是为了让偶尔出现的长单据也能一次看全。
     /// </summary>
-    private const int MaxDetailPageSize = 500;
 
     public async Task<WorkbenchData> GetRowsAsync(
         WorkbenchDefinition definition,
@@ -50,7 +48,7 @@ public sealed class WorkbenchQueryComposer(
         var table = detail ? definition.DetailTable : definition.MasterTable;
         var fields = detail ? definition.DetailFields : definition.MasterFields;
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 10, detail ? MaxDetailPageSize : MaxMasterPageSize);
+        pageSize = detail ? PageWindow.NormalizeDetailPageSize(pageSize) : PageWindow.NormalizePageSize(pageSize);
         if (table is null || fields.Count == 0)
         {
             return new([], 0, page, pageSize);

@@ -454,7 +454,7 @@ public sealed class WorkbenchChooserService(
         var sortExpression = virtualKeys.Contains(sortColumn) ? $"[{sortColumn}]" : $"[{table}].[{sortColumn}]";
         var dir = string.Equals(sortDirection,"desc",StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
         page=Math.Max(1,page);
-        pageSize=Math.Clamp(pageSize,10,100);
+        pageSize=PageWindow.NormalizePageSize(pageSize);
         var sql=$"SELECT COUNT_BIG(1) {countFrom}{where}; SELECT {select} {from}{where} ORDER BY {sortExpression} {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         command.CommandText=sql;
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=PageWindow.ResolveOffset(page,pageSize);

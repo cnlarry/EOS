@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Query;
 using Xunit;
 
 namespace EOS.API.Tests;
@@ -82,17 +83,27 @@ public sealed class ChooserRepositoryTests
     [InlineData(42, 42)]
     public void NormalizePage_ClampsToAtLeastOne(int page, int expected)
     {
-        Assert.Equal(expected, ChooserRepository.NormalizePage(page));
+        Assert.Equal(expected, PageWindow.NormalizePage(page));
     }
 
     [Theory]
     [InlineData(1, 10)]
     [InlineData(50, 50)]
-    [InlineData(500, 100)]
+    [InlineData(500, PageWindow.MaxPageSize)]
     [InlineData(-1, 10)]
-    public void NormalizePageSize_ClampsBetweenTenAndHundred(int pageSize, int expected)
+    public void NormalizePageSize_ClampsToSharedWindow(int pageSize, int expected)
     {
-        Assert.Equal(expected, ChooserRepository.NormalizePageSize(pageSize));
+        Assert.Equal(expected, PageWindow.NormalizePageSize(pageSize));
+    }
+
+    /// <summary>子表列表是唯一具名例外：上限 500，不受全站 200 的统一口径影响。</summary>
+    [Theory]
+    [InlineData(1, 10)]
+    [InlineData(500, 500)]
+    [InlineData(501, PageWindow.MaxDetailPageSize)]
+    public void NormalizeDetailPageSize_KeepsDetailCeiling(int pageSize, int expected)
+    {
+        Assert.Equal(expected, PageWindow.NormalizeDetailPageSize(pageSize));
     }
 
     [Theory]

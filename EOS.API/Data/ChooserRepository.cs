@@ -454,10 +454,6 @@ public sealed class ChooserRepository(
         return (column, direction);
     }
 
-    internal static int NormalizePage(int page) => Math.Max(1, page);
-
-    internal static int NormalizePageSize(int pageSize) => Math.Clamp(pageSize, 10, 100);
-
     /// <summary>menu-admin.fields 的 args 校验：仅允许 tableId，且须命中标识符白名单。</summary>
     internal static string? ResolveFieldsTableId(IReadOnlyDictionary<string, string>? args)
     {
@@ -560,8 +556,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "inventory.batches";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         // 效期两列走同一套次序：点"剩余天数"或"有效期"表头都应当是"最早到期在前、空效期最后"，
@@ -663,8 +659,8 @@ public sealed class ChooserRepository(
         }
         var exclude = ResolveExcludeKeys(request.Args);
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -756,8 +752,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "depot-admin.locations";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -808,8 +804,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "menu-admin.sprocs";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -852,8 +848,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "menu-admin.tables";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -901,8 +897,8 @@ public sealed class ChooserRepository(
         var tableId = ResolveFieldsTableId(request.Args);
         if (tableId is null) return null;
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -953,8 +949,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "field-admin.unregistered-tables";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1011,8 +1007,8 @@ public sealed class ChooserRepository(
         var tableId = ResolveFieldsTableId(request.Args);
         if (tableId is null) return null;
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1067,8 +1063,8 @@ public sealed class ChooserRepository(
         var tableId = ResolveFieldsTableId(request.Args);
         if (tableId is null) return null;
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1120,8 +1116,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "report-admin.modules";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1179,8 +1175,8 @@ public sealed class ChooserRepository(
         string sourceKey)
     {
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1241,8 +1237,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "assistant-admin.modules";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1288,8 +1284,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "menu-admin.modules";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1336,8 +1332,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "rights-admin.users";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1384,8 +1380,8 @@ public sealed class ChooserRepository(
     {
         const string sourceKey = "rights-admin.groups";
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1431,8 +1427,8 @@ public sealed class ChooserRepository(
             return null;
         }
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1496,8 +1492,8 @@ public sealed class ChooserRepository(
             return null;
         }
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
         var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
@@ -1567,8 +1563,8 @@ public sealed class ChooserRepository(
     private async Task<UnifiedChooserResult?> QueryEmployeesAsync(UnifiedChooserQueryRequest request, CancellationToken token)
     {
         const string sourceKey = "user-admin.employees";
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
@@ -1657,8 +1653,8 @@ public sealed class ChooserRepository(
             return null;
         }
 
-        var page = NormalizePage(request.Page);
-        var pageSize = NormalizePageSize(request.PageSize);
+        var page = PageWindow.NormalizePage(request.Page);
+        var pageSize = PageWindow.NormalizePageSize(request.PageSize);
         var keyword = request.Keyword?.Trim() ?? string.Empty;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);

@@ -115,7 +115,7 @@ public sealed class SearchCenterRepository(
     {
         using var timing = DbTimingCollector.Instance.Measure();
         page=Math.Max(1,page);
-        pageSize=Math.Clamp(pageSize,10,200);
+        pageSize=PageWindow.NormalizePageSize(pageSize);
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var predicates=new List<string>();

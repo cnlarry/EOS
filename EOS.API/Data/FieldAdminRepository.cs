@@ -576,7 +576,7 @@ public sealed class FieldAdminRepository(
     {
         EnsureIdentifier(tableId, null);
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 10, 100);
+        pageSize = PageWindow.NormalizePageSize(pageSize);
         var pattern = $"%{keyword?.Trim() ?? ""}%";
         // 排序字段只认白名单键；命中不了就退回 F_ID。末尾带 F_ID 兜底，
         // 让同值行有确定顺序——翻页时同一行不会因排序不稳而重复或漏掉。
