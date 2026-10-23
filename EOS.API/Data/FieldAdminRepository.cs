@@ -18,6 +18,61 @@ public sealed class FieldAdminRepository(
     ILogger<FieldAdminRepository> logger)
 {
     /// <summary>
+    /// 字段元数据审计（模块 2303 的只读端点）：物理列与 <c>FIELDS</c> 的差集。
+    /// <paramref name="kind"/>：<c>unmanaged</c> = 物理列存在但元数据没登记；<c>orphan</c> = 有登记但物理列不存在。
+    /// 虚拟字段按设计就没有物理列（值由 <c>VIRTUAL_EXP</c> 派生），故两侧都排除 <c>IS_VIRTUAL=1</c>。
+    ///
+    /// 行形状保持 <c>T_ID/F_ID/F_TYPE(/F_DESC)</c> 字典——前端按键取值，换成具名记录会改契约。
+    /// </summary>
+    public async Task<(IReadOnlyList<Dictionary<string, object?>> Rows, long Total, bool Limited)> FieldAuditAsync(
+        string kind, int limit, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var sql = kind == "unmanaged"
+            ? $$"""
+                SELECT o.name AS T_ID, c.name AS F_ID, TYPE_NAME(c.user_type_id) AS F_TYPE
+                FROM sys.columns c
+                JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                JOIN sys.schemas s ON o.schema_id=s.schema_id
+                WHERE s.name=N'dbo'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=o.name AND f.F_ID=c.name)
+                ORDER BY o.name,c.column_id
+                OFFSET 0 ROWS FETCH NEXT {{limit}} ROWS ONLY;
+                SELECT COUNT_BIG(1)
+                FROM sys.columns c
+                JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                JOIN sys.schemas s ON o.schema_id=s.schema_id
+                WHERE s.name=N'dbo'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=o.name AND f.F_ID=c.name);
+                """
+            : $$"""
+                SELECT TOP ({{limit}}) LTRIM(RTRIM(f.T_ID)) AS T_ID,LTRIM(RTRIM(f.F_ID)) AS F_ID,
+                       LTRIM(RTRIM(ISNULL(f.F_TYPE,''))) AS F_TYPE,LTRIM(RTRIM(ISNULL(f.F_DESC,''))) AS F_DESC
+                FROM dbo.FIELDS f WITH (NOLOCK)
+                WHERE COALESCE(f.IS_VIRTUAL,0)=0
+                  AND NOT EXISTS (SELECT 1 FROM sys.columns c
+                                  JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                  JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                  WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID)
+                ORDER BY f.T_ID,f.F_ID;
+                SELECT COUNT_BIG(1) FROM dbo.FIELDS f WITH (NOLOCK)
+                WHERE COALESCE(f.IS_VIRTUAL,0)=0
+                  AND NOT EXISTS (SELECT 1 FROM sys.columns c
+                                  JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                  JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                  WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID);
+                """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var rows = await WorkbenchSql.ReadRowsAsync(reader, token);
+        await reader.NextResultAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt64(reader.GetInt64(0));
+        return (rows, total, total > limit);
+    }
+
+    /// <summary>
     /// 写入侧拒收的占位字段名。历史元数据补齐脚本把"无说明"写成了字符串 'NULL' 与 HTML 空实体
     /// '&nbsp;'，它们非空，读取侧只判空串的兜底拦不住，会原样显示到表单/列表标签上。
     /// </summary>

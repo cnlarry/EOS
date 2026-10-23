@@ -255,6 +255,7 @@ builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionExecutor>(
 builder.Services.AddScoped<ChooserRepository>();
 builder.Services.AddScoped<ChooserMemoryRepository>();
 builder.Services.AddScoped<WorkflowEngine>();
+builder.Services.AddScoped<EOS.API.Data.Workflow.WorkflowTaskRepository>();
 builder.Services.AddScoped<FlowDefinitionService>();
 builder.Services.Configure<WorkflowSettings>(builder.Configuration.GetSection("Workflow"));
 builder.Services.AddScoped<WorkbenchScopeFilter>();

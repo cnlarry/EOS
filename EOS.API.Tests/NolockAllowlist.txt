@@ -4,9 +4,11 @@
 # add NOLOCK. Adding NOLOCK to a file outside this list fails
 # NolockAllowlistTests; register the file here only after review confirms a
 # read-only/reporting justification. Remove entries that no longer use NOLOCK.
+# 配置读取从上面那个仓库抽出：定义装配要现读业务动作与校验规则，而把仓库注入构建器会成环。
+# SQL 与原仓库逐字相同（无新增读取面），NOLOCK 语义沿用原登记。
+# 字段白名单（分组表达式与模块 FILTER 共用）：只读 `FIELDS` + `sys.columns` 的登记表，
+# 由 WorkbenchDefinitionValidator 的同一段 SQL 抽出（原文件已在名单内）
 EOS.API/Controllers/ReportCenterController.cs
-EOS.API/Controllers/TableDataController.cs
-EOS.API/Controllers/WorkflowController.cs
 EOS.API/Data/Assistant/AssistantAdminRepository.cs
 EOS.API/Data/Assistant/AssistantModelCatalog.cs
 EOS.API/Data/AssistantRepository.cs
@@ -29,18 +31,13 @@ EOS.API/Data/HumanResourceJobsService.cs
 EOS.API/Data/KnowledgeRepository.cs
 EOS.API/Data/MenuAdminRepository.cs
 EOS.API/Data/ModuleBusinessConfigRepository.cs
-# 配置读取从上面那个仓库抽出：定义装配要现读业务动作与校验规则，而把仓库注入构建器会成环。
-# SQL 与原仓库逐字相同（无新增读取面），NOLOCK 语义沿用原登记。
-EOS.API/Data/Workbench/ModuleBusinessConfigReader.cs
-# 字段白名单（分组表达式与模块 FILTER 共用）：只读 `FIELDS` + `sys.columns` 的登记表，
-# 由 WorkbenchDefinitionValidator 的同一段 SQL 抽出（原文件已在名单内）
-EOS.API/Data/Workbench/ModuleFieldWhitelist.cs
 EOS.API/Data/ModuleRightsRepository.cs
 EOS.API/Data/NavigationGroupsRepository.cs
 EOS.API/Data/NavigationRepository.cs
 EOS.API/Data/PrintService.cs
 EOS.API/Data/PrintSettingsRepository.cs
 EOS.API/Data/ReportAdminRepository.cs
+EOS.API/Data/ReportAggregateRegistry.cs
 EOS.API/Data/ReportFormLayoutRepository.cs
 EOS.API/Data/ReportInboxRepository.cs
 EOS.API/Data/ReportRepository.cs
@@ -50,6 +47,8 @@ EOS.API/Data/SearchCenterRepository.cs
 EOS.API/Data/SystemParameterService.cs
 EOS.API/Data/UserAdminRepository.cs
 EOS.API/Data/VirtualColumnResolver.cs
+EOS.API/Data/Workbench/ModuleBusinessConfigReader.cs
+EOS.API/Data/Workbench/ModuleFieldWhitelist.cs
 EOS.API/Data/WorkbenchApprovalService.cs
 EOS.API/Data/WorkbenchBrowseResolver.cs
 EOS.API/Data/WorkbenchChooserService.cs
@@ -62,18 +61,18 @@ EOS.API/Data/WorkbenchFieldMetaMapper.cs
 EOS.API/Data/WorkbenchQueryComposer.cs
 EOS.API/Data/WorkbenchScopeFilter.cs
 EOS.API/Data/WorkbenchSql.cs
+EOS.API/Data/Workflow/WorkflowTaskRepository.cs
 EOS.API/Data/WorkflowEngine.cs
-EOS.API/Features/Import/ImportService.cs
 EOS.API/Features/Assistant/Admin/ChangeSetService.cs
-EOS.API/Features/BusinessFlow/BusinessFlowRepository.cs
 EOS.API/Features/Assistant/Diagnosis/RecordDiagnosisReader.cs
 EOS.API/Features/Assistant/Memory/AssistantMemoryStore.cs
+EOS.API/Features/Assistant/Metrics/FieldRelationRepository.cs
 EOS.API/Features/Assistant/Metrics/MetricPlanCompiler.cs
 EOS.API/Features/Assistant/Metrics/MetricRepository.cs
-EOS.API/Features/Assistant/Metrics/FieldRelationRepository.cs
 EOS.API/Features/Assistant/Parameters/AssistantParameterScopeStore.cs
 EOS.API/Features/Assistant/Situation/SituationFactsReader.cs
 EOS.API/Features/Assistant/Tools/EnumMetricsTool.cs
 EOS.API/Features/Assistant/Tools/ModuleFlowGateway.cs
 EOS.API/Features/Assistant/Tools/RecordHistoryTool.cs
-EOS.API/Data/ReportAggregateRegistry.cs
+EOS.API/Features/BusinessFlow/BusinessFlowRepository.cs
+EOS.API/Features/Import/ImportService.cs

@@ -1,5 +1,6 @@
 using System.Data;
 using EOS.API.Data;
+using EOS.API.Data.Workflow;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -18,6 +19,7 @@ public sealed class WorkflowController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     WorkflowEngine workflowEngine,
+    WorkflowTaskRepository taskRepository,
     IOptions<WorkflowSettings> workflowOptions) : ControllerBase
 {
 
@@ -51,7 +53,7 @@ public sealed class WorkflowController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RECORD_KEY", "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var pkColumns = await GetPrimaryKeyColumnsAsync(connection, moduleId, token);
+        var pkColumns = await taskRepository.GetModulePrimaryKeysAsync(moduleId, token);
         if (pkColumns.Count == 0 || pkColumns.Count != keyValues.Count)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "RECORD_KEY_MISMATCH", "主键数量与模块主键不匹配。"));
         var rows = await workflowEngine.GetHistoryAsync(connection, moduleId, pkColumns, keyValues, token);
@@ -68,24 +70,22 @@ public sealed class WorkflowController(
     public async Task<IActionResult> MyTasks(CancellationToken token)
     {
         if(!(await rightsRepository.GetAsync(userContext.UserId,ModuleIds.MyTasks,token)).CanBrowse) return Forbid();
-        var tasks=new List<object>();
+        // 权限过滤留在控制器（策略入口）：先把"当前用户可浏览的模块"筛出来，再交给仓储计数。
+        var visible=new List<(int ModuleId,string Table)>();
+        foreach(var (moduleId,table) in ModuleBusinessMap.MasterTables)
+        {
+            if(!(await rightsRepository.GetAsync(userContext.UserId,moduleId,token)).CanBrowse) continue;
+            visible.Add((moduleId,table));
+        }
+        var pending=await taskRepository.CountPendingAsync(visible,token);
+        var tasks=pending
+            .Select(item=>new{ModuleId=item.ModuleId,Title=item.Title,Pending=item.Pending})
+            .ToList();
+
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var flowTasks = await workflowEngine.GetMyFlowTasksAsync(connection, userContext.UserId, token);
         var hasFlow = flowTasks.Count > 0;
-        foreach(var (moduleId,table) in ModuleBusinessMap.MasterTables)
-        {
-            if(!(await rightsRepository.GetAsync(userContext.UserId,moduleId,token)).CanBrowse) continue;
-            string title;
-            await using (var titleCommand=new SqlCommand("SELECT LTRIM(RTRIM(M_DESC)) FROM dbo.MODULES WHERE M_IDX=@m;",connection))
-            {
-                titleCommand.Parameters.Add("@m",SqlDbType.Int).Value=moduleId;
-                title=(await titleCommand.ExecuteScalarAsync(token)) as string??string.Empty;
-            }
-            await using var command=new SqlCommand($"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE ISNULL(CONFIRM_TAG,0)=0;",connection);
-            var pending=Convert.ToInt64(await command.ExecuteScalarAsync(token));
-            tasks.Add(new{ModuleId=moduleId,Title=title,Pending=pending});
-        }
         return Ok(new{Tasks=tasks,FlowTasks=flowTasks,EngineEnabled=hasFlow,
             Note=hasFlow?"工作流引擎已启用：FlowTasks 为当前用户真实审批待办，Tasks 为直接批核模型下的未批核计数。"
                          :"当前无流程定义（WFFORM 为空），待办=各单据未批核数量（直接批核模型）。"});
@@ -164,19 +164,6 @@ public sealed class WorkflowController(
         {
             return null;
         }
-    }
-
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(
-        SqlConnection connection, int moduleId, CancellationToken token)
-    {
-        string? table;
-        await using (var tableCommand = new SqlCommand("SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WHERE M_IDX=@ModuleId;", connection))
-        {
-            tableCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            table = await tableCommand.ExecuteScalarAsync(token) as string;
-        }
-        if (string.IsNullOrWhiteSpace(table) || !WorkbenchSql.Identifier.IsMatch(table)) return [];
-        return await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, table, token);
     }
 
 }
