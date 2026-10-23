@@ -40,7 +40,7 @@ public sealed class ReportInboxScheduler(
         var repository = scope.ServiceProvider.GetRequiredService<ReportInboxRepository>();
         var reportRepository = scope.ServiceProvider.GetRequiredService<ReportRepository>();
         var printSettingsRepository = scope.ServiceProvider.GetRequiredService<PrintSettingsRepository>();
-        var rightsRepository = scope.ServiceProvider.GetRequiredService<ModuleRightsRepository>();
+        var permissions = scope.ServiceProvider.GetRequiredService<IPermissionService>();
         var reportFormats = scope.ServiceProvider.GetRequiredService<ReportFormatRepository>();
         var layoutRenderer = scope.ServiceProvider.GetRequiredService<ILayoutRenderer>();
         var environment = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
@@ -67,7 +67,7 @@ public sealed class ReportInboxScheduler(
                 if (meta is null) continue;
 
                 // 3. 获取报表权限（订阅者身份）
-                var reportRights = await rightsRepository.GetReportAsync(sub.UserId, sub.ModuleId, sub.ReportId, token);
+                var reportRights = await permissions.GetReportAsync(sub.UserId, sub.ModuleId, sub.ReportId, token);
                 if (!reportRights.CanPrint) continue;
 
                 // 4. 查询数据（带权限 DATA_FILTER）

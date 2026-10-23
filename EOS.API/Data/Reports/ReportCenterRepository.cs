@@ -10,10 +10,10 @@ namespace EOS.API.Data.Reports;
 /// （收藏开关 / 最近使用 / 收藏重排）。此前这些 SQL 写在 <c>ReportCenterController</c> 里，
 /// 控制器因此同时是契约层与数据访问层（ADR-036 批 1 第 5 项）。
 ///
-/// 目录查询的**可见性口径**是报表的唯一真源：归属模块的 <c>REPORT_TAG</c>，个人
-/// <c>SYS_USER_MODULE_PERMISSION</c> 优先（有个人记录就完全采用），否则组授权取或——
-/// 与 <see cref="ModuleRightsRepository.GetModuleReportTagAsync"/> 同一口径。改这里必须同步那边，
-/// 否则"目录里看得见、打开 404"或反之。SQL 与参数按原样搬移，未改一处判据。
+/// 目录查询的**可见性判据**与报表权、打印面板清单同源，只有一处实现：
+/// <see cref="ModuleReportVisibility"/>（归属模块的 <c>REPORT_TAG</c>，个人
+/// <c>SYS_USER_MODULE_PERMISSION</c> 优先，否则组授权取或）。三处各写一遍时，
+/// "目录里看得见、打印面板里没有"这类不一致只能靠人眼发现。
 /// </summary>
 public sealed class ReportCenterRepository(DbConnectionFactory connections)
 {
@@ -23,10 +23,9 @@ public sealed class ReportCenterRepository(DbConnectionFactory connections)
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         // 报表按**归属模块**（业务模块）分组与鉴权：r.M_IDX 指向业务模块，不再是承载页。
-        // 模块级报表可见性真源：个人 SYS_USER_MODULE_PERMISSION.REPORT_TAG 优先，否则组 SYS_GROUP_MODULE_PERMISSION.REPORT_TAG OR
-        // （与 ModuleRightsRepository.GetModuleReportTagAsync 同口径）。
+        // 可见性判据只在这里拼一次（ModuleReportVisibility），与报表权、打印面板清单同源。
         // 业务域取归属模块的上级菜单分组（历史实现取的是承载页的 XX98 目录，归位后那层已不存在）。
-        const string catalogSql = """
+        var catalogSql = $"""
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC, ''))) AS M_DESC,
                    LTRIM(RTRIM(ISNULL(dom.M_DESC, ISNULL(m.M_DESC, '')))) AS DOMAIN_DESC,
                    LTRIM(RTRIM(ISNULL(r.REPORT_ID, ''))) AS REPORT_ID,
@@ -39,16 +38,7 @@ public sealed class ReportCenterRepository(DbConnectionFactory connections)
             INNER JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = r.M_IDX
             LEFT JOIN dbo.MODULES dom WITH (NOLOCK) ON dom.M_IDX = m.M_P_IDX
             LEFT JOIN dbo.REPORT_USER_STATE p WITH (NOLOCK) ON p.USER_ID = @UserId AND p.M_IDX = r.M_IDX AND p.REPORT_ID = r.REPORT_ID
-            WHERE (
-                EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK)
-                        WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX AND ISNULL(d.REPORT_TAG, 0) = 1)
-                OR (
-                  NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_MODULE_PERMISSION d WITH (NOLOCK) WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX)
-                  AND EXISTS (SELECT 1 FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
-                              INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
-                              WHERE gu.USER_ID = @UserId AND h.M_IDX = r.M_IDX AND ISNULL(h.REPORT_TAG, 0) = 1)
-                )
-              )
+            WHERE {ModuleReportVisibility.ForUser("r.M_IDX")}
             ORDER BY DOMAIN_DESC, ISNULL(p.FAVORITE_TAG, 0) DESC, ISNULL(p.SORT_IDX, 0), ISNULL(r.IS_DEFAULT, 0) DESC, r.REPORT_ID;
             """;
 

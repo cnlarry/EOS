@@ -245,7 +245,50 @@ public sealed class StaticArchitectureGuardTests
             + "名单留在这里就是一处没人读的配置。");
     }
 
+    /// <summary>
+    /// 报表可见性判定只有一处实现。这段判据此前在三处各写一遍（报表权读取、打印面板的报表
+    /// 清单、报表中心目录），"目录里看得见、打印面板里没有"这类不一致只能靠人眼发现。
+    ///
+    /// 判据是**去掉空白后的字面量** `REPORT_TAG,0)=1`——即"个人优先、否则组取或"这两条 SQL
+    /// 分支本身；只把 `REPORT_TAG` 当列名登记的配置面（`RightsAdminRepository` 的权限列清单）
+    /// 不算。缩进与空格随格式化漂移，故先归一化再判。
+    /// </summary>
+    [Fact]
+    public void 报表可见性判定只有一处实现()
+    {
+        var apiRoot = Path.Combine(FindRepoRoot(), "EOS.API");
+        var owner = Path.Combine("Data", "Reports", "ModuleReportVisibility.cs");
+        var needle = "REPORT_TAG,0)=1";
+
+        var ownerPath = Path.Combine(apiRoot, owner);
+        Assert.True(File.Exists(ownerPath),
+            $"找不到报表可见性判定的唯一实现 {owner}——「唯一允许者」不在时这条断言会假绿");
+        Assert.Contains(File.ReadLines(ownerPath),
+            line => Normalize(line).Contains(needle, StringComparison.Ordinal));
+
+        var hits = new List<string>();
+        foreach (var file in CsFiles(apiRoot))
+        {
+            var relative = Path.GetRelativePath(apiRoot, file);
+            if (string.Equals(relative, owner, StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (var (lineNumber, line) in CodeLines(file))
+            {
+                if (Normalize(line).Contains(needle, StringComparison.Ordinal))
+                {
+                    hits.Add($"{relative}:{lineNumber}");
+                }
+            }
+        }
+
+        Assert.True(hits.Count == 0,
+            $"报表可见性判定（REPORT_TAG 个人优先 / 否则组取或）只允许写在 {owner}，其余调用点改引 "
+            + $"ModuleReportVisibility.ForUser / IsVisibleAsync：" + Environment.NewLine
+            + string.Join(Environment.NewLine, hits));
+    }
+
     // ===== 扫描原语 =====
+
+    private static string Normalize(string line) => line.Replace(" ", string.Empty);
 
     /// <summary>
     /// 按路径找"直接引用表名"的文件（大小写敏感：报表编号 `Inv_Pro_Depot_List` 与物理表不是一回事）。

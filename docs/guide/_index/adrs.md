@@ -1,4 +1,4 @@
-<!-- adr-index-fingerprint: 96f16ad95a46a2e7 -->
+<!-- adr-index-fingerprint: dbf2365cc3186399 -->
 # 决策记录索引（`docs/decisions/`）
 
 > 本文件由 [`scripts/gen-adr-index.ps1`](../../../scripts/gen-adr-index.ps1) **生成**，不要手改；

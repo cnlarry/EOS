@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Reports;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -59,7 +60,7 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
 
-        var moduleReportTag = await GetModuleReportTagAsync(connection, userId, moduleId, token);
+        var moduleReportTag = await ModuleReportVisibility.IsVisibleAsync(connection, userId, moduleId, token);
         logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=module_report_tag granted={Granted}",
             userId, moduleId, reportId, moduleReportTag);
         return moduleReportTag
@@ -121,34 +122,6 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
     {
         AddParameters(command, userId, moduleId);
         command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
-    }
-
-    /// <summary>模块级报表可见性唯一真源：SYS_USER_MODULE_PERMISSION.REPORT_TAG 个人优先，否则 SYS_GROUP_MODULE_PERMISSION.REPORT_TAG 组 OR。</summary>
-    private static async Task<bool> GetModuleReportTagAsync(
-        SqlConnection connection, string userId, int moduleId, CancellationToken token)
-    {
-        const string personalSql = """
-            SELECT ISNULL(REPORT_TAG,0) FROM dbo.SYS_USER_MODULE_PERMISSION WITH (NOLOCK)
-            WHERE USER_ID=@UserId AND M_IDX=@ModuleId;
-            """;
-        await using (var personalCommand = new SqlCommand(personalSql, connection))
-        {
-            AddParameters(personalCommand, userId, moduleId);
-            var personal = await personalCommand.ExecuteScalarAsync(token);
-            if (personal is not null && personal is not DBNull)
-            {
-                return Convert.ToBoolean(personal);
-            }
-        }
-
-        const string groupSql = """
-            SELECT TOP 1 1 FROM dbo.SYS_GROUP_MODULE_PERMISSION h WITH (NOLOCK)
-            INNER JOIN dbo.SYS_USER_GROUP_MEMBER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
-            WHERE gu.USER_ID=@UserId AND h.M_IDX=@ModuleId AND ISNULL(h.REPORT_TAG,0)=1;
-            """;
-        await using var groupCommand = new SqlCommand(groupSql, connection);
-        AddParameters(groupCommand, userId, moduleId);
-        return await groupCommand.ExecuteScalarAsync(token) is not null;
     }
 
     private SqlConnection CreateConnection() => connections.Create();

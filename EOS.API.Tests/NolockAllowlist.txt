@@ -41,6 +41,9 @@ EOS.API/Data/ReportFormLayoutRepository.cs
 EOS.API/Data/ReportInboxRepository.cs
 EOS.API/Data/ReportRepository.cs
 EOS.API/Data/Reports/ReportCenterRepository.cs
+# 报表可见性判据的唯一实现（从报表权读取、打印面板清单、报表中心目录三处抽出的同一段谓词）：
+# 只读两张权限表判可见性，与原三处逐字同义，NOLOCK 语义沿用原登记。
+EOS.API/Data/Reports/ModuleReportVisibility.cs
 EOS.API/Data/RestrictedExpressionService.cs
 EOS.API/Data/RightsAdminRepository.cs
 EOS.API/Data/SearchCenterRepository.cs
