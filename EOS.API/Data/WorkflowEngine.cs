@@ -612,19 +612,13 @@ public sealed class WorkflowEngine(
         return result is not null && Convert.ToInt32(result) == 1;
     }
 
-    /// <summary>主表物理列白名单（sys.columns 目录视图，服务端权威），供条件评估使用。</summary>
-    private static async Task<HashSet<string>> LoadMasterColumnsAsync(
+    /// <summary>
+    /// 主表物理列白名单（服务端权威），供条件评估使用。实现回接
+    /// <see cref="WorkbenchSql.GetPhysicalColumnsAsync"/>——同一件事此前在本文件内联了一份同形 SQL。
+    /// </summary>
+    private static Task<HashSet<string>> LoadMasterColumnsAsync(
         SqlConnection connection, SqlTransaction transaction, string masterTable, CancellationToken token)
-    {
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        await using var command = new SqlCommand(
-            "SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table ORDER BY c.column_id;",
-            connection, transaction);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = masterTable;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token)) columns.Add(reader.GetString(0));
-        return columns;
-    }
+        => WorkbenchSql.GetPhysicalColumnsAsync(connection, transaction, masterTable, token);
 
     /// <summary>按人权限判定：空权限串=全部有权限。</summary>
     private static bool HasPower(string user, IReadOnlyList<string> powerList)

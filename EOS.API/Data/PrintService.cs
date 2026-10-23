@@ -248,12 +248,14 @@ public sealed class PrintService(
         SqlConnection connection,string table,bool canViewCost,bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,CancellationToken token)
     {
+        // 字段必须真有物理列才渲染。物理列集合走 WorkbenchSql.GetPhysicalColumnsAsync——
+        // 此前在本文件内联了一份同形的 sys.columns EXISTS，与本文件其它读取用的白名单不是同一处实现。
+        var physical=await WorkbenchSql.GetPhysicalColumnsAsync(connection,null,table,token);
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
                    COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,'')))
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
             ORDER BY COALESCE(f.VERIFY_INDEX,999),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);
@@ -263,6 +265,7 @@ public sealed class PrintService(
         while(await reader.ReadAsync(token))
         {
             var key=reader.GetString(0);
+            if(!physical.Contains(key))continue;
             if(deniedFields.Contains(key))continue;
             if(Convert.ToBoolean(reader.GetValue(2))&&!canViewCost)continue;
             if(Convert.ToBoolean(reader.GetValue(3))&&!canViewSecrecy)continue;
@@ -277,35 +280,25 @@ public sealed class PrintService(
         SqlConnection connection,string table,IReadOnlyList<string> pkOrder,IReadOnlyList<string> keyValues,
         IReadOnlyList<string> fields,string scopePredicate,IReadOnlyList<object> scopeParameters,CancellationToken token)
     {
-        var where=string.Join(" AND ",pkOrder.Select((pk,index)=>$"[{pk}]=@k{index}"));
+        // 主键条件与行物化都走共享原语（此前本文件各写一份 @k{i} 拼接与 Reader→Dictionary 循环）。
+        var where=WorkbenchSql.BuildKeyWhere(pkOrder,keyValues);
         var scope=string.IsNullOrWhiteSpace(scopePredicate)?"":" AND ("+scopePredicate+")";
         var columns=string.Join(',',fields.Select(field=>$"[{field}]"));
         await using var command=new SqlCommand($"SELECT {columns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {where}{scope};",connection);
-        for(var i=0;i<pkOrder.Count;i++)command.Parameters.AddWithValue($"@k{i}",keyValues[i]);
+        WorkbenchSql.AddKeyParameters(command,pkOrder,keyValues);
         for(var i=0;i<scopeParameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",scopeParameters[i]??DBNull.Value);
-        await using var reader=await command.ExecuteReaderAsync(token);
-        if(!await reader.ReadAsync(token))return null;
-        var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-        for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);
-        return row;
+        var rows=await WorkbenchSql.ReadRowsAsync(command,token);
+        return rows.Count==0?null:rows[0];
     }
 
     private static async Task<IReadOnlyList<Dictionary<string,object?>>> ReadRowsAsync(
         SqlConnection connection,string table,IReadOnlyList<string> pkOrder,IReadOnlyList<string> keyValues,
         IReadOnlyList<string> fields,CancellationToken token)
     {
-        var where=string.Join(" AND ",pkOrder.Select((pk,index)=>$"[{pk}]=@k{index}"));
+        var where=WorkbenchSql.BuildKeyWhere(pkOrder,keyValues);
         var columns=string.Join(',',fields.Select(field=>$"[{field}]"));
         await using var command=new SqlCommand($"SELECT {columns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {where} ORDER BY [{fields[0]}];",connection);
-        for(var i=0;i<pkOrder.Count;i++)command.Parameters.AddWithValue($"@k{i}",keyValues[i]);
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var rows=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token))
-        {
-            var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-            for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);
-            rows.Add(row);
-        }
-        return rows;
+        WorkbenchSql.AddKeyParameters(command,pkOrder,keyValues);
+        return await WorkbenchSql.ReadRowsAsync(command,token);
     }
 }
