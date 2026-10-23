@@ -30,6 +30,10 @@ public sealed class ResolveMetricToolTests
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken) =>
             Task.FromResult(permission);
 
+        public Task<ReportRights> GetReportAsync(
+            string userId, int moduleId, string reportId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("测试替身不涉及报表权");
+
         public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
@@ -368,6 +372,10 @@ public sealed class ResolveMetricNullResultTests
                 DenyNewMasterFields: new HashSet<string>(), DenyNewDetailFields: new HashSet<string>(),
                 DenyModiMasterFields: new HashSet<string>(), DenyModiDetailFields: new HashSet<string>(),
                 DataFilter: string.Empty, ExecuteTag: "A")));
+
+        public Task<ReportRights> GetReportAsync(
+            string userId, int moduleId, string reportId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("测试替身不涉及报表权");
 
         public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

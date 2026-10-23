@@ -13,7 +13,6 @@ namespace EOS.API.Controllers;
 public sealed class PrintController(
     PrintService service,
     PrintSettingsRepository printSettingsRepository,
-    ModuleRightsRepository rightsRepository,
     IPermissionService permissions,
     DocumentWorkbenchRepository workbench,
     WorkbenchAuditWriter auditWriter,
@@ -44,7 +43,7 @@ public sealed class PrintController(
             ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
             ?? settings.Reports.FirstOrDefault();
         if (report is null) return Forbid();
-        var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
+        var reportRights = await permissions.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return Forbid();
 
         // 抬头取值优先级：

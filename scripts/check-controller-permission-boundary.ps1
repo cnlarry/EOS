@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     `IPermissionService` 的注释声明自己是"EOS.API 内唯一模块权限判断入口：控制器与仓储不再
-    直接调用 `ModuleRightsRepository`"，而实测仍有 25 个控制器直接向它取权限。**声明与事实
+    直接调用 `ModuleRightsRepository`"，而实测仍有 21 个控制器直接向它取权限。**声明与事实
     不一致比重复本身更危险**——下一位维护者会照注释去错误的位置找真相。
 
     判据是字面量匹配 `ModuleRightsRepository`，零语义判断；存量按**具名冻结**处理（只减不增）：
@@ -28,7 +28,6 @@ $pattern = 'ModuleRightsRepository'
 
 # 具名冻结：批 2 第 6 项（权限门收敛）逐条清空。新增条目等于把新写的越界当成既有事实，不允许。
 $allowed = @(
-    'EOS.API/Controllers/AssistantAdminController.cs'
     'EOS.API/Controllers/AssistantController.cs'
     'EOS.API/Controllers/BusinessFlowController.cs'
     'EOS.API/Controllers/CarSummaryController.cs'
@@ -39,15 +38,12 @@ $allowed = @(
     'EOS.API/Controllers/ImportController.cs'
     'EOS.API/Controllers/JobsController.cs'
     'EOS.API/Controllers/KbController.cs'
-    'EOS.API/Controllers/LayoutDesignerController.cs'
     'EOS.API/Controllers/MenuAdminController.cs'
     'EOS.API/Controllers/ModuleBusinessConfigController.cs'
     'EOS.API/Controllers/ModuleButtonAdminController.cs'
     'EOS.API/Controllers/ModuleGroupAdminController.cs'
     'EOS.API/Controllers/NavigationGroupsController.cs'
-    'EOS.API/Controllers/PrintController.cs'
     'EOS.API/Controllers/ReportAdminController.cs'
-    'EOS.API/Controllers/ReportController.cs'
     'EOS.API/Controllers/RightsAdminController.cs'
     'EOS.API/Controllers/SettingsController.cs'
     'EOS.API/Controllers/TableDataController.cs'
@@ -79,7 +75,8 @@ try {
             $controllersDir = Join-Path $temp 'EOS.API/Controllers'
             New-Item -ItemType Directory -Force -Path $controllersDir | Out-Null
             $offender = Join-Path $controllersDir 'OffenderController.cs'
-            $frozen = Join-Path $controllersDir 'ReportController.cs'
+            # 清单内文件 ⇒ 放行（棘轮语义：存量冻结仍可运行）；取清单第一条，删清单时自检跟着走
+            $frozen = Join-Path $controllersDir (Split-Path -Leaf $allowed[0])
             $sample = '    ModuleRightsRepository rightsRepository,'
             Set-Content -LiteralPath $offender -Value $sample -Encoding utf8
 

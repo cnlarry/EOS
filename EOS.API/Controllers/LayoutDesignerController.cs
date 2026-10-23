@@ -26,7 +26,6 @@ public sealed class LayoutDesignerController(
     ILayoutRenderer renderer,
     DocumentWorkbenchRepository workbench,
     PrintSettingsRepository printSettings,
-    ModuleRightsRepository rightsRepository,
     PrintService printService,
     DbConnectionFactory connections,
     IPermissionService permissions,
@@ -146,7 +145,7 @@ public sealed class LayoutDesignerController(
             ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
             ?? settings.Reports.FirstOrDefault();
         if (report is null) return null;
-        var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
+        var reportRights = await permissions.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return null;
 
         var headerId = !string.IsNullOrWhiteSpace(request.HeaderId)

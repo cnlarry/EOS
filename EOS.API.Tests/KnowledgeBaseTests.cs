@@ -71,6 +71,10 @@ public sealed class KnowledgeBaseTests
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken) =>
             Task.FromResult(Permission(moduleId, moduleId == 2302 ? consultant : ops));
 
+        public Task<ReportRights> GetReportAsync(
+            string userId, int moduleId, string reportId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("测试替身不涉及报表权");
+
         public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }

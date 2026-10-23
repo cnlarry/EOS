@@ -26,14 +26,14 @@ namespace EOS.API.Controllers;
 /// </para>
 ///
 /// <para>
-/// 权限门：读 = <c>CanBrowse(3101)</c>，归档/删除 = <c>CanEdit(3101)</c>。
+/// 权限门：读 = 3101 的 <c>Browse</c>，归档/删除 = 3101 的 <c>Edit</c>。
 /// </para>
 /// </summary>
 [ApiController, Authorize, Route("api/v1/admin/assistant")]
 public sealed class AssistantAdminController(
     IAssistantAdminRepository repository,
     CurrentUserContext userContext,
-    ModuleRightsRepository rightsRepository,
+    IPermissionService permissions,
     IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools,
     IKnowledgeRepository knowledge,
     IAssistantModelCatalog modelCatalog,
@@ -211,7 +211,7 @@ public sealed class AssistantAdminController(
         [FromQuery] string? sortDir = null,
         CancellationToken token = default)
     {
-        if (!await CanBrowse(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.SessionAdmin, PermissionAction.Browse, token)) return Forbid();
         var (items, total) = await repository.ListSessionsAsync(
             offset, limit, ParseState(state), keyword, owner,
             ParseSort(sortBy), string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase), token);
@@ -222,14 +222,14 @@ public sealed class AssistantAdminController(
     [HttpGet("sessions/owners")]
     public async Task<IActionResult> ListOwners(CancellationToken token)
     {
-        if (!await CanBrowse(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.SessionAdmin, PermissionAction.Browse, token)) return Forbid();
         return Ok(await repository.ListOwnersAsync(token));
     }
 
     [HttpPut("sessions/{sessionId:long}/archive")]
     public async Task<IActionResult> ArchiveSession(long sessionId, [FromBody] ArchiveSessionRequest? request, CancellationToken token)
     {
-        if (!await CanEdit(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.SessionAdmin, PermissionAction.Edit, token)) return Forbid();
         var updated = await repository.ArchiveSessionAsync(sessionId, request?.Archived ?? true, token);
         return updated > 0 ? NoContent() : NotFound();
     }
@@ -241,7 +241,7 @@ public sealed class AssistantAdminController(
     [HttpDelete("sessions/{sessionId:long}")]
     public async Task<IActionResult> DeleteSession(long sessionId, CancellationToken token)
     {
-        if (!await CanEdit(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.SessionAdmin, PermissionAction.Edit, token)) return Forbid();
         var deleted = await repository.DeleteSessionAsync(sessionId, token);
         if (deleted > 0) return NoContent();
         // 没删掉有两种可能，这里分不出来（受影响行数为 0），所以如实把两种都告诉调用方
@@ -250,13 +250,8 @@ public sealed class AssistantAdminController(
             "会话不存在，或它还在「在列」——只有已归档的会话可以永久删除。"));
     }
 
-    private async Task<bool> CanBrowse(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.SessionAdmin, token)).CanBrowse;
-
-    private async Task<bool> CanEdit(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.SessionAdmin, token)).CanEdit;
+    private async Task<bool> Can(int moduleId, PermissionAction action, CancellationToken token) =>
+        (await permissions.GetAsync(userContext.UserId, moduleId, token)).Can(action);
 
     /// <summary>
     /// 机制与工具总览（只读）：当前挂着的工具、可选动作清单与能力面边界。权限门 3104 的 CanBrowse。
@@ -269,7 +264,7 @@ public sealed class AssistantAdminController(
     [HttpGet("mechanism")]
     public async Task<IActionResult> GetMechanism(CancellationToken token)
     {
-        if (!await CanBrowseMechanism(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Mechanism, PermissionAction.Browse, token)) return Forbid();
         return Ok(new
         {
             tools = assistantTools
@@ -290,7 +285,7 @@ public sealed class AssistantAdminController(
     [HttpGet("kb/collections")]
     public async Task<IActionResult> ListKbCollections(CancellationToken token)
     {
-        if (!await CanBrowseKb(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Kb, PermissionAction.Browse, token)) return Forbid();
         return Ok(await knowledge.ListCollectionsAsync(token));
     }
 
@@ -304,7 +299,7 @@ public sealed class AssistantAdminController(
         [FromQuery] bool includeDeleted = false,
         CancellationToken token = default)
     {
-        if (!await CanBrowseKb(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Kb, PermissionAction.Browse, token)) return Forbid();
         if (string.IsNullOrWhiteSpace(collectionId))
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少集合编号。"));
@@ -323,7 +318,7 @@ public sealed class AssistantAdminController(
     [HttpDelete("kb/documents/{docId:long}")]
     public async Task<IActionResult> DeleteKbDocument(long docId, CancellationToken token)
     {
-        if (!await CanEditKb(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Kb, PermissionAction.Edit, token)) return Forbid();
         var deleted = await knowledge.DeleteDocumentAsync(docId, token);
         return deleted
             ? NoContent()
@@ -347,7 +342,7 @@ public sealed class AssistantAdminController(
     [HttpGet("presets")]
     public async Task<IActionResult> ListPresets(CancellationToken token)
     {
-        if (!await CanBrowseModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Browse, token)) return Forbid();
         return Ok(AssistantProviderCatalog.All.Select(provider => new
         {
             code = provider.Code,
@@ -400,7 +395,7 @@ public sealed class AssistantAdminController(
     [HttpGet("models/discover")]
     public async Task<IActionResult> DiscoverModels([FromQuery] int providerId, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         var provider = await modelCatalog.GetProviderAsync(providerId, token);
         if (provider is null)
         {
@@ -445,7 +440,7 @@ public sealed class AssistantAdminController(
     [HttpGet("providers")]
     public async Task<IActionResult> ListProviders(CancellationToken token)
     {
-        if (!await CanBrowseModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Browse, token)) return Forbid();
         var providers = await modelCatalog.ListProvidersAsync(token);
         var models = await modelCatalog.ListModelsAsync(token);
         var snapshot = registry.Current;
@@ -539,7 +534,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> CreateProvider(
         [FromBody] AssistantProviderRequest? request, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         if (request is null)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
@@ -596,7 +591,7 @@ public sealed class AssistantAdminController(
     [HttpPost("models")]
     public async Task<IActionResult> CreateModel([FromBody] AssistantModelRequest? request, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         if (request is null)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
@@ -628,7 +623,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> UpdateProvider(
         int providerId, [FromBody] AssistantProviderRequest? request, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         if (request is null)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
@@ -676,7 +671,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> SetProviderKey(
         int providerId, [FromBody] AssistantModelKeyRequest? request, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         var provider = await modelCatalog.GetProviderAsync(providerId, token);
         if (provider is null)
         {
@@ -718,7 +713,7 @@ public sealed class AssistantAdminController(
     [HttpDelete("providers/{providerId:int}")]
     public async Task<IActionResult> DeleteProvider(int providerId, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         var provider = await modelCatalog.GetProviderAsync(providerId, token);
         if (provider is null)
         {
@@ -742,7 +737,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> UpdateModel(
         int modelId, [FromBody] AssistantModelRequest? request, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         if (request is null)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
@@ -787,7 +782,7 @@ public sealed class AssistantAdminController(
     [HttpPost("models/{modelId:int}/activate")]
     public async Task<IActionResult> ActivateModel(int modelId, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         var row = await modelCatalog.GetModelAsync(modelId, token);
         if (row is null)
         {
@@ -858,7 +853,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> ClearActiveModel(
         [FromQuery] string? kind, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         var target = ParseModelKind(kind);
         if (target is null)
         {
@@ -882,7 +877,7 @@ public sealed class AssistantAdminController(
     [HttpDelete("models/{modelId:int}")]
     public async Task<IActionResult> DeleteModel(int modelId, CancellationToken token)
     {
-        if (!await CanSetupModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Setup, token)) return Forbid();
         var row = await modelCatalog.GetModelAsync(modelId, token);
         if (row is null)
         {
@@ -916,7 +911,7 @@ public sealed class AssistantAdminController(
     [HttpGet("usage")]
     public async Task<IActionResult> GetModelUsage([FromQuery] int days = 30, CancellationToken token = default)
     {
-        if (!await CanBrowseModels(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.ModelUsage, PermissionAction.Browse, token)) return Forbid();
         var window = Math.Clamp(days, 1, 180);
         var todayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
         var since = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-(window - 1)), TimeSpan.Zero);
@@ -993,7 +988,7 @@ public sealed class AssistantAdminController(
     [HttpGet("settings")]
     public async Task<IActionResult> ListSettings(CancellationToken token)
     {
-        if (!await CanBrowseSettings(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Browse, token)) return Forbid();
 
         var list = await parameters.ListAsync(AssistantParameterCatalog.OwnerModule, token);
         var rows = list.Groups.SelectMany(group => group.Parameters).ToList();
@@ -1042,7 +1037,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> UpdateSetting(
         string key, [FromBody] AssistantSettingRequest? request, CancellationToken token)
     {
-        if (!await CanSetupSettings(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Setup, token)) return Forbid();
         return await SaveSettingAsync(key, request?.Value, token);
     }
 
@@ -1050,7 +1045,7 @@ public sealed class AssistantAdminController(
     [HttpDelete("settings/{key}")]
     public async Task<IActionResult> ResetSetting(string key, CancellationToken token)
     {
-        if (!await CanSetupSettings(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Setup, token)) return Forbid();
         return await SaveSettingAsync(key, null, token);
     }
 
@@ -1111,7 +1106,7 @@ public sealed class AssistantAdminController(
     [HttpGet("settings/scopes")]
     public async Task<IActionResult> ListScopes(CancellationToken token)
     {
-        if (!await CanBrowseSettings(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Browse, token)) return Forbid();
 
         var rows = await scopeStore.ListAllAsync(token);
         return Ok(new
@@ -1153,7 +1148,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> UpsertScope(
         [FromBody] AssistantScopeRequest? request, CancellationToken token)
     {
-        if (!await CanSetupSettings(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Setup, token)) return Forbid();
         if (!AssistantParameterScopeRules.TryParseType(request?.ScopeType, out var scopeType))
         {
             return BadRequest(ApiProblem.Create(
@@ -1230,7 +1225,7 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> DeleteScopeLayer(
         string scopeType, string scopeKey, CancellationToken token)
     {
-        if (!await CanSetupSettings(token)) return Forbid();
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Setup, token)) return Forbid();
         if (!AssistantParameterScopeRules.TryParseType(scopeType, out var type))
         {
             return BadRequest(ApiProblem.Create(
@@ -1249,14 +1244,6 @@ public sealed class AssistantAdminController(
         if (descriptor.Layers.HasFlag(AssistantParameterScopeLayers.User)) layers.Add("USER");
         return layers;
     }
-
-    private async Task<bool> CanBrowseSettings(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.Settings, token)).CanBrowse;
-
-    private async Task<bool> CanSetupSettings(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.Settings, token)).CanSetup;
 
     /// <summary>校验供应商入参；返回 null 表示通过。宁可在这里把话说明白，也不要让一次必然失败的保存悄悄成功。</summary>
     private static string? ValidateProvider(AssistantProviderRequest request)
@@ -1433,26 +1420,6 @@ public sealed class AssistantAdminController(
             kind,
             kind == AssistantModelKind.Embedding ? request.Dimension : null);
     }
-
-    private async Task<bool> CanBrowseModels(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.ModelUsage, token)).CanBrowse;
-
-    private async Task<bool> CanSetupModels(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.ModelUsage, token)).CanSetup;
-
-    private async Task<bool> CanBrowseKb(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.Kb, token)).CanBrowse;
-
-    private async Task<bool> CanEditKb(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.Kb, token)).CanEdit;
-
-    private async Task<bool> CanBrowseMechanism(CancellationToken token) =>
-        (await rightsRepository.GetAsync(
-            userContext.UserId, PermissionModules.AssistantAdmin.Mechanism, token)).CanBrowse;
 
     /// <summary>未知取值一律按"在列"处理——列表查不出东西比抛 400 更难排查（与个人侧同口径）。</summary>
     internal static AssistantSessionListState ParseState(string? state) => state?.Trim().ToLowerInvariant() switch

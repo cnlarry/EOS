@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Models;
 
 namespace EOS.API.Security;
 
@@ -28,4 +29,8 @@ public sealed class PermissionService(ModuleRightsRepository rightsRepository, P
         }
         return permission;
     }
+
+    /// <summary>报表权按「归属模块 + 报表身份」判定，键里带报表号，故不进按模块建的权限缓存。</summary>
+    public Task<ReportRights> GetReportAsync(string userId, int moduleId, string reportId, CancellationToken cancellationToken) =>
+        rightsRepository.GetReportAsync(userId, moduleId, reportId, cancellationToken);
 }

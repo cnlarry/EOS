@@ -13,7 +13,6 @@ namespace EOS.API.Controllers;
 public sealed class ReportController(
     ReportRepository repository,
     PrintSettingsRepository printSettingsRepository,
-    ModuleRightsRepository rightsRepository,
     IPermissionService permissions,
     WorkbenchAuditWriter auditWriter,
     ReportFormatRepository reportFormats,
@@ -23,10 +22,8 @@ public sealed class ReportController(
     [HttpGet("definition")]
     public async Task<IActionResult> Definition(int moduleId, [FromQuery] string? reportId, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!rights.CanBrowse) return Forbid();
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return Forbid();
+        var (userId, rights) = access;
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);
         return definition is null ? NotFound() : Ok(definition);
@@ -37,10 +34,8 @@ public sealed class ReportController(
         [FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? reportId,
         [FromBody] ReportQueryRequest request, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!rights.CanBrowse) return Forbid();
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return Forbid();
+        var (userId, rights) = access;
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);
         if (definition is null) return NotFound();
@@ -61,10 +56,8 @@ public sealed class ReportController(
     [HttpGet("print-settings")]
     public async Task<IActionResult> PrintSettings(int moduleId, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!rights.CanBrowse) return Forbid();
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return Forbid();
+        var (userId, _) = access;
         return Ok(await printSettingsRepository.GetAsync(moduleId, userId, token));
     }
 
@@ -73,10 +66,8 @@ public sealed class ReportController(
     public async Task<IActionResult> SavePrintSettings(int moduleId,
         [FromBody] ReportPrintSettingsRequest request, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!rights.CanBrowse) return Forbid();
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return Forbid();
+        var (userId, _) = access;
         await printSettingsRepository.SaveAsync(moduleId, userId, request, token);
         return NoContent();
     }
@@ -89,10 +80,8 @@ public sealed class ReportController(
     [HttpPost("pdf")]
     public async Task<IActionResult> Pdf(int moduleId, [FromBody] ReportPdfRequest request, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var moduleRights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!moduleRights.CanBrowse) return Forbid();
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return Forbid();
+        var (userId, moduleRights) = access;
         var definition = await repository.GetDefinitionAsync(
             moduleId, userId, moduleRights.CanViewCost, moduleRights.CanViewSecrecy,
             moduleRights.DeniedMasterFields, request.ReportId, token);
@@ -103,7 +92,7 @@ public sealed class ReportController(
             ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
             ?? settings.Reports.FirstOrDefault();
         if (report is null) return NotFound();
-        var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
+        var reportRights = await permissions.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return Forbid();
 
         var meta = await printSettingsRepository.GetPdfMetaAsync(moduleId, report.ReportId, token);
@@ -157,10 +146,8 @@ public sealed class ReportController(
     public async Task<IActionResult> Export(int moduleId, [FromQuery] string? reportId,
         [FromBody] ReportQueryRequest request, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!rights.CanBrowse) return Forbid();
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return Forbid();
+        var (userId, rights) = access;
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);
         if (definition is null) return NotFound();
@@ -172,7 +159,7 @@ public sealed class ReportController(
             ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
             ?? settings.Reports.FirstOrDefault();
         if (report is null) return Forbid();
-        var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
+        var reportRights = await permissions.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanExport) return Forbid();
 
         var result = await repository.QueryAsync(
@@ -191,12 +178,24 @@ public sealed class ReportController(
 
     private async Task<ReportDefinition?> AuthorizedDefinition(int moduleId, string? reportId, CancellationToken token)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return null;
-        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
-        if (!rights.CanBrowse) return null;
+        if (await ModuleAccessAsync(moduleId, token) is not { } access) return null;
+        var (userId, rights) = access;
         return await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);
+    }
+
+    /// <summary>
+    /// 模块浏览权的统一门：通过时给出 userId 与字段级/数据范围权限；未通过时返回 null，
+    /// 由调用方决定是 403（直接拒绝）还是 404（防探测，见 <see cref="AuthorizedDefinition"/>）。
+    /// 缺身份声明时抛 <see cref="UnauthorizedAccessException"/>，由统一异常出口转 401——
+    /// 这是"没登录"，与"没有权限"必须分开。报表归属哪个模块由服务端解析，故各端点共用这一处判定。
+    /// </summary>
+    private async Task<(string UserId, ModuleRights Rights)?> ModuleAccessAsync(int moduleId, CancellationToken token)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new UnauthorizedAccessException();
+        var permission = await permissions.GetAsync(userId, moduleId, token);
+        return permission.CanBrowse ? (userId, permission.Rights) : null;
     }
 
     private static IReadOnlyList<string> SplitFields(string? raw) =>

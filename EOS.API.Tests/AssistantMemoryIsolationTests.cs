@@ -1,5 +1,6 @@
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Memory;
+using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +20,10 @@ public sealed class AssistantMemoryIsolationTests
     {
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<ReportRights> GetReportAsync(
+            string userId, int moduleId, string reportId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("测试替身不涉及报表权");
 
         public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

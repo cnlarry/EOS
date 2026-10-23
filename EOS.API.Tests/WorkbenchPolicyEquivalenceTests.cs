@@ -577,6 +577,10 @@ public class WorkbenchPolicyEquivalenceTests
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken)
             => Task.FromResult(new ModulePermission(RightsFor(moduleId)));
 
+        public Task<ReportRights> GetReportAsync(
+            string userId, int moduleId, string reportId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("测试替身不涉及报表权");
+
         public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken)
         {
             var permission = new ModulePermission(RightsFor(moduleId));
