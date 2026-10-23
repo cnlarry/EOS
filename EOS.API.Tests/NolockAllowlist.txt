@@ -8,7 +8,6 @@
 # SQL 与原仓库逐字相同（无新增读取面），NOLOCK 语义沿用原登记。
 # 字段白名单（分组表达式与模块 FILTER 共用）：只读 `FIELDS` + `sys.columns` 的登记表，
 # 由 WorkbenchDefinitionValidator 的同一段 SQL 抽出（原文件已在名单内）
-EOS.API/Controllers/ReportCenterController.cs
 EOS.API/Data/Assistant/AssistantAdminRepository.cs
 EOS.API/Data/Assistant/AssistantModelCatalog.cs
 EOS.API/Data/AssistantRepository.cs
@@ -41,6 +40,7 @@ EOS.API/Data/ReportAggregateRegistry.cs
 EOS.API/Data/ReportFormLayoutRepository.cs
 EOS.API/Data/ReportInboxRepository.cs
 EOS.API/Data/ReportRepository.cs
+EOS.API/Data/Reports/ReportCenterRepository.cs
 EOS.API/Data/RestrictedExpressionService.cs
 EOS.API/Data/RightsAdminRepository.cs
 EOS.API/Data/SearchCenterRepository.cs
