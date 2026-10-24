@@ -118,6 +118,16 @@ export interface DesignerDefinition {
   headerId: string | null
   tailId: string | null
   printPrice: boolean | null
+  /** 公司表（110101 / COMPANY）可引用字段：{{COMPANY.*}} 的字段下拉 */
+  companyFields: ContractColumn[]
+  /** 本模块报表显式绑定的公司（默认报表优先；无报表时为 null） */
+  company: CompanyOption | null
+}
+
+export interface CompanyOption {
+  companyId: string
+  nameCn: string
+  nameEn: string
 }
 
 export interface LayoutHeaderOption {

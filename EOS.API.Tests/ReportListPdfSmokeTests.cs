@@ -123,6 +123,64 @@ public class ReportListPdfSmokeTests
     }
 
     [Fact]
+    public void 报表清单页头公司名取公司表而非旧页头文本()
+    {
+        var company = new CompanyProfile(
+            "DEFAULT",
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["NAME_CN"] = "公司甲", ["NAME_EN"] = "COMPANY A", ["TEL"] = "0769-00000000",
+            },
+            "公司甲", "COMPANY A");
+        var meta = new ReportPdfMeta(
+            "R1", "测试报表", null, null, null, null, null,
+            // 旧页头里还留着真实公司名：公司记录存在时不得再被打印出来
+            new ReportHeaderOption("H1", "默认页头", "旧公司名", "OLD CO", "页头文字", null, null),
+            null, [], company);
+        var definition = new ReportDefinition(
+            129801, "产品资料明细", "PRODUCT", null, [],
+            [new ReportColumn("PRO_NO", "产品编号", "nvarchar", null, IsCost: false, IsSecrecy: false)],
+            ["PRO_NO"], []);
+        var data = new ReportQueryResult([], 0, 1, 1);
+
+        var composed = ReportListPdfComposer.Compose(
+            new ReportPdfRenderInput(meta, definition, data, "", "user01",
+                [], true, true, meta.Header, null),
+            new StubEnvironment());
+
+        Assert.Equal("公司甲", composed.Data.HeaderCompany);
+        Assert.Equal("COMPANY A", composed.Data.HeaderCompanyEn);
+        Assert.Equal("公司甲", composed.Context.Report!.CompanyName);
+        // 页头文本仍然来自页头字典（它不是公司名）
+        Assert.Equal("页头文字", composed.Data.HeaderText);
+        Assert.NotNull(composed.Data.Company);
+        Assert.Equal("0769-00000000", composed.Data.Company!["TEL"]);
+    }
+
+    [Fact]
+    public void 没有公司记录时不回退页头里的旧公司名()
+    {
+        var meta = new ReportPdfMeta(
+            "R1", "测试报表", null, null, null, null, null,
+            new ReportHeaderOption("H1", "默认页头", "旧公司名", "OLD CO", "页头文字", null, null),
+            null, []);
+        var definition = new ReportDefinition(
+            129801, "产品资料明细", "PRODUCT", null, [],
+            [new ReportColumn("PRO_NO", "产品编号", "nvarchar", null, IsCost: false, IsSecrecy: false)],
+            ["PRO_NO"], []);
+        var data = new ReportQueryResult([], 0, 1, 1);
+
+        var composed = ReportListPdfComposer.Compose(
+            new ReportPdfRenderInput(meta, definition, data, "", "user01",
+                [], true, true, meta.Header, null),
+            new StubEnvironment());
+
+        // 公司记录缺失就是缺失：不回退页头字典里的旧文本（ADR-041）
+        Assert.Null(composed.Data.HeaderCompany);
+        Assert.Null(composed.Context.Report!.CompanyName);
+    }
+
+    [Fact]
     public void 报表清单渲染_产出合法PDF字节()
     {
         var meta = new ReportPdfMeta(

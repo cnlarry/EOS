@@ -1,24 +1,32 @@
-import type { DataContract, LayoutElement } from './types'
+import type { ContractColumn, DataContract, LayoutElement } from './types'
 import { FieldAutocomplete } from './FieldAutocomplete'
 
 interface PropertyPanelProps {
   element: LayoutElement
   dataContract: DataContract
+  companyFields: ContractColumn[]
   systemFields: string[]
   canDesign: boolean
   onChange: (patch: Partial<LayoutElement>) => void
   onRemove: () => void
 }
 
-const FIELD_OPTIONS = (dataContract: DataContract, systemFields: string[]) => [
+const companyOptions = (companyFields: ContractColumn[]) =>
+  companyFields.map((c) => ({ value: `COMPANY.${c.key}`, label: `COMPANY.${c.key}（公司·${c.label}）` }))
+
+const FIELD_OPTIONS = (dataContract: DataContract, companyFields: ContractColumn[], systemFields: string[]) => [
   ...dataContract.columns.map((c) => ({ value: `MASTER.${c.key}`, label: `MASTER.${c.key}（${c.label}）` })),
   ...dataContract.detailColumns.map((c) => ({ value: `DETAILS.${c.key}`, label: `DETAILS.${c.key}（${c.label}）` })),
+  ...companyOptions(companyFields),
   ...systemFields.map((f) => ({ value: f, label: f })),
 ]
 
-// 字段元素只允许绑定主表字段与系统值；明细字段只能在表格内以列形式显示
-const MASTER_AND_SYSTEM_OPTIONS = (dataContract: DataContract, systemFields: string[]) => [
+// 字段元素允许绑定主表字段、公司表字段与系统值；明细字段只能在表格内以列形式显示
+const MASTER_SYSTEM_AND_COMPANY_OPTIONS = (
+  dataContract: DataContract, companyFields: ContractColumn[], systemFields: string[],
+) => [
   ...dataContract.columns.map((c) => ({ value: `MASTER.${c.key}`, label: `MASTER.${c.key}（${c.label}）` })),
+  ...companyOptions(companyFields),
   ...systemFields.map((f) => ({ value: f, label: f })),
 ]
 
@@ -47,9 +55,9 @@ function NumberField({
 }
 
 export function PropertyPanel({
-  element, dataContract, systemFields, canDesign, onChange, onRemove,
+  element, dataContract, companyFields, systemFields, canDesign, onChange, onRemove,
 }: PropertyPanelProps) {
-  const options = FIELD_OPTIONS(dataContract, systemFields)
+  const options = FIELD_OPTIONS(dataContract, companyFields, systemFields)
   return (
     <div className="p-3 d-flex flex-column gap-3">
       <div>
@@ -90,10 +98,11 @@ export function PropertyPanel({
               value={element.content ?? ''}
               suggestions={[
                 ...dataContract.columns.map((c) => `MASTER.${c.key}`),
+                ...companyFields.map((c) => `COMPANY.${c.key}`),
                 ...systemFields,
               ]}
               onChange={(content) => onChange({ content })}
-              placeholder="静态文本，可用 {{MASTER.XXX}} / {{SYS.XXX}} 引用"
+              placeholder="静态文本，可用 {{MASTER.XXX}} / {{COMPANY.XXX}} / {{SYS.XXX}} 引用"
             />
           </label>
           <div className="row g-2">
@@ -147,7 +156,7 @@ export function PropertyPanel({
               onChange={(e) => onChange({ field: e.target.value })}
             >
               <option value="">未绑定</option>
-              {MASTER_AND_SYSTEM_OPTIONS(dataContract, systemFields).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {MASTER_SYSTEM_AND_COMPANY_OPTIONS(dataContract, companyFields, systemFields).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
           <label className="form-label mb-0">

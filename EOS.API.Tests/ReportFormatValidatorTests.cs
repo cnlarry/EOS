@@ -72,6 +72,34 @@ public class ReportFormatValidatorTests
     }
 
     [Fact]
+    public void CompanyField_RequiresCompanyWhitelist()
+    {
+        var layoutJson = LayoutJson.Value.Replace(
+            "{{SYS.HEADER_COMPANY}}", "{{COMPANY.NAME_CN}}", StringComparison.Ordinal);
+
+        // 不传公司字段白名单（内置版式体检等调用方）：COMPANY.* 一律非法，不得静默放行
+        var rejected = Validator.Validate(Format.Value, layoutJson).Messages;
+        Assert.Contains(rejected, error => error.Contains("COMPANY.NAME_CN") && error.Contains("公司字段白名单"));
+
+        // 传入白名单（保存路径现读 FIELDS）：命中即通过
+        var accepted = Validator.Validate(
+            Format.Value, layoutJson,
+            companyKeys: new HashSet<string>(["NAME_CN"], StringComparer.OrdinalIgnoreCase)).Messages;
+        Assert.DoesNotContain(accepted, error => error.Contains("COMPANY."));
+    }
+
+    [Fact]
+    public void CompanyField_OutsideWhitelist_IsRejected()
+    {
+        var layoutJson = LayoutJson.Value.Replace(
+            "{{SYS.HEADER_COMPANY}}", "{{COMPANY.NOT_A_FIELD}}", StringComparison.Ordinal);
+        var errors = Validator.Validate(
+            Format.Value, layoutJson,
+            companyKeys: new HashSet<string>(["NAME_CN"], StringComparer.OrdinalIgnoreCase)).Messages;
+        Assert.Contains(errors, error => error.Contains("COMPANY.NOT_A_FIELD") && error.Contains("公司字段白名单"));
+    }
+
+    [Fact]
     public void ElementOutsideContentArea_IsRejected()
     {
         var layoutJson = LayoutJson.Value.Replace(

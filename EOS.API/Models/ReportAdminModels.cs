@@ -13,7 +13,9 @@ public sealed record ReportAdminDraft(
     string? ReportFilter,
     string? Remark,
     /// <summary>该报表专有的打印版式包编号；空 = 沿用模块默认版式。</summary>
-    string? FormatId = null);
+    string? FormatId = null,
+    /// <summary>开单公司（COMPANY.COMPANY_ID，110101）；必选，系统默认编号 DEFAULT。</summary>
+    string? CompanyId = null);
 
 /// <summary>可绑定的打印版式（内置格式包）：版式按模块归属，只能绑到同模块的报表上。</summary>
 public sealed record ReportFormatOption(string FormatId, string Title, int ModuleId);

@@ -605,6 +605,10 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                 return ResolveSystemValue(reference["SYS.".Length..], data, context) ?? string.Empty;
             if (reference.StartsWith("MASTER.", StringComparison.OrdinalIgnoreCase))
                 return PdfLayout.FormatValue(data.Master.GetValueOrDefault(reference["MASTER.".Length..]));
+            if (reference.StartsWith("COMPANY.", StringComparison.OrdinalIgnoreCase))
+                return data.Company is null
+                    ? string.Empty
+                    : PdfLayout.FormatValue(data.Company.GetValueOrDefault(reference["COMPANY.".Length..]));
             return string.Empty;
         });
     }
@@ -815,7 +819,7 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                 {
                     var value = autoColumns
                         ? FormatDetailCell(row.GetValueOrDefault(fields[i].Field), fields[i], context)
-                        : ResolveTableCell(fields[i], row, index, context);
+                        : ResolveTableCell(fields[i], row, data, index, context);
                     var align = fields[i].Align ?? "left";
                     var cell = t.Cell()
                         .BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2)
@@ -902,7 +906,8 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
     }
 
     private static string ResolveTableCell(
-        TableColumnSpec column, IReadOnlyDictionary<string, object?> row, int index, LayoutRenderContext context)
+        TableColumnSpec column, IReadOnlyDictionary<string, object?> row, PrintData data,
+        int index, LayoutRenderContext context)
     {
         var reference = column.Field;
         if (string.Equals(reference, "DETAILS.ROW_INDEX", StringComparison.OrdinalIgnoreCase))
@@ -922,7 +927,10 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
             return AppendSuffix(value, column.Suffix);
         }
         if (reference.StartsWith("MASTER.", StringComparison.OrdinalIgnoreCase))
-            return FormatDetailCell(ResolveMasterValue(reference, null), column, context);
+            return FormatDetailCell(ResolveMasterValue(reference, data), column, context);
+        if (reference.StartsWith("COMPANY.", StringComparison.OrdinalIgnoreCase))
+            return FormatDetailCell(
+                data.Company?.GetValueOrDefault(reference["COMPANY.".Length..]), column, context);
         return string.Empty; // fail-closed：未知字段引用渲染为空
     }
 
@@ -970,6 +978,10 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         if (string.IsNullOrWhiteSpace(reference)) return null;
         if (reference.StartsWith("MASTER.", StringComparison.OrdinalIgnoreCase))
             return PdfLayout.FormatValue(ResolveMasterValue(reference, data));
+        if (reference.StartsWith("COMPANY.", StringComparison.OrdinalIgnoreCase))
+            return data.Company is null
+                ? null
+                : PdfLayout.FormatValue(data.Company.GetValueOrDefault(reference["COMPANY.".Length..]));
         if (reference.StartsWith("DETAILS.", StringComparison.OrdinalIgnoreCase))
         {
             if (detailRow is null) return null;

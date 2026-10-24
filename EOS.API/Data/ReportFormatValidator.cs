@@ -8,8 +8,9 @@ namespace EOS.API.Data;
 /// 版式保存校验器：
 /// JSON Schema 级校验（格式合法、坐标在页内、元素数/文件大小上限）+
 /// 字段引用白名单校验（MASTER.* / DETAILS.* 必须 ∈ format.json dataContract，
+/// COMPANY.* 必须 ∈ 公司表字段白名单（110101 / COMPANY，保存路径现读），
 /// SYS.* 必须 ∈ 解释层系统值白名单）。渲染时由 QuestPdfLayoutRenderer 二次 fail-closed。
-/// 白名单来源是服务端 format.json，非前端提交。
+/// 白名单来源是服务端 format.json 与 FIELDS，非前端提交。
 /// </summary>
 public sealed class ReportFormatValidator
 {
@@ -75,11 +76,16 @@ public sealed class ReportFormatValidator
     };
 
     /// <summary>校验 layout.json 是否可安全保存/渲染；Ok = 通过。</summary>
+    /// <param name="companyKeys">
+    /// 公司表（110101 / COMPANY）字段白名单；保存路径必须传入（现读 FIELDS），
+    /// 其它调用方（如内置版式体检）不传时，出现 COMPANY.* 引用会被判为非法。
+    /// </param>
     public ValidationResult Validate(
         ReportFormatDefinition format,
         string layoutJson,
         int maxLayoutBytes = DefaultMaxLayoutBytes,
-        int maxElements = DefaultMaxElements)
+        int maxElements = DefaultMaxElements,
+        IReadOnlySet<string>? companyKeys = null)
     {
         var errors = new List<string>();
 
@@ -191,7 +197,7 @@ public sealed class ReportFormatValidator
             var (name, width, height) = sectionBounds[s];
             foreach (var element in sectionElements[s])
             {
-                ValidateElement(element, name, width, height, masterKeys, detailKeys, errors);
+                ValidateElement(element, name, width, height, masterKeys, detailKeys, companyKeys, errors);
             }
         }
 
@@ -205,6 +211,7 @@ public sealed class ReportFormatValidator
         double? sectionHeight,
         HashSet<string> masterKeys,
         HashSet<string> detailKeys,
+        IReadOnlySet<string>? companyKeys,
         List<string> errors)
     {
         var id = element.Id ?? element.Type;
@@ -225,11 +232,11 @@ public sealed class ReportFormatValidator
             errors.Add($"{section}[{id}] 超出 {section} 段高度：y + h = {element.Y + element.H} > {maxHeight}mm。");
 
         if (element.Field is not null)
-            CheckReference(id, element.Field, masterKeys, detailKeys, errors);
+            CheckReference(id, element.Field, masterKeys, detailKeys, companyKeys, errors);
         if (element.Content is not null)
         {
             foreach (Match match in TemplatePattern.Matches(element.Content))
-                CheckReference(id, match.Groups[1].Value, masterKeys, detailKeys, errors);
+                CheckReference(id, match.Groups[1].Value, masterKeys, detailKeys, companyKeys, errors);
         }
 
         if (element.Type == "table")
@@ -255,7 +262,7 @@ public sealed class ReportFormatValidator
                         errors.Add($"{section}[{id}] 列缺少 field。");
                         continue;
                     }
-                    CheckReference(id, column.Field, masterKeys, detailKeys, errors);
+                    CheckReference(id, column.Field, masterKeys, detailKeys, companyKeys, errors);
                 }
             }
         }
@@ -279,7 +286,7 @@ public sealed class ReportFormatValidator
 
     private static void CheckReference(
         string elementId, string reference, HashSet<string> masterKeys, HashSet<string> detailKeys,
-        List<string> errors)
+        IReadOnlySet<string>? companyKeys, List<string> errors)
     {
         if (reference.StartsWith("MASTER.", StringComparison.OrdinalIgnoreCase))
         {
@@ -292,6 +299,16 @@ public sealed class ReportFormatValidator
             var key = reference["DETAILS.".Length..];
             if (!detailKeys.Contains(key) && !BuiltinDetailReferences.Contains(key))
                 errors.Add($"[{elementId}] 引用 DETAILS.{key} 不在 dataContract 白名单。");
+        }
+        else if (reference.StartsWith("COMPANY.", StringComparison.OrdinalIgnoreCase))
+        {
+            // 公司表（110101）字段：白名单来自 FIELDS 现读，与渲染侧同一份契约。
+            // 不传白名单的调用方一律判非法——宁可当场报错，不要打印时静默空白。
+            var key = reference["COMPANY.".Length..];
+            if (companyKeys is null)
+                errors.Add($"[{elementId}] 引用 COMPANY.{key} 需要公司字段白名单（保存路径必须传入）。");
+            else if (!companyKeys.Contains(key))
+                errors.Add($"[{elementId}] 引用 COMPANY.{key} 不在公司字段白名单。");
         }
         else if (reference.StartsWith("SYS.", StringComparison.OrdinalIgnoreCase))
         {
@@ -307,7 +324,7 @@ public sealed class ReportFormatValidator
         }
         else
         {
-            errors.Add($"[{elementId}] 字段引用命名空间非法：{reference}（MASTER.* / DETAILS.* / SYS.* / REPORT.*）。");
+            errors.Add($"[{elementId}] 字段引用命名空间非法：{reference}（MASTER.* / DETAILS.* / COMPANY.* / SYS.* / REPORT.*）。");
         }
     }
 

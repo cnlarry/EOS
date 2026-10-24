@@ -35,6 +35,14 @@ const definition = {
     detailColumns: [{ key: 'PRO_NO', label: '料号', type: 'string' }],
   },
   systemFields: ['SYS.TITLE', 'SYS.PAGE_NUMBER'],
+  companyFields: [
+    { key: 'NAME_CN', label: '中文名', type: 'string' },
+    { key: 'TEL', label: '电话', type: 'string' },
+  ],
+  company: { companyId: 'DEFAULT', nameCn: '默认有限公司', nameEn: 'DEFAULT LLC' },
+  headerId: null,
+  tailId: null,
+  printPrice: null,
 }
 
 function renderPage() {
@@ -83,19 +91,19 @@ describe('LayoutDesignerPage', () => {
 
   it('保存调用 save 接口并标记已保存', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('保存')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('保存'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/layout-designer/1405/save',
       expect.objectContaining({ clientId: null }),
     ))
-    await waitFor(() => expect(screen.getByText('已保存')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: '已保存' })).toBeInTheDocument())
   })
 
   it('预览调用 preview 接口', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('预览')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('预览'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'PDF 预览' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 预览' }))
     await waitFor(() => expect(screen.getByText('数据来源')).toBeInTheDocument())
     fireEvent.click(screen.getByText('生成预览'))
     await waitFor(() => expect(apiClientMock.postFile).toHaveBeenCalledWith(
@@ -143,21 +151,28 @@ describe('LayoutDesignerPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path === '/layout-designer/1405/definition') return definition
       if (path === '/layout-designer/headers') {
-        return [{ headerId: 'DEFAULT', name: '默认', company: '示例公司', companyEn: null, headerText: null, logoPath: null }]
+        return [{ headerId: 'DEFAULT', name: '默认', company: null, companyEn: null, headerText: null, logoPath: null }]
       }
       throw new Error('unexpected')
     })
     renderPage()
     await waitFor(() => expect(screen.getByTitle('页头字典引用')).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('页头字典引用'))
-    await waitFor(() => expect(screen.getByText(/页头字典/)).toBeInTheDocument())
-    await waitFor(() => expect(screen.getAllByText(/示例公司/).length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getByText('页头字典（HEADER_ID 引用）')).toBeInTheDocument())
+    // 公司名不再由页头字典维护，弹窗只说明来源（110101 公司基本资料）
+    await waitFor(() => expect(screen.getByText(/110101 公司基本资料/)).toBeInTheDocument())
+    expect(screen.getAllByText('默认').length).toBeGreaterThan(0)
+  })
+
+  it('工具栏显示报表绑定的公司（110101）', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('公司：默认有限公司')).toBeInTheDocument())
   })
 
   it('预览数据场景选择后预览请求携带对应参数', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('预览')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('预览'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'PDF 预览' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 预览' }))
     await waitFor(() => expect(screen.getByLabelText('数据场景')).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText('数据场景'), { target: { value: '2' } })
     fireEvent.click(screen.getByText('生成预览'))
@@ -169,8 +184,8 @@ describe('LayoutDesignerPage', () => {
 
   it('真实单据预览请求携带主键', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('预览')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('预览'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'PDF 预览' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 预览' }))
     await waitFor(() => expect(screen.getByLabelText('真实单据')).toBeInTheDocument())
     fireEvent.click(screen.getByLabelText('真实单据'))
     await waitFor(() => expect(screen.getByPlaceholderText('输入真实单据的单号')).toBeInTheDocument())

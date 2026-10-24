@@ -62,6 +62,7 @@ public sealed class ReportAdminController(
         ReportAdminValidator.ValidateReportId(draft.ReportId);
         ReportAdminValidator.ValidateModuleId(draft.ModuleId);
         ValidateFormat(draft.FormatId, draft.ModuleId!.Value);
+        await ValidateCompanyAsync(draft.CompanyId, token);
         var existing = await repository.ListReportsAsync(draft.ModuleId!.Value, token);
         if (existing.Any(item => item.ReportId == draft.ReportId.Trim())) return Conflict("报表编号已存在。");
         await repository.CreateReportAsync(draft, User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty, token);
@@ -76,6 +77,7 @@ public sealed class ReportAdminController(
         var moduleId = await repository.GetReportModuleAsync(id, token);
         if (moduleId is null) return NotFound();
         ValidateFormat(draft.FormatId, moduleId.Value);
+        await ValidateCompanyAsync(draft.CompanyId, token);
         var updated = await repository.UpdateReportAsync(id, draft, User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty, token);
         return updated ? NoContent() : NotFound();
     }
@@ -149,6 +151,13 @@ public sealed class ReportAdminController(
         return Ok(await repository.HeaderOptionsAsync(token));
     }
 
+    [HttpGet("companies")]
+    public async Task<IActionResult> Companies(CancellationToken token)
+    {
+        if (!await CanBrowseAsync(token)) return Forbid();
+        return Ok(await repository.CompanyOptionsAsync(token));
+    }
+
     [HttpGet("tails")]
     public async Task<IActionResult> Tails(CancellationToken token)
     {
@@ -193,6 +202,19 @@ public sealed class ReportAdminController(
             ?? throw new ArgumentException($"打印版式 '{formatId.Trim()}' 不存在，请从可选版式中选择。");
         if (package.Format.ModuleId != moduleId)
             throw new ArgumentException($"打印版式 '{formatId.Trim()}' 属于模块 {package.Format.ModuleId}，不能绑定到模块 {moduleId} 的报表。");
+    }
+
+    /// <summary>
+    /// 公司绑定校验（fail-closed）：必须显式选择公司（系统默认公司编号 DEFAULT），且必须真实存在——
+    /// 不选会让打印页头失去公司名，库层也已用 NOT NULL + CHECK 拒空（迁移 449）。
+    /// </summary>
+    private async Task ValidateCompanyAsync(string? companyId, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(companyId))
+            throw new ArgumentException("必须选择开单公司（系统默认公司编号为 DEFAULT）。");
+        var id = companyId.Trim();
+        if (!await repository.CompanyExistsAsync(id, token))
+            throw new ArgumentException($"公司 '{id}' 不存在，请从 110101 公司基本资料中选择。");
     }
 
     private async Task<bool> CanBrowseAsync(CancellationToken token)

@@ -21,7 +21,7 @@ interface ReportRow {
   reportId: string; reportName: string | null; moduleId: number; isoNo: string | null;
   headerId: string | null; tailId: string | null; footerText: string | null;
   isDefault: boolean; reportFilter: string | null;
-  remark: string | null; formatId: string | null
+  remark: string | null; formatId: string | null; companyId: string | null
 }
 interface SortRow {
   serialNo: number; sortName: string | null; sortFields: string | null; sortDesc: string | null;
@@ -29,6 +29,7 @@ interface SortRow {
 }
 
 interface ReportAdminFieldOption { table: string; column: string; label: string }
+interface CompanyOption { companyId: string; nameCn: string; nameEn: string | null }
 interface ReportFormatOption { formatId: string; title: string; moduleId: number }
 
 type ReportEditorState = { mode: 'new' } | { mode: 'edit'; row: ReportRow }
@@ -70,12 +71,13 @@ interface ReportEditorModalProps {
   moduleId: number
   headers: IdNameOption[]
   tails: IdNameOption[]
+  companies: CompanyOption[]
   onClose: () => void
   onSaved: () => void
 }
 
 /** 报表定义（REPORT）新增/编辑弹窗（2201 定制页，弹窗承载对齐 2305/2306）。 */
-function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose, onSaved }: ReportEditorModalProps) {
+function ReportEditorModal({ open, mode, row, moduleId, headers, tails, companies, onClose, onSaved }: ReportEditorModalProps) {
   const editingId = mode === 'edit' ? (row?.reportId ?? '').trim() : ''
   const [draft, setDraft] = useState<Record<string, string | boolean>>({})
   const [moduleSelection, setModuleSelection] = useState<number | ''>('')
@@ -93,6 +95,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
       headerId: row?.headerId ?? '', tailId: row?.tailId ?? '', footerText: row?.footerText ?? '',
       isDefault: row?.isDefault ?? false,
       reportFilter: row?.reportFilter ?? '', remark: row?.remark ?? '', formatId: row?.formatId ?? '',
+      companyId: row?.companyId ?? '',
     })
     setModuleSelection(mode === 'edit' ? (row?.moduleId ?? '') : '')
     setModuleDesc('')
@@ -100,6 +103,16 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
     setFilterBuilderOpen(false)
     setFilterConditions([emptyQueryCondition()])
   }, [open, mode, row])
+
+  // 新建/旧数据没有公司时，默认选中公司清单第一项（排序后即系统默认公司 DEFAULT）；
+  // 这是表单的初始选择，提交的仍是显式 companyId，不靠服务端兜底。
+  useEffect(() => {
+    if (!open || companies.length === 0) return
+    setDraft((state) => {
+      if (String(state.companyId ?? '').trim() !== '') return state
+      return { ...state, companyId: companies[0].companyId }
+    })
+  }, [open, companies])
 
   const effectiveModule = mode === 'edit' ? (row?.moduleId ?? moduleId) : (moduleSelection || 0)
 
@@ -122,6 +135,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
     if (!id) { setError('报表编号不能为空。'); return }
     const targetModule = mode === 'edit' ? (row?.moduleId ?? moduleId) : moduleSelection
     if (!targetModule) { setError('请选择所属模块。'); return }
+    if (!String(draft.companyId ?? '').trim()) { setError('请选择开单公司（系统默认公司编号为 DEFAULT）。'); return }
     setSaving(true)
     setError(null)
     try {
@@ -131,6 +145,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
         footerText: String(draft.footerText ?? ''),
         isDefault: Boolean(draft.isDefault), reportFilter: String(draft.reportFilter ?? ''),
         remark: String(draft.remark ?? ''), formatId: String(draft.formatId ?? ''),
+        companyId: String(draft.companyId ?? ''),
       }
       if (mode === 'edit') await apiClient.put(`/report-admin/reports/${encodeURIComponent(editingId)}`, body)
       else await apiClient.post('/report-admin/reports', body)
@@ -203,6 +218,21 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
                     <option key={item.formatId} value={item.formatId}>{item.title}（{item.formatId}）</option>
                   ))}
                 </select>
+              </div>
+              <div className="col-md-4">
+                <label className="form-label" htmlFor="report-company">开单公司</label>
+                <select
+                  id="report-company"
+                  className="form-select"
+                  value={String(draft.companyId ?? '')}
+                  onChange={(event) => setDraft((state) => ({ ...state, companyId: event.target.value }))}
+                >
+                  <option value="">请选择开单公司…</option>
+                  {companies.map((item) => (
+                    <option key={item.companyId} value={item.companyId}>{item.nameCn}（{item.companyId}）</option>
+                  ))}
+                </select>
+                <div className="form-hint">必选；系统默认公司编号为 DEFAULT。页头公司名与 {'{{COMPANY.*}}'} 取自 110101 公司基本资料</div>
               </div>
               <div className="col-md-4">
                 <label className="form-label d-block" htmlFor="report-default">默认报表</label>
@@ -430,6 +460,7 @@ export function ReportAdminPage() {
   const reports = useQuery({ queryKey: ['report-admin', 'reports'], queryFn: () => apiClient.get<ReportRow[]>('/report-admin/reports') })
   const headers = useQuery({ queryKey: ['report-admin', 'headers'], queryFn: () => apiClient.get<IdNameOption[]>('/report-admin/headers') })
   const tails = useQuery({ queryKey: ['report-admin', 'tails'], queryFn: () => apiClient.get<IdNameOption[]>('/report-admin/tails') })
+  const companies = useQuery({ queryKey: ['report-admin', 'companies'], queryFn: () => apiClient.get<CompanyOption[]>('/report-admin/companies') })
   const sorts = useQuery({
     queryKey: ['report-admin', 'sorts', selectedReport],
     // 取消选中时不能留着上一张报表的方案，否则明细卡会显示别的报表的数据
@@ -505,6 +536,14 @@ export function ReportAdminPage() {
       },
     },
     { accessorKey: 'reportName', header: '报表名称', cell: (info) => (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
+    {
+      accessorKey: 'companyId', header: '开单公司',
+      cell: ({ row }) => {
+        if (!row.original.companyId) return <span className="text-secondary">—</span>
+        return companies.data?.find((item) => item.companyId === row.original.companyId)?.nameCn
+          ?? String(row.original.companyId)
+      },
+    },
     { accessorKey: 'headerId', header: '页头', cell: (info) => headers.data?.find((item) => item.id === info.getValue())?.name ?? (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'tailId', header: '表尾', cell: (info) => tails.data?.find((item) => item.id === info.getValue())?.name ?? (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'isDefault', header: '默认', cell: (info) => (info.getValue() ? '是' : '否') },
@@ -526,7 +565,7 @@ export function ReportAdminPage() {
         </div>
       ),
     },
-  ], [headers.data, tails.data, modules.data, deleteReport])
+  ], [headers.data, tails.data, companies.data, modules.data, deleteReport])
 
   const sortColumns = useMemo<ColumnDef<SortRow, unknown>[]>(() => [
     selectColumn<SortRow>(),
@@ -610,6 +649,7 @@ export function ReportAdminPage() {
           moduleId={Number(selectedRow?.moduleId ?? 0)}
           headers={headers.data ?? []}
           tails={tails.data ?? []}
+          companies={companies.data ?? []}
           onClose={() => setReportEditor(null)}
           onSaved={() => { setReportEditor(null); void reports.refetch() }}
         />

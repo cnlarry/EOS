@@ -54,7 +54,7 @@ public sealed class PrintController(
             : report.HeaderId ?? string.Empty;
         var tailId = string.IsNullOrWhiteSpace(request.TailId) ? report.TailId : request.TailId.Trim();
         var data = await service.GetPrintDataAsync(
-            definition, request.Key, headerId, tailId,
+            definition, request.Key, headerId, tailId, report.CompanyId,
             rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, rights.DeniedDetailFields,
             CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);

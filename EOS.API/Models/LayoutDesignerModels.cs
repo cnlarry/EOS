@@ -41,7 +41,7 @@ public sealed record LayoutVersionInfo(
     string CreatePerson,
     DateTime CreateDate);
 
-/// <summary>设计器 definition 响应：布局 + 字段白名单 + 权限模式 + 定制状态。</summary>
+/// <summary>设计器 definition 响应：布局 + 字段白名单 + 公司表字段 + 权限模式 + 定制状态。</summary>
 public sealed record LayoutDesignerDefinition(
     string FormatId,
     string Title,
@@ -53,7 +53,11 @@ public sealed record LayoutDesignerDefinition(
     IReadOnlyList<string> SystemFields,
     string? HeaderId,
     string? TailId,
-    bool? PrintPrice);
+    bool? PrintPrice,
+    /// <summary>公司表（110101 / COMPANY）可引用字段：`{{COMPANY.*}}` 的字段下拉。</summary>
+    IReadOnlyList<ReportContractColumn> CompanyFields,
+    /// <summary>本模块报表显式绑定的公司（默认报表优先）；无报表或公司记录缺失时为 null。</summary>
+    CompanyOption? Company);
 
 /// <summary>页头条目（REPORT_LAYOUT KIND='HEADER'， 页头字典引用）。</summary>
 public sealed record LayoutHeaderOption(

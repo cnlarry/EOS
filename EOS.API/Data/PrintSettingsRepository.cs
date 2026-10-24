@@ -98,7 +98,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             SELECT LTRIM(RTRIM(r.REPORT_ID)),LTRIM(RTRIM(ISNULL(r.REPORT_NAME,r.REPORT_ID))),
                    LTRIM(RTRIM(ISNULL(r.HEADER_ID,''))),LTRIM(RTRIM(ISNULL(r.TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
-                   LTRIM(RTRIM(ISNULL(r.REPORT_FILTER,'')))
+                   LTRIM(RTRIM(ISNULL(r.REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(r.COMPANY_ID,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
             WHERE r.M_IDX=@ModuleId AND r.REPORT_ID=@ReportId;
             """;
@@ -114,6 +114,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         var footerText = reportReader.GetString(4);
         var isoNo = reportReader.GetString(5);
         var reportFilter = reportReader.GetString(6);
+        var companyId = reportReader.GetString(7);
         await reportReader.DisposeAsync();
 
         ReportHeaderOption? header = null;
@@ -153,13 +154,15 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         }
 
         var schemes = await ReadSortSchemesForReportAsync(connection, metaReportId, token);
+        // 公司表（第三数据源）：报表上显式绑定的公司；记录不存在时公司字段为空（迁移 449，不回落）。
+        var companyProfile = await CompanyPrintData.ReadAsync(connection, companyId, token);
         return new ReportPdfMeta(
             metaReportId, reportName, defaultHeaderId.Length == 0 ? null : defaultHeaderId,
             defaultTailId.Length == 0 ? null : defaultTailId,
             footerText.Length == 0 ? null : footerText,
             isoNo.Length == 0 ? null : isoNo,
             reportFilter.Length == 0 ? null : reportFilter,
-            header, tailText, schemes);
+            header, tailText, schemes, companyProfile);
     }
 
     /// <summary>
@@ -179,8 +182,10 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             SELECT r.REPORT_ID,LTRIM(RTRIM(ISNULL(r.REPORT_NAME,r.REPORT_ID))),
                    LTRIM(RTRIM(ISNULL(r.HEADER_ID,''))),LTRIM(RTRIM(ISNULL(r.TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
-                   ISNULL(r.IS_DEFAULT,0),LTRIM(RTRIM(ISNULL(r.FORMAT_ID,'')))
+                   ISNULL(r.IS_DEFAULT,0),LTRIM(RTRIM(ISNULL(r.FORMAT_ID,''))),
+                   LTRIM(RTRIM(ISNULL(r.COMPANY_ID,''))),LTRIM(RTRIM(ISNULL(c.NAME_CN,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
+            LEFT JOIN dbo.COMPANY c WITH (NOLOCK) ON c.COMPANY_ID=r.COMPANY_ID
             WHERE r.M_IDX=@ModuleId
             ORDER BY ISNULL(r.IS_DEFAULT,0) DESC,
                      -- 并列规则已落成数据（每模块至多一张 IS_DEFAULT=1，见迁移 273）。
@@ -202,7 +207,9 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                 EmptyToNull(reader.GetString(4)),
                 EmptyToNull(reader.GetString(5)),
                 reader.GetBoolean(6),
-                EmptyToNull(reader.GetString(7))));
+                EmptyToNull(reader.GetString(7)),
+                EmptyToNull(reader.GetString(8)),
+                EmptyToNull(reader.GetString(9))));
         }
         return result;
     }

@@ -6,11 +6,13 @@ import {
   IconArrowLeft, IconCheck, IconDeviceFloppy, IconGridDots, IconRotate2,
   IconRotateClockwise2, IconTypography, IconBraces, IconPhoto, IconMinus,
   IconRectangle, IconTable, IconBarcode, IconStack2, IconSettings, IconHistory, IconChevronsRight,
+  IconTemplate, IconLayoutNavbar, IconFiles, IconMaximize, IconEye, IconPencil, IconFileTypePdf,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
+import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { Button } from '../../components/ui/Button'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
@@ -797,63 +799,96 @@ export function LayoutDesignerPage() {
       <ErpListCard
         ariaLabel="版式设计器工具栏"
         search={(
-          <>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/report-center')}>
-              <IconArrowLeft size={16} /> 返回
-            </Button>
-            <strong className="ms-2">{definition.data?.title ?? ''} · 版式设计器</strong>
-            {!canEdit && <span className="badge bg-danger">无设计权限</span>}
-          </>
+          <div className="d-flex flex-column text-nowrap flex-shrink-0">
+            <strong className="lh-sm">
+              {definition.data?.title ?? ''} · 版式设计器
+              {!canEdit && <span className="badge bg-danger ms-2 align-middle">无设计权限</span>}
+            </strong>
+            {definition.data?.company && (
+              <span className="text-secondary small lh-sm"
+                title="页头公司名与 {{COMPANY.*}} 取自 110101 公司基本资料；公司绑定在报表定义上（显式编号，系统默认 DEFAULT）">
+                公司：{definition.data.company.nameCn}
+              </span>
+            )}
+          </div>
         )}
         actions={(
-          <>
-            <Button variant="secondary" size="sm" disabled={history.past.length === 0} onClick={undo}>
-              <IconRotate2 size={16} /> 撤销
-            </Button>
-            <Button variant="secondary" size="sm" disabled={history.future.length === 0} onClick={redo}>
-              <IconRotateClockwise2 size={16} /> 重做
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowGrid((g) => !g)}>
-              <IconGridDots size={16} /> 网格
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowTemplates(true)} title="模板库">
-              模板
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowHistory(true)} title="版本历史"
-              disabled={!definition.data?.isCustom}>
-              历史
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowHeaderManager(true)} title="页头字典引用">
-              页头
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowPageTemplates(true)} title="多页版式模板">
-              页模板
-            </Button>
-            <select
-              className="form-select form-select-sm"
-              style={{ width: 86 }}
-              aria-label="画布缩放"
-              value={zoom}
-              onChange={(e) => setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(e.target.value))))}
-            >
-              {[1, 1.5, 2, 2.5, 3, 4, 5, 6].map((z) => (
-                <option key={z} value={z}>{Math.round(z * 100 / 3)}%</option>
-              ))}
-            </select>
-            <Button variant="secondary" size="sm" onClick={fitZoom} title="适配窗口">适配</Button>
-            <Button variant={viewMode === 'edit' ? 'primary' : 'secondary'} size="sm"
-              onClick={() => viewMode === 'edit' ? enterPreviewMode() : exitPreviewMode()}>
-              {viewMode === 'edit' ? '渲染预览' : '返回编辑'}
-            </Button>
-            <Button variant="secondary" size="sm" disabled={!canEdit}
-              onClick={() => setShowPreviewDialog(true)} title="PDF 预览（样例/真实单据）">
-              <IconCheck size={16} /> 预览
-            </Button>
-            <Button size="sm" disabled={!canEdit || saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}>
-              <IconDeviceFloppy size={16} /> {saved ? '已保存' : '保存'}
-            </Button>
-          </>
+          <ErpCommandBar
+            iconOnly
+            ariaLabel="版式设计器操作"
+            items={[
+              {
+                action: 'back', icon: <IconArrowLeft size={16} />, title: '返回报表中心',
+                variant: 'ghost', onClick: () => navigate('/report-center'),
+              },
+              {
+                action: 'undo', icon: <IconRotate2 size={16} />, title: '撤销',
+                disabled: history.past.length === 0, onClick: undo,
+              },
+              {
+                action: 'redo', icon: <IconRotateClockwise2 size={16} />, title: '重做',
+                disabled: history.future.length === 0, onClick: redo,
+              },
+              {
+                action: 'grid', icon: <IconGridDots size={16} />,
+                title: showGrid ? '隐藏网格' : '显示网格',
+                onClick: () => setShowGrid((g) => !g),
+              },
+              {
+                action: 'templates', icon: <IconTemplate size={16} />, title: '模板库',
+                onClick: () => setShowTemplates(true),
+              },
+              {
+                action: 'history', icon: <IconHistory size={16} />, title: '版本历史',
+                disabled: !definition.data?.isCustom, onClick: () => setShowHistory(true),
+              },
+              {
+                action: 'header', icon: <IconLayoutNavbar size={16} />, title: '页头字典引用',
+                onClick: () => setShowHeaderManager(true),
+              },
+              {
+                action: 'pageTemplates', icon: <IconFiles size={16} />, title: '多页版式模板',
+                onClick: () => setShowPageTemplates(true),
+              },
+              {
+                action: 'zoom',
+                render: () => (
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: 104, flex: '0 0 auto' }}
+                    aria-label="画布缩放"
+                    value={zoom}
+                    onChange={(e) => setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(e.target.value))))}
+                  >
+                    {[1, 1.5, 2, 2.5, 3, 4, 5, 6].map((z) => (
+                      <option key={z} value={z}>{Math.round(z * 100 / 3)}%</option>
+                    ))}
+                  </select>
+                ),
+              },
+              {
+                action: 'fit', icon: <IconMaximize size={16} />, title: '适配窗口',
+                onClick: fitZoom,
+              },
+              {
+                action: 'renderPreview',
+                icon: viewMode === 'edit' ? <IconEye size={16} /> : <IconPencil size={16} />,
+                title: viewMode === 'edit' ? '渲染预览' : '返回编辑',
+                variant: viewMode === 'edit' ? 'primary' : 'secondary',
+                onClick: () => viewMode === 'edit' ? enterPreviewMode() : exitPreviewMode(),
+              },
+              {
+                action: 'preview', icon: <IconFileTypePdf size={16} />, title: 'PDF 预览',
+                disabled: !canEdit, onClick: () => setShowPreviewDialog(true),
+              },
+              {
+                action: 'save', icon: saved ? <IconCheck size={16} /> : <IconDeviceFloppy size={16} />,
+                title: saved ? '已保存' : '保存',
+                variant: 'primary', disabled: !canEdit || saveMutation.isPending,
+                onClick: () => saveMutation.mutate(),
+              },
+            ]}
+          />
         )}
       >
         <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
@@ -1158,6 +1193,7 @@ export function LayoutDesignerPage() {
                   <PropertyPanel
                     element={selected}
                     dataContract={definition.data.dataContract}
+                    companyFields={definition.data.companyFields ?? []}
                     systemFields={definition.data.systemFields}
                     canDesign={canDesign}
                     onChange={(patch) => {
@@ -1194,6 +1230,7 @@ export function LayoutDesignerPage() {
           moduleId={moduleId!}
           currentHeaderId={definition.data.headerId}
           tailId={definition.data.tailId}
+          company={definition.data.company ?? null}
           canDesign={canDesign}
           onClose={() => setShowHeaderManager(false)}
         />

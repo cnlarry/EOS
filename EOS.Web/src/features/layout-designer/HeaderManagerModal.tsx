@@ -3,18 +3,19 @@ import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import type { LayoutHeaderOption } from './types'
+import type { CompanyOption, LayoutHeaderOption } from './types'
 
 interface HeaderManagerModalProps {
   moduleId: string
   currentHeaderId: string | null
   tailId: string | null
+  company: CompanyOption | null
   canDesign: boolean
   onClose: () => void
 }
 
 export function HeaderManagerModal({
-  moduleId, currentHeaderId, tailId, canDesign, onClose,
+  moduleId, currentHeaderId, tailId, company, canDesign, onClose,
 }: HeaderManagerModalProps) {
   const queryClient = useQueryClient()
   const [selectedHeaderId, setSelectedHeaderId] = useState(currentHeaderId ?? '')
@@ -84,6 +85,19 @@ export function HeaderManagerModal({
             </div>
           </div>
 
+          <div className="alert alert-secondary py-2 small mb-3">
+            公司名 / 英文名 / 地址 / 电话来自 <strong>110101 公司基本资料</strong>
+            （打印时只认报表上显式绑定的公司，系统默认公司编号 <code>DEFAULT</code>）。
+            页头字典只维护 <strong>LOGO 与页头文本</strong>；
+            版式里可用 <code>{'{{COMPANY.NAME_CN}}'}</code>、<code>{'{{COMPANY.TEL}}'}</code> 等公司字段。
+            {company && (
+              <div className="mt-1">
+                当前生效公司：<strong>{company.nameCn}</strong>（{company.companyId}）
+                ——改绑在「报表设置 → 报表定义」的开单公司（<code>/admin/report-setup</code>），不在此处。
+              </div>
+            )}
+          </div>
+
           <div className="text-secondary small mb-2">页头条目（{headers.data?.length ?? 0}）</div>
           {headers.isPending && <div className="text-secondary small">加载中…</div>}
           {(headers.data ?? []).map((header) => (
@@ -91,17 +105,7 @@ export function HeaderManagerModal({
               {editing?.headerId === header.headerId ? (
                 <div className="d-flex flex-column gap-1">
                   <input
-                    type="text" className="form-control form-control-sm" placeholder="公司名"
-                    value={editForm.company}
-                    onChange={(e) => setEditForm((f) => ({ ...f, company: e.target.value }))}
-                  />
-                  <input
-                    type="text" className="form-control form-control-sm" placeholder="公司英文名"
-                    value={editForm.companyEn}
-                    onChange={(e) => setEditForm((f) => ({ ...f, companyEn: e.target.value }))}
-                  />
-                  <input
-                    type="text" className="form-control form-control-sm" placeholder="电话/地址行"
+                    type="text" className="form-control form-control-sm" placeholder="电话/地址行（可选）"
                     value={editForm.headerText}
                     onChange={(e) => setEditForm((f) => ({ ...f, headerText: e.target.value }))}
                   />
@@ -122,7 +126,7 @@ export function HeaderManagerModal({
                   <div className="flex-grow-1">
                     <strong>{header.name}</strong>
                     <span className="text-secondary ms-2 small font-monospace">{header.headerId}</span>
-                    {header.company && <div className="text-secondary small">{header.company}{header.companyEn ? ` / ${header.companyEn}` : ''}</div>}
+                    {header.headerText && <div className="text-secondary small">{header.headerText}</div>}
                   </div>
                   {canDesign && (
                     <Button variant="ghost" size="sm"

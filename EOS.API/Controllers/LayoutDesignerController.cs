@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Data.Reports;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -50,11 +51,24 @@ public sealed class LayoutDesignerController(
         var package = formats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
         var effective = await layouts.GetEffectiveLayoutAsync(moduleId, clientId, userId, token);
+        // 公司表（第三数据源）：字段白名单 + 该模块报表上显式绑定的公司（默认报表优先）。
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var companyFields = await CompanyPrintData.ReadFieldsAsync(connection, token);
+        var companyId = await CompanyPrintData.ReadPreviewCompanyIdAsync(connection, moduleId, token);
+        var company = await CompanyPrintData.ReadAsync(connection, companyId, token);
         return Ok(new LayoutDesignerDefinition(
             package.Format.FormatId, package.Format.Title,
             effective.IsCustom, effective.LayoutId, mode,
             effective.LayoutJson, package.Format.DataContract, SystemFields,
-            effective.HeaderId, effective.TailId, effective.PrintPrice));
+            effective.HeaderId, effective.TailId, effective.PrintPrice,
+            companyFields,
+            company is null
+                ? null
+                : new CompanyOption(
+                    company.CompanyId,
+                    string.IsNullOrWhiteSpace(company.NameCn) ? company.CompanyId : company.NameCn,
+                    company.NameEn ?? string.Empty)));
     }
 
     [HttpPost("{moduleId:int}/save")]
@@ -68,7 +82,14 @@ public sealed class LayoutDesignerController(
         var package = formats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
 
-        var validation = validator.Validate(package.Format, request.LayoutJson);
+        // COMPANY.* 白名单与渲染侧同一来源（FIELDS 现读）：保存时逐引用校验，写错当场拦。
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var companyFields = await CompanyPrintData.ReadFieldsAsync(connection, token);
+        var companyKeys = companyFields
+            .Select(field => field.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var validation = validator.Validate(package.Format, request.LayoutJson, companyKeys: companyKeys);
         if (!validation.Ok)
         {
             logger.LogWarning("设计器保存被校验拦截 module={ModuleId} userId={UserId} errors={Errors}",
@@ -108,6 +129,19 @@ public sealed class LayoutDesignerController(
                 SamplePrintDataFactory.Build(
                     moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture), package.RawSampleJson),
                 request.Rows, request.Variant);
+            // 样例预览也带真实公司：设计器里看到的就是实际打印的开单主体，
+            // 否则 `{{COMPANY.*}}` 只能预览到示例值（样例数据里没有公司表）。
+            await using var connection = connections.Create();
+            await connection.OpenAsync(token);
+            var companyId = await CompanyPrintData.ReadPreviewCompanyIdAsync(connection, moduleId, token);
+            var company = await CompanyPrintData.ReadAsync(connection, companyId, token);
+            if (company is not null)
+                data = data with
+                {
+                    Company = company.Fields,
+                    HeaderCompany = company.NameCn ?? data.HeaderCompany,
+                    HeaderCompanyEn = company.NameEn ?? data.HeaderCompanyEn,
+                };
         }
         if (data is null) return NotFound();
 
@@ -153,7 +187,7 @@ public sealed class LayoutDesignerController(
             : report.HeaderId ?? string.Empty;
         var tailId = string.IsNullOrWhiteSpace(report.TailId) ? null : report.TailId.Trim();
         return await printService.GetPrintDataAsync(
-            definition, key, headerId, tailId,
+            definition, key, headerId, tailId, report.CompanyId,
             rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, rights.DeniedDetailFields,
             CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);

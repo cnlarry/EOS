@@ -28,7 +28,7 @@ interface ReportColumn { key: string; label: string; dataType: string; displayFo
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; dataSource: 'table' | 'aggregate'; parameters: ReportParameter[] }
 interface ReportParameter { name: string; dataType: string; maxLength: number; serialNo: number; isTo: boolean; constant: string | null }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
-interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; isDefault: boolean }
+interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; isDefault: boolean; companyId?: string | null; companyName?: string | null }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
 interface ReportTailOption { tailId: string; tailName: string; tailText: string }
 interface ReportSortScheme { serialNo: number; sortName: string; sortFields: string | null; groupName: string | null; groupFields: string | null }
@@ -468,7 +468,7 @@ export function ReportViewerPage({
               <div className="border rounded bg-light mt-2 px-3 py-2 d-flex align-items-center gap-3">
                 {selectedHeader.logoUrl && <img src={selectedHeader.logoUrl} alt="页头 LOGO" style={{ maxHeight: 40 }} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
                 <div>
-                  {selectedHeader.companyName && <div className="fw-bold">{selectedHeader.companyName}</div>}
+                  {selectedReport?.companyName && <div className="fw-bold">{selectedReport.companyName}</div>}
                   {selectedHeader.headerText && <div className="small text-secondary">{selectedHeader.headerText}</div>}
                 </div>
               </div>

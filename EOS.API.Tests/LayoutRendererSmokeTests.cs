@@ -134,6 +134,50 @@ public class LayoutRendererSmokeTests
     }
 
     [Fact]
+    public void Render_CompanyFields_ReadsCompanyTable()
+    {
+        var data = Sample with
+        {
+            Company = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["NAME_CN"] = "测试公司", ["NAME_EN"] = "TEST CO", ["TEL"] = "0769-00000000",
+            },
+        };
+        const string layout = """
+            {
+              "schemaVersion": 1,
+              "kind": "document",
+              "page": { "size": "A4", "orientation": "portrait",
+                        "margin": { "top": 11.29, "right": 11.29, "bottom": 11.29, "left": 11.29 } },
+              "sections": {
+                "header": { "height": 20, "elements": [
+                  { "id": "h1", "type": "text", "x": 0, "y": 0.71, "w": 187.4, "h": 6,
+                    "content": "{{COMPANY.NAME_CN}} / {{COMPANY.NAME_EN}}", "style": { "fontSize": 12 } }
+                ] },
+                "content": { "elements": [
+                  { "id": "c1", "type": "field", "x": 0, "y": 1.0, "w": 100, "h": 4.1,
+                    "field": "COMPANY.TEL", "style": { "fontSize": 9 } },
+                  { "id": "c2", "type": "table", "x": 0, "y": 12, "w": 187.4, "h": 0,
+                    "dataSource": "details",
+                    "columns": [
+                      { "field": "DETAILS.PRO_NO", "label": "料号" },
+                      { "field": "COMPANY.NAME_EN", "label": "公司" }
+                    ] }
+                ] },
+                "footer": { "height": 14, "elements": [] }
+              }
+            }
+            """;
+        var pdf = Renderer.Render(data, layout, new LayoutRenderContext("admin"));
+        Assert.True(pdf.Length > 1000);
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf[..4]));
+
+        // 没有公司记录时 COMPANY.* 渲染为空，不抛异常（与其它未知引用的 fail-closed 口径一致）
+        var noCompany = Renderer.Render(Sample, layout, new LayoutRenderContext("admin"));
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(noCompany[..4]));
+    }
+
+    [Fact]
     public void Render_MalformedJson_Throws()
     {
         Assert.Throws<LayoutInvalidException>(() => Renderer.Render(Sample, "{ not json"));

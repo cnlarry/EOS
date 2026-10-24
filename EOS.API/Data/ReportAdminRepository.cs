@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Reports;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -41,7 +42,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                    LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
-                   LTRIM(RTRIM(ISNULL(FORMAT_ID,'')))
+                   LTRIM(RTRIM(ISNULL(FORMAT_ID,''))),LTRIM(RTRIM(ISNULL(COMPANY_ID,'')))
             FROM dbo.REPORT WITH (NOLOCK) WHERE M_IDX=@ModuleId ORDER BY IS_DEFAULT DESC,REPORT_ID;
             """;
         await using var connection = connections.Create();
@@ -56,7 +57,8 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                 reader.GetString(0).Trim(), EmptyToNull(reader.GetString(1)), reader.GetInt32(2),
                 EmptyToNull(reader.GetString(3)), EmptyToNull(reader.GetString(4)), EmptyToNull(reader.GetString(5)),
                 EmptyToNull(reader.GetString(6)), reader.GetBoolean(7),
-                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10))));
+                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10)),
+                EmptyToNull(reader.GetString(11))));
         }
         return result;
     }
@@ -70,7 +72,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                    LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
-                   LTRIM(RTRIM(ISNULL(FORMAT_ID,'')))
+                   LTRIM(RTRIM(ISNULL(FORMAT_ID,''))),LTRIM(RTRIM(ISNULL(COMPANY_ID,'')))
             FROM dbo.REPORT WITH (NOLOCK) ORDER BY M_IDX,IS_DEFAULT DESC,REPORT_ID;
             """;
         await using var connection = connections.Create();
@@ -84,7 +86,8 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                 reader.GetString(0).Trim(), EmptyToNull(reader.GetString(1)), reader.GetInt32(2),
                 EmptyToNull(reader.GetString(3)), EmptyToNull(reader.GetString(4)), EmptyToNull(reader.GetString(5)),
                 EmptyToNull(reader.GetString(6)), reader.GetBoolean(7),
-                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10))));
+                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10)),
+                EmptyToNull(reader.GetString(11))));
         }
         return result;
     }
@@ -93,10 +96,10 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             INSERT INTO dbo.REPORT
-                (REPORT_ID,REPORT_NAME,M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,FORMAT_ID,
+                (REPORT_ID,REPORT_NAME,M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,FORMAT_ID,COMPANY_ID,
                  IS_DEFAULT,REMARK,REPORT_FILTER,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
-                (@ReportId,@ReportName,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,@FormatId,
+                (@ReportId,@ReportName,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,@FormatId,@CompanyId,
                  @IsDefault,@Remark,@ReportFilter,@User,GETDATE(),@User,GETDATE());
             """;
         await using var connection = connections.Create();
@@ -110,7 +113,8 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             UPDATE dbo.REPORT
-            SET REPORT_NAME=@ReportName,ISO_NO=@IsoNo,HEADER_ID=@HeaderId,FOOTER_TEXT=@FooterText,TAIL_ID=@TailId,FORMAT_ID=@FormatId,
+            SET REPORT_NAME=@ReportName,ISO_NO=@IsoNo,HEADER_ID=@HeaderId,FOOTER_TEXT=@FooterText,TAIL_ID=@TailId,
+                FORMAT_ID=@FormatId,COMPANY_ID=@CompanyId,
                 IS_DEFAULT=@IsDefault,REMARK=@Remark,REPORT_FILTER=@ReportFilter,
                 LAST_UPDATE_BY=@User,LAST_UPDATE_DATE=GETDATE()
             WHERE REPORT_ID=@ReportId;
@@ -284,6 +288,25 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         return await ReadIdNameAsync(sql, token);
     }
 
+    /// <summary>可选开单公司（110101 公司基本资料）。</summary>
+    public async Task<IReadOnlyList<CompanyOption>> CompanyOptionsAsync(CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        return await CompanyPrintData.ReadOptionsAsync(connection, token);
+    }
+
+    /// <summary>保存校验：绑定的公司必须真实存在（不靠外键，见 ADR-036）。</summary>
+    public async Task<bool> CompanyExistsAsync(string companyId, CancellationToken token)
+    {
+        const string sql = "SELECT TOP 1 1 FROM dbo.COMPANY WHERE COMPANY_ID=@CompanyId;";
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@CompanyId", SqlDbType.NVarChar, 20).Value = companyId.Trim();
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
     private async Task<List<ReportAdminHeaderTailOption>> ReadIdNameAsync(string sql, CancellationToken token)
     {
         await using var connection = connections.Create();
@@ -323,6 +346,11 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         command.Parameters.AddWithNullable("FooterText", SqlDbType.NVarChar, 4000, draft.FooterText);
         command.Parameters.AddWithNullable("TailId", SqlDbType.NChar, 20, draft.TailId);
         command.Parameters.AddWithNullable("FormatId", SqlDbType.NVarChar, 64, draft.FormatId);
+        // 开单公司必须是显式值：列 NOT NULL + CHECK 已在库层拒空（迁移 449），这里在仓储层也拦一次。
+        var companyId = draft.CompanyId?.Trim();
+        if (string.IsNullOrEmpty(companyId))
+            throw new ArgumentException("必须选择开单公司（系统默认公司编号为 DEFAULT）。", nameof(draft));
+        command.Parameters.Add("@CompanyId", SqlDbType.NVarChar, 20).Value = companyId;
         command.Parameters.Add("@IsDefault", SqlDbType.Bit).Value = draft.IsDefault;
         command.Parameters.AddWithNullable("Remark", SqlDbType.NVarChar, 1000, draft.Remark);
         command.Parameters.AddWithNullable("ReportFilter", SqlDbType.NVarChar, 1000, draft.ReportFilter);

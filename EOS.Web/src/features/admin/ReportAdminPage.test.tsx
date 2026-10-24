@@ -21,6 +21,7 @@ const reports = [
 
 const headers = [{ id: 'H1', name: '默认页头' }]
 const tails = [{ id: 'T1', name: '默认表尾' }]
+const companies = [{ companyId: 'DEFAULT', nameCn: '默认有限公司', nameEn: 'DEFAULT LLC' }]
 
 const sorts = [
   { serialNo: 1, sortName: '按日期', sortFields: 'COP_SEND_M.SEND_DATE', sortDesc: null, groupName: null, groupFields: null, groupDesc: null },
@@ -90,6 +91,7 @@ describe('ReportAdminPage', () => {
       if (path.includes('/formats')) return reportFormats
       if (path.includes('/headers')) return headers
       if (path.includes('/tails')) return tails
+      if (path.includes('/companies')) return companies
       if (path.includes('/modules')) return modules
       throw new Error(`unexpected path: ${path}`)
     })
@@ -161,7 +163,11 @@ describe('ReportAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '新增记录' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/report-admin/reports',
-      expect.objectContaining({ reportId: 'RPT_NEW', reportName: '新报表', moduleId: 1305 }),
+      expect.objectContaining({
+        reportId: 'RPT_NEW', reportName: '新报表', moduleId: 1305,
+        // 表单默认选中公司清单第一项（系统默认公司 DEFAULT），提交的是显式编号
+        companyId: 'DEFAULT',
+      }),
     ))
   }, 20_000)
 
@@ -203,6 +209,22 @@ describe('ReportAdminPage', () => {
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
       '/report-admin/reports/RPT_A',
       expect.objectContaining({ formatId: '1406-pick' }),
+    ))
+  })
+
+  it('行「编辑」打开报表编辑弹窗可绑定开单公司，保存时带 companyId', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('RPT_A')).getByRole('button', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+    const select = dialog.querySelector('#report-company') as HTMLSelectElement
+    expect(select).not.toBeNull()
+    await waitFor(() => expect(Array.from(select.options).map((option) => option.value)).toContain('DEFAULT'))
+    fireEvent.change(select, { target: { value: 'DEFAULT' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存修改' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/report-admin/reports/RPT_A',
+      expect.objectContaining({ companyId: 'DEFAULT' }),
     ))
   })
 

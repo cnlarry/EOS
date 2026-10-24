@@ -58,6 +58,10 @@ public static class ReportListPdfComposer
         var columns = SelectPrintColumns(definition);
         var logo = header is null ? null : PdfLayout.TryLoadLogo(environment, header.LogoPath);
         var footerText = ExpandFooterText(meta.FooterText, input.PrintPerson);
+        // 页头公司名只认公司表（110101）：报表绑定的公司记录就是唯一来源，
+        // 不回退页头字典里的旧公司文本——那样"改了公司资料但打印还是老名字"会再出现一次（ADR-041）。
+        var companyName = meta.Company?.NameCn;
+        var companyNameEn = meta.Company?.NameEn;
 
         var payload = new ReportListPayload(
             Title: meta.ReportName,
@@ -65,8 +69,8 @@ public static class ReportListPdfComposer
             Conditions: input.ConditionDescription ?? string.Empty,
             TailText: input.TailText,
             FooterText: footerText,
-            CompanyName: header?.CompanyName,
-            CompanyNameEn: header?.CompanyNameEn,
+            CompanyName: companyName,
+            CompanyNameEn: companyNameEn,
             HeaderText: header?.HeaderText,
             Logo: logo,
             Columns: columns,
@@ -80,8 +84,8 @@ public static class ReportListPdfComposer
         var data = new PrintData(
             ModuleId: definition.ModuleId,
             Title: meta.ReportName,
-            HeaderCompany: header?.CompanyName,
-            HeaderCompanyEn: header?.CompanyNameEn,
+            HeaderCompany: companyName,
+            HeaderCompanyEn: companyNameEn,
             HeaderText: header?.HeaderText,
             FooterText: footerText,
             LogoPath: header?.LogoPath,
@@ -89,7 +93,8 @@ public static class ReportListPdfComposer
             MasterFields: [],
             DetailFields: columns.Select(column => new PrintField(column.Key, column.Label, column.DisplayFormat)).ToList(),
             Master: new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
-            Details: input.Data.Rows.Cast<IReadOnlyDictionary<string, object?>>().ToList());
+            Details: input.Data.Rows.Cast<IReadOnlyDictionary<string, object?>>().ToList(),
+            Company: meta.Company?.Fields);
 
         return (data, new LayoutRenderContext(input.PrintPerson, true, payload));
     }

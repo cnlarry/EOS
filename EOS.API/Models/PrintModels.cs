@@ -22,6 +22,21 @@ public sealed record ClientPrintProfile(
     string? HeaderId,
     bool PrintPrice);
 
+/// <summary>
+/// 公司表记录（110101 公司基本资料 / <c>COMPANY</c>）：打印的第三张数据表。
+/// <see cref="Fields"/> 是字段白名单内的全部值，<c>{{COMPANY.*}}</c> 渲染读这里；
+/// <see cref="NameCn"/> / <see cref="NameEn"/> 同时供页头公司名使用
+/// （页头不再自行保存公司名，见 ADR-041）。
+/// </summary>
+public sealed record CompanyProfile(
+    string CompanyId,
+    IReadOnlyDictionary<string, object?> Fields,
+    string? NameCn,
+    string? NameEn);
+
+/// <summary>公司下拉选项（报表定义绑定公司用）。</summary>
+public sealed record CompanyOption(string CompanyId, string NameCn, string NameEn);
+
 public sealed record PrintData(
     int ModuleId,
     string Title,
@@ -35,4 +50,6 @@ public sealed record PrintData(
     IReadOnlyList<PrintField> DetailFields,
     IReadOnlyDictionary<string,object?> Master,
     IReadOnlyList<IReadOnlyDictionary<string,object?>> Details,
-    ClientPrintProfile? ClientProfile = null);
+    ClientPrintProfile? ClientProfile = null,
+    /// <summary>公司表数据（第三数据源）；无公司记录时为 null，`{{COMPANY.*}}` 渲染为空。</summary>
+    IReadOnlyDictionary<string, object?>? Company = null);

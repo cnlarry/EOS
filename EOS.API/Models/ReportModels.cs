@@ -131,6 +131,8 @@ public sealed record ReportSibling(string ReportId, string ReportName, bool IsDe
 /// <summary>
 /// 打印面板中的可选报表（REPORT，按预览权限过滤）。<paramref name="FormatId"/> 为该报表专有的
 /// 版式包编号（留空即用模块默认版式）——同一模块的多个报表（如送货单 / 拣货单）据此各印各的版式。
+/// <paramref name="CompanyId"/> / <paramref name="CompanyName"/> 是该报表绑定的开单公司
+/// （110101 公司基本资料；必选，系统默认编号 DEFAULT，见迁移 449）。
 /// </summary>
 public sealed record ReportPrintOption(
     string ReportId,
@@ -140,7 +142,9 @@ public sealed record ReportPrintOption(
     string? FooterText,
     string? IsoNo,
     bool IsDefault,
-    string? FormatId = null);
+    string? FormatId = null,
+    string? CompanyId = null,
+    string? CompanyName = null);
 
 /// <summary>页头（REPORT_HEADER）。</summary>
 public sealed record ReportHeaderOption(
@@ -225,7 +229,9 @@ public sealed record ReportPdfMeta(
     string? ReportFilter,
     ReportHeaderOption? Header,
     string? TailText,
-    IReadOnlyList<ReportSortScheme> SortSchemes);
+    IReadOnlyList<ReportSortScheme> SortSchemes,
+    /// <summary>报表绑定的公司记录（第三数据源）；<c>{{COMPANY.*}}</c> 与页头公司名都读它。</summary>
+    CompanyProfile? Company = null);
 
 // 三个"版式维护草稿"DTO（PrintHeaderDraft / PrintTailDraft / PrintFooterDraft）已随迁移 329 删除：
 // 它们服务的 2202 页头设置 / 2204 表尾设置 / 2203 页尾设置三个模块已整模块退役（ADR-009 §11 五页

@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
 
-interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; isDefault: boolean }
+interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; isDefault: boolean; companyId?: string | null; companyName?: string | null }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
 interface ReportTailOption { tailId: string; tailName: string }
 interface ReportPrintSettingsData {
@@ -42,6 +42,14 @@ export function PrintViewPage() {
       ?? settings.data?.reports.find((item) => item.isDefault)
       ?? settings.data?.reports[0]
     return report?.reportName ?? '单据打印'
+  }, [settings.data, reportId])
+
+  // 开单公司来自报表上的显式绑定（110101 公司基本资料，系统默认编号 DEFAULT）。
+  const companyName = useMemo(() => {
+    const report = settings.data?.reports.find((item) => item.reportId === reportId)
+      ?? settings.data?.reports.find((item) => item.isDefault)
+      ?? settings.data?.reports[0]
+    return report?.companyName ?? null
   }, [settings.data, reportId])
 
   useEffect(() => {
@@ -99,6 +107,9 @@ export function PrintViewPage() {
     <div className="d-flex flex-column vh-100">
       <div className="border-bottom bg-white px-3 py-2 d-flex align-items-center gap-3 flex-wrap">
         <div className="fw-semibold">{title}</div>
+        {companyName && (
+          <span className="small text-secondary" title="开单公司（110101 公司基本资料）">公司：{companyName}</span>
+        )}
         {settings.data.reports.length > 1 && (
           <label className="small mb-0">报表
             <select className="form-select form-select-sm ms-1" value={reportId} onChange={(event) => setReportId(event.target.value)}>

@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Reports;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Telemetry;
@@ -8,10 +9,11 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 通用单据打印数据（报表打印模板的第一步）：
-/// 主表 + 明细 + 列定义（FIELDS 可见列，成本/保密/禁止过滤）+ 页头/页脚
+/// 主表 + 明细 + 列定义（FIELDS 可见列，成本/保密/禁止过滤）+ 公司表 + 页头/页脚
 /// （REPORT_LAYOUT，按模块默认报表或 DEFAULT）。
 /// 全部标识符来自服务端 Definition 白名单，键值参数化；主表读取应用用户数据范围
 /// （DATA_FILTER + EXEC_TAG）——范围外单据返回 null（404），不输出越权打印。
+/// 公司表按报表显式绑定（REPORT.COMPANY_ID，存量/新建均落 DEFAULT），不做"猜一个公司"的兜底（迁移 449）。
 /// </summary>
 public sealed class PrintService(
     DbConnectionFactory connections,
@@ -24,6 +26,7 @@ public sealed class PrintService(
         IReadOnlyList<string> keyValues,
         string? headerId,
         string? tailId,
+        string? companyId,
         bool canViewCost,
         bool canViewSecrecy,
         IReadOnlySet<string> deniedMasterFields,
@@ -55,7 +58,12 @@ public sealed class PrintService(
             detailFields=await ReadFieldsAsync(connection,detailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
             details=await ReadRowsAsync(connection,detailTable,pkOrder,keyValues,detailFields.Select(field=>field.Key).ToList(),token);
         }
-        var (headerCompany,headerCompanyEn,headerText,footerText,logoPath,tailText)=await ReadHeaderFooterAsync(connection,moduleId,headerId,tailId,token);
+        var (headerText,footerText,logoPath,tailText)=await ReadHeaderFooterAsync(connection,moduleId,headerId,tailId,token);
+        // 公司表（第三数据源）：只认报表上的显式公司编号，记录不存在时公司字段为空（fail-closed）。
+        // 页头公司名/英文名只来自公司资料——页头 CONTENT 里的旧公司文本是退役字段（ADR-041）。
+        var company=await CompanyPrintData.ReadAsync(connection,companyId,token);
+        var headerCompany=company?.NameCn;
+        var headerCompanyEn=company?.NameEn;
         headerText=ReplacePlaceholders(headerText,master);
         footerText=ReplacePlaceholders(footerText,master);
         var masterResolved=await ResolvePartyNameAsync(connection,masterTable,master,token);
@@ -63,7 +71,8 @@ public sealed class PrintService(
         logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount} clientProfile={HasClient}",
             moduleId,masterTable,details.Count,clientProfile is not null);
         return new PrintData(moduleId,title,headerCompany,headerCompanyEn,headerText,footerText,logoPath,tailText,
-            OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details,clientProfile);
+            OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details,clientProfile,
+            company?.Fields);
     }
 
     /// <summary>
@@ -169,7 +178,7 @@ public sealed class PrintService(
     private static string FieldValue(IReadOnlyDictionary<string,object?> row,string key)=>
         row.TryGetValue(key,out var value)&&value is not null?Convert.ToString(value)!.Trim():"";
 
-    private static async Task<(string? Company,string? CompanyEn,string? Header,string? Footer,string? Logo,string? Tail)> ReadHeaderFooterAsync(
+    private static async Task<(string? Header,string? Footer,string? Logo,string? Tail)> ReadHeaderFooterAsync(
         SqlConnection connection,int moduleId,string? headerIdOverride,string? tailIdOverride,CancellationToken token)
     {
         const string sql="""
@@ -194,22 +203,18 @@ public sealed class PrintService(
         var headerId=string.IsNullOrWhiteSpace(headerIdOverride)
             ? (string.IsNullOrWhiteSpace(defaultHeaderId)?"DEFAULT":defaultHeaderId)
             : headerIdOverride.Trim();
+        // 页头字典只取页头文本与 LOGO；公司名/英文名一律来自公司表（ADR-041），
+        // 不再解析 CONTENT 里的旧 companyName/companyNameEn（那是退役字段）。
         const string headerSql="SELECT LTRIM(RTRIM(ISNULL(CONTENT,''))),LTRIM(RTRIM(ISNULL(IMAGE_PATH,''))) FROM dbo.REPORT_LAYOUT WITH (NOLOCK) WHERE KIND=N'HEADER' AND LAYOUT_ID=@Id;";
         await using var headerCommand=new SqlCommand(headerSql,connection);
         headerCommand.Parameters.Add("@Id",SqlDbType.NVarChar,50).Value=headerId;
         await using var headerReader=await headerCommand.ExecuteReaderAsync(token);
-        string? company=null;
-        string? companyEn=null;
         string? headerText=null;
         string? logoPath=null;
         if(await headerReader.ReadAsync(token))
         {
-            var contentJson=headerReader.GetString(0);
+            headerText=ParseHeaderText(headerReader.GetString(0));
             logoPath=headerReader.IsDBNull(1)?null:headerReader.GetString(1).Trim();
-            var (c,ce,h)=ParseHeaderContent(contentJson);
-            company=c;
-            companyEn=ce;
-            headerText=h;
         }
         await headerReader.DisposeAsync();
         var tailId=string.IsNullOrWhiteSpace(tailIdOverride)?defaultTailId:tailIdOverride.Trim();
@@ -222,25 +227,22 @@ public sealed class PrintService(
             tailText=await tailCommand.ExecuteScalarAsync(token) as string;
         }
         tailText=string.IsNullOrWhiteSpace(tailText)?null:tailText.Trim();
-        return (company,companyEn,headerText,tailText,string.IsNullOrWhiteSpace(logoPath)?null:logoPath.Trim(),tailText);
+        return (headerText,tailText,string.IsNullOrWhiteSpace(logoPath)?null:logoPath.Trim(),tailText);
     }
 
-    /// <summary>解析 REPORT_LAYOUT 页头 CONTENT JSON（companyName/companyNameEn/headerText）。</summary>
-    private static (string? Company,string? CompanyEn,string? HeaderText) ParseHeaderContent(string? json)
+    /// <summary>解析 REPORT_LAYOUT 页头 CONTENT JSON 的 headerText（公司名两列已退役，不再读取）。</summary>
+    private static string? ParseHeaderText(string? json)
     {
-        if(string.IsNullOrWhiteSpace(json))return(null,null,null);
+        if(string.IsNullOrWhiteSpace(json))return null;
         try
         {
             using var doc=System.Text.Json.JsonDocument.Parse(json);
             var root=doc.RootElement;
-            var company=root.TryGetProperty("companyName",out var c)?c.GetString():null;
-            var companyEn=root.TryGetProperty("companyNameEn",out var ce)?ce.GetString():null;
-            var headerText=root.TryGetProperty("headerText",out var h)?h.GetString():null;
-            return(company,companyEn,headerText);
+            return root.TryGetProperty("headerText",out var h)?h.GetString():null;
         }
         catch
         {
-            return(null,null,null);
+            return null;
         }
     }
 
