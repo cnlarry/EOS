@@ -1375,3 +1375,15 @@
   `(SELECT TYPE_NAME(c.user_type_id) FROM sys.columns c WHERE c.object_id=OBJECT_ID('dbo.[T]') AND c.name='Col')`。
 - **防线**：写"发现式"查询后先跑一次**正样本**（已知该命中的那一组必须命中）再信结果；
   0 行的结论要用另一条独立写法的查询复核（本次即靠"直接列主从同名列"的查询发现了 65 条规则存在）。
+
+### L121 `Invoke-EosSqlQuery` 返回的是文本行，不是对象——按列名取值会静默得到空串
+
+- **触发／症状**：用 `. scripts/dev/eos-sql.ps1` 后写
+  `Invoke-EosSqlQuery -Query "SELECT F_ID ..." | ForEach-Object { $_.F_ID }`，
+  得到一串空值（`fields=19: ,,,…`），据此拼出的 `SELECT ,,, FROM …` 报"列名为空"，
+  看着像库里的字段名丢了。
+- **根因**：该助手把 `sqlcmd -h -1 -W` 的输出**按行返回字符串数组**（见 `scripts/dev/eos-sql.ps1`
+  的 `Invoke-EosSqlQuery`），没有列名/DataRow 语义；`$_.F_ID` 在字符串上恒为空。
+- **处置**：助手只用来"看结果行"；要在脚本里按列取值，改用 `System.Data.SqlClient`/`Microsoft.Data.SqlClient`
+  直接查询（真库用例里就是这么做的），或让 SQL 用 `STRING_AGG` 先把多行拼成一格再取单行文本。
+- **防线**：任何"按列名取 $_.X"的写法，先在结果上 `GetType()` 确认是 DataRow 还是 String；是 String 就不要取属性。
