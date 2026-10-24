@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, MemoryRouter, Navigate, Route, Routes, createMemoryRouter, RouterProvider, useLocation, useNavigate, type RouteObject } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../../features/auth/authContext'
@@ -7,6 +7,7 @@ import type { AppBootstrap } from '../../features/auth/types'
 import { WORKSPACE_TABS_ENABLED_KEY, workspaceTabsKey } from '../../lib/storageKeys'
 import { ToastProvider } from '../ui/Toast'
 import { AppShell } from './AppShell'
+import { usePageBreadcrumb } from './PageBreadcrumbContext'
 import { useTabDirty } from './workspaceDirty'
 
 vi.mock('../../features/auth/authContext', () => ({ useAuth: vi.fn() }))
@@ -48,6 +49,14 @@ function DirtyPage({ to = '/counter', action = '去计数器' }: { to?: string; 
       <Link to={to}>{action}</Link>
     </div>
   )
+}
+
+/** 自己上抛页签标题的页面：报表查看器就是这一类（路径里解析不出中文报表名）。 */
+function PageTitlePage({ title }: { title: string }) {
+  const { setBreadcrumb } = usePageBreadcrumb()
+  const crumb = useMemo(() => ({ leads: [], title }), [title])
+  useEffect(() => setBreadcrumb(crumb), [crumb, setBreadcrumb])
+  return <div>{title}</div>
 }
 
 const bootstrap: AppBootstrap = {
@@ -99,6 +108,7 @@ const fixtureRoutes: RouteObject[] = [
   { path: 'counter', element: <CounterPage /> },
   { path: 'dirty', element: <DirtyPage /> },
   { path: 'state', element: <StatePage /> },
+  { path: 'report/:reportId', element: <PageTitlePage title="工资表明细表1" /> },
   { path: 'admin/tables/:tableId/fields', element: <div>FIELDS</div> },
   { path: 'workbench/:moduleId', element: <div>WB</div> },
   { path: 'workbench/:moduleId/new', element: <div>NEW_FORM</div> },
@@ -485,6 +495,15 @@ describe('AppShell', () => {
     expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
     renderShell('/workbench/1209/new')
     expect(screen.getByRole('tab', { name: /新增分组模块/ })).toBeInTheDocument()
+  })
+
+  it('页面自报页签标题后切走再切回，标题不会被外壳清成默认名', async () => {
+    renderShell('/report/HR_WAGE_M2?reportId=HR_WAGE_LIST1')
+    await screen.findByRole('tab', { name: /工资表明细表1/ })
+    fireEvent.click(screen.getByRole('tab', { name: /首页/ }))
+    fireEvent.click(screen.getByRole('tab', { name: /工资表明细表1/ }))
+    await waitFor(() => expect(screen.getByRole('tab', { name: /工资表明细表1/ })).toBeInTheDocument())
+    expect(screen.queryByRole('tab', { name: /^报表$/ })).not.toBeInTheDocument()
   })
 
   it('主导航不再提供个人设置入口，该页仍可由用户菜单打开', () => {

@@ -197,6 +197,9 @@ interface AppShellProps {
   routes?: RouteObject[]
 }
 
+/** 上抛页面级面包屑的定制子页：离开时由外壳清理该标签的面包屑。 */
+const CUSTOM_PAGE_PATH_RE = /^\/admin\/(groups\/[^/]+\/(rights|button-rights|members)|users\/[^/]+\/(rights|button-rights|groups)|fields\/[^/]+\/[^/]+)$/
+
 export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
   // 跟随系统时要跟着系统变：单独听一次系统偏好，偏好本身仍是"跟随系统"不变
@@ -829,12 +832,16 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     setUserMenuOpen(false)
   }, [location.pathname])
 
-  // 离开定制页子页时清空页面级面包屑（防止串到其它页面）
-  useEffect(() => {
-    if (!location.pathname.match(/^\/admin\/(groups\/[^/]+\/(rights|button-rights|members)|users\/[^/]+\/(rights|button-rights|groups)|fields\/[^/]+\/[^/]+)$/)) {
-      patchCrumb(workspaceRef.current.activeId, { page: null })
-    }
-  }, [location.pathname, patchCrumb])
+  // 离开定制页子页时清空**该页所在标签**的页面级面包屑。
+  // 不能按"当前路径不是定制页"清：报表等页面自己上抛标题，切标签/回到标签时会被误清成默认名。
+  const previousPathRef = useRef(location.pathname)
+  const previousActiveTabRef = useRef(workspace.activeId)
+  useLayoutEffect(() => {
+    const wasCustomPage = CUSTOM_PAGE_PATH_RE.test(previousPathRef.current)
+    previousPathRef.current = location.pathname
+    if (wasCustomPage) patchCrumb(previousActiveTabRef.current, { page: null })
+    previousActiveTabRef.current = workspace.activeId
+  }, [location.pathname, workspace.activeId, patchCrumb])
 
   // 记录最近访问的业务模块（工作台/报表等叶子），供 dashboard 快捷入口使用；本地持久化
   useEffect(() => {
