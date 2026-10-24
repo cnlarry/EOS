@@ -1,6 +1,6 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReportCenterPage } from './ReportCenterPage'
@@ -35,6 +35,10 @@ describe('ReportCenterPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: '我的收藏' })).toBeInTheDocument())
     expect(screen.getByRole('heading', { name: '最近使用' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '全部报表' })).toBeInTheDocument()
+    // 最近使用也用磁贴网格（名称 + 模块 + 最近时间），不再是紧凑长条
+    const recent = screen.getByRole('region', { name: '最近使用' })
+    expect(within(recent).getByTitle('打开 客户资料明细').closest('.erp-catalog-tile')).not.toBeNull()
+    expect(document.querySelector('.erp-catalog-row')).toBeNull()
     // 收藏项在磁贴区直接可见
     expect(screen.getAllByText('客户资料明细').length).toBeGreaterThan(0)
     expect(screen.getAllByText('客户计价明细').length).toBeGreaterThan(0)
@@ -48,6 +52,8 @@ describe('ReportCenterPage', () => {
     await waitFor(() => expect(screen.getByTitle('展开 采购报表查询')).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('展开 采购报表查询'))
     expect(screen.getByText('R169801')).toBeInTheDocument()
+    // 展开后的报表用磁贴网格展示（名称 + 模块 + 编号），不再是整行只有名称的长条
+    expect(screen.getByText('R169801').closest('.erp-catalog-tile')).not.toBeNull()
     expect(screen.getAllByText('供应商资料明细').length).toBeGreaterThan(1)
   })
 
@@ -61,8 +67,10 @@ describe('ReportCenterPage', () => {
   it('星标切换收藏状态（新收藏追加到收藏末尾）', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByTitle('展开 采购报表查询')).toBeInTheDocument())
-    fireEvent.click(screen.getByTitle('展开 采购报表查询'))
-    fireEvent.click(screen.getByLabelText('收藏 供应商资料明细'))
+    const groupTitle = screen.getByTitle('展开 采购报表查询')
+    const group = groupTitle.closest('.erp-catalog-group') as HTMLElement
+    fireEvent.click(groupTitle)
+    fireEvent.click(within(group).getByLabelText('收藏 供应商资料明细'))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith('/report-center/favorite', expect.objectContaining({ moduleId: 169801, reportId: 'R169801', favorite: true, sortIndex: 3 })))
   })
 

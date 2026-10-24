@@ -1142,7 +1142,13 @@ button, input, select { font: inherit; }
 }
 .erp-catalog-tile-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; border-radius: var(--erp-radius-md); }
 .erp-catalog-tile-name { font-size: var(--erp-font-md); font-weight: 600; padding-right: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.erp-catalog-tile-meta { font-size: var(--erp-font-xs); color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-catalog-tile-meta { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--erp-font-xs); color: var(--tblr-secondary); }
+.erp-catalog-tile-module { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-catalog-tile-code { flex: 0 0 auto; font-size: var(--erp-font-2xs); color: var(--tblr-secondary); }
+.erp-catalog-tile-code::before { content: '·'; margin-right: 4px; }
+.erp-catalog-tile-code.is-first::before { content: none; }
+.erp-catalog-tile-time { margin-left: auto; font-size: var(--erp-font-2xs); color: var(--tblr-secondary); white-space: nowrap; }
+.erp-catalog-tile-meta .erp-catalog-badge { flex: 0 0 auto; }
 .erp-catalog-tile-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
 .erp-catalog-tile:hover .erp-catalog-tile-actions,
 .erp-catalog-tile:focus-within .erp-catalog-tile-actions,
@@ -1167,27 +1173,6 @@ button, input, select { font: inherit; }
 .erp-catalog-tile-btn:hover { color: var(--tblr-primary); background: var(--tblr-bg-surface-secondary); }
 .erp-catalog-tile-btn:disabled { opacity: .4; cursor: default; }
 .erp-catalog-tile-btn.is-favorite { color: var(--tblr-yellow); }
-/* 紧凑行（最近使用 / 分组内的报表条目）：整行一个按钮，右侧放时间或操作 */
-.erp-catalog-rows { display: flex; flex-direction: column; border: 1px solid var(--tblr-border-color); border-radius: var(--erp-radius-md); overflow: hidden; }
-.erp-catalog-row { display: flex; align-items: center; gap: 8px; min-width: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
-.erp-catalog-row:last-child { border-bottom: 0; }
-.erp-catalog-row:hover { background: var(--tblr-primary-lt); }
-.erp-catalog-row-open {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 7px 10px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-.erp-catalog-row-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
-.erp-catalog-row-name { font-size: var(--erp-font-md); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.erp-catalog-row-meta { font-size: var(--erp-font-xs); color: var(--tblr-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.erp-catalog-row-tail { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding-right: 8px; font-size: var(--erp-font-xs); color: var(--tblr-secondary); white-space: nowrap; }
 .erp-catalog-badge {
   display: inline-flex;
   align-items: center;
@@ -1217,7 +1202,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-catalog-group-title strong { font-size: var(--erp-font-md); font-weight: 600; }
 .erp-catalog-group-title .erp-catalog-count { font-size: var(--erp-font-sm); color: var(--tblr-secondary); margin-left: auto; }
 .erp-catalog-group-title svg { flex: 0 0 auto; color: var(--tblr-secondary); }
-.erp-catalog-group-body { border-top: 1px solid var(--tblr-border-color); }
+.erp-catalog-group-body { border-top: 1px solid var(--tblr-border-color); padding: 8px; }
+/* 展开的业务域内用磁贴网格铺满宽度，避免"一整行只有报表名"的长条空白 */
+.erp-catalog-group-body .erp-catalog-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .erp-catalog-empty .erp-state { min-height: 0; padding: 20px 12px; gap: .35rem; }
 .erp-catalog-empty .erp-state-icon { width: 2.25rem; height: 2.25rem; border-radius: .5rem; }
 .erp-catalog-empty .erp-state-icon svg { width: 20px; height: 20px; }
@@ -1245,14 +1232,23 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-report-conditions .card-header { padding: 6px 10px; }
 .erp-report-conditions .card-body { padding: 10px; }
 .erp-query-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 14px; }
+/* 条件弹窗：标签列取最长标签的宽度，所有控件左缘对齐。
+   每个 .erp-query-field 原本自成两列网格，逐行排时标签长短不同会把控件推成锯齿；
+   这里让行只作 display:contents，标签/控件直接参与外层同一套列轨道。 */
+.erp-query-form { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: center; }
+.erp-query-form > .erp-query-field { display: contents; }
 .erp-query-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; }
 .erp-query-label { font-size: var(--erp-font-sm); color: var(--tblr-secondary); text-align: right; white-space: nowrap; }
 .erp-query-control { min-width: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* 输入框与下拉必须同高：Tabler 只给 .form-control-sm 设了 min-height，.form-select-sm 没有。
+   只写 height 会把下拉压得比输入框矮，文字底部被裁（height 28 装不下 7+16+7+2 的内容）。 */
 .erp-query-control .form-control-sm,
-.erp-query-control .form-select-sm { height: 28px; }
+.erp-query-control .form-select-sm { height: 32px; min-height: 32px; }
 .erp-query-control .erp-query-range { flex: 1 1 0; min-width: 0; }
 /* .erp-report-page 的页根 min-height / overflow 见本文件「全高裁溢出页」共享声明 */
-.erp-report-page > .card { flex: 0 0 auto; }
+/* 报表查看页只有一张结果卡（标题/条件/按钮都在卡内命令栏，打印设置是卡内可折叠区）：
+   卡片占满、表格区内部滚动，页面级不滚。 */
+.erp-report-page > .erp-list-card { flex: 1 1 auto; min-height: 0; }
 /* 页级错误条（导出/打印/下载失败）：内联提示，替代浏览器原生 alert */
 .erp-report-alert {
   flex: 0 0 auto;
@@ -2353,14 +2349,21 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-form-toolbar .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; }
 .erp-form-toolbar-actions { margin-left: auto; }
 
-/* 统一表单紧凑控件 */
+/* 下拉与同尺寸输入框同高（全站）：Tabler 只给 .form-control-sm 设了 min-height，
+   .form-select-sm 没有。页面只给 select 写 height 时会比输入框矮，文字底部被裁；
+   这里补上同一份 min-height，各上下文再把 height/min-height 成对覆盖。 */
+.form-select-sm { min-height: var(--tblr-btn-input-sm-min-height); }
+
+/* 统一表单紧凑控件：输入框与下拉同高。Tabler 的 .form-control-sm 带 min-height，
+   下拉没有——只写 height 时两者会一高一矮（下拉被压、文字底部被裁），故 height/min-height 成对给。 */
 .erp-form-grid .form-control,
 .erp-form-grid .form-select,
 .erp-form-cell-controls .form-control,
 .erp-form-cell-controls .form-select {
-  height: 26px;
+  height: var(--erp-form-control-height);
+  min-height: var(--erp-form-control-height);
   padding: 2px 7px;
-  font-size: var(--erp-font-sm);
+  font-size: var(--erp-form-control-font);
 }
 
 .erp-form-grid textarea.form-control,
@@ -2371,8 +2374,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-chooser-btn {
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  /* 与同排输入框同高、正方形：Tabler 的 .btn 带 min-width/min-height（btn-sm 为 32px），
+     只写 width/height 会被 min-* 顶回去，表现为按钮比输入框高出一截。 */
+  width: var(--erp-form-control-height);
+  height: var(--erp-form-control-height);
+  min-width: var(--erp-form-control-height);
+  min-height: var(--erp-form-control-height);
   padding: 0;
   flex: 0 0 auto;
   border-color: var(--tblr-border-color);
@@ -2539,7 +2546,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 明细列宽对齐工作台子表：table-layout fixed + DISPLAY_LENGTH 宽度，输入框填满列 */
 .erp-detail-grid { table-layout: fixed; width: 100%; }
 .erp-detail-grid .form-control { width: 100%; min-width: 96px; }
-.erp-detail-grid .form-control, .erp-detail-grid .form-select { height: 30px; padding: 3px 8px; font-size: var(--erp-font-md); }
+.erp-detail-grid .form-control, .erp-detail-grid .form-select { height: 30px; min-height: 30px; padding: 3px 8px; font-size: var(--erp-font-md); }
+/* 明细行控件高 30px：选择器按钮跟随同一 token，才不会比输入框矮/高 */
+.erp-detail-grid { --erp-form-control-height: 30px; }
 .erp-detail-grid .erp-form-control { width: 100%; min-width: 0; }
 .erp-detail-grid .erp-form-control .d-flex { flex-wrap: nowrap; }
 .erp-detail-grid .erp-form-control .d-flex > .form-control,

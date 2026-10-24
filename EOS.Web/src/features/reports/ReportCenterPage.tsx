@@ -312,19 +312,24 @@ export function ReportCenterPage() {
                     <h2>最近使用</h2>
                     <span className="erp-catalog-count">{recentReports.length}</span>
                   </div>
-                  <div className="erp-catalog-rows">
+                  <div className="erp-catalog-grid">
                     {recentReports.map((item) => (
-                      <div className="erp-catalog-row" key={`recent:${itemKey(item)}`}>
+                      <div className="erp-catalog-tile" key={`recent:${itemKey(item)}`}>
                         <button
                           type="button"
-                          className="erp-catalog-row-open"
+                          className="erp-catalog-tile-open"
                           title={`打开 ${item.reportName}`}
                           onClick={() => openReport(item)}
                         >
-                          <span className="erp-catalog-row-name">{item.reportName}</span>
-                          <span className="erp-catalog-row-meta">{item.domainDesc || item.moduleDesc}</span>
+                          <span className="erp-catalog-tile-name">{item.reportName}</span>
+                          <span className="erp-catalog-tile-meta">
+                            {item.moduleDesc !== item.reportName && (
+                              <span className="erp-catalog-tile-module">{item.moduleDesc}</span>
+                            )}
+                            <span className="erp-catalog-tile-time">{formatRunTime(item.lastRunAt)}</span>
+                          </span>
                         </button>
-                        <span className="erp-catalog-row-tail">{formatRunTime(item.lastRunAt)}</span>
+                        <span className="erp-catalog-tile-actions">{renderItemActions(item)}</span>
                       </div>
                     ))}
                   </div>
@@ -385,21 +390,28 @@ export function ReportCenterPage() {
                         )}
                         {expanded && (
                           <div className="erp-catalog-group-body" id={bodyId}>
-                            {reports.map((item) => (
-                              <div className="erp-catalog-row" key={itemKey(item)}>
-                                <button
-                                  type="button"
-                                  className="erp-catalog-row-open"
-                                  title={`打开 ${item.reportName}`}
-                                  onClick={() => openReport(item)}
-                                >
-                                  <span className="erp-catalog-row-name">{item.reportName}</span>
-                                  {item.isDefault && <span className="erp-catalog-badge">默认</span>}
-                                  <span className="erp-catalog-row-meta">{item.reportId}</span>
-                                </button>
-                                <span className="erp-catalog-row-tail">{renderItemActions(item)}</span>
-                              </div>
-                            ))}
+                            <div className="erp-catalog-grid">
+                              {reports.map((item) => (
+                                <div className="erp-catalog-tile" key={itemKey(item)}>
+                                  <button
+                                    type="button"
+                                    className="erp-catalog-tile-open"
+                                    title={`打开 ${item.reportName}`}
+                                    onClick={() => openReport(item)}
+                                  >
+                                    <span className="erp-catalog-tile-name">{item.reportName}</span>
+                                    <span className="erp-catalog-tile-meta">
+                                      {item.moduleDesc !== item.reportName && (
+                                        <span className="erp-catalog-tile-module">{item.moduleDesc}</span>
+                                      )}
+                                      <span className={`erp-catalog-tile-code${item.moduleDesc === item.reportName ? ' is-first' : ''}`}>{item.reportId}</span>
+                                      {item.isDefault && <span className="erp-catalog-badge">默认</span>}
+                                    </span>
+                                  </button>
+                                  <span className="erp-catalog-tile-actions">{renderItemActions(item)}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </section>

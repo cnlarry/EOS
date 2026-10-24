@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   IconArrowLeft,
+  IconFilter,
   IconPrinter,
   IconRotateClockwise,
   IconSearch,
@@ -15,7 +16,9 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListGrid } from '../../components/common/ErpListGrid'
+import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { alignClass, formatFieldValue } from '../document-workbench/fieldFormat'
 import type { ColumnDef, VisibilityState } from '../../lib/tanstackTable'
@@ -81,6 +84,8 @@ export function ReportViewerPage({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [queryKey, setQueryKey] = useState(0)
+  /** 已套用条件默认值、可以开始查询的报表定义身份（切换报表时先置空，避免拿旧条件先发一次请求） */
+  const [definitionReportId, setDefinitionReportId] = useState('')
   const [reportId, setReportId] = useState('')
   const [headerId, setHeaderId] = useState('')
   const [tailId, setTailId] = useState('')
@@ -90,13 +95,21 @@ export function ReportViewerPage({
   const [showDetail, setShowDetail] = useState(true)
   const [printing, setPrinting] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
+  /** 查询条件弹窗（与统一工作台高级查询同形态：工具栏入口 + 生效数角标 + 应用后查询） */
+  const [conditionsOpen, setConditionsOpen] = useState(false)
+  const [draftValues, setDraftValues] = useState<Record<number, string>>({})
+  const [draftValuesTo, setDraftValuesTo] = useState<Record<number, string>>({})
   const [columnSelectorOpen, setColumnSelectorOpen] = useState(false)
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [actionError, setActionError] = useState<string | null>(null)
   /** 无列定义的报表（空主表聚合/过程报表）查询后的结果集动态列 */
   const [spResultColumns, setSpResultColumns] = useState<ResultColumn[] | null>(null)
   const settingsApplied = useRef(false)
-  const defaultsApplied = useRef(false)
+  /** 已套用过条件默认值的报表：切报表时按新报表重套，首次加载才读 URL 深链参数 */
+  const appliedReportRef = useRef<string | null>(null)
+  /** 页内切换报表（非首次加载）：新定义到位后要按新报表默认值重查 */
+  const pendingReportSwitchRef = useRef(false)
+  const { setBreadcrumb } = usePageBreadcrumb()
 
   const printSettings = useQuery({
     queryKey: ['report', moduleId, 'print-settings'],
@@ -107,11 +120,15 @@ export function ReportViewerPage({
     queryFn: () => apiClient.get<ReportDefinition>(`/reports/${moduleId}/definition`, { query: { reportId: reportId || undefined } }),
     // 等待打印设置加载完成 reportId 初始化（一模块多报表按 REPORT_ID 解析 SP/列）
     enabled: printSettings.isSuccess && reportId !== '',
+    // 页内切换报表：先保留上一张定义，避免整页退回 Loading 后再重挂（只让表格区刷新）
+    placeholderData: (previous: ReportDefinition | undefined) => previous,
   })
   const result = useQuery({
     queryKey: ['report', moduleId, 'result', page, pageSize, queryKey, reportId],
     queryFn: () => apiClient.post<ReportQueryResult>(`/reports/${moduleId}/query?page=${page}&pageSize=${pageSize}${reportId ? `&reportId=${encodeURIComponent(reportId)}` : ''}`, { values, valuesTo }),
-    enabled: definition.isSuccess && queryKey > 0,
+    // 新报表的定义还在路上时先不查：否则会先用上一张报表的条件值发一次请求
+    enabled: definition.isSuccess && !definition.isPlaceholderData
+      && definitionReportId === reportId && queryKey > 0,
     placeholderData: (previous: ReportQueryResult | undefined) => previous,
   })
 
@@ -119,11 +136,16 @@ export function ReportViewerPage({
     if (settingsApplied.current || !printSettings.data) return
     settingsApplied.current = true
     const user = printSettings.data.userSettings
+    // 页内切换报表后 URL 会带 reportId；刷新/收藏要回到切换后的那张，而不是路径里的原始报表。
+    const urlReportId = searchParams.get('reportId')?.trim()
+    const fromUrl = urlReportId
+      ? printSettings.data.reports.find((item) => item.reportId === urlReportId)
+      : undefined
     // 地址里点名了报表就认地址（深链/分享/收藏必须打开同一张）；
     // 没点名才轮到"最近用过"与"默认报表"——这是页内切换与老地址的兜底。
-    const pointed = reportIdOverride
+    const pointed = fromUrl ?? (reportIdOverride
       ? printSettings.data.reports.find((item) => item.reportId === reportIdOverride)
-      : undefined
+      : undefined)
     const report = pointed
       ?? (user?.reportId
         ? printSettings.data.reports.find((item) => item.reportId === user.reportId)
@@ -140,18 +162,23 @@ export function ReportViewerPage({
     setShowDetail(user?.showDetail ?? true)
   }, [printSettings.data, reportIdOverride])
 
-  // 条件初值：URL 参数优先（支持带条件深链），缺失时回落报表定义默认值；
-  // 由 URL 带入条件的深链直接出结果，避免落在一张空白报表上
+  // 条件初值：首次加载用 URL 参数（支持深链）优先，缺失回落报表定义默认值；
+  // 页内切换报表时只套新报表的默认值（URL 里的 f/t 参数属于打开标签时的那张报表，不能带过去）。
   useEffect(() => {
-    if (defaultsApplied.current || !definition.data) return
-    defaultsApplied.current = true
-    const params = initialParams.current
+    if (!definition.data || definition.isPlaceholderData) return
+    if (appliedReportRef.current === reportId) {
+      pendingReportSwitchRef.current = false
+      return
+    }
+    const first = appliedReportRef.current === null
+    appliedReportRef.current = reportId
+    const params = first ? initialParams.current : null
     const next: Record<number, string> = {}
     const nextTo: Record<number, string> = {}
     let fromUrl = false
     for (const condition of definition.data.conditions) {
-      const urlValue = params.get(`f${condition.serialNo}`)
-      const urlValueTo = params.get(`t${condition.serialNo}`)
+      const urlValue = params?.get(`f${condition.serialNo}`)
+      const urlValueTo = params?.get(`t${condition.serialNo}`)
       if (urlValue != null) {
         next[condition.serialNo] = urlValue
         fromUrl = true
@@ -167,12 +194,35 @@ export function ReportViewerPage({
     }
     setValues(next)
     setValuesTo(nextTo)
-    const urlPage = Number.parseInt(params.get('page') ?? '', 10)
-    if (Number.isInteger(urlPage) && urlPage > 0) setPage(urlPage)
-    const urlPageSize = Number.parseInt(params.get('pageSize') ?? '', 10)
-    if (Number.isInteger(urlPageSize) && urlPageSize > 0) setPageSize(urlPageSize)
-    if (fromUrl) setQueryKey((current) => current + 1)
-  }, [definition.data])
+    setPage(1)
+    setDefinitionReportId(reportId)
+    if (first && params) {
+      const urlPage = Number.parseInt(params.get('page') ?? '', 10)
+      if (Number.isInteger(urlPage) && urlPage > 0) setPage(urlPage)
+      const urlPageSize = Number.parseInt(params.get('pageSize') ?? '', 10)
+      if (Number.isInteger(urlPageSize) && urlPageSize > 0) setPageSize(urlPageSize)
+    }
+    // 深链直接出结果；页内换了报表且之前查过，则按新报表默认值自动查一次
+    if (fromUrl || (pendingReportSwitchRef.current && queryKey > 0)) {
+      setQueryKey((current) => current + 1)
+    }
+    pendingReportSwitchRef.current = false
+  }, [definition.data, definition.isPlaceholderData, reportId, queryKey])
+
+  // 上抛页签标题：报表编号在路径里解析不出名字，外壳默认只能显示「报表」；
+  // 这里按当前选中的报表名上抛，切换报表时页签即时跟着变（不用重开标签）。
+  const tabReportName = printSettings.data?.reports.find((report) => report.reportId === reportId)?.reportName
+    ?? definition.data?.title
+    ?? ''
+  // 引用必须稳定：patchCrumb 按对象引用判等，每次 effect 都造新对象会让 pageValue →
+  // setBreadcrumb 身份变化 → effect 再跑，形成"上抛标题"自激循环，标签标题也会被外壳同步覆盖。
+  const tabCrumb = useMemo(
+    () => (tabReportName ? { leads: [], title: tabReportName } : null),
+    [tabReportName],
+  )
+  useEffect(() => {
+    setBreadcrumb(tabCrumb)
+  }, [tabCrumb, setBreadcrumb])
 
   // 查询状态回写 URL：刷新/分享/浏览器后退都能回到同一张报表的同一条件。
   // 定义就绪前不回写——否则初始的空状态会把深链带来的条件参数先抹掉
@@ -245,16 +295,35 @@ export function ReportViewerPage({
 
   const runQuery = () => { setPage(1); setQueryKey((current) => current + 1); setActionError(null) }
 
-  const resetConditions = () => {
+  /** 报表参数的默认值（重置用）：只从定义里取，不猜。 */
+  const defaultConditionValues = () => {
     const next: Record<number, string> = {}
     const nextTo: Record<number, string> = {}
     for (const condition of definition.data?.conditions ?? []) {
       if (condition.defaultValue) next[condition.serialNo] = condition.defaultValue
       if (condition.defaultValueTo) nextTo[condition.serialNo] = condition.defaultValueTo
     }
-    setValues(next)
-    setValuesTo(nextTo)
-    setPage(1)
+    return { next, nextTo }
+  }
+
+  const openConditions = () => {
+    // 弹窗编辑的是草稿：取消不改变已生效条件
+    setDraftValues(values)
+    setDraftValuesTo(valuesTo)
+    setConditionsOpen(true)
+  }
+
+  const resetDraftConditions = () => {
+    const { next, nextTo } = defaultConditionValues()
+    setDraftValues(next)
+    setDraftValuesTo(nextTo)
+  }
+
+  const applyConditions = () => {
+    setValues(draftValues)
+    setValuesTo(draftValuesTo)
+    setConditionsOpen(false)
+    runQuery()
   }
 
   const saveVisibleColumns = (selection: Record<string, string[]>) => {
@@ -324,41 +393,23 @@ export function ReportViewerPage({
     }
   }
 
-  if (definition.isPending) return <LoadingState label="正在加载报表定义…" />
-  if (definition.isError) return <ErrorState message={describeApiError(definition.error, '报表定义加载失败。')} onRetry={() => void definition.refetch()} />
-  const def = definition.data!
+  if (!definition.data) {
+    return definition.isError
+      ? <ErrorState message={describeApiError(definition.error, '报表定义加载失败。')} onRetry={() => void definition.refetch()} />
+      : <LoadingState label="正在加载报表定义…" />
+  }
+  const def = definition.data
   const errorMessage = describeApiError(result.error, '查询失败，请重试。')
   const selectedReport = printSettings.data?.reports.find((report) => report.reportId === reportId)
   const multipleReports = (printSettings.data?.reports.length ?? 0) > 1
   const rowCount = result.data?.rows?.length ?? 0
+  // 生效条件数（范围条件按一项计）：只统计当前已应用的值，与弹窗草稿无关
+  const activeConditionCount = def.conditions.filter((condition) =>
+    String(values[condition.serialNo] ?? '').trim() !== ''
+    || String(valuesTo[condition.serialNo] ?? '').trim() !== '').length
 
   return (
     <div className="erp-base-page erp-page-fill erp-report-page">
-      <header className="erp-report-head">
-        <Button variant="ghost" size="sm" icon={<IconArrowLeft size={16} />} onClick={() => navigate('/report-center')}>
-          报表中心
-        </Button>
-        <div className="erp-report-head-title">
-          <h1>{def.title}</h1>
-          <span>模块 {moduleId}{multipleReports && selectedReport ? ` · ${selectedReport.reportName}` : ''}</span>
-        </div>
-        <div className="erp-report-head-actions">
-          {hasPrintPermission && (
-            <Button
-              size="sm"
-              variant={printOpen ? 'primary' : 'secondary'}
-              className="erp-command-btn"
-              icon={<IconPrinter size={16} />}
-              aria-expanded={printOpen}
-              title="打印"
-              onClick={() => setPrintOpen((current) => !current)}
-            >
-              打印
-            </Button>
-          )}
-        </div>
-      </header>
-
       {actionError && (
         <div className="erp-report-alert" role="alert">
           <span>{actionError}</span>
@@ -369,222 +420,139 @@ export function ReportViewerPage({
       )}
 
       {hasPrintPermission && printOpen && (
-        <section className="card erp-report-print-panel">
-          <div className="card-header erp-card-toolbar">
-            <span className="fw-semibold small">打印设置</span>
-            <span className="text-secondary small">页头/表尾可随时更换，选择后即时预览</span>
-          </div>
-          <div className="card-body py-2">
-            <div className="erp-query-grid">
-              <div className="erp-query-field">
-                <span className="erp-query-label" id={`${baseId}-print-report`}>报表</span>
-                <div className="erp-query-control">
-                  <select
-                    className="form-select form-select-sm"
-                    aria-labelledby={`${baseId}-print-report`}
-                    value={reportId}
-                    onChange={(event) => { setReportId(event.target.value); setSortSerialNo(null) }}
-                  >
-                    {(printSettings.data?.reports ?? []).map((report) => <option key={report.reportId} value={report.reportId}>{report.reportName}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="erp-query-field">
-                <span className="erp-query-label" id={`${baseId}-print-header`}>页头</span>
-                <div className="erp-query-control">
-                  <select
-                    className="form-select form-select-sm"
-                    aria-labelledby={`${baseId}-print-header`}
-                    value={headerId}
-                    onChange={(event) => setHeaderId(event.target.value)}
-                  >
-                    <option value="">（报表默认）</option>
-                    {(printSettings.data?.headers ?? []).map((header) => <option key={header.headerId} value={header.headerId}>{header.headerName}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="erp-query-field">
-                <span className="erp-query-label" id={`${baseId}-print-tail`}>表尾</span>
-                <div className="erp-query-control">
-                  <select
-                    className="form-select form-select-sm"
-                    aria-labelledby={`${baseId}-print-tail`}
-                    value={tailId}
-                    onChange={(event) => setTailId(event.target.value)}
-                  >
-                    <option value="">（无）</option>
-                    {(printSettings.data?.tails ?? []).map((tail) => <option key={tail.tailId} value={tail.tailId}>{tail.tailName}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="erp-query-field">
-                <span className="erp-query-label" id={`${baseId}-print-sort`}>排序方案</span>
-                <div className="erp-query-control">
-                  <select
-                    className="form-select form-select-sm"
-                    aria-labelledby={`${baseId}-print-sort`}
-                    value={sortSerialNo ?? ''}
-                    onChange={(event) => setSortSerialNo(event.target.value === '' ? null : Number(event.target.value))}
-                  >
-                    <option value="">（默认）</option>
-                    {sortSchemes.map((scheme) => <option key={scheme.serialNo} value={scheme.serialNo}>{scheme.sortName}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="erp-query-field">
-                <span className="erp-query-label" id={`${baseId}-print-direct`}>顺序</span>
-                <div className="erp-query-control" role="radiogroup" aria-labelledby={`${baseId}-print-direct`}>
-                  <label className="form-check small">
-                    <input className="form-check-input" type="radio" name={`${baseId}-sort-direct`} checked={sortDirect === 'asc'} onChange={() => setSortDirect('asc')} />
-                    <span className="form-check-label">升序</span>
-                  </label>
-                  <label className="form-check small">
-                    <input className="form-check-input" type="radio" name={`${baseId}-sort-direct`} checked={sortDirect === 'desc'} onChange={() => setSortDirect('desc')} />
-                    <span className="form-check-label">降序</span>
-                  </label>
-                </div>
-              </div>
-              <div className="erp-query-field">
-                <span className="erp-query-label" id={`${baseId}-print-scope`}>输出</span>
-                <div className="erp-query-control" role="group" aria-labelledby={`${baseId}-print-scope`}>
-                  <label className="form-check small">
-                    <input className="form-check-input" type="checkbox" checked={showGroup} onChange={(event) => setShowGroup(event.target.checked)} />
-                    <span className="form-check-label">显示分组</span>
-                  </label>
-                  <label className="form-check small">
-                    <input className="form-check-input" type="checkbox" checked={showDetail} onChange={(event) => setShowDetail(event.target.checked)} />
-                    <span className="form-check-label">显示明细</span>
-                  </label>
-                </div>
+        <Modal
+          title="打印设置"
+          size="lg"
+          scrollable
+          onClose={() => setPrintOpen(false)}
+          footer={<Button size="sm" variant="secondary" onClick={() => setPrintOpen(false)}>关闭</Button>}
+        >
+          <div className="text-secondary small mb-2">页头/表尾可随时更换；生成 PDF 使用当前查询条件。</div>
+          <div className="erp-query-form">
+            <div className="erp-query-field">
+              <span className="erp-query-label" id={`${baseId}-print-header`}>页头</span>
+              <div className="erp-query-control">
+                <select
+                  className="form-select form-select-sm"
+                  aria-labelledby={`${baseId}-print-header`}
+                  value={headerId}
+                  onChange={(event) => setHeaderId(event.target.value)}
+                >
+                  <option value="">（报表默认）</option>
+                  {(printSettings.data?.headers ?? []).map((header) => <option key={header.headerId} value={header.headerId}>{header.headerName}</option>)}
+                </select>
               </div>
             </div>
-            <div className="d-flex align-items-center gap-2 mt-2">
-              <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPrinter size={16} />} loading={printing} onClick={() => void handlePrint()}>
-                生成 PDF
-              </Button>
-              <span className="text-secondary small">按当前查询条件输出整份报表</span>
-            </div>
-            {selectedHeader && (
-              <div className="border rounded bg-light mt-2 px-3 py-2 d-flex align-items-center gap-3">
-                {selectedHeader.logoUrl && <img src={selectedHeader.logoUrl} alt="页头 LOGO" style={{ maxHeight: 40 }} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
-                <div>
-                  {selectedReport?.companyName && <div className="fw-bold">{selectedReport.companyName}</div>}
-                  {selectedHeader.headerText && <div className="small text-secondary">{selectedHeader.headerText}</div>}
-                </div>
+            <div className="erp-query-field">
+              <span className="erp-query-label" id={`${baseId}-print-tail`}>表尾</span>
+              <div className="erp-query-control">
+                <select
+                  className="form-select form-select-sm"
+                  aria-labelledby={`${baseId}-print-tail`}
+                  value={tailId}
+                  onChange={(event) => setTailId(event.target.value)}
+                >
+                  <option value="">（无）</option>
+                  {(printSettings.data?.tails ?? []).map((tail) => <option key={tail.tailId} value={tail.tailId}>{tail.tailName}</option>)}
+                </select>
               </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {def.conditions.length > 0 && (
-        <section className="card erp-report-conditions">
-          <div className="card-header erp-card-toolbar">
-            <span className="fw-semibold small">查询条件</span>
-            <span className="text-secondary small">{def.conditions.length} 项</span>
-            <div className="ms-auto d-flex align-items-center gap-2">
-              <Button size="sm" variant="ghost" className="erp-command-btn" icon={<IconRotateClockwise size={16} />} onClick={resetConditions}>
-                重置
-              </Button>
-              <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconSearch size={16} />} onClick={runQuery}>
-                查询
-              </Button>
+            </div>
+            <div className="erp-query-field">
+              <span className="erp-query-label" id={`${baseId}-print-sort`}>排序方案</span>
+              <div className="erp-query-control">
+                <select
+                  className="form-select form-select-sm"
+                  aria-labelledby={`${baseId}-print-sort`}
+                  value={sortSerialNo ?? ''}
+                  onChange={(event) => setSortSerialNo(event.target.value === '' ? null : Number(event.target.value))}
+                >
+                  <option value="">（默认）</option>
+                  {sortSchemes.map((scheme) => <option key={scheme.serialNo} value={scheme.serialNo}>{scheme.sortName}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="erp-query-field">
+              <span className="erp-query-label" id={`${baseId}-print-direct`}>顺序</span>
+              <div className="erp-query-control" role="radiogroup" aria-labelledby={`${baseId}-print-direct`}>
+                <label className="form-check small">
+                  <input className="form-check-input" type="radio" name={`${baseId}-sort-direct`} checked={sortDirect === 'asc'} onChange={() => setSortDirect('asc')} />
+                  <span className="form-check-label">升序</span>
+                </label>
+                <label className="form-check small">
+                  <input className="form-check-input" type="radio" name={`${baseId}-sort-direct`} checked={sortDirect === 'desc'} onChange={() => setSortDirect('desc')} />
+                  <span className="form-check-label">降序</span>
+                </label>
+              </div>
+            </div>
+            <div className="erp-query-field">
+              <span className="erp-query-label" id={`${baseId}-print-scope`}>输出</span>
+              <div className="erp-query-control" role="group" aria-labelledby={`${baseId}-print-scope`}>
+                <label className="form-check small">
+                  <input className="form-check-input" type="checkbox" checked={showGroup} onChange={(event) => setShowGroup(event.target.checked)} />
+                  <span className="form-check-label">显示分组</span>
+                </label>
+                <label className="form-check small">
+                  <input className="form-check-input" type="checkbox" checked={showDetail} onChange={(event) => setShowDetail(event.target.checked)} />
+                  <span className="form-check-label">显示明细</span>
+                </label>
+              </div>
             </div>
           </div>
-          <div className="card-body">
-            <div className="erp-query-grid">
-              {def.conditions.map((condition) => {
-                const labelId = `${baseId}-cond-${condition.serialNo}`
-                return (
-                  <div className="erp-query-field" key={condition.serialNo}>
-                    <span className="erp-query-label" id={labelId}>{condition.desc}</span>
-                    <div className="erp-query-control">
-                      {condition.type === 1 && (
-                        <>
-                          <input
-                            className="form-control form-control-sm erp-query-range"
-                            placeholder="从"
-                            aria-label={`${condition.desc} 从`}
-                            value={values[condition.serialNo] ?? ''}
-                            onChange={(event) => setValues((current) => ({ ...current, [condition.serialNo]: event.target.value }))}
-                          />
-                          <input
-                            className="form-control form-control-sm erp-query-range"
-                            placeholder="到"
-                            aria-label={`${condition.desc} 到`}
-                            value={valuesTo[condition.serialNo] ?? ''}
-                            onChange={(event) => setValuesTo((current) => ({ ...current, [condition.serialNo]: event.target.value }))}
-                          />
-                        </>
-                      )}
-                      {condition.type === 2 && (
-                        <select
-                          className="form-select form-select-sm"
-                          aria-labelledby={labelId}
-                          value={values[condition.serialNo] ?? ''}
-                          onChange={(event) => setValues((current) => ({ ...current, [condition.serialNo]: event.target.value }))}
-                        >
-                          <option value="">全部</option>
-                          {condition.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
-                      )}
-                      {condition.type === 3 && (
-                        <DataSelectCondition
-                          moduleId={moduleId}
-                          reportId={reportId}
-                          condition={condition}
-                          labelId={labelId}
-                          value={values[condition.serialNo] ?? ''}
-                          onChange={(value) => setValues((current) => ({ ...current, [condition.serialNo]: value }))}
-                        />
-                      )}
-                      {condition.type === 5 && (
-                        <DataMultiSelectCondition
-                          moduleId={moduleId}
-                          condition={condition}
-                          labelId={labelId}
-                          value={values[condition.serialNo] ?? ''}
-                          onChange={(value) => setValues((current) => ({ ...current, [condition.serialNo]: value }))}
-                        />
-                      )}
-                      {condition.type === 4 && (
-                        <div className="d-flex flex-wrap gap-2 small" role="group" aria-labelledby={labelId}>
-                          {condition.options.map((option) => (
-                            <label className="form-check" key={option.value}>
-                              <input
-                                className="form-check-input"
-                                type="checkbox"
-                                checked={(values[condition.serialNo] ?? '').split(',').includes(option.value)}
-                                onChange={(event) => {
-                                  const current = (values[condition.serialNo] ?? '').split(',').filter(Boolean)
-                                  const next = event.target.checked ? [...current, option.value] : current.filter((item) => item !== option.value)
-                                  setValues((state) => ({ ...state, [condition.serialNo]: next.join(',') }))
-                                }}
-                              />
-                              <span className="form-check-label">{option.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+          <div className="d-flex align-items-center gap-2 mt-3">
+            <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPrinter size={16} />} loading={printing} onClick={() => void handlePrint()}>
+              生成 PDF
+            </Button>
+            <span className="text-secondary small">按当前查询条件输出整份报表</span>
           </div>
-        </section>
+          {selectedHeader && (
+            <div className="border rounded bg-light mt-2 px-3 py-2 d-flex align-items-center gap-3">
+              {selectedHeader.logoUrl && <img src={selectedHeader.logoUrl} alt="页头 LOGO" style={{ maxHeight: 40 }} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
+              <div>
+                {selectedReport?.companyName && <div className="fw-bold">{selectedReport.companyName}</div>}
+                {selectedHeader.headerText && <div className="small text-secondary">{selectedHeader.headerText}</div>}
+              </div>
+            </div>
+          )}
+        </Modal>
       )}
 
       <ErpListCard
         ariaLabel={`${def.title}查询结果`}
-        search={null}
+        search={(
+          <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+            {/* 报表名已在右侧 select 与页签上；左上只保留模块名 + 模块号（单行、加粗） */}
+            <strong className="text-nowrap">{def.title || '模块'} {moduleId}</strong>
+            {multipleReports && (
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 'auto', maxWidth: 220 }}
+                aria-label="报表"
+                value={reportId}
+                onChange={(event) => {
+                  pendingReportSwitchRef.current = true
+                  setReportId(event.target.value)
+                  setSortSerialNo(null)
+                }}
+              >
+                {(printSettings.data?.reports ?? []).map((report) => (
+                  <option key={report.reportId} value={report.reportId}>{report.reportName}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
         actions={(
           <ErpCommandBar
-            ariaLabel="报表结果工具栏"
+            iconOnly
+            ariaLabel="报表工具栏"
             items={[
-              { action: 'columns', label: '选择列', visible: resultColumns.length > 1, onClick: () => setColumnSelectorOpen(true) },
-              { action: 'export', label: '导出 CSV', visible: queryKey > 0, onClick: () => void handleExport() },
-              { action: 'refresh', label: '刷新', visible: queryKey > 0, loading: result.isFetching, onClick: () => void result.refetch() },
+              { action: 'back', icon: <IconArrowLeft size={16} />, title: '返回报表中心', variant: 'ghost', onClick: () => navigate('/report-center') },
+              { action: 'conditions', icon: <IconFilter size={16} />, title: '查询条件', badge: activeConditionCount, visible: def.conditions.length > 0, onClick: openConditions },
+              { action: 'query', icon: <IconSearch size={16} />, title: '查询', variant: 'primary', onClick: runQuery },
+              { action: 'print', icon: <IconPrinter size={16} />, title: '打印', variant: printOpen ? 'primary' : 'secondary', visible: hasPrintPermission, onClick: () => setPrintOpen((current) => !current) },
+              { action: 'columns', title: '选择列', visible: resultColumns.length > 1, onClick: () => setColumnSelectorOpen(true) },
+              { action: 'export', title: '导出 CSV', visible: queryKey > 0, onClick: () => void handleExport() },
+              { action: 'refresh', title: '刷新', visible: queryKey > 0, loading: result.isFetching, onClick: () => void result.refetch() },
             ]}
           />
         )}
@@ -601,9 +569,9 @@ export function ReportViewerPage({
             // 报表可能按明细字段排序/分组（主表与明细 1:N 关联），同一条主表主键会重复出现，
             // 拿主键拼行键会撞键。结果是分页快照、本表无行选择语义，下标即唯一。
             rowKey={(_row, index) => String(index)}
-            loading={result.isPending}
+            loading={result.isPending && !result.data}
             loadingLabel="正在查询…"
-            fetching={result.isFetching}
+            fetching={result.isFetching || definition.isPlaceholderData}
             error={result.isError ? errorMessage : null}
             onRetry={() => void result.refetch()}
             empty={rowCount === 0 ? <EmptyState title="没有符合条件的数据" description="请放宽查询条件后重新查询。" /> : null}
@@ -619,6 +587,104 @@ export function ReportViewerPage({
         onClose={() => setColumnSelectorOpen(false)}
         onSave={saveVisibleColumns}
       />
+
+      {conditionsOpen && (
+        <Modal
+          title="查询条件"
+          size="lg"
+          scrollable
+          onClose={() => setConditionsOpen(false)}
+          footer={<>
+            <Button size="sm" variant="secondary" icon={<IconRotateClockwise size={16} />} onClick={resetDraftConditions}>
+              重置
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setConditionsOpen(false)}>取消</Button>
+            <Button size="sm" variant="primary" icon={<IconSearch size={16} />} onClick={applyConditions}>
+              查询
+            </Button>
+          </>}
+        >
+          <div className="erp-query-form">
+            {def.conditions.map((condition) => {
+              const labelId = `${baseId}-cond-${condition.serialNo}`
+              return (
+                <div className="erp-query-field" key={condition.serialNo}>
+                  <span className="erp-query-label" id={labelId}>{condition.desc}</span>
+                  <div className="erp-query-control">
+                    {condition.type === 1 && (
+                      <>
+                        <input
+                          className="form-control form-control-sm erp-query-range"
+                          placeholder="从"
+                          aria-label={`${condition.desc} 从`}
+                          value={draftValues[condition.serialNo] ?? ''}
+                          onChange={(event) => setDraftValues((current) => ({ ...current, [condition.serialNo]: event.target.value }))}
+                        />
+                        <input
+                          className="form-control form-control-sm erp-query-range"
+                          placeholder="到"
+                          aria-label={`${condition.desc} 到`}
+                          value={draftValuesTo[condition.serialNo] ?? ''}
+                          onChange={(event) => setDraftValuesTo((current) => ({ ...current, [condition.serialNo]: event.target.value }))}
+                        />
+                      </>
+                    )}
+                    {condition.type === 2 && (
+                      <select
+                        className="form-select form-select-sm"
+                        aria-labelledby={labelId}
+                        value={draftValues[condition.serialNo] ?? ''}
+                        onChange={(event) => setDraftValues((current) => ({ ...current, [condition.serialNo]: event.target.value }))}
+                      >
+                        <option value="">全部</option>
+                        {condition.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    )}
+                    {condition.type === 3 && (
+                      <DataSelectCondition
+                        moduleId={moduleId}
+                        reportId={reportId}
+                        condition={condition}
+                        labelId={labelId}
+                        value={draftValues[condition.serialNo] ?? ''}
+                        onChange={(value) => setDraftValues((current) => ({ ...current, [condition.serialNo]: value }))}
+                      />
+                    )}
+                    {condition.type === 5 && (
+                      <DataMultiSelectCondition
+                        moduleId={moduleId}
+                        condition={condition}
+                        labelId={labelId}
+                        value={draftValues[condition.serialNo] ?? ''}
+                        onChange={(value) => setDraftValues((current) => ({ ...current, [condition.serialNo]: value }))}
+                      />
+                    )}
+                    {condition.type === 4 && (
+                      <div className="d-flex flex-wrap gap-2 small" role="group" aria-labelledby={labelId}>
+                        {condition.options.map((option) => (
+                          <label className="form-check" key={option.value}>
+                            <input
+                              className="form-check-input"
+                              type="checkbox"
+                              checked={(draftValues[condition.serialNo] ?? '').split(',').includes(option.value)}
+                              onChange={(event) => {
+                                const current = (draftValues[condition.serialNo] ?? '').split(',').filter(Boolean)
+                                const next = event.target.checked ? [...current, option.value] : current.filter((item) => item !== option.value)
+                                setDraftValues((state) => ({ ...state, [condition.serialNo]: next.join(',') }))
+                              }}
+                            />
+                            <span className="form-check-label">{option.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

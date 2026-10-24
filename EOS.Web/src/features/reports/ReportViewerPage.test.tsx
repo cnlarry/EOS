@@ -3,6 +3,7 @@ import { apiClientMock } from '../../test/apiMock'
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PageBreadcrumbContext } from '../../components/layout/PageBreadcrumbContext'
 import { ReportViewerPage } from './ReportViewerPage'
 
 
@@ -86,9 +87,10 @@ describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
 
   it('按数据源选项渲染复选框（type 5），而非 type 3 的下拉', async () => {
     renderViewer()
+    fireEvent.click(await screen.findByRole('button', { name: /查询条件/ }))
     expect(await screen.findByText('一号仓')).toBeInTheDocument()
     expect(screen.getByText('二号仓')).toBeInTheDocument()
-    // 仅统计条件区该字段内的复选框（打印设置默认折叠，其显示分组/显示明细复选框不在 DOM 中）
+    // 仅统计条件弹窗内该字段的复选框（打印设置默认折叠，其显示分组/显示明细复选框不在 DOM 中）
     const conditionArea = screen.getByText('仓库').closest<HTMLElement>('.erp-query-field')!
     expect(within(conditionArea).getAllByRole('checkbox')).toHaveLength(2)
     expect(within(conditionArea).getAllByRole('checkbox')[0]).not.toBeChecked()
@@ -98,10 +100,12 @@ describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
 
   it('勾选复选框后点查询，以逗号分隔实际值 POST（type 4 同语义）', async () => {
     renderViewer()
+    fireEvent.click(await screen.findByRole('button', { name: /查询条件/ }))
     await screen.findByText('一号仓')
     fireEvent.click(screen.getByText('一号仓').closest('label')!.querySelector('input')!)
     fireEvent.click(screen.getByText('二号仓').closest('label')!.querySelector('input')!)
-    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '查询' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
       expect.objectContaining({ values: { 1: 'W1,W2' } }),
@@ -110,16 +114,20 @@ describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
 
   it('取消勾选后重新查询，POST 值同步收缩', async () => {
     renderViewer()
+    fireEvent.click(await screen.findByRole('button', { name: /查询条件/ }))
     await screen.findByText('一号仓')
     fireEvent.click(screen.getByText('一号仓').closest('label')!.querySelector('input')!)
     fireEvent.click(screen.getByText('二号仓').closest('label')!.querySelector('input')!)
-    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '查询' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
       expect.objectContaining({ values: { 1: 'W1,W2' } }),
     ))
+    // 已应用的值回填到弹窗草稿；重开条件弹窗改选后再查询
+    fireEvent.click(screen.getByRole('button', { name: /查询条件/ }))
+    await screen.findByText('一号仓')
     fireEvent.click(screen.getByText('一号仓').closest('label')!.querySelector('input')!)
-    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '查询' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
       expect.objectContaining({ values: { 1: 'W2' } }),
@@ -136,15 +144,15 @@ describe('ReportViewerPage 页面结构', () => {
     vi.clearAllMocks()
   })
 
-  it('标题栏显示当前报表名并回链报表中心', async () => {
+  it('工具栏显示模块身份并回链报表中心', async () => {
     renderViewer()
-    expect(await screen.findByRole('heading', { name: '库存报表' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '报表中心' })).toBeInTheDocument()
+    expect(await screen.findByText('库存报表 1405')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '返回报表中心' })).toBeInTheDocument()
   })
 
   it('打印设置默认折叠，点「打印」才展开', async () => {
     renderViewer()
-    await screen.findByRole('heading', { name: '库存报表' })
+    await screen.findByText('库存报表 1405')
     expect(screen.queryByText('打印设置')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '打印' }))
     expect(screen.getByText('打印设置')).toBeInTheDocument()
@@ -163,5 +171,39 @@ describe('ReportViewerPage 页面结构', () => {
       '/reports/1405/query?page=2&pageSize=100&reportId=RPT_A',
       expect.objectContaining({ values: { 1: 'W1' } }),
     ))
+  })
+
+  it('页内切换报表时上抛页签标题，不重开标签', async () => {
+    const twoReports = {
+      ...printSettings,
+      reports: [
+        printSettings.reports[0],
+        { reportId: 'RPT_B', reportName: '订单报表', headerId: null, tailId: null, footerText: null, isoNo: null, isDefault: false },
+      ],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/print-settings')) return twoReports
+      if (p.includes('/definition')) return definition
+      if (p.includes('/condition-options/')) return conditionOptions
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const titles: string[] = []
+    const router = createMemoryRouter(
+      [{
+        path: '/report/:reportId',
+        element: (
+          <PageBreadcrumbContext.Provider value={{ breadcrumb: null, setBreadcrumb: (value) => { if (value) titles.push(value.title) } }}>
+            <IdentityRouteStub moduleId="1405" />
+          </PageBreadcrumbContext.Provider>
+        ),
+      }],
+      { initialEntries: ['/report/RPT_A'] },
+    )
+    renderWithProviders(<RouterProvider router={router} />)
+    await waitFor(() => expect(titles.at(-1)).toBe('库存报表'))
+    const select = await screen.findByLabelText('报表')
+    fireEvent.change(select, { target: { value: 'RPT_B' } })
+    await waitFor(() => expect(titles.at(-1)).toBe('订单报表'))
   })
 })
