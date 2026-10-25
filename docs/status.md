@@ -86,7 +86,7 @@ EOS 现代化重构已进入「**全面替代收尾 + 长尾验收**」阶段：
   21 跨表不可达」是另一次运行的读数，不再使用；② 「补 `QUERY_RELATION` 后重跑工具即可回填」**已不可执行**
   ——`ChooserBackfillRerunTool` 头部写明 `CHOOSER_FILTER_MIGRATION_LOG` 于迁移 041 删除、迁移通道关闭，
   现状唯一落库路径是直接写 `FIELD_DATASOURCE.FILTER_STRUCT` 的迁移并用 `ChooserFilterValidator` 试编译。
-  逐条处置（含 6 条的修法与 28 条的分类判据）见本机台账 `docs/plans/48行分诊-按旧系统基线.md`。
+  **2026-10-25 复核后的事实订正**：那 6 行"旧系统可用"的**早在迁移 021 就已转换落库**（`HR_WAGE_D/HRM_WAGE_D.EMP_NO`、`PUR_PURCHASE_D.APPLY_NO/PRO_NO`、`QC_LOSS_D/QC_SCRAP_D.ANALYSIS_NO` 逐条核对均有真实结构），不是待修项；真正修掉的是**5 条编译不过的结构**（运行期 fail-closed ⇒ 静默退化成"没有过滤"）：270/1460 把列对列比较写进 `value`、1074 引用不存在的列 `R_M_IDX`、1078/1079 子查询引用历史表名 `SYS_USER_GROUP_USER`，已由迁移 `450_chooser_filter_struct_compile_fixes.sql` 修正。同时新增门禁用例 `EOS.API.Tests/ChooserFilterStructCompileLiveTests.cs`：存量 847 条非空过滤结构逐条走保存路径同一个校验器，**编不过即红**。逐条处置见本机台账 `docs/plans/48行分诊-按旧系统基线.md`。
   新旧对拍：452 行 = 424 MATCH + 0 MISMATCH + 28 UNTESTABLE（绑定类型问题）。
 - 技术债（单列在 §6）：跨表 JOIN 依赖 `TABLES.QUERY_RELATION`，变更需重启 API 生效；
   多来源回显暂取首个启用来源映射。
