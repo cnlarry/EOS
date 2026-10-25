@@ -10,6 +10,7 @@
  *   VALUE_LOST             提交了非空值，读回是空 ★核心
  *   VALUE_MISMATCH         读回值 ≠ 提交值（按字段类型归一后比较）★核心
  *   DETAIL_LOST            提交了明细行，读回没有（或行数少于提交数）
+ *   DETAIL_PRUNED_BY_SIBLING 同月工资族按设计删掉了兄弟探针单的重复明细（记 info，不算丢行）
  *   DETAIL_VALUE_LOST      明细某个字段提交了非空值，读回是空
  *   CREATE_REJECTED        建单被服务端拒绝（4xx，带错误码）——多半是用例的值造得不合业务校验
  *   CREATE_SERVER_ERROR    建单 5xx
@@ -156,6 +157,24 @@ const saveRewrittenDetailKeys = definition => {
   return keys
 }
 
+/**
+ * SAVE 期会**增删明细行**的效果：行数变化是设计，不是"丢行"。
+ *
+ * `wage-month-doc-prune`（离职工资同月唯一）在保存时删除「同月、员工重叠、且不是本单」的明细行——
+ * 这正是旧过程 `P_HR_WAGE_After_Save` 的语义（离职补发替换同月同人的旧档）。而本脚本把
+ * 180309/1803091/180310/1803101 四个共用 `HR_WAGE_M`/`HR_WAGE_D` 的工资模块跑在同一个月、
+ * 造的是同一批员工，于是**后一个模块的保存会删掉前一个模块探针单的明细**：改单后读回 0 行，
+ * 看起来像丢行，其实是兄弟模块按设计清掉了它。单跑该模块不复现（已实测），故记 info。
+ *
+ * 只有具名的效果进这张表：泛化到"有 SAVE 效果就跳过行数断言"会把真正静默丢行的缺陷一起放过。
+ */
+const SAVE_ROW_REWRITERS = new Set(['wage-month-doc-prune'])
+const hasSaveRowRewriter = definition =>
+  (definition?.businessActions ?? []).some(action =>
+    action?.enabled
+    && String(action.eventCode ?? '').toUpperCase() === 'SAVE'
+    && SAVE_ROW_REWRITERS.has(String(action.effectKey ?? '').toLowerCase()))
+
 /** 新增态的主表提交集：可写字段 + 主键（新增时主键要用户给，编辑态才由键决定）。 */
 function createFields(form) {
   const derived = derivedAmountKeys(form)
@@ -190,6 +209,37 @@ function parseModuleFilter(text) {
 }
 
 /**
+ * 字段带 `REGEX` 时先按正则造值。服务端会拿 `FIELDS.REGEX` 逐值校验，通用文本值必然撞
+ * `REGEX_MISMATCH`，模块于是白丢覆盖（考勤时间 `((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$`、
+ * 工资月份 `^\d{4}?(?:0[1-9]|1[0-2])$` 是典型）。
+ *
+ * 做法是列一组常见形态的候选、用字段自己的正则筛第一个命中项——**不写"正则反推器"**：
+ * 那东西遇到 `^(\d{1,4})(\d{1,2})$` 这类带分组的式子只会更难维护，而候选表覆盖的都是
+ * 真实在用的形态。一个都不命中就返回 null，交回原有的按类型造值：宁可回到旧行为，
+ * 也不要造一个必被服务端拒掉的值。
+ */
+const REGEX_VALUE_CANDIDATES = [
+  '08:00', '17:30', '23:59',
+  '2026-01', '202601', '2026/01',
+  '2026-01-01', '20260101',
+  '01', '1', '12', '123', '1234', '12345',
+]
+
+function synthesizeByRegex(field, runTag, seq) {
+  const source = String(field.regex ?? '').trim()
+  if (source === '') return null
+  let pattern = null
+  try { pattern = new RegExp(source) } catch { return null }
+  const max = Number(field.maxLength) || 0
+  for (const raw of [...REGEX_VALUE_CANDIDATES, `${VALUE_PREFIX}${runTag}${seq}`]) {
+    // 先按长度截断再比对：截断后不匹配的候选不算命中，否则会造出"长度对、格式错"的值
+    const text = max > 0 && raw.length > max ? raw.slice(0, max) : raw
+    if (pattern.test(text)) return text
+  }
+  return null
+}
+
+/**
  * 按字段类型造一个合法值。返回 null 表示"造不出来"，由调用方记 UNFILLABLE。
  *
  * 数值列的小数位不能只看列声明的 scale：`numeric-context` 把字段分成 QTY / PRICE / AMOUNT /
@@ -208,6 +258,8 @@ function generateValue(field, runTag, seq, roleByKey, filterValues) {
   const max = Number(field.maxLength) || 0
   const clamp = text => (max > 0 && text.length > max ? text.slice(0, max) : text)
   if (isBit(field)) return '0'
+  const byRegex = synthesizeByRegex(field, runTag, seq)
+  if (byRegex !== null) return byRegex
   if (isNumeric(field)) {
     const role = String(roleByKey?.[String(field.key ?? '').toUpperCase()] ?? '').toUpperCase()
     if (role === 'QTY') return '1'
@@ -917,7 +969,18 @@ async function roundtrip(page, moduleId, runTag, findings, extra) {
           findings.push(...compareValues(moduleId, fields, effective, second.json?.master ?? {}, '改单', `key=${JSON.stringify(keyValues)}`))
           const secondDetails = Array.isArray(second.json?.details) ? second.json.details : []
           if (details && secondDetails.length < details.length) {
-            findings.push({ moduleId, code: 'DETAIL_LOST', detail: `改单：明细从 ${details.length} 行变成 ${secondDetails.length} 行（改单未提交明细，本不该变化）`, stage: 'update' })
+            // 同月工资族的兄弟模块会按设计删掉本单的重复员工明细（见 SAVE_ROW_REWRITERS），
+            // 那不是本模块丢行——记 info 并写明成因，别让读者以为改单清空了明细。
+            const prunedByEffect = hasSaveRowRewriter(definition.json)
+            findings.push({
+              moduleId,
+              code: prunedByEffect ? 'DETAIL_PRUNED_BY_SIBLING' : 'DETAIL_LOST',
+              level: prunedByEffect ? 'info' : 'fail',
+              detail: prunedByEffect
+                ? `改单：明细从 ${details.length} 行变成 ${secondDetails.length} 行——本模块挂了「同月同人去重」类保存效果，兄弟探针单会按设计删掉重复行（单跑不复现）`
+                : `改单：明细从 ${details.length} 行变成 ${secondDetails.length} 行（改单未提交明细，本不该变化）`,
+              stage: 'update',
+            })
           }
         }
       }
