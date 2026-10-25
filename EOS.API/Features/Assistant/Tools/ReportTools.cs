@@ -273,16 +273,16 @@ public sealed class RunReportTool(
             }
         }
 
-        foreach (var row in result.Rows.Take(maxRows))
+        foreach (var row in result.Items.Take(maxRows))
         {
             output.Append("- ");
             output.AppendLine(string.Join(" ", columns.Select(column =>
                 $"{column.Label}={Truncate(FormatValue(column.Key, row), maxValue)}")));
         }
 
-        if (result.Rows.Count > maxRows)
+        if (result.Items.Count > maxRows)
         {
-            output.Append("（本页还有 ").Append(result.Rows.Count - maxRows).Append(" 行未列出）").AppendLine();
+            output.Append("（本页还有 ").Append(result.Items.Count - maxRows).Append(" 行未列出）").AppendLine();
         }
 
         // 聚合报表的行级范围由报表自身的数据源决定：报表取数链路不接受模块 DATA_FILTER 的注入，

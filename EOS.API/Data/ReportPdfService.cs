@@ -106,7 +106,7 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
             });
         });
         logger.LogDebug("报表 PDF 生成 module={ModuleId} report={ReportId} rows={RowCount}",
-            definition.ModuleId, meta.ReportId, input.Data.Rows.Count);
+            definition.ModuleId, meta.ReportId, input.Data.Items.Count);
         return document.GeneratePdf();
     }
 
@@ -128,10 +128,10 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
             .Where(column => PdfLayout.IsSubtotalColumn(column, input.Definition.MasterPkOrder))
             .ToList();
         var summaries = ReportListGrouping.BuildGroupSummaries(
-            input.Data.Rows, input.GroupFields, input.ShowGroup, input.ShowDetail,
+            input.Data.Items, input.GroupFields, input.ShowGroup, input.ShowDetail,
             subtotalColumns.Select(column => column.Key).ToList());
         logger.LogDebug("报表 PDF 分组 module={ModuleId} rows={Rows} groupFields={GroupFields} subtotalColumns={SubtotalColumns} summaries={Summaries} firstKey={FirstKey}",
-            input.Definition.ModuleId, input.Data.Rows.Count, string.Join(',', input.GroupFields),
+            input.Definition.ModuleId, input.Data.Items.Count, string.Join(',', input.GroupFields),
             subtotalColumns.Count, summaries.Count, summaries.Count > 0 ? summaries[0].Key : "<none>");
         if (input.ShowGroup && input.GroupFields.Count > 0 && summaries.Count > 0)
         {
@@ -140,20 +140,20 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
             {
                 table.Cell().ColumnSpan((uint)columns.Count).Background(Colors.Blue.Lighten5).Padding(3)
                     .Text(summary.Key).FontSize(8).SemiBold();
-                while (rowIndex < input.Data.Rows.Count
-                       && ReportListGrouping.GroupKeyOf(input.Data.Rows[rowIndex], input.GroupFields) == summary.Key)
+                while (rowIndex < input.Data.Items.Count
+                       && ReportListGrouping.GroupKeyOf(input.Data.Items[rowIndex], input.GroupFields) == summary.Key)
                 {
-                    if (input.ShowDetail) EmitDetailRow(table, columns, input.Data.Rows[rowIndex]);
+                    if (input.ShowDetail) EmitDetailRow(table, columns, input.Data.Items[rowIndex]);
                     rowIndex++;
                 }
                 EmitGroupFooter(table, columns, summary);
             }
-            for (; rowIndex < input.Data.Rows.Count; rowIndex++)
-                if (input.ShowDetail) EmitDetailRow(table, columns, input.Data.Rows[rowIndex]);
+            for (; rowIndex < input.Data.Items.Count; rowIndex++)
+                if (input.ShowDetail) EmitDetailRow(table, columns, input.Data.Items[rowIndex]);
         }
         else
         {
-            foreach (var row in input.Data.Rows)
+            foreach (var row in input.Data.Items)
                 if (input.ShowDetail) EmitDetailRow(table, columns, row);
         }
     }

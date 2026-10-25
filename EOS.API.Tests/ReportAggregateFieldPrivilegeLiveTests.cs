@@ -98,8 +98,8 @@ public sealed class ReportAggregateFieldPrivilegeLiveTests
                 [4] = "2999-12-31",
             });
         var result = await repository.QueryAsync(definition, request, 1, 50, dataFilter: null, CancellationToken.None);
-        Assert.NotEmpty(result.Rows);
-        return result.Rows;
+        Assert.NotEmpty(result.Items);
+        return result.Items;
     }
 
     private static async Task<(string DepotId, string ProductNo)> SamplePairAsync()

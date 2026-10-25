@@ -168,7 +168,7 @@ public sealed class ReportController(
         using var writer = new StringWriter();
         writer.Write('\uFEFF');
         writer.WriteLine(string.Join(',', definition.Columns.Select(column => Escape(column.Label))));
-        foreach (var row in result.Rows)
+        foreach (var row in result.Items)
             // 数值用不变文化（点号小数、无千分位），否则德语服务器会导出 "1234,5" 被 Excel 拆列
             writer.WriteLine(string.Join(',', definition.Columns.Select(column =>
                 Escape(Convert.ToString(row.GetValueOrDefault(column.Key), System.Globalization.CultureInfo.InvariantCulture) ?? ""))));

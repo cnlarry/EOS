@@ -223,7 +223,7 @@ public sealed class BatchExpiryReportLiveTests
             new Dictionary<int, string?> { [5] = includeExpired, [6] = unmanagedOnly },
             new Dictionary<int, string?>());
         var result = await repository.QueryAsync(definition, request, 1, 200, null, CancellationToken.None);
-        return result.Rows.ToList();
+        return result.Items.ToList();
     }
 
     private static async Task<int> ReadAlertDaysAsync()

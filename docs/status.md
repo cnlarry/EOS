@@ -126,8 +126,9 @@ S0–S6 + 四个收尾批全部验收通过（2026-09-30），工具数收敛在
 检索中心把 `ArgumentException` 映射成它自己的 `SEARCH_QUERY_INVALID`、BOM 导入把
 `InvalidOperationException` 映射成 `IMPORT_REJECTED`——这四处是端点级契约，不是可机械收敛的重复）。
 **未开工**：批 3 全部。**批 2 第 9 项（分页响应形状统一）已收口**：分页信封一律
-`items`/`total`/`page`/`pageSize`——工作台 `WorkbenchData.Rows` 与查询中心 `SearchQueryResult.Rows`
-改为 `Items`，前端工作台、查询中心、报表三处页面与用例同批跟改（这道改动是**对外契约变更**，
+`items`/`total`/`page`/`pageSize`——工作台 `WorkbenchData.Rows`、查询中心 `SearchQueryResult.Rows` 与报表查询
+`ReportQueryResult.Rows` 三处都改为 `Items`（第三处是事后补的：报表查看页先按 `items` 改了前端，实测 `/reports/{m}/query`
+仍返回 `rows`，等于给它留了个"列表空"的回归，随即补齐），前端工作台、查询中心、报表三处页面与用例同批跟改（这道改动是**对外契约变更**，
 后端与前端必须同批部署）；不带 `page`/`pageSize` 的结果集（统一选择器 `columns/rows/total`、
 审批历史 `{ rows }`）不算分页，键名不变。
 

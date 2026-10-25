@@ -103,7 +103,7 @@ public sealed record ReportQueryRequest(
     IReadOnlyDictionary<int, string?> ValuesTo);
 
 public sealed record ReportQueryResult(
-    IReadOnlyList<Dictionary<string, object?>> Rows,
+    IReadOnlyList<Dictionary<string, object?>> Items,
     int Total,
     int Page,
     int PageSize);

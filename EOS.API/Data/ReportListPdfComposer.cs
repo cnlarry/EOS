@@ -74,7 +74,7 @@ public static class ReportListPdfComposer
             HeaderText: header?.HeaderText,
             Logo: logo,
             Columns: columns,
-            Rows: input.Data.Rows,
+            Rows: input.Data.Items,
             SubtotalKeys: SelectSubtotalKeys(definition, columns),
             GroupFields: input.GroupFields,
             ShowGroup: input.ShowGroup,
@@ -93,7 +93,7 @@ public static class ReportListPdfComposer
             MasterFields: [],
             DetailFields: columns.Select(column => new PrintField(column.Key, column.Label, column.DisplayFormat)).ToList(),
             Master: new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
-            Details: input.Data.Rows.Cast<IReadOnlyDictionary<string, object?>>().ToList(),
+            Details: input.Data.Items.Cast<IReadOnlyDictionary<string, object?>>().ToList(),
             Company: meta.Company?.Fields);
 
         return (data, new LayoutRenderContext(input.PrintPerson, true, payload));

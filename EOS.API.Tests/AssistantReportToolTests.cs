@@ -135,7 +135,7 @@ public sealed class AssistantReportToolTests
         {
             Definition = Definition("产品编号", "产品名称"),
             Result = new ReportQueryResult(
-                Rows:
+                Items:
                 [
                     new Dictionary<string, object?> { ["C0"] = "P-1", ["C1"] = "这是一个很长的产品名称" },
                     new Dictionary<string, object?> { ["C0"] = "P-2", ["C1"] = "第二个" },

@@ -92,7 +92,7 @@
 ## 四、分页
 
 列表接口统一返回四项：**`items`、`total`、`page`、`pageSize`**。四项在**所有**分页接口上同名：
-`WorkbenchData(Items, Total, Page, PageSize)`、`SearchQueryResult(Items, …)`、
+`WorkbenchData(Items, Total, Page, PageSize)`、`SearchQueryResult(Items, …)`、`ReportQueryResult(Items, …)`、
 `XxxPageResult(Items, …)` 的 C# 属性名可以随域不同，但落到线上的键名只有这一套。
 
 > 这套形状是一次统一的结果：此前工作台与查询中心用的是 `rows`，管理类接口用 `items`，
