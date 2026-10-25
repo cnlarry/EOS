@@ -207,6 +207,33 @@
   display: flex;
 }
 
+/* 空页签：运行态不渲染，设计器保留并标出来（否则"排了页签、运行态看不到"像 bug） */
+.erp-designer-tab-empty {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--tblr-bg-surface-secondary);
+  color: var(--tblr-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+/* 浏览态固定区预览：生命周期字段不参与版式，只在画布下方示意 */
+.erp-designer-system {
+  margin: 10px 12px 0;
+}
+.erp-designer-system-note {
+  margin-bottom: 4px;
+  color: var(--tblr-secondary);
+  font-size: var(--erp-font-xs);
+}
+.erp-form-lifecycle.is-preview {
+  border: 1px dashed var(--tblr-border-color);
+  border-radius: var(--erp-radius-md);
+  background: var(--tblr-bg-surface-secondary);
+}
+
 /* 带关闭按钮的页签右侧留出按钮位（按钮叠在页签内，不改变页签边框） */
 .erp-designer-tab.is-closable .nav-link {
   padding-right: 26px;

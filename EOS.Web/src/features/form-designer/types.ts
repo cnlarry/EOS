@@ -63,6 +63,17 @@ export interface PoolField {
   lockReason: string | null
 }
 
+/**
+ * 设计态固定区字段（主表生命周期列）：只用于画布下方的预览，不进入版式行/字段池。
+ * 运行态由 `FormDefinition.lifecycleFields` 提供同一批字段。
+ */
+export interface SystemField {
+  key: string
+  label: string
+  dataType: string
+  displayFormat?: string | null
+}
+
 export interface TableDesign {
   table: string
   layout: DesignRow[]
@@ -85,6 +96,8 @@ export interface DesignState {
   master: TableDesign
   detail: TableDesign
   baseUpdatedAt: string | null
+  /** 主表生命周期字段（固定区预览）；旧服务端缺省。 */
+  systemFields?: SystemField[]
 }
 
 export interface TabInput {
@@ -164,6 +177,8 @@ export interface DesignDraft {
   masterPool: PoolField[]
   detail: DesignRow[]
   detailPool: PoolField[]
+  /** 主表生命周期字段：画布下方的固定区预览，不参与版式编辑。 */
+  systemFields?: SystemField[]
   /** 加载时的原始版式，供"恢复该字段默认排版"与"放弃修改"使用。 */
   baseline: {
     tabs: DesignTab[]

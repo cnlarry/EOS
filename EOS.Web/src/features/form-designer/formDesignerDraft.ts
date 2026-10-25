@@ -39,6 +39,7 @@ export function toDraft(state: DesignState): DesignDraft {
     masterPool: [...state.master.pool],
     detail,
     detailPool: [...state.detail.pool],
+    systemFields: state.systemFields ?? [],
     baseline: {
       tabs: normalizeTabs(state.tabs),
       master: cloneRows(master),

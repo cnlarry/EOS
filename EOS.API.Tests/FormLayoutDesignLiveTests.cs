@@ -248,12 +248,10 @@ public sealed class FormLayoutDesignLiveTests
         Assert.NotEmpty(required);
         Assert.All(required, row => Assert.False(string.IsNullOrWhiteSpace(row.LockReason)));
 
-        // 服务端自填的审计列不是"用户可填的必填"，因此仍可隐藏（ADR 例外条款）
-        var lifecycle = state.Master.Layout.FirstOrDefault(row => row.Key is "CREATE_PERSON" or "LAST_UPDATE_BY");
-        if (lifecycle is not null)
-        {
-            Assert.Equal("单据系统列，始终显示", lifecycle.LockReason);
-        }
+        // 生命周期字段不是"用户可填的必填"，也不再参与版式：它们从画布行/字段池剥离，
+        // 只作为固定区字段下发（设计器在画布下方预览）。
+        Assert.DoesNotContain(state.Master.Layout, row => row.Key is "CREATE_PERSON" or "LAST_UPDATE_BY");
+        Assert.Contains(state.SystemFields!, field => field.Key is "CREATE_PERSON" or "LAST_UPDATE_BY");
     }
 
     [Fact]

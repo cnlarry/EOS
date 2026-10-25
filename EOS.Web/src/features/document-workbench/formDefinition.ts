@@ -102,7 +102,7 @@ export interface FormDefinition {
   detailTable: string | null
   hasAdd: boolean
   hasEdit: boolean
-  mode: 'new' | 'edit'
+  mode: 'new' | 'edit' | 'view'
   masterFields: FormFieldDefinition[]
   detailFields: FormFieldDefinition[]
   masterPkOrder: string[]
@@ -126,6 +126,17 @@ export interface FormDefinition {
    * 效果链接管的模块没有过程也没有流程，只有这个标志为真，按钮必须据此显示。
    */
   hasApproveCapability?: boolean
+  /**
+   * 结案能力（主表有 `FINISHED_TAG` 物理列，与服务端 `RunFinishCoreAsync` 同源）。
+   * 为 false 的模块没有结案流程：工具栏不显示结案动作，状态区只显示批核，底部信息区只有三组。
+   */
+  hasFinishCapability?: boolean
+  /**
+   * 生命周期字段（建立/修改/批核/结案的人·日期·状态位）：**只随浏览态下发**，
+   * 不参与版式、不在 masterFields 里；前端把它们渲染成状态徽标 + 主卡底部的固定信息区。
+   * 新增/编辑态为空数组；旧服务端可能缺省。
+   */
+  lifecycleFields?: FormFieldDefinition[] | null
   /** 模块允许复制（MODULES.IF_COPY） */
   ifCopy: boolean
   /** 模块纳入通用查询（MODULES.SEARCH_1/SEARCH_2） */

@@ -51,7 +51,12 @@ public static class FormLayoutDerivation
         IReadOnlyList<FormFieldDefinition> fields,
         FormLayoutDefinition? layout)
     {
-        if (layout is not { MasterCustomized: true } || layout.Master.Count == 0)
+        // 生命周期字段不参与版式：存量版式里可能还留着它们的行（历史数据），
+        // 一律先剔掉再判"是否已定制"——否则只有生命周期行的模块会被判成"定制后没有字段"。
+        var rows = layout?.Master
+            .Where(row => !FormLayoutFactsBuilder.IsLifecycleSystemColumn(row.Key))
+            .ToList() ?? [];
+        if (layout is not { MasterCustomized: true } || rows.Count == 0)
         {
             // 未定制：字段集与顺序原样保留（零配置模块的观感不变），只摘掉虚拟列——
             // 虚拟列是"选择器回写的伴生显示列"，只有版式显式排入时才作为只读字段出现在表单上，
@@ -62,8 +67,8 @@ public static class FormLayoutDerivation
         var byKey = new Dictionary<string, FormFieldDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var field in fields) byKey.TryAdd(field.Key, field);
 
-        var result = new List<FormFieldDefinition>(layout.Master.Count);
-        foreach (var row in layout.Master.OrderBy(row => row.OrderNo))
+        var result = new List<FormFieldDefinition>(rows.Count);
+        foreach (var row in rows.OrderBy(row => row.OrderNo))
         {
             if (row.Hidden || !byKey.TryGetValue(row.Key, out var field)) continue;
             // 夹取按**该行所属页签**的列数：页签 1 两列、页签 2 一列的表单里，

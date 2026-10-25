@@ -42,8 +42,9 @@ const formDefinition: FormDefinition = {
     field('EDITION', '版次', { isPrimaryKey: true }),
     field('QTY', '数量', { dataType: 'decimal', defaultValue: '5' }),
     field('FLAG', '启用', { dataType: 'bit', defaultValue: '1' }),
-    field('CREATE_DATE', '创建时间', { dataType: 'datetime', serverFilled: true, isReadonly: true }),
   ],
+  // 浏览态固定区：生命周期字段不参与版式，只随 view 下发；这里给一个建立日期作代表。
+  lifecycleFields: [field('CREATE_DATE', '创建时间', { dataType: 'datetime', serverFilled: true, isReadonly: true })],
   detailFields: [field('ITEM', '明细项', { isRequired: true })],
   masterPkOrder: ['PRO_NO', 'EDITION'],
   detailNoFields: 'PRO_NO',
@@ -51,6 +52,7 @@ const formDefinition: FormDefinition = {
   tabs: [],
   hasWorkflow: false,
   hasStatelessApprove: false,
+  hasFinishCapability: true,
   defaultValues: {},
   canDelete: true,
   canApprove: true,
@@ -271,7 +273,7 @@ describe('FormEditorPage', () => {
     // 工具条在窗体第一行（旧系统 ModifyToolBar 同位）、字段区在其下；统一弹窗不再有 footer
     const body = dialog!.querySelector('.modal-body') as HTMLElement
     expect(body.firstElementChild?.classList.contains('erp-form-toolbar')).toBe(true)
-    expect(body.firstElementChild?.textContent).toContain('保存')
+    expect(within(body).getByRole('button', { name: '保存' })).toBeInTheDocument()
     expect(body.querySelector(':scope > .erp-form-page')).not.toBeNull()
     // 弹窗不套"整页白卡"：工具栏已经由窗体第一行承担，再包一层会变成两层框
     expect(body.querySelector(':scope > .erp-form-page')?.classList.contains('erp-form-page-full')).toBe(false)
@@ -585,7 +587,8 @@ describe('FormEditorPage', () => {
     const addNew = screen.getByRole('button', { name: '新增' })
     expect(addNew).toHaveClass('btn-primary')
     const toolbar = addNew.closest('[role="toolbar"]')!
-    const order = Array.from(toolbar.querySelectorAll('button')).map(button => (button.textContent ?? '').trim())
+    const order = Array.from(toolbar.querySelectorAll('button'))
+      .map(button => button.getAttribute('aria-label') ?? (button.textContent ?? '').trim())
     expect(order).toEqual(['返回', '新增', '复制', '编辑', '删除', '打印'])
     unmount()
     installApiMocks()
@@ -609,7 +612,8 @@ describe('FormEditorPage', () => {
     })
     renderEditor('/workbench/1209/view/P1/A')
     const toolbar = (await screen.findByRole('button', { name: '返回' })).closest('[role="toolbar"]')!
-    const order = Array.from(toolbar.querySelectorAll('button')).map(button => (button.textContent ?? '').trim())
+    const order = Array.from(toolbar.querySelectorAll('button'))
+      .map(button => button.getAttribute('aria-label') ?? (button.textContent ?? '').trim())
     // 「帮助」已随 HELP_URL 退场（迁移 321）：定序止于打印
     expect(order).toEqual(['返回', '新增', '复制', '编辑', '删除', '批核', '审批历史', '结案', '附件', '打印'])
   })
@@ -1403,6 +1407,99 @@ describe('FormEditorPage', () => {
     // 页签没声明列数（历史快照）⇒ 兜底四子列
     const grid = container.querySelector<HTMLElement>('.erp-form-row')
     expect(grid?.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))')
+  })
+
+  it('浏览态：生命周期字段从业务网格移出，状态在工具栏、经办信息在底部固定区等分四组', async () => {
+    const lifecycle = [
+      field('CREATE_PERSON', '建立人'), field('CREATE_DATE', '建立日期'),
+      field('LAST_UPDATE_BY', '修改人'), field('LAST_UPDATE_DATE', '修改日期'),
+      field('CONFIRM_TAG', '批核状态'), field('CONFIRM_PERSON', '批核人'), field('CONFIRM_DATE', '批核日期'),
+      field('FINISHED_TAG', '结案状态'), field('FINISHED_PERSON', '结案人'), field('FINISHED_DATE', '结案日期'),
+    ]
+    const viewForm = {
+      ...formDefinition,
+      hasApproveCapability: true,
+      hasFinishCapability: true,
+      lifecycleFields: lifecycle,
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return viewForm
+      if (p.includes('/record')) {
+        return {
+          ...recordBundle,
+          master: {
+            ...recordBundle.master,
+            CONFIRM_TAG: true,
+            FINISHED_TAG: false,
+            CREATE_PERSON: '管理员',
+            CREATE_DATE: '2026-10-14T11:16:43',
+            CONFIRM_PERSON: '王五',
+            CONFIRM_DATE: '2026-10-14T11:16:43',
+          },
+        }
+      }
+      throw new Error(`unexpected GET ${p}`)
+    })
+
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByText('已批核')).toBeInTheDocument())
+    expect(screen.getByText('未结案')).toBeInTheDocument()
+    expect(screen.queryByText('单据信息')).not.toBeInTheDocument()
+    // 生命周期字段不再占业务网格的格位
+    expect(container.querySelector('.erp-form-grid [data-field-key="CREATE_DATE"]')).toBeNull()
+    const block = container.querySelector<HTMLElement>('.erp-form-lifecycle')
+    expect(block).not.toBeNull()
+    expect(block!.style.getPropertyValue('--erp-lifecycle-groups')).toBe('4')
+    expect(screen.getByText('王五')).toBeInTheDocument()
+  })
+
+  it('新增态不渲染生命周期固定区和状态徽标', async () => {
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    expect(container.querySelector('.erp-form-lifecycle')).toBeNull()
+    expect(container.querySelector('.erp-doc-status')).toBeNull()
+  })
+
+  it('没有可见业务字段的空页签不渲染', async () => {
+    const withTabs = {
+      ...formDefinition,
+      tabs: [
+        { no: 1, title: '基本信息', columns: 2 },
+        { no: 2, title: '空页签', columns: 2 },
+      ],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return withTabs
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+
+    renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByText('基本信息')).toBeInTheDocument())
+    expect(screen.queryByText('空页签')).not.toBeInTheDocument()
+  })
+
+  it('统一表单工具栏与统一工作台同款：动作按钮一律纯图标，不再图标+文字', async () => {
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    const toolbar = container.querySelector<HTMLElement>('.erp-form-toolbar')
+    expect(toolbar).not.toBeNull()
+    const iconButtons = Array.from(toolbar!.querySelectorAll<HTMLButtonElement>('.erp-command-icon-btn'))
+    expect(iconButtons.length).toBeGreaterThan(0)
+    // 纯图标：按钮的文字内容为空，动作名只作 title/aria-label
+    expect(iconButtons.every(button => (button.textContent ?? '').trim() === '')).toBe(true)
+    expect(toolbar!.querySelectorAll('.erp-command-btn')).toHaveLength(0)
+  })
+
+  it('新增/编辑态的保存与取消也是纯图标按钮', async () => {
+    renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    const save = screen.getByRole('button', { name: '保存' })
+    expect(save).toHaveClass('erp-command-icon-btn')
+    expect((save.textContent ?? '').trim()).toBe('')
+    expect(screen.getByRole('button', { name: '取消' })).toHaveClass('erp-command-icon-btn')
   })
 })
 

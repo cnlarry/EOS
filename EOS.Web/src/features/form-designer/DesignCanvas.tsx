@@ -2,10 +2,11 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { IconListDetails, IconPlus } from '@tabler/icons-react'
 import { packFormSections, resolveTabColumns } from '../document-workbench/formLayout'
+import { buildLifecycleGroups } from '../document-workbench/lifecycleGroups'
 import { normalizeFormOpenMode, resolveDialogSize } from '../document-workbench/formOpenMode'
 import { RESIDENT_TAB_NO, tabTitle } from './formDesignerDraft'
 import { dragId, type DropTarget } from './formDesignerDrag'
-import type { DesignDraft, DesignRow } from './types'
+import type { DesignDraft, DesignRow, SystemField } from './types'
 
 interface DesignCanvasProps {
   draft: DesignDraft
@@ -73,6 +74,13 @@ export default function DesignCanvas({
   // 栅格列数是**页签级事实**：画板按当前页签的列数排（页签 1 两列、页签 2 一列时各排各的），
   // 与运行态同一处解析（resolveTabColumns）——画板折行位置必须与运行态一致
   const columns = resolveTabColumns(draft.tabs, activeTabNo)
+  // 空页签（没有任何显示中的行）运行态不渲染：设计器保留页签供编辑，但标出来，
+  // 免得设计者以为"排了页签、运行态却看不到"是 bug。隐藏行不算，因为运行态也不显示它们。
+  const emptyTabNos = new Set(
+    draft.tabs
+      .filter(tab => !draft.master.some(row => row.tabNo === tab.no && !row.hidden))
+      .map(tab => tab.no),
+  )
   const tabRows = draft.master.filter(row => row.tabNo === activeTabNo)
   const sections = packFormSections(tabRows, columns, { fillHoles: compact })
   const dropKey = dropTarget?.kind === 'insert' || dropTarget?.kind === 'merge' ? dropTarget.key : null
@@ -132,9 +140,12 @@ export default function DesignCanvas({
                   event.preventDefault()
                   onTabContextMenu?.(tab.no, event.clientX, event.clientY)
                 }}
-                title={`${tabTitle(tab)}（一行 ${resolveTabColumns(draft.tabs, tab.no)} 列）：单击切换，双击改名，右键改布局列数/删除页签；字段可拖到标签上移动到该页签`}
+                title={`${tabTitle(tab)}（一行 ${resolveTabColumns(draft.tabs, tab.no)} 列）：单击切换，双击改名，右键改布局列数/删除页签；字段可拖到标签上移动到该页签${emptyTabNos.has(tab.no) ? '；空页签运行态不显示' : ''}`}
               >
                 {tabTitle(tab)}
+                {emptyTabNos.has(tab.no) ? (
+                  <span className="erp-designer-tab-empty" aria-hidden="true">空</span>
+                ) : null}
               </button>
             )}
           </DroppableTab>
@@ -231,6 +242,34 @@ export default function DesignCanvas({
             添加字段
           </button>
         </div>
+      </div>
+      <DesignerSystemInfo fields={draft.systemFields ?? []} />
+    </div>
+  )
+}
+
+/**
+ * 浏览态固定区预览：生命周期字段不参与版式，设计器只在画布下方展示它们最后的落点。
+ * 与运行态共用 `buildLifecycleGroups`，所以"无结案能力时只有三组"在这里也成立。
+ */
+function DesignerSystemInfo({ fields }: { fields: SystemField[] }) {
+  const groups = buildLifecycleGroups(fields, { includeApprove: true, includeClose: true })
+  if (groups.length === 0) return null
+  return (
+    <div className="erp-designer-system">
+      <div className="erp-designer-system-note">浏览态固定显示（不参与版式）</div>
+      <div
+        className="erp-form-lifecycle is-preview"
+        style={{ '--erp-lifecycle-groups': groups.length } as CSSProperties}
+        aria-label="浏览态单据与经办信息预览"
+      >
+        {groups.map(group => (
+          <div className="erp-form-lifecycle-group" key={group.key}>
+            <span className="erp-form-lifecycle-label">{group.label}</span>
+            <span className="erp-form-lifecycle-person" title={group.person?.label ?? undefined}>—</span>
+            <span className="erp-form-lifecycle-date" title={group.date?.label ?? undefined}>—</span>
+          </div>
+        ))}
       </div>
     </div>
   )

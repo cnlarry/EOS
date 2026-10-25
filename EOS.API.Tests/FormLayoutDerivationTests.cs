@@ -22,6 +22,34 @@ public sealed class FormLayoutDerivationTests
             IsSecrecy: false, ServerFilled: false, MaxLength: null);
 
     [Fact]
+    public void ApplyMasterLayout_IgnoresLifecycleRowsAndFallsBackWhenOnlyLifecycleRows()
+    {
+        var fields = new List<FormFieldDefinition> { Field("A"), Field("B") };
+        var onlyLifecycle = new FormLayoutDefinition(
+            [],
+            [
+                new FormLayoutRow("CREATE_PERSON", 1, 1, 1, 1, false, null, null, 0, false),
+                new FormLayoutRow("CONFIRM_DATE", 1, 2, 1, 1, false, null, null, 0, false),
+            ],
+            [],
+            MasterCustomized: true);
+        var mixed = new FormLayoutDefinition(
+            [],
+            [
+                new FormLayoutRow("CREATE_PERSON", 1, 1, 1, 1, false, null, null, 0, false),
+                new FormLayoutRow("B", 1, 2, 1, 1, false, null, null, 0, false),
+                new FormLayoutRow("A", 1, 3, 1, 1, false, null, null, 0, false),
+            ],
+            [],
+            MasterCustomized: true);
+
+        // 只剩生命周期行 = 没有可排的业务行：按未定制回落到全部业务字段
+        Assert.Equal(["A", "B"], FormLayoutDerivation.ApplyMasterLayout(fields, onlyLifecycle).Select(field => field.Key).ToArray());
+        // 混合行：生命周期行被跳过，业务字段仍按版式顺序
+        Assert.Equal(["B", "A"], FormLayoutDerivation.ApplyMasterLayout(fields, mixed).Select(field => field.Key).ToArray());
+    }
+
+    [Fact]
     public void ApplyMasterLayout_WithoutCustomization_KeepsFieldSetAndOrder()
     {
         var fields = new List<FormFieldDefinition> { Field("A"), Field("B") };

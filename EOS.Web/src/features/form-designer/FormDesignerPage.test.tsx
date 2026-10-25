@@ -78,6 +78,16 @@ const designState: DesignState = {
   openMode: 'TAB',
   dialogWidth: null,
   dialogHeight: null,
+  systemFields: [
+    { key: 'CREATE_PERSON', label: '建立人', dataType: 'nvarchar' },
+    { key: 'CREATE_DATE', label: '建立日期', dataType: 'datetime' },
+    { key: 'LAST_UPDATE_BY', label: '修改人', dataType: 'nvarchar' },
+    { key: 'LAST_UPDATE_DATE', label: '修改日期', dataType: 'datetime' },
+    { key: 'CONFIRM_PERSON', label: '批核人', dataType: 'nvarchar' },
+    { key: 'CONFIRM_DATE', label: '批核日期', dataType: 'datetime' },
+    { key: 'FINISHED_PERSON', label: '结案人', dataType: 'nvarchar' },
+    { key: 'FINISHED_DATE', label: '结案日期', dataType: 'datetime' },
+  ],
 }
 
 function renderPage() {
@@ -139,6 +149,18 @@ describe('FormDesignerPage', () => {
     // 主表加字段走画布末尾；明细的选列与排序走明细面板标题栏右上角的「字段管理」
     expect(screen.getByRole('button', { name: /添加字段/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /字段管理/ })).toBeInTheDocument()
+  })
+
+  it('画布下方固定预览生命周期字段，生命周期字段不进入版式格', async () => {
+    const { container } = renderPage()
+    await screen.findByText('ORDER_NO')
+    expect(screen.getByText('浏览态固定显示（不参与版式）')).toBeInTheDocument()
+    const block = container.querySelector<HTMLElement>('.erp-form-lifecycle.is-preview')
+    expect(block).not.toBeNull()
+    expect(block!.style.getPropertyValue('--erp-lifecycle-groups')).toBe('4')
+    expect(screen.getByText('建立')).toBeInTheDocument()
+    expect(screen.getByText('结案')).toBeInTheDocument()
+    expect(container.querySelector('[data-designer-field="CREATE_PERSON"]')).toBeNull()
   })
 
   it('呈现配置入口在页签行右端：弹窗里改打开方式与窗体尺寸，随版式同一笔提交', async () => {

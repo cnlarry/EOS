@@ -36,6 +36,9 @@ internal static class FormLayoutSubmission
 
         var master = (request.Master ?? [])
             .Where(row => !string.IsNullOrWhiteSpace(row.Key))
+            // 生命周期字段固定显示，不参与版式：历史客户端/旧草稿即使提交了这些行也一律丢弃，
+            // 不把它们写回库、也不让保存校验把它们当成"用户可移出的字段"。
+            .Where(row => !FormLayoutFactsBuilder.IsLifecycleSystemColumn(row.Key.Trim()))
             .Select((row, index) =>
             {
                 var tabNo = row.TabNo > 0 ? row.TabNo : 1;
@@ -58,8 +61,11 @@ internal static class FormLayoutSubmission
             .Select((row, index) => new FormDetailLayoutRow(row.Key.Trim(), index + 1, row.Hidden))
             .ToList();
 
+        // 只剩生命周期行（或整段为空）时按"未定制"落库：运行时回落到全部业务字段，
+        // 而不是存下一份"定制后一个字段都没有"的版式。
+        // 明细不参与生命周期过滤，沿用原来的"提交即定制"口径。
         return new FormLayoutDefinition(
-            tabs, master, detail, MasterCustomized: true, DetailCustomized: true);
+            tabs, master, detail, MasterCustomized: master.Count > 0, DetailCustomized: true);
     }
 
     /// <summary>

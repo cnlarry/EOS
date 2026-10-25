@@ -676,6 +676,13 @@ public sealed class ChooserRepository(
         AddCommonParameters(command, keyword, page, pageSize);
         command.Parameters.Add("@Table", SqlDbType.VarChar, 100).Value = targetTable;
         command.Parameters.Add("@Exclude", SqlDbType.VarChar, -1).Value = exclude;
+        // 生命周期字段固定显示、不参与版式：主表字段池不得再给出这 10 列（明细的 FINISHED_TAG
+        // 是行级状态，仍按普通列处理）。
+        var lifecycleFilter = table == "master"
+            ? " AND LTRIM(RTRIM(f.F_ID)) NOT IN (SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@LifecycleFields, ','))"
+            : string.Empty;
+        command.Parameters.Add("@LifecycleFields", SqlDbType.VarChar, -1).Value =
+            string.Join(',', WorkflowStates.LifecycleColumns);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
         // 字段集两处与设计态读字段池同口径（口径漂移会让选择器给出排不上的字段）：
@@ -683,7 +690,7 @@ public sealed class ChooserRepository(
         // 管理员标记为不显示的字段（IS_VISIBLE=0）运行态一律不渲染（FormFieldSelector 剔除），
         // 排进版式也不会有任何效果，因此不进候选。
         // 排除项是调用方草稿里显示中的字段（参数化，只是"再减掉一批"，不参与标识符拼接）
-        const string scope = """
+        var scope = $"""
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table
               AND (COALESCE(f.IS_VIRTUAL,0)=1
@@ -692,6 +699,7 @@ public sealed class ChooserRepository(
                               JOIN sys.schemas s ON o.schema_id=s.schema_id
                               WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID))
               AND COALESCE(f.IS_VISIBLE,1)=1
+              {lifecycleFilter}
               AND (@Exclude='' OR LTRIM(RTRIM(f.F_ID)) NOT IN
                    (SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@Exclude, ',')))
             """;

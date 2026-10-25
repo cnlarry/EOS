@@ -32,6 +32,7 @@ import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer, type ChooserAnchor } from './FormFieldRenderer'
 import { ChooserSourceMenu } from './ChooserSourceMenu'
+import { LifecycleInfoBlock, LifecycleStatusBar } from './LifecycleInfo'
 import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { packFormSections, resolveTabColumns } from './formLayout'
@@ -247,7 +248,8 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
   // 有页签时只摆当前页签的字段；栅格列数取**该页签**的列数（外层已按 activeTabNo 解析好）
   const tabFields = visibleMaster.filter(field => !hasTabs || field.tabNo === activeTabNo)
   // 整节单栅格 + 显式装箱：排布规则与设计态**共用同一份**（packFormSections），
-  // 否则"设计态看着是一行、运行态变成两行"。生命周期列不特判：位置由版式（设计态画板）决定。
+  // 否则"设计态看着是一行、运行态变成两行"。生命周期字段已由服务端分流到固定区，
+  // 不进入本段——这里只排业务字段，三种状态的字段位置才一致。
   const sections = packFormSections(tabFields, columns, { fillHoles: true })
   const renderCell = (cell: FormFieldDefinition[]) => {
     const [main, ...companions] = cell
@@ -1783,8 +1785,14 @@ export function FormEditorPage() {
   if (!form) return inFormShell(null)
   // 明细走金额汇总（明细表有 AMOUNT 列）时，主表金额列强制只读展示（保存后服务端权威聚合）
   const masterAmountLocked = form.detailFields.some(field => field.key.toUpperCase() === 'AMOUNT')
-  const hasTabs = form.tabs.length > 0
-  const activeTabNo = hasTabs ? activeTab : 1
+  // 空页签不渲染：某个页签在当前用户的可见业务字段里一个都没有（例如原来只放生命周期字段，
+  // 或字段全被字段级权限挡掉），运行态就不该留一个点进去什么都没的标签。
+  const visibleTabs = form.tabs.filter(tab =>
+    form.masterFields.some(field => field.isVisible && field.tabNo === tab.no))
+  const hasTabs = visibleTabs.length > 0
+  const activeTabNo = hasTabs && visibleTabs.some(tab => tab.no === activeTab)
+    ? activeTab
+    : (visibleTabs[0]?.no ?? 1)
   // 栅格列数是**页签级事实**：取当前页签自己的列数（库内 NOT NULL DEFAULT 4）。
   // 运行态、设计器画板与保存期夹取三处同取这一处解析（resolveTabColumns），
   // 于是"页签 1 一行两列、页签 2 一行一列"在两端都成立。
@@ -1883,6 +1891,15 @@ export function FormEditorPage() {
   const dialogMoreItems = viewItems.filter(item =>
     item.action !== 'back' && !DIALOG_PRIMARY_ACTION_KEYS.has(item.action))
 
+  /** 浏览态右侧状态区：批核/结案徽标；无结案能力的模块只显示批核。 */
+  const statusBar = isView ? (
+    <LifecycleStatusBar
+      form={form}
+      master={recordQuery.data?.master}
+      flowInProgress={recordQuery.data?.flowState === 'InProgress'}
+    />
+  ) : null
+
   // 工具栏：整页方式渲染在表单卡顶部（一行铺开）；弹窗方式交给统一弹窗的 footer——
   // 弹窗面积有限，只常显「返回 + 主干动作」，其余收进「更多」，否则十几个按钮挤一行既违和又难点。
   const formToolbar = (
@@ -1890,37 +1907,41 @@ export function FormEditorPage() {
       {!isView ? (
         <>
           {isCopy && <span className="small text-secondary align-self-center">复制模式：以选中记录为模板，保存后生成新单据</span>}
-          <ErpCommandBar items={[
+          <ErpCommandBar iconOnly items={[
             { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => { if (validateClient()) save.mutate() } },
             { action: 'cancel', label: '取消', onClick: back },
           ]} />
           {form.canFileView && keyParam && (
-            <ErpCommandBar items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
+            <ErpCommandBar iconOnly items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
           )}
         </>
       ) : !inDialog ? (
-        <ErpCommandBar items={viewItems} />
+        <>
+          <ErpCommandBar iconOnly items={viewItems} />
+          {statusBar}
+        </>
       ) : (
         // 弹窗：工具条贴窗体顶部一行左起排布（与旧系统 ModifyToolBar 同一位置），
         // 仍只常显主干动作、其余进「更多」——窗体窄，十几个按钮一行排不下
         <>
-          <ErpCommandBar items={viewItems.filter(item =>
+          <ErpCommandBar iconOnly items={viewItems.filter(item =>
             item.action === 'back' || DIALOG_PRIMARY_ACTION_KEYS.has(item.action))} />
           {dialogMoreItems.length > 0 ? (
             <Button
               size="sm"
-              className="erp-command-btn"
+              className="erp-command-icon-btn"
               icon={<IconDots size={16} />}
+              title="更多"
+              aria-label="更多"
               aria-expanded={toolbarMore !== null}
               onClick={event => {
                 if (toolbarMore) { setToolbarMore(null); return }
                 const rect = event.currentTarget.getBoundingClientRect()
                 setToolbarMore({ x: rect.right - 168, y: rect.bottom + 4 })
               }}
-            >
-              更多
-            </Button>
+            />
           ) : null}
+          {statusBar}
         </>
       )}
     </div>
@@ -1943,7 +1964,7 @@ export function FormEditorPage() {
           {inDialog ? null : formToolbar}
           {hasTabs ? (
             <ul className="nav nav-tabs erp-form-tabs">
-              {form.tabs.map(tab => {
+              {visibleTabs.map(tab => {
                 const errorCount = tabErrorCounts.get(tab.no) ?? 0
                 const tabColumns = resolveTabColumns(form.tabs, tab.no)
                 return (
@@ -1980,6 +2001,11 @@ export function FormEditorPage() {
             onFieldSetup={openFieldSetup}
             onFieldBlur={blurMasterField}
           />
+          {/* 浏览态固定区：建立/修改/批核/结案经办信息；不参与版式、不占页签，
+              无结案能力的模块只有三组，组宽等分。新增/编辑态不渲染。 */}
+          {isView ? (
+            <LifecycleInfoBlock form={form} master={recordQuery.data?.master} />
+          ) : null}
         </div>
       </section>
       {form.detailFields.length > 0 ? (

@@ -348,7 +348,12 @@ public sealed class WorkbenchDefinitionBuilder(
         // 既有实现里就是表单上的独立只读控件；把它们排除掉，回写目标在表单上根本不存在，
         // 前端写进内存的值既不回显、又不提交，等于白选。
         var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token,includeVirtual:true);
-        var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
+        var selectedFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
+        // 生命周期字段不是"录入字段"：浏览态从 masterFields 分流到 lifecycleFields，
+        // 由前端渲染成工具栏状态徽标 + 主卡底部固定信息区；新增/编辑态 Select 已剔除，故为空。
+        // 必须在施加版式**之前**分流：否则版式里的生命周期行会让业务字段的装箱位置按另一种字段集计算。
+        var lifecycleFields=selectedFields.Where(field=>WorkflowStates.IsLifecycleColumn(field.Key)).ToList();
+        IReadOnlyList<FormFieldDefinition> masterFields=selectedFields.Where(field=>!WorkflowStates.IsLifecycleColumn(field.Key)).ToList();
         // 主档编号（主表主键）在编辑态一律只读：它是记录对外的身份，改它会把单据/账务的引用改断。
         // 施加在版式之前——版式只排布，不回答"能不能改"。
         masterFields=FormFieldSelector.LockPrimaryKeysOnEdit(masterFields,mode);
@@ -455,6 +460,10 @@ public sealed class WorkbenchDefinitionBuilder(
         // 版式设计权：只影响前端是否渲染设计入口，服务端写端点仍独立鉴权
         var canFormDesign = (await FormDesignPermissionResolver.ResolveAsync(
             connection, userId, definition.ModuleId, token)).CanDesign;
+        // 结案能力 = 主表有 `FINISHED_TAG` 物理列，与 `RunFinishCoreAsync` 的「该模块不支持结案操作」
+        // 判据同源；不是当前用户的 `ENDCASE_TAG` 权限位（权限只决定按钮显不显示，能力决定状态/分组显不显示）。
+        var hasFinishCapability = await WorkbenchSql.ColumnExistsAsync(
+            connection, null, definition.MasterTable, "FINISHED_TAG", token);
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,defaultValues,definition.HasWorkflow,
@@ -464,7 +473,9 @@ public sealed class WorkbenchDefinitionBuilder(
             CanFormDesign: canFormDesign,
             OpenMode: FormOpenModes.Normalize(definition.FormOpenMode),
             DialogWidth: FormOpenModes.IsDialog(definition.FormOpenMode) ? definition.FormDialogWidth : null,
-            DialogHeight: FormOpenModes.IsDialog(definition.FormOpenMode) ? definition.FormDialogHeight : null);
+            DialogHeight: FormOpenModes.IsDialog(definition.FormOpenMode) ? definition.FormDialogHeight : null,
+            LifecycleFields: lifecycleFields,
+            HasFinishCapability: hasFinishCapability);
     }
 
     /// <summary>

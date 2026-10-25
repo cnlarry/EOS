@@ -55,6 +55,21 @@ public sealed class FormLayoutRepository(
         var masterFacts = await FormLayoutFactsBuilder.BuildAsync(
             connection, module.MasterTable, module.MasterTable, token);
 
+        // 生命周期字段不参与版式：从字段池/画布行里剥离，单独作为画布下方的固定区预览。
+        // 与运行态 `FormDefinition.LifecycleFields` 同一判据（WorkflowStates.LifecycleColumns）。
+        var systemFields = masterFields
+            .Where(field => FormLayoutFactsBuilder.IsLifecycleSystemColumn(field.Key)
+                && IsUserVisible(field, rights, isDetail: false))
+            .Select(field => new FormLayoutSystemField(
+                field.Key, field.Label, field.DataType, field.DisplayFormat))
+            .ToList();
+        var businessMasterFields = masterFields
+            .Where(field => !FormLayoutFactsBuilder.IsLifecycleSystemColumn(field.Key))
+            .ToList();
+        var businessMasterRows = layout.Master
+            .Where(row => !FormLayoutFactsBuilder.IsLifecycleSystemColumn(row.Key))
+            .ToList();
+
         IReadOnlyList<FormFieldRow> detailFields = [];
         IReadOnlyDictionary<string, FormLayoutFieldFact> detailFacts =
             new Dictionary<string, FormLayoutFieldFact>(StringComparer.OrdinalIgnoreCase);
@@ -77,8 +92,8 @@ public sealed class FormLayoutRepository(
             module.MasterTable,
             string.IsNullOrWhiteSpace(module.DetailTable) ? null : module.DetailTable,
             EffectiveTabs(layout),
-            BuildTableDesign(module.MasterTable, layout.Master, masterFields, masterFacts, rights,
-                isDetail: false, customized: layout.MasterCustomized),
+            BuildTableDesign(module.MasterTable, businessMasterRows, businessMasterFields, masterFacts, rights,
+                isDetail: false, customized: layout.MasterCustomized && businessMasterRows.Count > 0),
             BuildTableDesign(
                 module.DetailTable ?? string.Empty,
                 layout.Detail.Select(row => new FormLayoutRow(
@@ -87,7 +102,8 @@ public sealed class FormLayoutRepository(
             stamp,
             openMode,
             isDialog ? module.DialogWidth : null,
-            isDialog ? module.DialogHeight : null);
+            isDialog ? module.DialogHeight : null,
+            SystemFields: systemFields);
     }
 
     /// <summary>可套用来源：只列共用同一主表的模块（跨主表套用会把业务上不该出现的同名字段排进表单）。</summary>

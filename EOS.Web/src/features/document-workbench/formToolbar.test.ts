@@ -79,6 +79,12 @@ describe('buildViewToolbarItems', () => {
     expect(items.some(item => item.action === 'approve')).toBe(false)
   })
 
+  it('无结案能力（主表没有 FINISHED_TAG）时结案/取消结案不出现', () => {
+    const noFinish = form({ hasFinishCapability: false })
+    const items = buildViewToolbarItems(noFinish, state(), handlers())
+    expect(items.map(item => item.action)).toEqual(['approve', 'print'])
+  })
+
   it('已结案时 approve/deapprove 禁用（disabled）', () => {
     const approved = buildViewToolbarItems(form(), state({ isFinished: true, master: { CONFIRM_TAG: true, FINISHED_TAG: true } }), handlers())
     const deapprove = approved.find(item => item.action === 'deapprove')

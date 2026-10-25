@@ -129,7 +129,15 @@ public sealed record FormDefinition(int ModuleId, string Title, string MasterTab
     // 表单设计权（供前端决定是否渲染设计入口）。服务端写端点独立鉴权，此处只影响界面。
     bool CanFormDesign = false,
     // 打开方式（`FormOpenModes` 的取值）与弹窗尺寸（px）：只有 dialog 方式带尺寸，其余为 null。
-    string OpenMode = FormOpenModes.Tab, int? DialogWidth = null, int? DialogHeight = null);
+    string OpenMode = FormOpenModes.Tab, int? DialogWidth = null, int? DialogHeight = null,
+    // 单据生命周期字段（建立/修改/批核/结案的人·日期·状态位）：**只随浏览态下发**，
+    // 不进 `MasterFields`、不参与版式；前端把它们渲染成工具栏状态徽标 + 主卡底部固定信息区。
+    // new/edit 为空；view 才有值（仍按字段级权限过滤）。
+    IReadOnlyList<FormFieldDefinition>? LifecycleFields = null,
+    // 主表是否有 `FINISHED_TAG`（结案能力）：没有该列的模块不显示结案状态、底部只有三组。
+    // 与 `WorkbenchApprovalService.RunFinishCoreAsync` 的「该模块不支持结案操作」判据同源（物理列存在性），
+    // 不是当前用户的 `ENDCASE_TAG` 权限位。
+    bool HasFinishCapability = false);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
     int? Precision = null, int? Scale = null, int RowSpan = 1, string? SectionId = null,
     /// <summary>

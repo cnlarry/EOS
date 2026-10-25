@@ -23,7 +23,16 @@ public sealed record FormLayoutDesignState(
     string OpenMode = FormOpenModes.Tab,
     /// <summary>弹窗宽高（px）：只有 <see cref="FormOpenModes.Dialog"/> 方式下才有值。</summary>
     int? DialogWidth = null,
-    int? DialogHeight = null);
+    int? DialogHeight = null,
+    /// <summary>
+    /// 主表生命周期字段（建立/修改/批核/结案的人·日期；含状态位元数据）：
+    /// 它们**不参与版式**，设计器只在画布下方画一块固定区预览。
+    /// 只下发给设计者可见的字段（成本/保密/字段级权限过滤与运行态同口径）。
+    /// </summary>
+    IReadOnlyList<FormLayoutSystemField>? SystemFields = null);
+
+/// <summary>设计态固定区字段：只用于画布预览，不进入版式行/字段池。</summary>
+public sealed record FormLayoutSystemField(string Key, string Label, string DataType, string? DisplayFormat = null);
 
 public sealed record FormLayoutTableDesign(
     string Table,

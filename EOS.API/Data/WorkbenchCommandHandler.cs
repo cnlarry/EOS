@@ -45,6 +45,18 @@ public sealed class WorkbenchCommandHandler(
             return new(RecordAccessStatus.KeyMismatch, null);
         }
         var masterFields = form.MasterFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // 生命周期字段已从 MasterFields 分流（不在版式里，也不在业务字段集里），
+        // 但浏览态的状态徽标/底部固定信息区要读它们的值——记录读取契约必须一并返回。
+        if (form.LifecycleFields is { Count: > 0 } lifecycleFields)
+        {
+            foreach (var lifecycleField in lifecycleFields)
+            {
+                if (!masterFields.Contains(lifecycleField.Key, StringComparer.OrdinalIgnoreCase))
+                {
+                    masterFields.Add(lifecycleField.Key);
+                }
+            }
+        }
         // 批核/结案状态列：表单不可编辑，但记录读取契约必须返回
         foreach (var statusColumn in WorkflowStates.RecordStatusColumns)
         {

@@ -1368,16 +1368,16 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
    线由页面的 rowClassName 在"没按列排序"时挂上——一按列重排，同模块的行散开，线就该收起来 */
 .erp-module-block-start > td { border-top: 2px solid var(--tblr-border-color); }
 /* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称）；
-   ErpCommandBar 的 `iconOnly` 模式（列表工具栏）与工具栏纯图标触发器
+   ErpCommandBar 的 `iconOnly` 模式（列表工具栏与统一表单工具栏）与工具栏纯图标触发器
    （.erp-command-icon-btn，分组/导出分割）都是 28×28，故该强制方块尺寸对它们无副作用；
-   单据工具栏仍走 .erp-command-btn（图标+文字） */
+   定制页仍可按需使用 .erp-command-btn（图标+文字） */
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) svg { width: 16px; height: 16px; }
-/* 图标+文字按钮（ErpCommandBar 默认模式，单据工具栏）：图标 16px + 动作名（新增/编辑/批核/打印等），
+/* 图标+文字按钮（ErpCommandBar 默认模式，定制页按需使用）：图标 16px + 动作名（新增/编辑/批核/打印等），
    统一 28px 高、左右 10px 内边距、宽度随内容自适应（不设固定宽度） */
 .erp-command-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: var(--erp-radius-md); white-space: nowrap; }
 .erp-command-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
-/* 工具栏纯图标按钮（列表工具栏 ErpCommandBar `iconOnly`、分组/导出等触发器）：
+/* 工具栏纯图标按钮（统一工作台列表与统一表单工具栏的 ErpCommandBar `iconOnly`、分组/导出等触发器）：
    28×28 方形圆角、图标 16px、动作名只作 hover 提示——动作名长短不再撑出不同宽度 */
 .erp-command-icon-btn { position: relative; width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--erp-radius-md); }
 .erp-command-icon-btn svg { width: 16px; height: 16px; }
@@ -2345,9 +2345,84 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 /* 主表工具栏独立一行（表单上方），与表单网格左边框对齐，下方留 10px 间距；
    背景透明继承页面，按钮靠左；页签单独一行在表单网格上方，页签下边框归零，与网格顶边融为一体。
    整页方式的间距/分割线由上面的 .erp-form-page-full 覆盖 */
-.erp-form-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-left: 0; background: transparent; }
+.erp-form-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-left: 0; background: transparent; flex-wrap: wrap; row-gap: 6px; }
 .erp-form-toolbar .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; }
+/* 统一表单工具栏也用纯图标按钮：上面的 .erp-form-toolbar .btn 有更高的选择器权重，
+   会把 icon 按钮的左右 padding 覆盖成 10px；这里显式收回，保证 28×28 方块不被撑宽 */
+.erp-form-toolbar .btn.erp-command-icon-btn { width: 28px; flex: 0 0 28px; padding: 0; }
 .erp-form-toolbar-actions { margin-left: auto; }
+
+/* 浏览态单据状态徽标：批核/结案是"记录状态"，不是动作，放工具栏右侧；
+   无结案能力的模块只渲染批核，动作顺序不受影响。 */
+.erp-doc-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 10px;
+  border-left: 1px solid var(--tblr-border-color);
+  flex-wrap: wrap;
+}
+.erp-doc-status-badge {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.erp-doc-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* 浏览态主卡底部固定区：建立/修改/批核/结案经办信息。
+   组数由能力决定（3 或 4），栅格按 CSS 变量等分；无可见标题，语义由 aria-label 承担。 */
+.erp-form-lifecycle {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(var(--erp-lifecycle-groups, 4), minmax(0, 1fr));
+  gap: 4px 12px;
+  padding: 8px 12px 9px;
+  border-top: 1px solid var(--tblr-border-color);
+  background: var(--tblr-bg-surface-secondary);
+}
+.erp-form-lifecycle-group {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 1px 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+.erp-form-lifecycle-label {
+  color: var(--tblr-secondary);
+  font-size: var(--erp-font-xs);
+}
+.erp-form-lifecycle-person {
+  color: var(--tblr-body-color);
+  font-size: var(--erp-font-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.erp-form-lifecycle-date {
+  grid-column: 2;
+  color: var(--tblr-secondary);
+  font-size: var(--erp-font-xs);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .erp-form-lifecycle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .erp-form-lifecycle { grid-template-columns: 1fr; }
+}
 
 /* 下拉与同尺寸输入框同高（全站）：Tabler 只给 .form-control-sm 设了 min-height，
    .form-select-sm 没有。页面只给 select 写 height 时会比输入框矮，文字底部被裁；
