@@ -165,7 +165,7 @@ public sealed class SituationDigestService(
                     pageSize: remaining, token, query: query,
                     sortField: "CREATE_DATE", sortDirection: "desc",
                     dataFilter: permission.Rights.DataFilter);
-                foreach (var row in data.Rows)
+                foreach (var row in data.Items)
                 {
                     // 上限由本服务兜住：不假设查询实现一定会遵守 pageSize
                     if (items.Count >= limits.DigestMaxItems) break;

@@ -135,7 +135,7 @@ public sealed class RecordDiagnosisReader(
             return [];
         }
 
-        var rows = data.Rows;
+        var rows = data.Items;
         var rules = DiagnosisRuleParser.Parse(definition.ValidationRules)
             .Where(rule => rule.Enabled && rule.ValidationKey.Equals("reference-exists", StringComparison.OrdinalIgnoreCase))
             .Take(limits.BlockedNowProbeRules)

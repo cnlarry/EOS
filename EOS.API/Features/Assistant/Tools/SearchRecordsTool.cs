@@ -96,14 +96,14 @@ public sealed class SearchRecordsTool(
     {
         limits ??= new AssistantToolLimitsOptions();
         var sb = new StringBuilder();
-        sb.Append($"module={definition.ModuleId}({definition.Title}) total={data.Total} shown={data.Rows.Count}");
+        sb.Append($"module={definition.ModuleId}({definition.Title}) total={data.Total} shown={data.Items.Count}");
         if (!string.IsNullOrEmpty(keyword))
         {
             sb.Append($" keyword=\"{keyword}\"");
         }
 
         sb.AppendLine();
-        foreach (var row in data.Rows)
+        foreach (var row in data.Items)
         {
             var keys = definition.MasterPkOrder
                 .Select(key => row.TryGetValue(key, out var kv) ? kv?.ToString() ?? string.Empty : string.Empty)
@@ -126,9 +126,9 @@ public sealed class SearchRecordsTool(
             sb.AppendLine();
         }
 
-        if (data.Total > data.Rows.Count)
+        if (data.Total > data.Items.Count)
         {
-            sb.Append($"（仅显示前 {data.Rows.Count} 条，共 {data.Total} 条命中；可加更精确的 keyword 缩小范围）");
+            sb.Append($"（仅显示前 {data.Items.Count} 条，共 {data.Total} 条命中；可加更精确的 keyword 缩小范围）");
         }
 
         return sb.ToString().TrimEnd();

@@ -32,7 +32,7 @@ const definition = {
 }
 
 const records = {
-  rows: [
+  items: [
     { PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true },
     { PRO_NO: 'P2', EDITION: 'B', QTY: '20', FLAG: false },
   ],
@@ -41,7 +41,7 @@ const records = {
   pageSize: 16,
 }
 
-const details = { rows: [{ ITEM: 'X1' }], total: 1, page: 1, pageSize: 10 }
+const details = { items: [{ ITEM: 'X1' }], total: 1, page: 1, pageSize: 10 }
 
 class FakeIntersectionObserver {
   static instances: FakeIntersectionObserver[] = []
@@ -566,8 +566,8 @@ describe('DocumentWorkbenchPage', () => {
       records: (query) => {
         const page = Number(query.page ?? 1)
         return page === 1
-          ? { rows: [{ PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true }], total: 60, page: 1, pageSize: 50 }
-          : { rows: [{ PRO_NO: 'P2', EDITION: 'B', QTY: '20', FLAG: false }], total: 60, page: 2, pageSize: 50 }
+          ? { items: [{ PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true }], total: 60, page: 1, pageSize: 50 }
+          : { items: [{ PRO_NO: 'P2', EDITION: 'B', QTY: '20', FLAG: false }], total: 60, page: 2, pageSize: 50 }
       },
     })
     renderPage()
@@ -586,7 +586,7 @@ describe('DocumentWorkbenchPage', () => {
   })
 
   it('空数据时渲染空表格而非错误', async () => {
-    installApiMocks({ records: { rows: [], total: 0, page: 1, pageSize: 16 } })
+    installApiMocks({ records: { items: [], total: 0, page: 1, pageSize: 16 } })
     renderPage()
     await loaded()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()

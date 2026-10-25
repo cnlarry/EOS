@@ -146,7 +146,7 @@ function mockDialogGet(formDefinitionReply: unknown, recordReply: unknown = reco
   apiClientMock.get.mockImplementation(async (path: string) => {
     const p = String(path)
     if (p.includes('/form-definition')) return formDefinitionReply
-    if (p.includes('/records')) return { rows: [], total: 0, page: 1, pageSize: 50 }
+    if (p.includes('/records')) return { items: [], total: 0, page: 1, pageSize: 50 }
     if (p.includes('/record')) return recordReply
     if (p.includes('/definition')) return underlayListDefinition
     throw new Error(`unexpected GET ${p}`)

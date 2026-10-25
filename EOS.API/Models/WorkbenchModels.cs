@@ -139,7 +139,7 @@ public sealed record FormFieldDefinition(string Key, string Label, string DataTy
     /// </summary>
     [property: JsonIgnore]
     string? NumericRole = null);
-public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
+public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Items, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
 public sealed record ExportSelectedRequest(IReadOnlyList<IReadOnlyList<string>> Keys);

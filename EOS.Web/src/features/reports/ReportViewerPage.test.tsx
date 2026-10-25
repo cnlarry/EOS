@@ -53,7 +53,7 @@ function installApiMocks() {
   })
   apiClientMock.post.mockImplementation(async (path: string) => {
     const p = String(path)
-    if (p.includes('/query')) return { rows: [], total: 0, page: 1, pageSize: 50 }
+    if (p.includes('/query')) return { items: [], total: 0, page: 1, pageSize: 50 }
     return {}
   })
 }

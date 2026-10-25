@@ -32,7 +32,7 @@ import { reportListFilters, reportSelection } from '../assistant/situationSource
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; browseKeyFields:string[]|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; canDelete?:boolean; /** 统一表单打开方式（本页签/新页签/弹窗）+ 弹窗尺寸，见 formOpenMode.ts */ formOpenMode?:string|null; formDialogWidth?:number|null; formDialogHeight?:number|null }
-interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
+interface DataResponse { items:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface NavigationGroupDef { groupId:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
@@ -179,7 +179,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
     enabled:definition.isSuccess,
     placeholderData:keepPreviousData,
   })
-  const rows=useMemo(()=>records.data?.pages.flatMap(item=>item.rows??[])??[],[records.data])
+  const rows=useMemo(()=>records.data?.pages.flatMap(item=>item.items??[])??[],[records.data])
   const total=records.data?.pages[records.data.pages.length-1]?.total??0
   const hydrated=useRef(false)
   useEffect(()=>{
@@ -621,7 +621,7 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         plain
         listId={`workbench-${moduleId}-detail`}
         columns={detailColumns}
-        rows={active?details.data?.rows:[]}
+        rows={active?details.data?.items:[]}
         sorting={{mode:'server',value:detailSorting,onChange:changeDetailSort}}
         empty={null}
         tableProps={{

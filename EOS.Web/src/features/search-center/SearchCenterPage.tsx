@@ -27,7 +27,7 @@ import {
 interface SearchableModule { moduleId: number; title: string; masterTable: string; detailTable: string | null; searchMaster: boolean; searchDetail: boolean }
 interface SearchField { key: string; label: string; dataType: string; width?: number; align?: string | null; headerAlign?: string | null; displayFormat?: string | null; numericRole?: string | null }
 interface SearchDefinition { moduleId: number; title: string; table: string; fields: SearchField[]; columns: SearchField[]; pkOrder: string[]; masterPkOrder: string[] }
-interface SearchResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
+interface SearchResult { items: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 /** 统一工作台的列配置（个人 current / 系统 defaults）：查询中心的列顺序与显隐沿用同一份。 */
 interface ColumnSetting { key: string; label: string; isVisible: boolean }
 interface ColumnSettings { master: ColumnSetting[]; detail: ColumnSetting[] }
@@ -270,7 +270,7 @@ export function SearchCenterPage() {
     return JSON.stringify(row)
   }, [definition.data])
 
-  const selection = useListSelection<Record<string, unknown>>({ rows: result.data?.rows, getId: rowIdOf })
+  const selection = useListSelection<Record<string, unknown>>({ rows: result.data?.items, getId: rowIdOf })
 
   // 列宽写回与工作台同一条链路（同一端点、同一队列），写完刷新定义让新宽度回到列上。
   const queryClient = useQueryClient()
@@ -367,7 +367,7 @@ export function SearchCenterPage() {
           onColumnResize: (columnKey, width) => { saveColumnWidth(table === 'detail', columnKey, width) },
         }}
         columns={columns}
-        rows={result.data?.rows}
+        rows={result.data?.items}
         rowKey={(row) => rowIdOf(row)}
         loading={activeModule != null && (definition.isPending || (definition.isSuccess && result.isPending))}
         loadingLabel="正在查询…"

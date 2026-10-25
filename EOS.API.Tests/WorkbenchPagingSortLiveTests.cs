@@ -87,7 +87,7 @@ public sealed class WorkbenchPagingSortLiveTests
             pageSize: 100,
             token: CancellationToken.None);
 
-        Assert.Empty(data.Rows);
+        Assert.Empty(data.Items);
     }
 
     /// <summary>
@@ -108,7 +108,7 @@ public sealed class WorkbenchPagingSortLiveTests
             sortField: $"{SortableField},{SortableField}",
             sortDirection: "asc,asc");
 
-        Assert.NotEmpty(data.Rows);
+        Assert.NotEmpty(data.Items);
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ public sealed class WorkbenchPagingSortLiveTests
             sortField: ",,",
             sortDirection: string.Empty);
 
-        Assert.NotEmpty(data.Rows);
+        Assert.NotEmpty(data.Items);
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public sealed class WorkbenchPagingSortLiveTests
         Assert.True(data.Total > oldLimit,
             $"本用例依赖一张明细超过旧上限 {oldLimit} 的单据；实测 total={data.Total}，请换一张更长的单据");
         Assert.Equal(500, data.PageSize);
-        Assert.Equal(data.Total, data.Rows.Count);
+        Assert.Equal(data.Total, data.Items.Count);
     }
 
     private static async Task<WorkbenchQueryComposer> CreateComposerAsync()

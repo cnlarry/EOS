@@ -48,7 +48,7 @@ public sealed record SearchQueryRequest(
     string? SortDirections = null);
 
 public sealed record SearchQueryResult(
-    IReadOnlyList<Dictionary<string, object?>> Rows,
+    IReadOnlyList<Dictionary<string, object?>> Items,
     int Total,
     int Page,
     int PageSize);

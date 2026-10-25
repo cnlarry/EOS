@@ -30,7 +30,7 @@ interface ReportCondition { serialNo: number; field: string | null; desc: string
 interface ReportColumn { key: string; label: string; dataType: string; displayFormat?: string | null; numericRole?: string | null }
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; dataSource: 'table' | 'aggregate'; parameters: ReportParameter[] }
 interface ReportParameter { name: string; dataType: string; maxLength: number; serialNo: number; isTo: boolean; constant: string | null }
-interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
+interface ReportQueryResult { items: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; isDefault: boolean; companyId?: string | null; companyName?: string | null }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
 interface ReportTailOption { tailId: string; tailName: string; tailText: string }
@@ -264,7 +264,7 @@ export function ReportViewerPage({
       setSpResultColumns(null)
       return
     }
-    const first = result.data?.rows?.[0]
+    const first = result.data?.items?.[0]
     if (!first) return
     const keys = Object.keys(first)
     if (keys.length === 0) return
@@ -402,7 +402,7 @@ export function ReportViewerPage({
   const errorMessage = describeApiError(result.error, '查询失败，请重试。')
   const selectedReport = printSettings.data?.reports.find((report) => report.reportId === reportId)
   const multipleReports = (printSettings.data?.reports.length ?? 0) > 1
-  const rowCount = result.data?.rows?.length ?? 0
+  const rowCount = result.data?.items?.length ?? 0
   // 生效条件数（范围条件按一项计）：只统计当前已应用的值，与弹窗草稿无关
   const activeConditionCount = def.conditions.filter((condition) =>
     String(values[condition.serialNo] ?? '').trim() !== ''
@@ -565,7 +565,7 @@ export function ReportViewerPage({
             plain
             listId={`report-viewer-${moduleId}`}
             columns={columns}
-            rows={result.data?.rows}
+            rows={result.data?.items}
             // 报表可能按明细字段排序/分组（主表与明细 1:N 关联），同一条主表主键会重复出现，
             // 拿主键拼行键会撞键。结果是分页快照、本表无行选择语义，下标即唯一。
             rowKey={(_row, index) => String(index)}

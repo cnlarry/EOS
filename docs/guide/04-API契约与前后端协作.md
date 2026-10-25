@@ -91,9 +91,15 @@
 
 ## 四、分页
 
-列表接口统一返回四项：`items`、`total`、`page`、`pageSize`。各域沿用同域已有模型的命名，
-例如工作台用 `WorkbenchData(Rows, Total, Page, PageSize)`，
-管理类接口用 `XxxPageResult(Items, Total, Page, PageSize)`。
+列表接口统一返回四项：**`items`、`total`、`page`、`pageSize`**。四项在**所有**分页接口上同名：
+`WorkbenchData(Items, Total, Page, PageSize)`、`SearchQueryResult(Items, …)`、
+`XxxPageResult(Items, …)` 的 C# 属性名可以随域不同，但落到线上的键名只有这一套。
+
+> 这套形状是一次统一的结果：此前工作台与查询中心用的是 `rows`，管理类接口用 `items`，
+> 前端于是要为同一个"第几页共几条"读两种键名（按错的那个读会静默拿到 `undefined`，
+> 表现为"页面打得开、分页也在、列表永远 0 条"，见 `LESSONS.md` L96）。
+> **不带 `page`/`pageSize` 的返回不算分页**（如统一选择器的 `columns/rows/total`、
+> 审批历史 `{ rows }`），它们是"一次取完的结果集"，键名各自沿用。
 
 请求参数统一用查询串：`page`（从 1 起）、`pageSize`。导出类接口不分页，但会限制单次行数上限
 （超出时返回 400 与明确错误码）。

@@ -61,7 +61,7 @@ function installApiMocks() {
     return {}
   })
   apiClientMock.post.mockResolvedValue({
-    rows: [{ INV_NO: 'INV001', PRODUCT_NO: 'P1' }],
+    items: [{ INV_NO: 'INV001', PRODUCT_NO: 'P1' }],
     total: 1,
     page: 1,
     pageSize: 50,

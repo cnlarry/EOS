@@ -90,8 +90,8 @@ public sealed class WorkbenchColumnOrderLiveTests
             var composer = new WorkbenchQueryComposer(connections, new WorkbenchScopeFilter(new ApiMetrics()),
                 new ApiMetrics(), new WorkbenchVirtualColumnResolver(), NullLogger<WorkbenchQueryComposer>.Instance);
             var data = await composer.GetRowsAsync(definition, false, new Dictionary<string, string>(), 1, 20, CancellationToken.None);
-            Assert.NotEmpty(data.Rows);
-            Assert.All(data.Rows, row => Assert.False(string.IsNullOrWhiteSpace(Convert.ToString(row["PRO_NO"]))));
+            Assert.NotEmpty(data.Items);
+            Assert.All(data.Items, row => Assert.False(string.IsNullOrWhiteSpace(Convert.ToString(row["PRO_NO"]))));
         }
         finally
         {
