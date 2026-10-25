@@ -23,11 +23,11 @@ public sealed class ApiExceptionFilter(
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, ApiErrorCodes.Unauthorized, "当前请求尚未登录或会话已过期。"),
             PermissionDeniedException => (StatusCodes.Status403Forbidden, ApiErrorCodes.Forbidden, "无权执行该操作"),
             ArgumentException exception => (StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidArgument, exception.Message),
-            DataFilterUnsupportedException exception => (StatusCodes.Status403Forbidden, "DATA_FILTER_UNSUPPORTED", exception.Message),
-            GroupExpressionUnsupportedException exception => (StatusCodes.Status403Forbidden, "GROUP_EXP_UNSUPPORTED", exception.Message),
-            PdfDataTooLargeException exception => (StatusCodes.Status422UnprocessableEntity, "PDF_DATA_TOO_LARGE", exception.Message),
+            DataFilterUnsupportedException exception => (StatusCodes.Status403Forbidden, ApiErrorCodes.DataFilterUnsupported, exception.Message),
+            GroupExpressionUnsupportedException exception => (StatusCodes.Status403Forbidden, ApiErrorCodes.GroupExpressionUnsupported, exception.Message),
+            PdfDataTooLargeException exception => (StatusCodes.Status422UnprocessableEntity, ApiErrorCodes.PdfDataTooLarge, exception.Message),
             // 关账拦截：单据业务日期落在已关账期间 ⇒ 400（是"这单现在不能这么做"，不是服务器故障）
-            PeriodClosedException exception => (StatusCodes.Status400BadRequest, "PERIOD_CLOSED", exception.Message),
+            PeriodClosedException exception => (StatusCodes.Status400BadRequest, ApiErrorCodes.PeriodClosed, exception.Message),
             _ => (0, string.Empty, string.Empty)
         };
 

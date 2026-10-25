@@ -78,9 +78,11 @@
 |---|---|
 | 通用 | `INVALID_ARGUMENT`、`INVALID_MODEL`、`NOT_FOUND`、`UNAUTHORIZED`、`FORBIDDEN`、`INTERNAL_ERROR` |
 | 登录 | `LOGIN_INVALID_INPUT`、`LOGIN_USER_NOT_FOUND`、`LOGIN_INVALID_PASSWORD`、`LOGIN_DISABLED`、`LOGIN_LOCKED` |
+| 业务拒绝（由专用异常类型经 `ApiExceptionFilter` 统一翻译） | `DATA_FILTER_UNSUPPORTED`、`GROUP_EXP_UNSUPPORTED`、`PDF_DATA_TOO_LARGE`、`PERIOD_CLOSED` |
 
 域内还会定义更细的码（如 `INVALID_EXPORT_KEYS`、`INVALID_FORM_MODE`、`INVALID_RECORD_KEY`）。
-新增码时同步加进 `ApiErrorCodes` 或就近定义，不要散落成裸字符串。
+新增码时同步加进 `ApiErrorCodes` 或就近定义，不要散落成裸字符串。业务拒绝类只从
+`ApiErrorCodes` 取常量——同一份码在控制器里再写一遍字面量，就等于有了第二处真源。
 
 ## 四、分页
 

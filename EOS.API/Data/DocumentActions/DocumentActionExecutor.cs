@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Workbench;
+using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -115,7 +116,7 @@ public sealed class DocumentActionExecutor(
 
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
-            return new(DocumentActionStatus.FilterUnsupported, ErrorCode: "DATA_FILTER_UNSUPPORTED",
+            return new(DocumentActionStatus.FilterUnsupported, ErrorCode: ApiErrorCodes.DataFilterUnsupported,
                 ErrorMessage: "当前数据过滤条件尚不支持，已拒绝执行。");
         }
 

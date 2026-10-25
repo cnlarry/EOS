@@ -19,4 +19,10 @@ public static class ApiErrorCodes
     public const string LoginInvalidPassword = "LOGIN_INVALID_PASSWORD";
     public const string LoginDisabled = "LOGIN_DISABLED";
     public const string LoginLocked = "LOGIN_LOCKED";
+
+    // 业务拒绝：由专用异常类型经异常过滤器统一翻译（不要在各控制器里再写一遍字面量）
+    public const string DataFilterUnsupported = "DATA_FILTER_UNSUPPORTED";
+    public const string GroupExpressionUnsupported = "GROUP_EXP_UNSUPPORTED";
+    public const string PdfDataTooLarge = "PDF_DATA_TOO_LARGE";
+    public const string PeriodClosed = "PERIOD_CLOSED";
 }

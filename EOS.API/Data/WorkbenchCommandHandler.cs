@@ -4,6 +4,7 @@ using System.Text.Json;
 using EOS.API.Data.Workbench;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Inventory;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
@@ -314,7 +315,7 @@ public sealed class WorkbenchCommandHandler(
         // 修改路径本来就是"改完 + 跑完效果再判"，这里与它对齐。
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
+            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, ApiErrorCodes.DataFilterUnsupported, "当前数据过滤条件尚不支持，已拒绝执行。");
         }
 
         //  D1-d（WS-16）：档 2「建议」在**保存期**就给出并写入建议位置——草稿上看得见、改得动；
@@ -457,7 +458,7 @@ public sealed class WorkbenchCommandHandler(
         // Target record must be within the module contract before editing
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
+            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, ApiErrorCodes.DataFilterUnsupported, "当前数据过滤条件尚不支持，已拒绝执行。");
         }
         if (!string.IsNullOrWhiteSpace(scopePredicate)
             && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
@@ -733,7 +734,7 @@ public sealed class WorkbenchCommandHandler(
         // Target record must be within the module contract before deletion
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
+            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, ApiErrorCodes.DataFilterUnsupported, "当前数据过滤条件尚不支持，已拒绝执行。");
         }
         if (!string.IsNullOrWhiteSpace(scopePredicate)
             && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))

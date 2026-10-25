@@ -343,7 +343,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         DocumentActionStatus.NotFound=>NotFound(ApiProblem.Create(StatusCodes.Status404NotFound,result.ErrorCode??DocumentActionErrorCodes.NotFound,result.ErrorMessage??"操作不存在。")),
         DocumentActionStatus.Forbidden=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??DocumentActionErrorCodes.Forbidden,result.ErrorMessage??"没有该操作的授权。")),
         DocumentActionStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"RECORD_OUT_OF_SCOPE",result.ErrorMessage??"目标记录不在当前用户数据范围内。")),
-        DocumentActionStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"DATA_FILTER_UNSUPPORTED",result.ErrorMessage??"当前数据过滤条件尚不支持，已拒绝执行。")),
+        DocumentActionStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??ApiErrorCodes.DataFilterUnsupported,result.ErrorMessage??"当前数据过滤条件尚不支持，已拒绝执行。")),
         DocumentActionStatus.KeyMismatch=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??"RECORD_KEY_MISMATCH",result.ErrorMessage??"主键数量与模块主键不匹配。")),
         _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??DocumentActionErrorCodes.Failed,result.ErrorMessage??"操作未完成。").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
     };
@@ -367,7 +367,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         RecordAccessStatus.Ok=>Ok(new{master=result.Bundle!.Master,details=result.Bundle.Details,flowState=result.FlowState.ToString()}),
         RecordAccessStatus.NotFound=>NotFound(),
         RecordAccessStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。")),
-        RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。")),
+        RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,ApiErrorCodes.DataFilterUnsupported,"当前数据过滤条件尚不支持，已拒绝执行。")),
         _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。")),
     };
 
@@ -380,7 +380,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         // 请求也随之按 Information 记，Warning+ 的文件日志里查不到（用户给的报障编号在服务端搜不到）。
         RecordAccessStatus.NotFound=>NotFound(ApiProblem.Create(StatusCodes.Status404NotFound,result.ErrorCode??ApiErrorCodes.NotFound,result.ErrorMessage??"记录不存在或已被删除。")),
         RecordAccessStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。")),
-        RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。")),
+        RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,ApiErrorCodes.DataFilterUnsupported,"当前数据过滤条件尚不支持，已拒绝执行。")),
         RecordAccessStatus.ConcurrentModified=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"CONCURRENT_MODIFIED","字段内容已被他人修改，请刷新后重试！").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
         _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??"VALIDATION_FAILED",result.ErrorMessage??"数据校验未通过。").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
     };
