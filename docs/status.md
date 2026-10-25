@@ -108,8 +108,14 @@ S0–S6 + 四个收尾批全部验收通过（2026-09-30），工具数收敛在
 `check-identifier-single-source`，均带 `-SelfTest`），B 的存量从 25 个控制器减到 21 个，按具名冻结、只减不增。
 **批 2 第 6 项（权限门收敛）已起步**：`IPermissionService` 增 `GetReportAsync`，报表系三个控制器与
 `AssistantAdminController` 不再直接持有权限仓储，`ReportController` 的 7 处权限门收成一处
-（403 / 防探测 404 / 401 三种口径保持原样）。**未开工**：批 2 其余各项（异常→错误码收敛、
-`FIELDS` 读取原语、分页响应形状）与批 3 全部。
+（403 / 防探测 404 / 401 三种口径保持原样）。
+**第 8 项（`FIELDS` 读取原语）已收口**：新增 `Data/FieldMetadataReader.cs` 作为字段清单与
+"成本/保密/禁止字段"过滤的唯一实现，打印、查询中心、权限矩阵三处回接（差异只由入参表达：
+只取可见 / 排除虚拟 / 要求物理列 / 能否看成本与保密 / 禁止字段集合 / 排序口径），
+各自的返回类型投影保留。**第 7 项（异常→错误码）做了一半**：异常过滤器里四个业务拒绝码与
+9 处 `DATA_FILTER_UNSUPPORTED` 字面量并入 `ApiErrorCodes`，各控制器手工 `catch` + `ApiProblem.Create`
+（`AssistantAdminController` 48 处、`DocumentWorkbenchController` 25 处）未动。
+**未开工**：第 9 项（分页响应形状统一，改对外契约）与批 3 全部。
 
 ## 5. 待决策 / 需顾问确认
 

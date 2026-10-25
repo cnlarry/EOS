@@ -1,9 +1,11 @@
 using System.Data;
+using EOS.API.Data.Metadata;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 
 using EOS.API.Telemetry;
+
 namespace EOS.API.Data;
 
 /// <summary>
@@ -1085,26 +1087,18 @@ public sealed class RightsAdminRepository(
     private static async Task<IReadOnlyList<RightsFieldInfo>> ReadFieldsAsync(
         SqlConnection connection, string table, bool includeCost, bool includeSecrecy, CancellationToken token)
     {
-        const string sql = """
-            SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(F_DESC,''))),
-                   CAST(COALESCE(IS_COST,0) AS bit),CAST(COALESCE(IS_SECRECY,0) AS bit)
-            FROM dbo.FIELDS WITH (NOLOCK)
-            WHERE LTRIM(RTRIM(T_ID))=@Table AND COALESCE(IS_VISIBLE,1)=1
-            ORDER BY F_ID;
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new List<RightsFieldInfo>();
-        while (await reader.ReadAsync(token))
+        // 权限矩阵只处理可见字段，按字段号排序；成本/保密是否出现取决于操作者自己的可见位
+        // ——这三个口径都由共享读取原语表达，不再另写一份 SQL。
+        var fields = await FieldMetadataReader.ReadAsync(connection, table, new FieldMetadataReader.FieldReadOptions
         {
-            var isCost = reader.GetBoolean(2);
-            var isSecrecy = reader.GetBoolean(3);
-            if (isCost && !includeCost) continue;
-            if (isSecrecy && !includeSecrecy) continue;
-            result.Add(new(reader.GetString(0), reader.GetString(1), isCost, isSecrecy));
-        }
-        return result;
+            VisibleOnly = true,
+            CanViewCost = includeCost,
+            CanViewSecrecy = includeSecrecy,
+            OrderByVerifyIndex = false,
+        }, token);
+        return fields
+            .Select(field => new RightsFieldInfo(field.Key, field.Label, field.IsCost, field.IsSecrecy))
+            .ToList();
     }
 
     private async Task SaveModuleRowAsync(

@@ -17,6 +17,9 @@ EOS.API/Data/BillNoGenerator.cs
 EOS.API/Data/ChooserJoinCatalog.cs
 EOS.API/Data/ChooserRepository.cs
 EOS.API/Data/DocumentWorkbenchRepository.cs
+# 字段清单的唯一读取实现（从打印、查询中心、权限矩阵三处同形 SQL 抽出的同一段读取）：
+# 只读 FIELDS 与 sys.columns，字段选择/可见性/成本保密过滤集中在此，NOLOCK 语义沿用原三处登记。
+EOS.API/Data/Metadata/FieldMetadataReader.cs
 EOS.API/Data/Effects/ServiceEffectHandlers/InventoryMoveHandler.cs
 EOS.API/Data/Effects/ValidationChecks/CheckSupport.cs
 EOS.API/Data/Effects/ValidationChecks/DuplicateCheck.cs

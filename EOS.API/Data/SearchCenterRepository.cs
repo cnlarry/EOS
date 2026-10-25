@@ -1,9 +1,11 @@
 using System.Data;
+using EOS.API.Data.Metadata;
 using EOS.API.Data.Query;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
 using EOS.API.Telemetry;
+
 namespace EOS.API.Data;
 
 /// <summary>
@@ -218,38 +220,20 @@ public sealed class SearchCenterRepository(
         IReadOnlySet<string> deniedFields,
         CancellationToken token)
     {
-        const string sql="""
-            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
-                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),
-                   COALESCE(f.IS_VISIBLE,1),LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,''))),LTRIM(RTRIM(ISNULL(f.NUMERIC_ROLE,''))),
-                   COALESCE(f.DISPLAY_LENGTH,0),LTRIM(RTRIM(ISNULL(f.ITEM_ALIGN,''))),LTRIM(RTRIM(ISNULL(f.HEADER_ALIGN,'')))
-            FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
-            ORDER BY COALESCE(f.VERIFY_INDEX,999),f.F_ID;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<SearchField>();
-        while(await reader.ReadAsync(token))
+        // 可搜字段用 FIELDS 全集（含被隐藏的列），但仍是物理列、非虚拟列；
+        // 成本/保密/禁止字段的过滤与打印、权限矩阵共用同一处判定。
+        var fields = await FieldMetadataReader.ReadAsync(connection, table, new FieldMetadataReader.FieldReadOptions
         {
-            var key=reader.GetString(0);
-            if(deniedFields.Contains(key))continue;
-            if(Convert.ToBoolean(reader.GetValue(3))&&!canViewCost)continue;
-            if(Convert.ToBoolean(reader.GetValue(4))&&!canViewSecrecy)continue;
-            var displayFormat=reader.GetString(6);
-            var numericRole=reader.GetString(7);
-            var align=reader.GetString(9);
-            var headerAlign=reader.GetString(10);
-            result.Add(new SearchField(key,reader.GetString(1),reader.GetString(2),
-                reader.GetInt32(8),
-                string.IsNullOrWhiteSpace(align)?null:align.Trim(),
-                string.IsNullOrWhiteSpace(headerAlign)?null:headerAlign.Trim(),
-                string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim(),
-                string.IsNullOrWhiteSpace(numericRole)?null:numericRole.Trim()));
-        }
-        return result;
+            DropVirtual = true,
+            PhysicalOnly = true,
+            CanViewCost = canViewCost,
+            CanViewSecrecy = canViewSecrecy,
+            DeniedFields = deniedFields,
+        }, token);
+        return fields
+            .Select(field => new SearchField(field.Key, field.Label, field.DataType,
+                field.DisplayLength, field.Align, field.HeaderAlign, field.DisplayFormat, field.NumericRole))
+            .ToList();
     }
 
 }

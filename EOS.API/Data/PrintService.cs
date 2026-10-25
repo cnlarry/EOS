@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Metadata;
 using EOS.API.Data.Reports;
 using EOS.API.Errors;
 using EOS.API.Models;
@@ -250,32 +251,18 @@ public sealed class PrintService(
         SqlConnection connection,string table,bool canViewCost,bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,CancellationToken token)
     {
-        // 字段必须真有物理列才渲染。物理列集合走 WorkbenchSql.GetPhysicalColumnsAsync——
-        // 此前在本文件内联了一份同形的 sys.columns EXISTS，与本文件其它读取用的白名单不是同一处实现。
-        var physical=await WorkbenchSql.GetPhysicalColumnsAsync(connection,null,table,token);
-        const string sql="""
-            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
-                   COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,'')))
-            FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@Table AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
-            ORDER BY COALESCE(f.VERIFY_INDEX,999),f.F_ID;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<PrintField>();
-        while(await reader.ReadAsync(token))
+        // 字段清单与"能给谁看哪些字段"的判定都在 FieldMetadataReader 一处：
+        // 只取可见、排除虚拟、要求物理列，再按成本/保密/禁止字段过滤。
+        var fields=await FieldMetadataReader.ReadAsync(connection,table,new FieldMetadataReader.FieldReadOptions
         {
-            var key=reader.GetString(0);
-            if(!physical.Contains(key))continue;
-            if(deniedFields.Contains(key))continue;
-            if(Convert.ToBoolean(reader.GetValue(2))&&!canViewCost)continue;
-            if(Convert.ToBoolean(reader.GetValue(3))&&!canViewSecrecy)continue;
-            var displayFormat=reader.GetString(4);
-            result.Add(new PrintField(key,reader.GetString(1),
-                string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim()));
-        }
-        return result;
+            VisibleOnly=true,
+            DropVirtual=true,
+            PhysicalOnly=true,
+            CanViewCost=canViewCost,
+            CanViewSecrecy=canViewSecrecy,
+            DeniedFields=deniedFields,
+        },token);
+        return fields.Select(field=>new PrintField(field.Key,field.Label,field.DisplayFormat)).ToList();
     }
 
     private static async Task<Dictionary<string,object?>?> ReadRowAsync(
