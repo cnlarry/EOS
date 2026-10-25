@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: c71984945d866be3 -->
+<!-- inventory-fingerprint: 955a03a432bfc2ca -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,12 +21,12 @@
 
 ## 一、总览
 
-- 入库脚本 **93** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 32
+- 入库脚本 **94** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 33
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**13** 个，见第七节
 - `scripts/oneshot/` 待清理的一次性脚本：**5** 个，见第二节
-- 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **66** 个——被 `.git/info/exclude` 排除，
+- 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **67** 个——被 `.git/info/exclude` 排除，
   别人的克隆里没有它们，故不参与上面的引用统计。
 
 ## 二、一次性脚本落点（`scripts/oneshot/`，用完即删）
@@ -50,18 +50,18 @@
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 6 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 6 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
-| `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 3 |
+| `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 4 |
 | `check-controller-sql-boundary.ps1` | 静态门禁：控制器不得持有数据访问（ADR-036 §5 断言 A）。 | 仅静态 | 3 |
 | `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 7 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
 | `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 11 |
 | `check-docs.ps1` | 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链， 以及**随仓库分发的文档里，相对链接必须指向已入库的文件**。 | git | 10 |
-| `check-identifier-single-source.ps1` | 静态门禁：动态标识符白名单只有一处实现（ADR-036 §5 断言 C）。 | 仅静态 | 4 |
+| `check-identifier-single-source.ps1` | 静态门禁：动态标识符白名单只有一处实现（ADR-036 §5 断言 C）。 | 仅静态 | 3 |
 | `check-migration-numbers.ps1` | 迁移编号唯一性门禁：同一个编号只能对应一个迁移脚本，且文件名必须符合 `NNN_描述.sql`。 | 仅静态 | 5 |
 | `check-numeric-column-types.ps1` | 静态门禁：迁移脚本不得新增 float 列。 | 仅静态 | 4 |
 | `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 8 |
 | `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 9 |
-| `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 2 |
+| `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 3 |
 | `check-tab-navigation.ps1` | 前端「工作区导航」门禁：跨模块跳转与返回只允许一种写法（ADR-040）。 | 仅静态 | 3 |
 | `check-workbench-policy-single-entry.ps1` | 统一工作台策略层单入口门禁：授权/名单/幂等判定不得回到控制器，且策略服务必须是共享入口。 | 仅静态 | 5 |
 | `gen-adr-index.ps1` | 决策记录索引：把 docs/decisions/ADR-*.md 抽成一张表（编号 / 标题 / 状态 / 日期 / 决策者 / 交叉引用），并守住它与决策目录一致。 | 仅静态 | 7 |
@@ -82,12 +82,12 @@
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
 | `check-live-fixture-hygiene.ps1` | 真库用例夹具卫生门禁：写入只能落在用例**自己造**的键上。 | 仅静态 | 5 |
 | `check-master-amount-rollup.ps1` | 连库门禁：主表金额汇总（主表列 = 明细同名列 SUM）的三项断言。 | 连库 | 2 |
-| `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 6 |
+| `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 7 |
 | `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 9 |
 | `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 4 |
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
-| `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 10 |
+| `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 11 |
 | `check-system-params.ps1` | 系统参数门禁：参数定义完整性 + 引用键存在性 + 归属模块合法性。 | 连库 | 4 |
 | `check-validation-rule-parity.ps1` | ADR-016 S0 ① 校验规则口径核对：MODULE_VALIDATION_RULE ↔ 代码闭集 ↔ 当前快照 ↔ 运行时加载器。 | 连库、工具链 | 3 |
 | `verify-permission-gate.ps1` | 权限门端到端验证：确认"没有该模块权限的账号"在真实 HTTP 上被拒（403；选择器类 403/404），而不是 200。 | 连库、需 API 在线 | 7 |
@@ -124,6 +124,7 @@
 |---|---|---|---|
 | `audit-retention.ps1` | 统一审计留存与归档（ADR-005 §8）：DETAIL_JSON 30 天截断、AUDIT_FIELD_CHANGE 90 天归档、 AUDIT_EVENT 180 天归档（导出 JSONL 后清理）。 | 连库 | 2 |
 | `auto-enable-batch.ps1` | 统一表单自动放量流水线：一批候选模块 → 预检 → 启用（写模块声明）→ 真实数据 CRUD 回路 （尽量完整、模拟真实业务数据）→ 语义/元数据/扫描核对 → 全量回归。 全绿则保留启用并出报告；任一失败则整批回滚并出差异报告（不静默修… | 需 API 在线 | 5 |
+| `build-web.ps1` | 构建前端产物并放入 EOS.API/wwwroot：把"API 同时托管 SPA"这个部署形态做成一条可复现命令。 | 工具链 | 1 |
 | `dev-services.ps1` | EOS 本地开发服务管理：EOS.API 一键启动、停止、重启、状态与日志。 | 需 API 在线、工具链 | 4 |
 | `eos-sql-selftest.ps1` | eos-sql.ps1 托管回退路径的结果集回归自检。 | 连库 | 1 |
 | `eos-sql.ps1` | 连接 EOS.ERP 的 sqlcmd 参数解析与执行入口（供本仓脚本复用）。 | 连库 | 45 |
@@ -138,7 +139,7 @@
 | `init-im-db.ps1` | EOS.IM local dev database initializer (dev-only helper): reads the ERP connection string from the local Codex config, s… | 连库 | 独立工具 |
 | `module-config-fuzz.ps1` | D 层：自造"极端但合法"的模块配置，断言接口要么正常、要么带原因码拒绝，绝不 5xx。 | 连库、需 API 在线 | 2 |
 | `probe-env.ps1` | 开工前环境预检：库可达性、API 端口与构建一致性、bin 产物是否落后于 HEAD。 | 连库、需 API 在线、git | 2 |
-| `publish-workbench-snapshots.ps1` | 发布工作台定义快照（开发库自助发布，替代人工在 230101 点「发布配置」；走同一服务端接口：校验 → 版本递增 → 写快照 → 清脏）。 | 需 API 在线 | 3 |
+| `publish-workbench-snapshots.ps1` | 发布工作台定义快照（开发库自助发布，替代人工在 230101 点「发布配置」；走同一服务端接口：校验 → 版本递增 → 写快照 → 清脏）。 | 需 API 在线 | 4 |
 | `register-field-relation-edges.ps1` | 单据关系效果边登记器（FIELD_RELATION 方案 A，迁移 058 后运行）：从业务动作的定位键派生并幂等登记 EFFECT 边。 | 连库 | 独立工具 |
 | `regression.ps1` | EOS 一键回归护栏：单测 + 前端 lint/build/test + E2E 四链 + UI 冒烟。 | 需 API 在线、工具链 | 5 |
 | `release.ps1` | EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 生成 CHANGELOG 节 → 产出清单； 定稿提交之后用 -TagOnly 打标签。**分两步是刻意的**：标签必须落在「CHANGELOG 定稿」那… | 连库、git、工具链 | 9 |
@@ -150,7 +151,7 @@
 | `seed-dev-data.ps1` | EOS 开发/测试语义化测试数据种子（用户拍板 2026-08-23，决策清单 §17）。 | 需 API 在线 | 1 |
 | `set-eos-env.ps1` | 把应用需要的凭据设成 User 级环境变量（配置里 ${VAR} 引用的真值来源）。 | 连库 | 3 |
 | `set-mssql-mcp-env.ps1` | 为 MCP 的 SQL Server 服务器维护 User 级环境变量（连接串走 SQL 认证，密码不进仓库）。 | 连库 | 3 |
-| `sweep-all.ps1` | 全系统广扫的单一入口：按顺序跑四层体检，逐层对比基线，最后汇总一份报告。 | 仅静态 | 1 |
+| `sweep-all.ps1` | 全系统广扫的单一入口：按顺序跑四层体检，逐层对比基线，最后汇总一份报告。 | 仅静态 | 2 |
 | `sync-agent-skills.ps1` | Sync agent skills: create Cursor mirror junctions from the canonical .agents/skills/ (idempotent). | 仅静态 | 1 |
 | `sync-guide-to-kb.ps1` | 开发手册与决策记录 → 知识库同步（按内容三分推送）。 | 连库、需 API 在线 | 9 |
 | `test-migration-dryrun.ps1` | DbUp 迁移干跑：把迁移脚本放进一层事务里执行再整体回滚，验证语法与命中行数。 | 连库 | 5 |
