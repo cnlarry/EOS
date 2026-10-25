@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Workbench;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -10,11 +11,13 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 应收对帐单（170101，原 `cop-account` C#）与预收帐款单（170103，原 `cop-prepay` C#）入效果目录后的真库验证：
-///   ① 170101 写段 `cop-account-rollup`：明细金额/税额/价税合计/数量合计回写主表，含税总额＝价税合计+其它费用
-///      ——把旧过程 `P_COP_ACCOUNT_After_Save` 的汇总语句内联为基准，比较主表最终状态；
+///   ① 170101 金额汇总：明细金额/税额/价税合计由**框架原语**按元数据发现列回写（配置面已随迁移 447 收紧），
+///      数量合计与含税总额仍由 `detail-rollup` 动作负责——把旧过程 `P_COP_ACCOUNT_After_Save` 的汇总语句
+///      内联为基准，比较主表最终状态；
 ///   ② 170101 门控段 `qty-not-exceed`：对帐不超送/退货单数量（`thisQty.agg=SUM` 分组求和）——按旧过程
 ///      `P_COP_ACCOUNT_CHECK` 的语句链比对"拒绝与否 + 文案"，并覆盖门控关与额度内放行；
-///   ③ 170103 `cop-prepay-rollup`：主表金额＝明细金额合计（舍入三位）——同样与旧过程语句对拍。
+///   ③ 170103 金额汇总：主表金额＝明细金额合计——由框架原语执行（该模块的 detail-rollup 动作已随迁移 447 整条移除），
+///      断言仍是"结果与旧过程语句一致"。
 /// 造数用 `ADR12CA`/`ADR12CP` 前缀，事务结束回滚。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -46,6 +49,13 @@ public sealed class CopAccountCatalogLiveTests
         try
         {
             await SeedAccountAsync(connection, transaction, token);
+            // 金额/税额/价税合计三列由框架原语按元数据发现列回写（迁移 447 把这三条从配置动作里移除，
+            // 因为框架已覆盖）；`detail-rollup` 动作只剩数量合计与含税总额两条赋值。顺序不能反：
+            // 含税总额的算式要用框架刚写好的 AMOUNT_TAX。
+            var applied = await MasterAmountRollup.ApplyAsync(
+                connection, transaction, "COP_ACCOUNT_M", "COP_ACCOUNT_D",
+                ["ACCOUNT_TYPE", "ACCOUNT_NO"], [Type, No], token);
+            Assert.True(applied > 0, "金额汇总原语没有发现可汇总的列（COP_ACCOUNT_M/D 的同名同类型金额列）");
             var action = await LoadActionAsync(connection, transaction, token, 170101);
             Assert.Equal("detail-rollup", action.EffectKey);
             var plan = new ModuleEffectPlan(170101, "COP_ACCOUNT_M", "COP_ACCOUNT_D", "live-cop-account",
@@ -134,14 +144,12 @@ public sealed class CopAccountCatalogLiveTests
         try
         {
             await SeedPrepayAsync(connection, transaction, token);
-            var action = await LoadActionAsync(connection, transaction, token, 170103);
-            Assert.Equal("detail-rollup", action.EffectKey);
-            var plan = new ModuleEffectPlan(170103, "COP_PREPAY_M", "COP_PREPAY_D", "live-cop-prepay",
-                ["PREPAY_TYPE", "PREPAY_NO"], [action], []);
-
-            await new DetailRollupHandler().ExecuteAsync(
-                new ServiceEffectContext(connection, transaction, plan, action, EffectEvent.Save,
-                    PrepayNo, [PrepayType, PrepayNo], "live-test"), token);
+            // 该模块的 detail-rollup 动作已整条移除（迁移 447）：主表金额＝明细金额合计由框架原语执行，
+            // 断言仍是"结果与旧过程 P_COP_PREPAY_After_Save 的算式一致"。
+            var applied = await MasterAmountRollup.ApplyAsync(
+                connection, transaction, "COP_PREPAY_M", "COP_PREPAY_D",
+                ["PREPAY_TYPE", "PREPAY_NO"], [PrepayType, PrepayNo], token);
+            Assert.True(applied > 0, "金额汇总原语没有发现可汇总的列（COP_PREPAY_M/D 的同名同类型金额列）");
             var byEffect = await ReadPrepayAsync(connection, transaction, token);
             Assert.Equal(3.333, byEffect);
 

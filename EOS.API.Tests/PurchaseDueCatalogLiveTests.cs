@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Workbench;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -10,8 +11,9 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 应付对帐单（170201，原 `purchase-due` C#）入效果目录后的真库验证：
-///   ① 写段 `purchase-due-rollup`：明细金额/税额/价税合计/数量合计回写主表，含税总额＝价税合计+其它费用
-///      ——把旧过程 `P_PUR_DUE_After_Save` 的汇总语句内联为基准，比较主表最终状态；
+///   ① 金额汇总：明细金额/税额/价税合计由**框架原语**按元数据发现列回写（配置面已随迁移 447 收紧），
+///      数量合计与含税总额仍由 `detail-rollup` 动作负责——把旧过程 `P_PUR_DUE_After_Save` 的汇总语句
+///      内联为基准，比较主表最终状态；
 ///   ② 门控段 `qty-not-exceed`：对帐不超收料/退料单数量——按旧过程 `P_PUR_DUE_CHECK` 的语句链比对
 ///      "拒绝与否 + 文案"，并覆盖门控关、额度内放行与"同引用键多行必须按组合并求和"。
 /// 造数用 `ADR12PD` 前缀，事务结束回滚。
@@ -43,6 +45,12 @@ public sealed class PurchaseDueCatalogLiveTests
         try
         {
             await SeedAsync(connection, transaction, token);
+            // 金额/税额/价税合计三列由框架原语按元数据发现列回写（迁移 447 把这三条从配置动作里移除）；
+            // `detail-rollup` 动作只剩数量合计与含税总额。顺序不能反：含税总额要用框架刚写好的 AMOUNT_TAX。
+            var applied = await MasterAmountRollup.ApplyAsync(
+                connection, transaction, "PUR_DUE_M", "PUR_DUE_D",
+                ["DUE_TYPE", "DUE_NO"], [Type, No], token);
+            Assert.True(applied > 0, "金额汇总原语没有发现可汇总的列（PUR_DUE_M/D 的同名同类型金额列）");
             var action = await LoadActionAsync(connection, transaction, token);
             Assert.Equal("detail-rollup", action.EffectKey);
             var plan = new ModuleEffectPlan(ModuleId, "PUR_DUE_M", "PUR_DUE_D", "live-purchase-due",

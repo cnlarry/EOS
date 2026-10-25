@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Workbench;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -10,7 +11,8 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 预付帐款单（170203，原 `pur-prepay` C#）入效果目录后的真库验证：
-///   ① 写段 `pur-prepay-rollup`：主表金额＝明细金额合计（舍入三位）——与旧过程 `P_PUR_PREPAY_After_Save` 对拍；
+///   ① 金额汇总：主表金额＝明细金额合计——由框架原语按元数据发现列执行（配置面已随迁移 447 移除），
+///      仍与旧过程 `P_PUR_PREPAY_After_Save` 的算式对拍；
 ///   ② 引用三件套完整性（`line-require`：填了采购单号就必须填单别与序号）——按 C# 判据语义断言；
 ///   ③ 门控段 `qty-not-exceed`：预付金额不超采购行未结金额——按旧过程 `P_PUR_PREPAY_CHECK` 的语句链
 ///      比对"拒绝与否 + 文案"（诊断首列是组内最大明细序号），并覆盖门控关与额度内放行。
@@ -44,16 +46,14 @@ public sealed class PurPrepayCatalogLiveTests
         try
         {
             await SeedAsync(connection, transaction, token);
-            var action = await LoadActionAsync(connection, transaction, token);
-            Assert.Equal("detail-rollup", action.EffectKey);
-            var plan = new ModuleEffectPlan(ModuleId, "PUR_PREPAY_M", "PUR_PREPAY_D", "live-pur-prepay",
-                ["PREPAY_TYPE", "PREPAY_NO"], [action], []);
-
-            await new DetailRollupHandler().ExecuteAsync(
-                new ServiceEffectContext(connection, transaction, plan, action, EffectEvent.Save,
-                    No, [Type, No], "live-test"), token);
-            var byEffect = await ReadAmountAsync(connection, transaction, token);
-            Assert.Equal(3.333, byEffect);
+            // 金额汇总已由框架原语按元数据发现列执行（主表与明细同名、同类型、双方 NUMERIC_ROLE='AMOUNT'），
+            // 不再由模块配一条 detail-rollup 动作——配置面整条已移除，这里断言的仍是"结果与旧过程一致"。
+            var applied = await MasterAmountRollup.ApplyAsync(
+                connection, transaction, "PUR_PREPAY_M", "PUR_PREPAY_D",
+                ["PREPAY_TYPE", "PREPAY_NO"], [Type, No], token);
+            Assert.True(applied > 0, "金额汇总原语没有发现可汇总的列（PUR_PREPAY_M/D 的同名同类型金额列）");
+            var byFramework = await ReadAmountAsync(connection, transaction, token);
+            Assert.Equal(3.333, byFramework);
 
             await SeedAsync(connection, transaction, token);
             await ExecuteAsync(connection, transaction, token, """
@@ -65,7 +65,7 @@ public sealed class PurPrepayCatalogLiveTests
                 WHERE m.PREPAY_TYPE=@Type AND m.PREPAY_NO=@No;
                 """, ("@Type", Type), ("@No", No));
             var byBaseline = await ReadAmountAsync(connection, transaction, token);
-            Assert.Equal(byBaseline, byEffect);
+            Assert.Equal(byBaseline, byFramework);
         }
         finally
         {
@@ -220,27 +220,6 @@ public sealed class PurPrepayCatalogLiveTests
         await using var reader = await command.ExecuteReaderAsync(token);
         Assert.True(await reader.ReadAsync(token));
         return Convert.ToDouble(reader.GetValue(0));
-    }
-
-    private static async Task<EffectActionPlan> LoadActionAsync(
-        SqlConnection connection, SqlTransaction transaction, CancellationToken token)
-    {
-        await using var command = new SqlCommand("""
-            SELECT SEQ, EVENT_CODE, EFFECT_KEY, EFFECT_NAME, ENABLED, FAIL_MODE,
-                   CONDITION_STRUCT, PARAM_STRUCT, REVERSE_STRUCT
-            FROM dbo.MODULE_BUSINESS_ACTION
-            WHERE M_IDX=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
-            """, connection, transaction);
-        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        Assert.True(await reader.ReadAsync(token), $"模块 {ModuleId} 缺少 SAVE 期动作");
-        return new EffectActionPlan(
-            reader.GetInt32(0), reader.GetString(1), reader.GetString(2),
-            reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetBoolean(4), reader.GetString(5),
-            Parse(reader.IsDBNull(6) ? null : reader.GetString(6)),
-            Parse(reader.IsDBNull(7) ? null : reader.GetString(7)),
-            Parse(reader.IsDBNull(8) ? null : reader.GetString(8)),
-            Array.Empty<EffectOpPlan>());
     }
 
     private static async Task<ModuleEffectPlan> LoadPlanAsync(
