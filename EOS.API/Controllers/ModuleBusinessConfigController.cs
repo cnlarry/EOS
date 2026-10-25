@@ -317,24 +317,13 @@ public sealed class ModuleBusinessConfigController(
 
         logger.LogInformation("效果链预演 module={ModuleId} event={Event} key={Key} source={Source} operator={User}",
             moduleId, eventCode, string.Join(',', request.Key), configSource, userContext.UserId);
-        try
-        {
-            var report = await simulation.SimulateAsync(
-                definition, eventCode!, request.Key,
-                approve: string.Equals(eventCode, "APPROVE_EFFECT", StringComparison.Ordinal),
-                userContext.UserId, token, configSource);
-            return Ok(report);
-        }
-        catch (EffectSimulationService.UnsupportedModuleException unsupported)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, unsupported.Code, unsupported.Message));
-        }
-        catch (EffectSimulationService.TimeoutException)
-        {
-            return StatusCode(StatusCodes.Status504GatewayTimeout,
-                ApiProblem.Create(StatusCodes.Status504GatewayTimeout, "SIMULATION_TIMEOUT",
-                    "预演超时，请缩小单据范围后重试（事务已回滚，库内数据无变化）。"));
-        }
+        // 预演拒绝（该模块不执行效果链）与预算超时分别由 UnsupportedModuleException /
+        // EffectSimulationService.TimeoutException 表达，异常过滤器统一翻成 400 / 504。
+        var report = await simulation.SimulateAsync(
+            definition, eventCode!, request.Key,
+            approve: string.Equals(eventCode, "APPROVE_EFFECT", StringComparison.Ordinal),
+            userContext.UserId, token, configSource);
+        return Ok(report);
     }
 
     /// <summary>配置面读门：页面可见 + 该模块的配置权。</summary>

@@ -11,6 +11,13 @@ namespace EOS.API.Features.Assistant.Admin;
 /// <summary> admin-write v1: metadata-only changeset (register tables in TABLES,
 /// batch-generate field metadata for existing physical columns). No DDL, no MODULES
 /// rows, no physical column creation. Trial never writes; execute re-validates first.</summary>
+/// <remarks>
+/// 试算未通过时抛 <see cref="ChangeSetBlockedException"/>：控制器只调服务，不再自己把
+/// `InvalidOperationException` 翻译成 400（翻译在 `ApiExceptionFilter` 一处）。
+/// 继承 `InvalidOperationException` 保留既有调用方与用例的捕获口径。
+/// </remarks>
+public sealed class ChangeSetBlockedException(string message) : InvalidOperationException(message);
+
 public sealed record ChangeSetTableResult(
     string Table, string Action, string Status,
     IReadOnlyList<string> WouldCreate, IReadOnlyList<string> WouldSkip, IReadOnlyList<string> Errors);
@@ -71,7 +78,7 @@ public sealed class ChangeSetService(
         var trial = await TrialAsync(changeset, token);
         if (trial.Blocked)
         {
-            throw new InvalidOperationException("变更集试算未通过，拒绝执行：" + string.Join("；", trial.Errors
+            throw new ChangeSetBlockedException("变更集试算未通过，拒绝执行：" + string.Join("；", trial.Errors
                 .Concat(trial.Tables.Where(table => table.Status == "blocked")
                     .SelectMany(table => table.Errors.Select(error => $"{table.Table}: {error}")))));
         }

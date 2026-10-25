@@ -139,15 +139,9 @@ public sealed class ImportController(
         {
             return BadRequest(ApiProblem.BadRequest("请选择要导入的文件。", "IMPORT_FILE_REQUIRED"));
         }
-        try
-        {
-            await using var stream = file.OpenReadStream();
-            return Ok(TabularFileReader.Read(file.FileName, stream));
-        }
-        catch (ImportFileException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, ex.Code, ex.Message));
-        }
+        // 文件读不了（扩展名/编码/大小/表头）由 ImportFileException 表达，异常过滤器统一翻成 400 + 它自己的码。
+        await using var stream = file.OpenReadStream();
+        return Ok(TabularFileReader.Read(file.FileName, stream));
     }
 
     /// <summary>预演：真实事务内执行后回滚，给出与执行逐字一致的逐行判定，不落任何数据。</summary>
@@ -171,15 +165,9 @@ public sealed class ImportController(
         {
             return BadRequest(ApiProblem.BadRequest("没有可导入的数据行。", "IMPORT_NO_ROWS"));
         }
-        try
-        {
-            var result = await service.RunAsync(granted, request, userContext.EmployeeName, userContext.UserId, dryRun, token);
-            return Ok(result);
-        }
-        catch (ImportRequestException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, ex.Code, ex.Message));
-        }
+        // 请求级拒绝（映射缺失、行数越界等）由 ImportRequestException 表达，同样走异常过滤器。
+        var result = await service.RunAsync(granted, request, userContext.EmployeeName, userContext.UserId, dryRun, token);
+        return Ok(result);
     }
 
     /// <summary>

@@ -40,16 +40,9 @@ public sealed class KbController(
     public async Task<IActionResult> EnsureCollection([FromBody] EnsureCollectionRequest request, CancellationToken token)
     {
         if (!await CanStewardAsync(token)) return Forbid();
-        try
-        {
-            await repository.EnsureCollectionAsync(request.CollectionId, request.Title,
-                request.EmbeddingModel, request.Dimension, request.DefaultVisibility, token);
-            return NoContent();
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
-        }
+        await repository.EnsureCollectionAsync(request.CollectionId, request.Title,
+            request.EmbeddingModel, request.Dimension, request.DefaultVisibility, token);
+        return NoContent();
     }
 
     [HttpPost("documents")]
@@ -72,47 +65,27 @@ public sealed class KbController(
         if (texts.Count == 0)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "文档切块为空，无法入库。"));
         var chunks = new List<(string Content, float[] Vector)>();
-        try
+        // 向量模型未接线（503 KB_EMBEDDING_NOT_CONFIGURED）与厂商侧失败（503 + 厂商原因码）
+        // 都由 ApiExceptionFilter 统一翻译，控制器不再各 catch 一遍。
+        var embedding = await embeddingResolver.ResolveAsync(token);
+        // 一次批量：厂商对单请求条数有上限，分批在客户端做（百炼 10 条、智谱 ≤64 条）。
+        // 逐块一次请求的写法在一篇百余块的文档上就是一百次出网，第一次真入库就会撞限流
+        var vectors = await embedding.EmbedManyAsync(texts, token);
+        for (var i = 0; i < texts.Count; i++)
         {
-            var embedding = await embeddingResolver.ResolveAsync(token);
-            // 一次批量：厂商对单请求条数有上限，分批在客户端做（百炼 10 条、智谱 ≤64 条）。
-            // 逐块一次请求的写法在一篇百余块的文档上就是一百次出网，第一次真入库就会撞限流
-            var vectors = await embedding.EmbedManyAsync(texts, token);
-            for (var i = 0; i < texts.Count; i++)
-            {
-                chunks.Add((texts[i], vectors[i]));
-            }
-        }
-        catch (EmbeddingNotConfiguredException ex)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, "KB_EMBEDDING_NOT_CONFIGURED", ex.Message));
-        }
-        catch (AssistantModelException ex)
-        {
-            // 厂商侧的失败要带**它自己的原因码**：把"密钥被拒"混进"未配置"里，
-            // 管理员会去 3102 反复确认模型配好了没有，而问题在密钥
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, ex.Code, ex.UserMessage));
+            chunks.Add((texts[i], vectors[i]));
         }
 
-        try
-        {
-            var collection = await repository.GetCollectionAsync(request.CollectionId, token);
-            var visibility = KbVisibility.Normalize(request.Visibility, collection?.DefaultVisibility ?? KbVisibility.All);
-            var (docId, reused) = await repository.IngestDocumentAsync(request.CollectionId,
-                request.Title, request.SourceUri, request.Content, visibility, chunks,
-                userContext.UserId, token);
-            await auditWriter.WriteBestEffortAsync(null, $"kb-doc:{docId}",
-                reused ? "KB_INGEST_REUSED" : "KB_INGEST",
-                $"知识库文档入库（{request.Title}，{chunks.Count} 块）", userContext.UserId,
-                "KNOWLEDGE_BASE", result: 1, null, token);
-            return Ok(new { docId = docId.ToString(), reused, chunks = chunks.Count });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
-        }
+        var collection = await repository.GetCollectionAsync(request.CollectionId, token);
+        var visibility = KbVisibility.Normalize(request.Visibility, collection?.DefaultVisibility ?? KbVisibility.All);
+        var (docId, reused) = await repository.IngestDocumentAsync(request.CollectionId,
+            request.Title, request.SourceUri, request.Content, visibility, chunks,
+            userContext.UserId, token);
+        await auditWriter.WriteBestEffortAsync(null, $"kb-doc:{docId}",
+            reused ? "KB_INGEST_REUSED" : "KB_INGEST",
+            $"知识库文档入库（{request.Title}，{chunks.Count} 块）", userContext.UserId,
+            "KNOWLEDGE_BASE", result: 1, null, token);
+        return Ok(new { docId = docId.ToString(), reused, chunks = chunks.Count });
     }
 
     [HttpDelete("documents/{docId:long}")]
@@ -138,22 +111,9 @@ public sealed class KbController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "检索关键字不能为空。"));
         float[] queryVector;
         int dimension;
-        try
-        {
-            var embedding = await embeddingResolver.ResolveAsync(token);
-            dimension = embedding.Dimension;
-            queryVector = await embedding.EmbedAsync(request.Query.Trim(), token);
-        }
-        catch (EmbeddingNotConfiguredException ex)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, "KB_EMBEDDING_NOT_CONFIGURED", ex.Message));
-        }
-        catch (AssistantModelException ex)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, ex.Code, ex.UserMessage));
-        }
+        var embedding = await embeddingResolver.ResolveAsync(token);
+        dimension = embedding.Dimension;
+        queryVector = await embedding.EmbedAsync(request.Query.Trim(), token);
 
         // TopK 由调用方给，但**必须有上界**：不然一句请求就能让检索返回任意条数（内存与出网检索成本）。
         // 上界取自参数目录的 KB 域，与助手工具的 KB_SEARCH_MAX_HITS **分开**：

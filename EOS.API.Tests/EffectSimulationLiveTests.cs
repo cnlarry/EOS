@@ -574,16 +574,16 @@ public sealed class EffectSimulationLiveTests
                 .ToList(),
             publishedRules);
 
-        var result = await controller.Simulate(
-            candidate.ModuleId,
-            new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList(), draft),
-            token);
+        var result = await Assert.ThrowsAsync<EffectSimulationService.UnsupportedModuleException>(() =>
+            controller.Simulate(
+                candidate.ModuleId,
+                new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList(), draft),
+                token));
 
-        var bad = Assert.IsType<BadRequestObjectResult>(result);
         // 断言带条款：换一个拒绝理由（主键、草稿结构…）时能一眼看出来，不必再排查一遍。
-        // 注意读属性而不是序列化后比字符串——序列化会把中文转义成 \uXXXX，子串断言必然落空。
-        var problem = Assert.IsAssignableFrom<Microsoft.AspNetCore.Mvc.ProblemDetails>(bad.Value);
-        Assert.Contains("无副作用批核", problem.Title ?? problem.Detail ?? string.Empty);
+        // HTTP 状态与错误码由 ApiExceptionFilter.Map 统一翻译（见 ApiExceptionMappingTests），
+        // 控制器只抛语义异常——用例直接调 action，故断言异常本身。
+        Assert.Contains("无副作用批核", result.Message);
     }
 
     /// <summary>

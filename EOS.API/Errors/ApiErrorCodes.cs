@@ -25,4 +25,7 @@ public static class ApiErrorCodes
     public const string GroupExpressionUnsupported = "GROUP_EXP_UNSUPPORTED";
     public const string PdfDataTooLarge = "PDF_DATA_TOO_LARGE";
     public const string PeriodClosed = "PERIOD_CLOSED";
+    public const string KbEmbeddingNotConfigured = "KB_EMBEDDING_NOT_CONFIGURED";
+    public const string SimulationTimeout = "SIMULATION_TIMEOUT";
+    public const string ChangeSetBlocked = "CHANGESET_BLOCKED";
 }

@@ -78,11 +78,16 @@
 |---|---|
 | 通用 | `INVALID_ARGUMENT`、`INVALID_MODEL`、`NOT_FOUND`、`UNAUTHORIZED`、`FORBIDDEN`、`INTERNAL_ERROR` |
 | 登录 | `LOGIN_INVALID_INPUT`、`LOGIN_USER_NOT_FOUND`、`LOGIN_INVALID_PASSWORD`、`LOGIN_DISABLED`、`LOGIN_LOCKED` |
-| 业务拒绝（由专用异常类型经 `ApiExceptionFilter` 统一翻译） | `DATA_FILTER_UNSUPPORTED`、`GROUP_EXP_UNSUPPORTED`、`PDF_DATA_TOO_LARGE`、`PERIOD_CLOSED` |
+| 业务拒绝（由专用异常类型经 `ApiExceptionFilter` 统一翻译） | `DATA_FILTER_UNSUPPORTED`、`GROUP_EXP_UNSUPPORTED`、`PDF_DATA_TOO_LARGE`、`PERIOD_CLOSED`、`KB_EMBEDDING_NOT_CONFIGURED`、`SIMULATION_TIMEOUT`、`CHANGESET_BLOCKED` |
 
 域内还会定义更细的码（如 `INVALID_EXPORT_KEYS`、`INVALID_FORM_MODE`、`INVALID_RECORD_KEY`）。
 新增码时同步加进 `ApiErrorCodes` 或就近定义，不要散落成裸字符串。业务拒绝类只从
 `ApiErrorCodes` 取常量——同一份码在控制器里再写一遍字面量，就等于有了第二处真源。
+
+**异常到响应的翻译只有一处**：`ApiExceptionFilter.Map`（纯函数，状态码 / 稳定码 / 文案三件事
+全在那张表里）。控制器只抛语义异常，不再逐个 `catch` 翻译；导入、知识库、效果预演、助手变更集
+这些"拒绝带自己的原因码"的情形，改为各自的异常类型携带码（`ImportFileException`、
+`UnsupportedModuleException`、`ChangeSetBlockedException` 等）。
 
 ## 四、分页
 

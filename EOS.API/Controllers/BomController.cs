@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
 using EOS.API.Data.Bom;
+using EOS.API.Errors;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -227,7 +228,9 @@ public sealed class BomController(
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { code = "IMPORT_REJECTED", message = ex.Message });
+            // 业务拒绝（版本不存在、版次不是两位数字等）走统一错误契约；
+            // 此前这里返回匿名对象 { code, message }，与 problem+json 不是同一个形状。
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "IMPORT_REJECTED", ex.Message));
         }
 
         await auditWriter.WriteBestEffortAsync(

@@ -112,9 +112,12 @@ S0–S6 + 四个收尾批全部验收通过（2026-09-30），工具数收敛在
 **第 8 项（`FIELDS` 读取原语）已收口**：新增 `Data/FieldMetadataReader.cs` 作为字段清单与
 "成本/保密/禁止字段"过滤的唯一实现，打印、查询中心、权限矩阵三处回接（差异只由入参表达：
 只取可见 / 排除虚拟 / 要求物理列 / 能否看成本与保密 / 禁止字段集合 / 排序口径），
-各自的返回类型投影保留。**第 7 项（异常→错误码）做了一半**：异常过滤器里四个业务拒绝码与
-9 处 `DATA_FILTER_UNSUPPORTED` 字面量并入 `ApiErrorCodes`，各控制器手工 `catch` + `ApiProblem.Create`
-（`AssistantAdminController` 48 处、`DocumentWorkbenchController` 25 处）未动。
+各自的返回类型投影保留。**第 7 项（异常→错误码）控制器侧已收口**：`ApiExceptionFilter.Map` 成为
+异常→(状态码/稳定码/文案) 的唯一映射表（纯函数，`ApiExceptionMappingTests` 8 条钉住），
+知识库、导入、效果预演、助手变更集四类"带自己原因码的拒绝"改为异常类型携带码，
+控制器手工 `catch` 从 18 处降到 4 处（剩下的是解析辅助、文件删除 best-effort、
+检索中心把 `ArgumentException` 映射成它自己的 `SEARCH_QUERY_INVALID`、BOM 导入把
+`InvalidOperationException` 映射成 `IMPORT_REJECTED`——这四处是端点级契约，不是可机械收敛的重复）。
 **未开工**：第 9 项（分页响应形状统一，改对外契约）与批 3 全部。
 
 ## 5. 待决策 / 需顾问确认

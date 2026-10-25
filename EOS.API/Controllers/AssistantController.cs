@@ -339,24 +339,17 @@ public sealed class AssistantController(
             && !request.ConfirmedRisk)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MEMORY_PII_RISK",
                 "记忆疑似包含手机号/证件号/银行卡号等敏感信息，请删除敏感内容或确认风险后重试（confirmedRisk=true）。"));
-        try
-        {
-            var item = await memoryStore.AddMemoryAsync(
-                userContext.UserId, request.MemoryType ?? "fact",
-                request.MemoryKey, request.MemoryValue, request.SourceMessageId, token);
-            await auditWriter.WriteBestEffortAsync(null, $"memory:{item.Id}", "MEMORY_SAVE",
-                $"助手显式记忆新增（{item.MemoryType}/{item.MemoryKey}）", userContext.UserId,
-                "ASSISTANT_MEMORY", result: 1, null, token);
-            return Ok(new { id = item.Id.ToString() });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MEMORY_LIMIT", ex.Message));
-        }
+        // 校验失败是 ArgumentException（400 INVALID_ARGUMENT），入库本身失败是服务端故障（500）——
+        // 两者都由 ApiExceptionFilter 统一翻译，控制器不再各 catch 一遍。
+        // 原先这里把"保存记忆失败"也映射成 400 MEMORY_LIMIT，而记忆条数上限走的是 LRU 归档、
+        // 根本不抛异常：那个码只会把服务器故障说成用户超限，已随本次收敛去掉。
+        var item = await memoryStore.AddMemoryAsync(
+            userContext.UserId, request.MemoryType ?? "fact",
+            request.MemoryKey, request.MemoryValue, request.SourceMessageId, token);
+        await auditWriter.WriteBestEffortAsync(null, $"memory:{item.Id}", "MEMORY_SAVE",
+            $"助手显式记忆新增（{item.MemoryType}/{item.MemoryKey}）", userContext.UserId,
+            "ASSISTANT_MEMORY", result: 1, null, token);
+        return Ok(new { id = item.Id.ToString() });
     }
 
     /// <summary>删除一条本人记忆（软删除，审计保留痕迹）。</summary>
@@ -423,17 +416,11 @@ public sealed class AssistantController(
     [HttpPut("memory/preferences")]
     public async Task<IActionResult> SavePreferences([FromBody] SavePreferencesRequest request, CancellationToken token)
     {
-        try
-        {
-            await memoryStore.SetPreferencesAsync(userContext.UserId, request?.PreferencesJson, token);
-            await auditWriter.WriteBestEffortAsync(null, "profile", "MEMORY_PREF",
-                "助手偏好设置保存", userContext.UserId, "ASSISTANT_MEMORY", result: 1, null, token);
-            return NoContent();
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
-        }
+        // 偏好非法（非 JSON 对象 / 过长）抛 ArgumentException，由异常过滤器翻成 400 INVALID_ARGUMENT。
+        await memoryStore.SetPreferencesAsync(userContext.UserId, request?.PreferencesJson, token);
+        await auditWriter.WriteBestEffortAsync(null, "profile", "MEMORY_PREF",
+            "助手偏好设置保存", userContext.UserId, "ASSISTANT_MEMORY", result: 1, null, token);
+        return NoContent();
     }
 
     public sealed record ApplyChangeSetRequest(JsonElement Changeset, bool Confirmed);
@@ -449,35 +436,30 @@ public sealed class AssistantController(
         if (request is null || !request.Confirmed)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CONFIRM_REQUIRED",
                 "变更集执行必须经结构化确认卡确认（confirmed=true），自然语言确认无效。"));
-        try
+        // 试算未通过时 ChangeSetService 抛 ChangeSetBlockedException，由异常过滤器翻成 400 CHANGESET_BLOCKED；
+        // 控制器这里只调服务，不再自己映射异常。
+        var result = await changeSets.ExecuteAsync(
+            request.Changeset, userContext.EmployeeName ?? userContext.UserId, token);
+        var failedModules = result.Validation.Where(item => !item.Passed).Select(item => item.ModuleId).ToArray();
+        await auditWriter.WriteBestEffortAsync(null, "admin-changeset", "CHANGESET_APPLY",
+            $"助手变更集执行（{result.Goal}）：登记表 {result.TablesRegistered} 个，新增字段 {result.FieldsCreated} 个，跳过 {result.FieldsSkipped} 个；" +
+            (failedModules.Length == 0 ? "受影响模块发布前校验全部通过" : $"校验未通过模块：{string.Join("、", failedModules)}（已标脏待管理端发布）"),
+            userContext.UserId, "ASSISTANT_ADMIN", result: 1, null, token);
+        return Ok(new
         {
-            var result = await changeSets.ExecuteAsync(
-                request.Changeset, userContext.EmployeeName ?? userContext.UserId, token);
-            var failedModules = result.Validation.Where(item => !item.Passed).Select(item => item.ModuleId).ToArray();
-            await auditWriter.WriteBestEffortAsync(null, "admin-changeset", "CHANGESET_APPLY",
-                $"助手变更集执行（{result.Goal}）：登记表 {result.TablesRegistered} 个，新增字段 {result.FieldsCreated} 个，跳过 {result.FieldsSkipped} 个；" +
-                (failedModules.Length == 0 ? "受影响模块发布前校验全部通过" : $"校验未通过模块：{string.Join("、", failedModules)}（已标脏待管理端发布）"),
-                userContext.UserId, "ASSISTANT_ADMIN", result: 1, null, token);
-            return Ok(new
+            goal = result.Goal,
+            tablesRegistered = result.TablesRegistered,
+            fieldsCreated = result.FieldsCreated,
+            fieldsSkipped = result.FieldsSkipped,
+            notes = result.Notes,
+            affectedModules = result.AffectedModuleIds,
+            validation = result.Validation.Select(item => new
             {
-                goal = result.Goal,
-                tablesRegistered = result.TablesRegistered,
-                fieldsCreated = result.FieldsCreated,
-                fieldsSkipped = result.FieldsSkipped,
-                notes = result.Notes,
-                affectedModules = result.AffectedModuleIds,
-                validation = result.Validation.Select(item => new
-                {
-                    moduleId = item.ModuleId,
-                    passed = item.Passed,
-                    failedCodes = item.FailedCodes,
-                }),
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CHANGESET_BLOCKED", ex.Message));
-        }
+                moduleId = item.ModuleId,
+                passed = item.Passed,
+                failedCodes = item.FailedCodes,
+            }),
+        });
     }
 
     /// <summary>本人今日用量（请求数/token/估算成本 + 限额）。</summary>

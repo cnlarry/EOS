@@ -101,7 +101,7 @@ public sealed class ChangeSetServiceTests
         var writer = new FakeWriter();
         var service = new ChangeSetService(new FakeCatalog(), writer);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ExecuteAsync(
+        await Assert.ThrowsAsync<ChangeSetBlockedException>(() => service.ExecuteAsync(
             Changeset("""{"version":1,"goal":"加一页","tables":[{"table":"COP_ORDER_M","action":"drop_table"}]}"""),
             "tester", CancellationToken.None));
         Assert.Equal(0, writer.TableWrites + writer.FieldWrites);
