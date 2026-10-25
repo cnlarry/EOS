@@ -1387,3 +1387,27 @@
 - **处置**：助手只用来"看结果行"；要在脚本里按列取值，改用 `System.Data.SqlClient`/`Microsoft.Data.SqlClient`
   直接查询（真库用例里就是这么做的），或让 SQL 用 `STRING_AGG` 先把多行拼成一格再取单行文本。
 - **防线**：任何"按列名取 $_.X"的写法，先在结果上 `GetType()` 确认是 DataRow 还是 String；是 String 就不要取属性。
+
+### L122 SPA 外壳要求登录 ⇒ 未登录打开深链变成 302 自环（不是"跳到登录页"）
+
+- **触发／症状**：未登录访问任意页面路径（`/workbench/1401`、`/login`、`/login.html`）浏览器报
+  `ERR_TOO_MANY_REDIRECTS`；`curl` 能看到 `GET /login.html → 302 Location: /login.html`。
+  开发形态（Vite 在 `:80` 托管前端）看不出来——只有"API 同时托管前端产物"的部署形态才暴露。
+- **根因**：两处叠加。① `MapFallbackToFile("index.html")` 挂了 `.RequireAuthorization()`：
+  未登录拿到 401 → Cookie 认证的 `OnRedirectToLogin` 把**非 `/api`** 请求跳到登录页 →
+  登录页本身也走 fallback、同样要授权 → 又 401 → 又跳同一个地址，浏览器判环。
+  ② 跳转目标写的是 `/login.html`，而登录页是前端路由 `/login`（`RouteGuards` 负责跳），
+  那个静态文件从 SPA 接管界面起就不存在了，于是目标永远打不开。
+- **处置**：外壳对未登录请求放行（权限边界在 `/api`，静态外壳不含业务数据；
+  `assets/*` 本来就由 `UseStaticFiles` 匿名提供，给 HTML 单独加锁没有任何收益）；
+  登录跳转改为 SPA 路由 `/login`。修的是 `EOS.API/Program.cs` 两处。
+  **必须写 `.AllowAnonymous()`，只删 `RequireAuthorization()` 是不够的**：`AddAuthorization` 配了
+  `FallbackPolicy = RequireAuthenticatedUser`，它恰恰接管"没有任何授权元数据的端点"——
+  删掉授权要求会让外壳落回 fallback、照样 302（实测：`/workbench/1401` 仍是 302，只是目标从
+  `/login.html` 变成 `/login`）。
+- **防线**：`EOS.API.Tests/E2eSpaShellAuth.ps1`（并入 `E2eAll.ps1` 的一条链）用**关闭自动跟随跳转**
+  的匿名客户端断言"外壳不要求登录、不 302 到自己、API 仍 401"。关闭自动跟随是关键——
+  跟随跳转会把环折叠成最终失败，看不出是自己在跳自己。**判据不要写成"非 3xx"**：
+  `/login.html` 这类带扩展名的历史地址不匹配 `MapFallbackToFile` 的 `nonfile` 约束，
+  它会正常一跳落到 `/login`，那是允许的（本机 `wwwroot` 为空时深链回 404 也允许，那是"没有前端产物"）。
+

@@ -143,7 +143,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return Task.CompletedTask;
             }
-            context.Response.Redirect("/login.html");
+            // SPA 的登录页是客户端路由 `/login`（由 RouteGuards 按未登录状态跳转），
+            // 不是独立静态文件——指到一个不存在的页面会让"未登录打开深链"变成 302 自环。
+            context.Response.Redirect("/login");
             return Task.CompletedTask;
         };
         options.Events.OnRedirectToAccessDenied = context =>
@@ -591,7 +593,12 @@ if (app.Environment.IsDevelopment())
 {
     versionEndpoint.AllowAnonymous();
 }
-app.MapFallbackToFile("index.html").RequireAuthorization();
+// SPA 外壳对未登录请求放行：登录页本身就在这套前端里，外壳被授权挡住的话
+// 未登录用户打不开登录页（页面跳转又回落到这里，形成 302 自环）。
+// 权限边界始终在 `/api`（拒绝时回 401/403），静态外壳不含任何业务数据。
+// 必须显式 `AllowAnonymous()`：移除 `RequireAuthorization()` 只是"没有元数据"，
+// 而 `AuthorizationOptions.FallbackPolicy` 恰恰接管"没有任何授权元数据的端点"，仍然会 302。
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
