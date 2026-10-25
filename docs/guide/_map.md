@@ -12,15 +12,15 @@
 |---|---|---|
 | 00-术语表.md | 已完成 | - |
 | 01-代码地图与仓库结构.md | 已完成 | - |
-| 02-本地环境与运行.md | 已完成 | EOS.API/appsettings.json, EOS.Web/package.json, EOS.Web/vite.config.ts, db |
+| 02-本地环境与运行.md | 已完成 | EOS.API/appsettings.json, EOS.Web/package.json, EOS.Web/vite.config.ts, db/README.md |
 | 03-工程规范与硬约束.md | 已完成 | - |
-| 04-API契约与前后端协作.md | 已完成 | EOS.API/Errors, EOS.API/Middleware, EOS.API/Models, EOS.Web/src/services |
-| 05-数据库迁移与建库.md | 已完成 | EOS.API/Data/Migrations, EOS.API/Data/ErpDatabaseInitializer.cs, db |
+| 04-API契约与前后端协作.md | 已完成 | EOS.API/Errors, EOS.API/Middleware, EOS.Web/src/services |
+| 05-数据库迁移与建库.md | 已完成 | EOS.API/Data/Migrations, EOS.API/Data/ErpDatabaseInitializer.cs, db/README.md |
 | 06-测试与质量门禁.md | 已完成 | EOS.API.Tests, .github/workflows |
 | 10-元数据模型.md | 已完成 | - |
 | 11-元数据运维.md | 已完成 | EOS.API/Controllers/FieldAdminController.cs, EOS.API/Controllers/TableDataController.cs, EOS.API/Controllers/ModuleBusinessConfigController.cs, EOS.API/Controllers/BusinessFlowController.cs, EOS.API/Data/FieldAdminRepository.cs, EOS.API/Data/ModuleBusinessConfigRepository.cs, EOS.API/Features/BusinessFlow, EOS.Web/src/features/field-admin, EOS.Web/src/features/business-flow |
 | 12-元数据消费.md | 已完成 | EOS.API/Data/WorkbenchFieldMetaMapper.cs, EOS.API/Data/WorkbenchDefinitionBuilder.cs, EOS.API/Data/ModuleBusinessMap.cs, EOS.API/Data/ModuleRouteValidator.cs |
-| 20-认证与会话.md | 已完成 | EOS.API/Security, EOS.API/Controllers/AuthenticationController.cs, EOS.API/Data/AuthenticationRepository.cs, EOS.Web/src/features/auth |
+| 20-认证与会话.md | 已完成 | EOS.API/Security/LoginThrottleService.cs, EOS.API/Security/CurrentUserContext.cs, EOS.API/Security/SameOriginGuardMiddleware.cs, EOS.API/Security/PasswordHasher.cs, EOS.API/Security/PasswordPolicy.cs, EOS.API/Controllers/AuthenticationController.cs, EOS.API/Data/AuthenticationRepository.cs, EOS.Web/src/features/auth |
 | 21-授权模型.md | 已完成 | EOS.API/Security/PermissionService.cs, EOS.API/Security/IPermissionService.cs, EOS.API/Security/CurrentUserContext.cs, EOS.API/Security/PermissionAction.cs, EOS.API/Security/ModuleIds.cs |
 | 22-权限配置后台.md | 已完成 | EOS.API/Controllers/RightsAdminController.cs, EOS.API/Controllers/UserAdminController.cs, EOS.API/Controllers/MenuAdminController.cs, EOS.API/Data/RightsAdminRepository.cs, EOS.API/Data/UserAdminRepository.cs, EOS.Web/src/features/rights-admin, EOS.Web/src/features/user-admin |
 | 30-审计日志.md | 已完成 | EOS.API/Data/WorkbenchAuditWriter.cs, EOS.API/Features/Diagnostics/LogsController.cs, EOS.API/Data/Migrations/354_audit_workbench_module.sql, EOS.API.Tests/AuditModuleGovernanceLiveTests.cs |
@@ -28,7 +28,7 @@
 | 40-统一工作台.md | 已完成 | EOS.API/Controllers/DocumentWorkbenchController.cs, EOS.API/Data/Workbench, EOS.API/Data/DocumentWorkbenchRepository.cs, EOS.Web/src/features/document-workbench |
 | 41-定义快照与发布.md | 已完成 | EOS.API/Data/WorkbenchDefinitionProvider.cs, EOS.API/Data/WorkbenchDefinitionSnapshotService.cs, EOS.API/Data/WorkbenchDirtyMarker.cs, EOS.API/Controllers/WorkbenchDefinitionController.cs |
 | 42-统一表单.md | 已完成 | EOS.API/Data/Forms, EOS.API/Data/FormDefaultRules.cs, EOS.API/Data/FormFieldSelector.cs, EOS.API/Data/Workbench/UnifiedFormCapability.cs, EOS.API/Controllers/FormLayoutController.cs |
-| 43-表单版式设计.md | 已完成 | EOS.API/Controllers/LayoutDesignerController.cs, EOS.API/Data/LayoutExceptions.cs, EOS.Web/src/features/layout-designer, EOS.Web/src/features/form-designer |
+| 43-表单版式设计.md | 已完成 | EOS.API/Data/Forms, EOS.API/Controllers/FormLayoutController.cs, EOS.API/Data/LayoutExceptions.cs, EOS.Web/src/features/form-designer |
 | 44-受控查询与条件模板.md | 已完成 | EOS.API/Data/Query, EOS.API/Data/ConditionTemplateParser.cs, EOS.API/Data/ChooserFilterCompiler.cs, EOS.Web/src/components/common/ErpQueryBuilder.tsx, EOS.Web/src/components/common/queryCondition.ts |
 | 45-受限表达式与虚拟字段.md | 已完成 | EOS.API/Data/RestrictedExpressionService.cs, EOS.API/Data/VirtualColumnResolver.cs, EOS.API/Data/DataFilterParser.cs, EOS.API/Data/GroupExpressionParser.cs, EOS.API/Data/VirtualArithmeticParser.cs, EOS.API/Data/ConvertFunctionResolver.cs |
 | 46-统一选择器.md | 已完成 | EOS.API/Controllers/ChooserController.cs, EOS.API/Data/ChooserRepository.cs, EOS.API/Data/ChooserConditionBuilder.cs, EOS.API/Data/ChooserFilterModel.cs, EOS.Web/src/components/common/UnifiedChooser.tsx, EOS.Web/src/components/common/chooserSource.ts |
