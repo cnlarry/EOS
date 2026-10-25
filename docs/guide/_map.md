@@ -45,3 +45,4 @@
 | 72-导入与导出.md | 已完成 | EOS.API/Controllers/ImportController.cs, EOS.API/Features/Import, EOS.API/Data/RecordPayloadValidator.cs, EOS.Web/src/features/import |
 | 73-作业与调度.md | 已完成 | EOS.API/Controllers/JobsController.cs, EOS.API/Services/ReportInboxScheduler.cs, EOS.API/Data/ReportInboxRepository.cs, EOS.API/Controllers/ReportInboxController.cs, EOS.Web/src/features/jobs |
 | 74-搜索中心.md | 已完成 | EOS.API/Controllers/SearchCenterController.cs, EOS.API/Data/SearchCenterRepository.cs, EOS.Web/src/features/search-center |
+| 75-部署与环境配置.md | 已完成 | EOS.API/appsettings.json, EOS.API/Program.cs, EOS.API/Health, EOS.API/Data/ErpDatabaseInitializer.cs, EOS.API/Services/ReportInboxScheduler.cs, EOS.API/Security/SameOriginGuardMiddleware.cs, db |
