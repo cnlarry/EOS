@@ -921,4 +921,6 @@ IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.A
     INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.451_lifecycle_column_rename.sql', GETDATE());
 IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.API.Data.Migrations.452_framework_created_by_not_null.sql')
     INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.452_framework_created_by_not_null.sql', GETDATE());
+IF NOT EXISTS (SELECT 1 FROM dbo.ERP_SCHEMA_JOURNAL WHERE [scriptname] = N'EOS.API.Data.Migrations.453_fields_browse_url_placeholder_rename.sql')
+    INSERT dbo.ERP_SCHEMA_JOURNAL ([scriptname], [applied]) VALUES (N'EOS.API.Data.Migrations.453_fields_browse_url_placeholder_rename.sql', GETDATE());
 
