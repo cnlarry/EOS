@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: 955a03a432bfc2ca -->
+<!-- inventory-fingerprint: 55555e0d10b28b20 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -24,7 +24,7 @@
 - 入库脚本 **94** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 33
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
-- 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**13** 个，见第七节
+- 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**12** 个，见第七节
 - `scripts/oneshot/` 待清理的一次性脚本：**5** 个，见第二节
 - 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **67** 个——被 `.git/info/exclude` 排除，
   别人的克隆里没有它们，故不参与上面的引用统计。
@@ -111,7 +111,7 @@
 | `migrate-menu-filters.ps1` | 存量菜单过滤规则语法归一：把 MODULES.FILTER 中的旧系统写法更新为现代写法， 使前端构建器可识别、后端解析语义不变。 | 连库 | 独立工具 |
 | `numeric-batch-prescan.ps1` | 一次性脚本：指定业务域的 float 列溢出预扫描，只读不写。 | 连库 | 1 |
 | `numeric-role-registry.ps1` | 一次性脚本：推断 float 列的语义族并生成迁移 357（随 ADR-038 收口失效） | 仅静态 | 1 |
-| `rebuild-workbench-snapshots.ps1` | 重建全部工作台快照：备份当前快照 → 清空版本历史 → 全量重新发布。 | 连库、需 API 在线 | 独立工具 |
+| `rebuild-workbench-snapshots.ps1` | 重建全部工作台快照：备份当前快照 → 清空版本历史 → 全量重新发布。 | 连库、需 API 在线 | 1 |
 | `restore-legacy-groundtruth-sprocs.ps1` | 还原"旧过程基准"过程：CompareAfterSave.ps1 用来做特征化的遗留保存后钩子。 | 连库 | 2 |
 | `restore-placeholder-formula-rows.ps1` | 按清理脚本留下的备份文件，把占位公式行**逐列按原值**插回。 | 连库 | 1 |
 | `rollback-report-attribution.ps1` | 回滚报表归属列（REPORT.M_IDX）的落库：删列 + 卸约束 + 撤销迁移台账行。 | 连库 | 独立工具 |
@@ -145,7 +145,7 @@
 | `release.ps1` | EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 生成 CHANGELOG 节 → 产出清单； 定稿提交之后用 -TagOnly 打标签。**分两步是刻意的**：标签必须落在「CHANGELOG 定稿」那… | 连库、git、工具链 | 9 |
 | `report-form-meta.ps1` | 统一表单切片模块字段矩阵报告：按模块输出主/明细表字段的 必填 / 默认值 / FORM_OPTIONS / 选择器 / 隐藏必填 / 只读联动 清单，供实施顾问逐表确认。 | 需 API 在线 | 1 |
 | `report-inventory-imbalance-keys.ps1` | 逐键定性库存不平键（余额对流水累计），并回答「是否仍在扩大」。 | 连库 | 1 |
-| `republish-all-whitelist.ps1` | 全量白名单模块重发布 + 快照差异清单（发布即重派生的验收工具）。 | 连库、需 API 在线 | 4 |
+| `republish-all-whitelist.ps1` | 全量白名单模块重发布 + 快照差异清单（发布即重派生的验收工具）。 | 连库、需 API 在线 | 6 |
 | `review-whitelist-candidates.ps1` | 统一表单放量候选预筛：合并 候选 CSV + 实时 MODULES 元数据 + SP 移植台账 + 当前可写模块（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED）， 逐模块… | 连库 | 3 |
 | `seed-business-actions.ps1` | 业务动作/校验配置一次性导入器（幂等，可重复执行）：按清单生成幂等 T-SQL 并单次执行，只写种子表。 | 连库 | 1 |
 | `seed-dev-data.ps1` | EOS 开发/测试语义化测试数据种子（用户拍板 2026-08-23，决策清单 §17）。 | 需 API 在线 | 1 |
@@ -169,7 +169,6 @@
 | `materialize-form-layouts.ps1` | 已登记 | 把推导默认版式落成版式行，字段级排布列退役的前置，已完成 |
 | `metadata-disposition.ps1` | 已登记 | 元数据异常清单的阶段 1 处置，一次性 |
 | `migrate-menu-filters.ps1` | 已登记 | 存量菜单过滤规则语法归一，一次性 |
-| `rebuild-workbench-snapshots.ps1` | 已登记 | 迁移 436 框架表改名后重建全部工作台快照：先备份再清版本历史并全量重发布，保留作同类元数据大改后的重建手段 |
 | `register-field-relation-edges.ps1` | 已登记 | 单据关系效果边登记器：与已退役的全量核验脚本成对，保留作重登记手段（保存 lint 只在保存时校验，不覆盖存量重登记） |
 | `rollback-report-attribution.ps1` | 已登记 | 报表归属迁移的回滚脚本，保留作回退手段 |
 | `verify-adr024-remainder.ps1` | 已登记 | ADR-024 收尾批的落库与运行态复验，使命已完结 |
