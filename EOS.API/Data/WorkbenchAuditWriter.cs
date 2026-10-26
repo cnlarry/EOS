@@ -67,7 +67,7 @@ public sealed class WorkbenchAuditWriter(
                 (OCCURRED_AT, CORRELATION_ID, TRACE_ID, ACTOR_USER_ID, ACTOR_DISPLAY_NAME, ACTOR_TYPE,
                  CLIENT_TYPE, CLIENT_IP, USER_AGENT, REQUEST_METHOD, REQUEST_PATH, M_IDX,
                  RESOURCE_TYPE, RESOURCE_KEY, ACTION, RESULT, ERROR_CODE, DEFINITION_VERSION, SUMMARY,
-                 DETAIL_JSON, CREATED_DATE)
+                 DETAIL_JSON, CREATED_TIME)
             VALUES (SYSDATETIME(), @CorrelationId, @TraceId, @Actor, @ActorDisplay, @ActorType,
                     @ClientType, @ClientIp, @UserAgent, @RequestMethod, @RequestPath, @ModuleId,
                     @ResourceType, @ResourceKey, @Action, @Result, @ErrorCode, @DefinitionVersion, @Summary,

@@ -79,14 +79,14 @@ const designState: DesignState = {
   dialogWidth: null,
   dialogHeight: null,
   systemFields: [
-    { key: 'CREATE_PERSON', label: '建立人', dataType: 'nvarchar' },
-    { key: 'CREATE_DATE', label: '建立日期', dataType: 'datetime' },
-    { key: 'LAST_UPDATE_BY', label: '修改人', dataType: 'nvarchar' },
-    { key: 'LAST_UPDATE_DATE', label: '修改日期', dataType: 'datetime' },
-    { key: 'CONFIRM_PERSON', label: '批核人', dataType: 'nvarchar' },
-    { key: 'CONFIRM_DATE', label: '批核日期', dataType: 'datetime' },
-    { key: 'FINISHED_PERSON', label: '结案人', dataType: 'nvarchar' },
-    { key: 'FINISHED_DATE', label: '结案日期', dataType: 'datetime' },
+    { key: 'CREATED_BY', label: '建立人', dataType: 'nvarchar' },
+    { key: 'CREATED_TIME', label: '建立日期', dataType: 'datetime' },
+    { key: 'MODIFIED_BY', label: '修改人', dataType: 'nvarchar' },
+    { key: 'MODIFIED_TIME', label: '修改日期', dataType: 'datetime' },
+    { key: 'APPROVED_BY', label: '批核人', dataType: 'nvarchar' },
+    { key: 'APPROVED_TIME', label: '批核日期', dataType: 'datetime' },
+    { key: 'FINISHED_BY', label: '结案人', dataType: 'nvarchar' },
+    { key: 'FINISHED_TIME', label: '结案日期', dataType: 'datetime' },
   ],
 }
 
@@ -160,7 +160,7 @@ describe('FormDesignerPage', () => {
     expect(block!.style.getPropertyValue('--erp-lifecycle-groups')).toBe('4')
     expect(screen.getByText('建立')).toBeInTheDocument()
     expect(screen.getByText('结案')).toBeInTheDocument()
-    expect(container.querySelector('[data-designer-field="CREATE_PERSON"]')).toBeNull()
+    expect(container.querySelector('[data-designer-field="CREATED_BY"]')).toBeNull()
   })
 
   it('呈现配置入口在页签行右端：弹窗里改打开方式与窗体尺寸，随版式同一笔提交', async () => {

@@ -74,7 +74,7 @@ internal static class ConditionTemplateDslConverter
             return new(null, "F_TYPE=2 但 F_EXPR 为空");
 
         var paramName = string.IsNullOrWhiteSpace(parameterName) ? field.Split('.').LastOrDefault() ?? "SEL" : parameterName;
-        // 尝试从 F_EXPR 提取字段（如 {MOC_PRODUCE_M.CONFIRM_TAG}=true 中的字段）
+        // 尝试从 F_EXPR 提取字段（如 {MOC_PRODUCE_M.APPROVED}=true 中的字段）
         var actualField = ExtractFieldFromExpression(expression) ?? field;
         var items = new List<object>();
         items.Add(new { field = actualField, op = "EQ", value = $"{{p.{paramName}}}" });
@@ -155,7 +155,7 @@ internal static class ConditionTemplateDslConverter
         return result;
     }
 
-    /// <summary>从 F_EXPR 提取字段引用（如 {MOC_PRODUCE_M.CONFIRM_TAG}=true → MOC_PRODUCE_M.CONFIRM_TAG）。</summary>
+    /// <summary>从 F_EXPR 提取字段引用（如 {MOC_PRODUCE_M.APPROVED}=true → MOC_PRODUCE_M.APPROVED）。</summary>
     private static string? ExtractFieldFromExpression(string? expression)
     {
         if (string.IsNullOrWhiteSpace(expression)) return null;

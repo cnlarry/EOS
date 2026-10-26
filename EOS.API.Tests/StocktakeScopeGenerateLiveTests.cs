@@ -238,7 +238,7 @@ public sealed class StocktakeScopeGenerateLiveTests
 
             // 范围为空用 NULLIF 归一：空串与未填在单头是同一件事
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO dbo.INV_CHECK_STOCK_M (CHECK_STOCK_TYPE, CHECK_STOCK_NO, DEPOT_ID, LOCATION_ROOT_NO, CHECK_DATE, CREATE_PERSON) "
+                "INSERT INTO dbo.INV_CHECK_STOCK_M (CHECK_STOCK_TYPE, CHECK_STOCK_NO, DEPOT_ID, LOCATION_ROOT_NO, CHECK_DATE, CREATED_BY) "
                 + "VALUES (N'PD', @no, @depot, NULLIF(@scope, N''), SYSDATETIME(), N'adr27')",
                 ("@no", documentNo), ("@depot", Depot), ("@scope", scope ?? string.Empty));
 
@@ -308,7 +308,7 @@ public sealed class StocktakeScopeGenerateLiveTests
         // 库别级三字段（INIT_QTY / COST_PRICE / COST_AMOUNT）同键必须一致：
         // 同一 (料号, 库别) 的每一行都写同一个值，否则违反库别级字段的同键一致性口径。
         await ExecuteAsync(connection, transaction, """
-            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT, LOCATION_NO, BATCH_NO, CREATE_PERSON, CREATE_DATE)
+            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT, LOCATION_NO, BATCH_NO, CREATED_BY, CREATED_TIME)
                 VALUES (@p1, @d, 5, 20, 5, 3, 60, N'A-R1-B1', N'',      N'adr27', SYSDATETIME()),
                        (@p1, @d, 7, 20, 7, 3, 60, N'A-R1-B1', N'LOT-A', N'adr27', SYSDATETIME()),
                        (@p2, @d, 4, 12, 4, 2, 24, N'A-R1-B2', N'LOT-A', N'adr27', SYSDATETIME()),

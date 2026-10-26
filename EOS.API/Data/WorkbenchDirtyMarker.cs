@@ -57,8 +57,8 @@ public sealed class WorkbenchDirtyMarker(DbConnectionFactory connections)
                 WHERE EXISTS (SELECT 1 FROM dbo.V_MODULE_NODE n
                               WHERE n.M_IDX=@ModuleId AND n.NODE_KIND=N'WORKBENCH')
             ) AS s ON t.M_IDX = s.M_IDX
-            WHEN MATCHED THEN UPDATE SET DIRTY_TAG=1, LAST_MODIFIED_BY=@UpdatedBy, LAST_MODIFIED_AT=SYSDATETIME()
-            WHEN NOT MATCHED THEN INSERT (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
+            WHEN MATCHED THEN UPDATE SET DIRTY_TAG=1, MODIFIED_BY=@UpdatedBy, MODIFIED_TIME=SYSDATETIME()
+            WHEN NOT MATCHED THEN INSERT (M_IDX, DIRTY_TAG, MODIFIED_BY, MODIFIED_TIME)
                 VALUES (s.M_IDX, 1, @UpdatedBy, SYSDATETIME());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -79,8 +79,8 @@ public sealed class WorkbenchDirtyMarker(DbConnectionFactory connections)
                 WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) = @Table
                    OR LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))) = @Table
             ) AS s ON t.M_IDX = s.M_IDX
-            WHEN MATCHED THEN UPDATE SET DIRTY_TAG=1, LAST_MODIFIED_BY=@UpdatedBy, LAST_MODIFIED_AT=SYSDATETIME()
-            WHEN NOT MATCHED THEN INSERT (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
+            WHEN MATCHED THEN UPDATE SET DIRTY_TAG=1, MODIFIED_BY=@UpdatedBy, MODIFIED_TIME=SYSDATETIME()
+            WHEN NOT MATCHED THEN INSERT (M_IDX, DIRTY_TAG, MODIFIED_BY, MODIFIED_TIME)
                 VALUES (s.M_IDX, 1, @UpdatedBy, SYSDATETIME());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);

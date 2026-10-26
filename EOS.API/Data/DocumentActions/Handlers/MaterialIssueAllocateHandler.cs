@@ -251,7 +251,7 @@ internal sealed class MaterialIssueAllocateHandler : IDocumentUserAction, IDocum
     {
         var q = ServiceEffectSql.Q;
         await using var command = new SqlCommand(
-            $"UPDATE dbo.{q(MasterTable)} SET {q("LAST_UPDATE_DATE")}=SYSDATETIME() "
+            $"UPDATE dbo.{q(MasterTable)} SET {q("MODIFIED_TIME")}=SYSDATETIME() "
             + $"WHERE {q(TypeField)}=@type AND {q(NoField)}=@no;",
             context.Connection, context.Transaction);
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;

@@ -166,7 +166,7 @@ public sealed class ModuleGroupAdminRepositoryIntegrationTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,M_ROOT_IDX,SORT_IDX,M_TAG,MASTER_TABLE,LAST_UPDATE_BY)
+            INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,M_ROOT_IDX,SORT_IDX,M_TAG,MASTER_TABLE,MODIFIED_BY)
             VALUES (@Id,N'分组集成测试-临时模块',N'/workbench',@Id,9999,1,N'PRODUCT',N'integration-test');
             """, connection);
         command.Parameters.Add("@Id", SqlDbType.Int).Value = _moduleId;

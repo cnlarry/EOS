@@ -24,7 +24,7 @@ public sealed class UnifiedFormCapabilitySaveTests
         M_P_IDX: 23, SORT_IDX: 80, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false,
         ERROR_NO_SAVE: false, SORT_FIELDS: "AUDIT_EVENT.EVENT_ID DESC",
         MASTER_TABLE: "AUDIT_EVENT", FILTER: null, DETAIL_TABLE: "AUDIT_FIELD_CHANGE",
-        NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null, LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
+        NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null, MODIFIED_BY: null, MODIFIED_TIME: null,
         FORM_TABS: null, FORM_COLUMNS: null, M_ICON: null, Icon: null,
         ApproveEnabled: false, REMARK: null,
         UnifiedFormEnabled: formEnabled, UnifiedFormEditEnabled: editEnabled);

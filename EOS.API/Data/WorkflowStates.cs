@@ -42,15 +42,15 @@ public static class WorkflowStates
     /// </summary>
     public static readonly string[] LifecycleColumns =
     [
-        "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
-        "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE",
-        "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE",
+        "CREATED_BY", "CREATED_TIME", "MODIFIED_BY", "MODIFIED_TIME",
+        "APPROVED", "APPROVED_BY", "APPROVED_TIME",
+        "FINISHED", "FINISHED_BY", "FINISHED_TIME",
     ];
 
     /// <summary>
     /// 生命周期状态位：批核/结案开关。服务端独占写入，表单新增/编辑态隐藏。
     /// </summary>
-    public static readonly string[] LifecycleTagColumns = ["CONFIRM_TAG", "FINISHED_TAG"];
+    public static readonly string[] LifecycleTagColumns = ["APPROVED", "FINISHED"];
 
     /// <summary>
     /// 生命周期经办人/日期：服务端持有（保存/批核/结案/工作流末步统一写入），
@@ -58,8 +58,8 @@ public static class WorkflowStates
     /// </summary>
     public static readonly string[] LifecycleActorColumns =
     [
-        "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
-        "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_PERSON", "FINISHED_DATE",
+        "CREATED_BY", "CREATED_TIME", "MODIFIED_BY", "MODIFIED_TIME",
+        "APPROVED_BY", "APPROVED_TIME", "FINISHED_BY", "FINISHED_TIME",
     ];
 
     /// <summary>
@@ -67,7 +67,7 @@ public static class WorkflowStates
     /// 记录读取契约必须返回这些列，即使不在表单定义内。
     /// </summary>
     public static readonly string[] RecordStatusColumns =
-        ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE"];
+        ["APPROVED", "APPROVED_BY", "APPROVED_TIME", "FINISHED", "FINISHED_BY", "FINISHED_TIME"];
 
     /// <summary>
     /// 是否单据生命周期系统列（系统列组）。
@@ -78,7 +78,7 @@ public static class WorkflowStates
 
     /// <summary>
     /// 无副作用批核能力（既无效果链、又无流程定义）：这条路径的批核/解批与保存路径的自动批核
-    /// **同为纯状态翻转**（只改 CONFIRM_TAG 三列），显式批核/解批同口径。
+    /// **同为纯状态翻转**（只改 APPROVED 三列），显式批核/解批同口径。
     ///
     /// **判据不能绑在 `AUTO_APPROVE` 上**（曾经如此，已修）：自动批核只决定"保存之后要不要自动翻转
     /// 状态"，与"能不能手工批核"是两件事。绑上去的后果是——把一个模块的自动批核关掉（例如月结单要
@@ -97,7 +97,7 @@ public static class WorkflowStates
     /// 批核三列（状态位 + 经办人 + 日期）：模块声明「启用批核」时的勾选校验按它判定
     /// （ADR-035 §6），与发布门 `lifecycle_columns` 的"能力 → 列"单向强制同源。
     /// </summary>
-    public static readonly string[] ApproveColumns = ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE"];
+    public static readonly string[] ApproveColumns = ["APPROVED", "APPROVED_BY", "APPROVED_TIME"];
 
     /// <summary>
     /// 已发布定义里**启用**的效果动作事件码（未启用、占位行不计）。
@@ -177,7 +177,7 @@ public static class WorkflowStates
 
     /// <summary>
     /// 模块是否具备批核能力（"能力 → 列"单向强制的输入侧）。
-    /// 只认会触达 CONFIRM_TAG 写/读路径的后端事实（**模块声明启用批核**、自动批核、工作流、
+    /// 只认会触达 APPROVED 写/读路径的后端事实（**模块声明启用批核**、自动批核、工作流、
     /// 批核/解批效果链；解批镜像批核链，同样需要状态位），不认仅控制显示的 FORM_BUTTONS。
     /// ADR-035：第一维由"效果引擎接管"换成模块声明 `APPROVE_ENABLED`——引擎接管是**实现方式**
     /// （该事件有没有启用的动作行），不是"要不要状态位"的前提。

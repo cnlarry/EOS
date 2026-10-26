@@ -11,8 +11,8 @@ public class BrowseUrlWhitelistTests
     [Fact]
     public void ValidTemplate_WithAllowedPlaceholders_IsKept()
     {
-        const string url = "~/Admin/MagEmployee?IDX=EMP_ID={CONFIRM_PERSON}";
-        Assert.Equal(url, WorkbenchDefinitionBuilder.SanitizeBrowseUrl(url, Fields("CONFIRM_PERSON")));
+        const string url = "~/Admin/MagEmployee?IDX=EMP_ID={APPROVED_BY}";
+        Assert.Equal(url, WorkbenchDefinitionBuilder.SanitizeBrowseUrl(url, Fields("APPROVED_BY")));
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class BrowseUrlWhitelistTests
     public void UnknownPlaceholder_IsRejected()
     {
         Assert.Null(WorkbenchDefinitionBuilder.SanitizeBrowseUrl(
-            "~/Admin/MagEmployee?IDX=EMP_ID={HACKED_FIELD}", Fields("CONFIRM_PERSON")));
+            "~/Admin/MagEmployee?IDX=EMP_ID={HACKED_FIELD}", Fields("APPROVED_BY")));
     }
 
     [Fact]

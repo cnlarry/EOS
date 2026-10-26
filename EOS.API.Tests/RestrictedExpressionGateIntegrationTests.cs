@@ -226,7 +226,7 @@ public sealed class RestrictedExpressionGateIntegrationTests
             DELETE FROM dbo.FIELDS WHERE T_ID=@Table AND F_ID=@Field;
             INSERT INTO dbo.FIELDS
                 (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,IS_COST,IS_SECRECY,
-                 IS_READONLY,CAN_COPY,DISPLAY_LENGTH,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 IS_READONLY,CAN_COPY,DISPLAY_LENGTH,MODIFIED_BY,MODIFIED_TIME)
             VALUES
                 (@Table,@Field,N'受控表达式用例夹具',N'nvarchar',1,1,1,0,0,0,0,1,100,N'integration-test',GETDATE());
             """, connection);

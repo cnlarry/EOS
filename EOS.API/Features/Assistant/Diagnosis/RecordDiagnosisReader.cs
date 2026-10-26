@@ -114,7 +114,7 @@ public sealed class RecordDiagnosisReader(
         }
 
         var fields = definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!fields.Contains("CREATE_DATE") || !fields.Contains("CONFIRM_TAG")) return [];
+        if (!fields.Contains("CREATED_TIME") || !fields.Contains("APPROVED")) return [];
 
         var cutoff = DateTime.UtcNow.Date.AddDays(-limits.BlockedNowMaxAgeDays).ToString("yyyy-MM-dd");
         WorkbenchData data;
@@ -123,8 +123,8 @@ public sealed class RecordDiagnosisReader(
             data = await gateway.GetRowsAsync(
                 definition, detail: false, new Dictionary<string, string>(), page: 1,
                 pageSize: limits.BlockedNowScanRecords, token,
-                query: new WorkbenchQuery([new WorkbenchQueryCondition("CREATE_DATE", "gte", cutoff, null, null)]),
-                sortField: "CREATE_DATE",
+                query: new WorkbenchQuery([new WorkbenchQueryCondition("CREATED_TIME", "gte", cutoff, null, null)]),
+                sortField: "CREATED_TIME",
                 sortDirection: "desc",
                 dataFilter: permission.Rights.DataFilter);
         }
@@ -151,7 +151,7 @@ public sealed class RecordDiagnosisReader(
             var keyValues = ReadKeyValues(definition, row);
             if (keyValues is null) continue;
             var key = string.Join("/", keyValues);
-            if (IsTrue(row, "FINISHED_TAG"))
+            if (IsTrue(row, "FINISHED"))
             {
                 blocked.Add(new DiagnosisBlockedRecord(
                     keyValues, key, "单据已结案，改动前须先取消结案。", LifecycleEditGuards.FinishedCode));

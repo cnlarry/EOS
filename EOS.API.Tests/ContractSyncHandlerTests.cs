@@ -23,7 +23,7 @@ public class ContractSyncHandlerTests
     {
         "HR_EMPLOYEE", "HR_EMPLOYEE.EMP_ID", "HR_EMPLOYEE.CONTRACT_DATE",
         "HR_EMPLOYEE.CONTRACT_BEGIN_DATE", "HR_EMPLOYEE.CONTRACT_NO",
-        "HR_CONTRACT_M", "HR_CONTRACT_M.CONT_TYPE", "HR_CONTRACT_M.CONT_NO", "HR_CONTRACT_M.CONFIRM_TAG",
+        "HR_CONTRACT_M", "HR_CONTRACT_M.CONT_TYPE", "HR_CONTRACT_M.CONT_NO", "HR_CONTRACT_M.APPROVED",
         "HR_CONTRACT_D", "HR_CONTRACT_D.CONT_TYPE", "HR_CONTRACT_D.CONT_NO", "HR_CONTRACT_D.EMP_ID",
         "HR_CONTRACT_D.BEGIN_DATE", "HR_CONTRACT_D.END_DATE", "HR_CONTRACT_D.CONTRACT_NO",
     };
@@ -77,7 +77,7 @@ public class ContractSyncHandlerTests
             new HashSet<string>(columns.Where(item => item != "HR_EMPLOYEE.CONTRACT_NO"), StringComparer.OrdinalIgnoreCase)));
         Assert.Throws<EffectConfigException>(() => ContractSyncSpec.Parse(JsonDocument.Parse(
             LandedParamsJson).RootElement, plan,
-            new HashSet<string>(columns.Where(item => item != "HR_CONTRACT_M.CONFIRM_TAG"), StringComparer.OrdinalIgnoreCase)));
+            new HashSet<string>(columns.Where(item => item != "HR_CONTRACT_M.APPROVED"), StringComparer.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ContractSyncHandlerTests
         Assert.Contains("MAX(d.[END_DATE])", statements[1]);
         Assert.Contains("MAX(d.[BEGIN_DATE])", statements[1]);
         Assert.Contains("MAX(RTRIM(d.[CONTRACT_NO]))", statements[1]);
-        Assert.Contains("m.CONFIRM_TAG = 1 OR (m.CONT_TYPE = @ct AND m.CONT_NO = @cn)", statements[1]);
+        Assert.Contains("m.APPROVED = 1 OR (m.CONT_TYPE = @ct AND m.CONT_NO = @cn)", statements[1]);
         Assert.Contains("GROUP BY d.[EMP_ID]", statements[1]);
     }
 
@@ -103,6 +103,6 @@ public class ContractSyncHandlerTests
         Assert.Equal(2, statements.Count);
         // Same clear step; backfill excludes this document.
         Assert.Contains("[CONTRACT_DATE] = NULL", statements[0]);
-        Assert.Contains("m.CONFIRM_TAG = 1 AND NOT (m.CONT_TYPE = @ct AND m.CONT_NO = @cn)", statements[1]);
+        Assert.Contains("m.APPROVED = 1 AND NOT (m.CONT_TYPE = @ct AND m.CONT_NO = @cn)", statements[1]);
     }
 }

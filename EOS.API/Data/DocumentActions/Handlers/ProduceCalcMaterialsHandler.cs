@@ -17,7 +17,7 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 //      且与"项次是行身份、不复用空洞"的口径冲突；
 //   ③ 订单为空时跳过待办与申购段：既有实现拿空单别/单号去清零 `COP_ORDER_MORE`，会误伤别的单据
 //      留下的空键行——空键本就不该参与汇总；
-//   ④ 已完工结案（`FINISHED_TAG = 1`）的制令单拒绝：结案后的用料是追溯凭据，既有实现没有这道门。
+//   ④ 已完工结案（`FINISHED = 1`）的制令单拒绝：结案后的用料是追溯凭据，既有实现没有这道门。
 // 不要求已批核：算料的正常时机在批核之前（先算清用料再送审）。
 internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocumentActionPlacement
 {
@@ -55,7 +55,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
     private const string OrderTypeField = "ORDER_TYPE";
     private const string OrderNoField = "ORDER_NO";
     private const string OrderSerialField = "ORDER_SERIAL_NO";
-    private const string FinishedField = "FINISHED_TAG";
+    private const string FinishedField = "FINISHED";
 
     public string Key => ActionKey;
 
@@ -220,7 +220,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
     {
         var q = ServiceEffectSql.Q;
         await using var command = new SqlCommand(
-            $"UPDATE dbo.{q(MasterTable)} SET {q("LAST_UPDATE_DATE")}=SYSDATETIME() "
+            $"UPDATE dbo.{q(MasterTable)} SET {q("MODIFIED_TIME")}=SYSDATETIME() "
             + $"WHERE {q(TypeField)}=@type AND {q(NoField)}=@no;",
             context.Connection, context.Transaction);
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;

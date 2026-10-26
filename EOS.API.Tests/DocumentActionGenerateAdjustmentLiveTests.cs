@@ -116,7 +116,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot;
             DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@depot;
             INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@depot, N'ZZ 转单用例仓');
-            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,CONFIRM_TAG)
+            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,APPROVED)
                 VALUES (@depot,@loc,N'STAGE',N'BULK',N'A',1);
             """,
             ("@depot", TestDepot), ("@loc", TestLocation));
@@ -124,7 +124,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{StockTable} WHERE PRO_NO=@pro AND DEPOT_ID=@depot AND LOCATION_NO=@loc AND BATCH_NO=N'')
-                INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,COST_PRICE,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,COST_PRICE,CREATED_BY,CREATED_TIME,APPROVED)
                 VALUES (@pro,@depot,@loc,N'',@qty,@price,N'DbUp',SYSDATETIME(),0);
             """,
             ("@pro", TestProduct), ("@depot", _depot), ("@loc", TestLocation), ("@qty", StartQty), ("@price", CostPrice));
@@ -132,7 +132,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no)
-                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,COUNT_DATE,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE)
+                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,COUNT_DATE,APPROVED,CREATED_BY,CREATED_TIME)
                 VALUES (@type,@no,@depot,SYSDATETIME(),1,N'DbUp',SYSDATETIME());
             """,
             ("@type", TestType), ("@no", TestNo), ("@depot", _depot));
@@ -150,7 +150,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", GenerateAdjustmentHandler.ActionKey));
@@ -166,7 +166,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO))=@pro)
-                INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATED_BY,CREATED_TIME,APPROVED)
                 SELECT @pro, N'转单用例料号', (SELECT TOP 1 UNIT_ID FROM dbo.PRODUCT WHERE LTRIM(RTRIM(ISNULL(UNIT_ID,N'')))<>N'' ORDER BY PRO_NO),
                        N'DbUp', SYSDATETIME(), 0;
             """,
@@ -267,7 +267,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
                     label = "生成调整单",
                     confirmTag = true,
                     failMode = "BLOCK",
-                    condition = """{"logic":"AND","items":[{"type":"value-eq","field":{"scope":"MASTER","field":"CONFIRM_TAG"},"value":1}]}""",
+                    condition = """{"logic":"AND","items":[{"type":"value-eq","field":{"scope":"MASTER","field":"APPROVED"},"value":1}]}""",
                 },
             }));
 
@@ -335,7 +335,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         Assert.Equal($"{TestProduct}|{_depot}|{TestLocation}|{DiffQty}", carried);
         // 过账：调整单已批核，且库存被实际改动
         var confirmed = await ScalarAsync<bool>(connection,
-            $"SELECT CONFIRM_TAG FROM dbo.{TargetMasterTable} WHERE LTRIM(RTRIM(OCCUR_NO))=@no;", ("@no", adjustNo));
+            $"SELECT APPROVED FROM dbo.{TargetMasterTable} WHERE LTRIM(RTRIM(OCCUR_NO))=@no;", ("@no", adjustNo));
         Assert.True(confirmed);
         var stockQty = await ScalarAsync<double>(connection,
             $"SELECT QTY FROM dbo.{StockTable} WHERE PRO_NO=@pro AND DEPOT_ID=@depot AND LOCATION_NO=@loc AND BATCH_NO=N'';",
@@ -343,7 +343,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         Assert.Equal(StartQty + DiffQty, stockQty, 6);
         // 来源可追溯 + once 结案锁死
         var source = await ScalarAsync<string>(connection,
-            $"SELECT LTRIM(RTRIM(ISNULL(ADJUST_TYPE,N''))) + '|' + LTRIM(RTRIM(ISNULL(ADJUST_NO,N''))) + '|' + CAST(ISNULL(FINISHED_TAG,0) AS varchar(2)) FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
+            $"SELECT LTRIM(RTRIM(ISNULL(ADJUST_TYPE,N''))) + '|' + LTRIM(RTRIM(ISNULL(ADJUST_NO,N''))) + '|' + CAST(ISNULL(FINISHED,0) AS varchar(2)) FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
         Assert.Equal($"{adjustType}|{adjustNo}|1", source);
         // 动作留痕：基线之上恰好一条自己的审计（别的模块、别的动作、别的单据都不算）
@@ -377,7 +377,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             $"SELECT COUNT(*) FROM dbo.{TargetMasterTable} WHERE ISNULL(LTRIM(RTRIM(REMARK)),N'') LIKE N'%{TestNo}%';");
         Assert.Equal(0, adjustCount);
         var finished = await ScalarAsync<bool>(connection,
-            $"SELECT ISNULL(FINISHED_TAG,0) FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
+            $"SELECT ISNULL(FINISHED,0) FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
         Assert.False(finished);
         // 探路整体回滚：连审计也不留（否则"什么都没写"这句话不成立）

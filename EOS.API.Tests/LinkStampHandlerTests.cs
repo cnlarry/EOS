@@ -26,7 +26,7 @@ public class LinkStampHandlerTests
         "COP_QUOTE_D.CHAFFER_TYPE", "COP_QUOTE_D.CHAFFER_NO", "COP_QUOTE_D.CHAFFER_SERIAL_NO",
         "COP_CHAFFER_D.CHAFFER_TYPE", "COP_CHAFFER_D.CHAFFER_NO", "COP_CHAFFER_D.SERIAL_NO",
         "COP_CHAFFER_D.QUOTE_TYPE", "COP_CHAFFER_D.QUOTE_NO", "COP_CHAFFER_D.QUOTE_SERIAL_NO",
-        "COP_CHAFFER_D.FINISHED_TAG",
+        "COP_CHAFFER_D.FINISHED",
     };
 
     private const string DetailShapeJson = """
@@ -191,9 +191,9 @@ public class LinkStampHandlerTests
             new[]
             {
                 "T.[QUOTE_NO] = M.[QUOTE_NO]",
-                "T.[FINISHED_TAG] = 1",
-                "T.[FINISHED_PERSON] = 'SYSTEM'",
-                "T.[FINISHED_DATE] = SYSDATETIME()",
+                "T.[FINISHED] = 1",
+                "T.[FINISHED_BY] = 'SYSTEM'",
+                "T.[FINISHED_TIME] = SYSDATETIME()",
             },
             LinkStampHandler.StampAssignments(target));
     }

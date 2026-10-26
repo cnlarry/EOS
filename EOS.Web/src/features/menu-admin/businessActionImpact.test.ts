@@ -129,7 +129,7 @@ describe('analyzeImpact', () => {
       seq,
       effectKey: 'completion-close',
       effectName: '自动结案',
-      ops: [{ opSeq: 1, targetTable: 'PUR_PURCHASE_D', targetField: 'FINISHED_TAG', opCode: 'SET_WHEN', match: matchJson }],
+      ops: [{ opSeq: 1, targetTable: 'PUR_PURCHASE_D', targetField: 'FINISHED', opCode: 'SET_WHEN', match: matchJson }],
     })
 
     const wrongOrder = analyzeImpact([close(1), accumulate(2)], [], { masterTable: master, detailTable: detail })

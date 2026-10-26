@@ -57,7 +57,7 @@ public sealed class InventoryAvailabilitySyncLiveTests : IAsyncLifetime
                 VALUES (@pro, @depot, N'-', @batch, N'', N'', @freeze, N'A', N'ZZSYN 用例');
             INSERT INTO dbo.INV_RESERVE (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO, RESERVE_QTY, STATUS, REASON)
                 VALUES (@pro, @depot, N'-', @batch, @sourceType, @sourceNo, @reserve, N'A', N'ZZSYN 用例');
-            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED_TAG) VALUES (@produceType, @sourceNo, 0);
+            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED) VALUES (@produceType, @sourceNo, 0);
             """, ("@pro", Product), ("@depot", Depot), ("@batch", Batch), ("@other", OtherBatch), ("@qty", StockQty),
             ("@freeze", FreezeQty), ("@sourceType", SourceType), ("@sourceNo", SourceNo), ("@reserve", ReserveQty),
             ("@produceType", ProduceType));
@@ -95,7 +95,7 @@ public sealed class InventoryAvailabilitySyncLiveTests : IAsyncLifetime
 
         // 来源结案 ⇒ 惰性判据把它判掉 ⇒ 再同步 ⇒ 列 = 100 − 10 = 90（出口不是另一份减法）
         await ExecAsync(connection,
-            "UPDATE dbo.MOC_PRODUCE_M SET FINISHED_TAG = 1 WHERE PRODUCE_TYPE = @type AND PRODUCE_NO = @no;",
+            "UPDATE dbo.MOC_PRODUCE_M SET FINISHED = 1 WHERE PRODUCE_TYPE = @type AND PRODUCE_NO = @no;",
             ("@type", ProduceType), ("@no", SourceNo));
         await InventoryAvailabilityService.SyncSlotsAsync(connection, null, [Slot], CancellationToken.None);
         Assert.Equal(StockQty - FreezeQty, await UseableAsync(connection, Slot));

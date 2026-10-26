@@ -46,9 +46,9 @@ public sealed class MonthSnapshotReconLiveTests
         {
             // 夹具断言的是全库逐键一致，故 latest 必须唯一确定：清掉其它已批核期（回滚即恢复）
             await ExecuteAsync(connection, transaction, """
-                DELETE FROM dbo.INV_PRO_MONTH_M WHERE CONFIRM_TAG = 1;
+                DELETE FROM dbo.INV_PRO_MONTH_M WHERE APPROVED = 1;
                 DELETE FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @Mt;
-                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                     VALUES (@Mt, @Mn, '2099-12-31', 1, N'ADR20G', GETDATE());
                 """, ("@Mt", monthType), ("@Mn", monthNo));
 
@@ -121,9 +121,9 @@ public sealed class MonthSnapshotReconLiveTests
         try
         {
             await ExecuteAsync(connection, transaction, """
-                DELETE FROM dbo.INV_PRO_MONTH_M WHERE CONFIRM_TAG = 1;
+                DELETE FROM dbo.INV_PRO_MONTH_M WHERE APPROVED = 1;
                 DELETE FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @Mt;
-                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                     VALUES (@Mt, @Mn, @PeriodEnd, 1, N'ADR20H', GETDATE());
                 """, ("@Mt", monthType), ("@Mn", monthNo), ("@PeriodEnd", PeriodEnd));
 

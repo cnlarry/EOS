@@ -66,7 +66,7 @@ public sealed class InventoryFreezeReserveSchemaLiveTests
             SELECT c.name, c.is_nullable, CASE WHEN c.default_object_id = 0 THEN 0 ELSE 1 END AS has_default
               FROM sys.columns c
              WHERE c.object_id = OBJECT_ID('dbo.' + @table)
-               AND c.name IN (N'STATUS', N'CREATE_PERSON', N'CREATE_DATE');
+               AND c.name IN (N'STATUS', N'CREATED_BY', N'CREATED_TIME');
             """, connection);
         command.Parameters.Add("@table", SqlDbType.NVarChar, 60).Value = table;
 
@@ -82,7 +82,7 @@ public sealed class InventoryFreezeReserveSchemaLiveTests
             Assert.False(nullable, $"dbo.{table}.{name} 可空：状态位/建立组必须 NOT NULL。");
             Assert.True(hasDefault, $"dbo.{table}.{name} 没有默认值。");
         }
-        Assert.Equal(new[] { "CREATE_DATE", "CREATE_PERSON", "STATUS" }, checkedNames.OrderBy(name => name).ToArray());
+        Assert.Equal(new[] { "CREATED_BY", "CREATED_TIME", "STATUS" }, checkedNames.OrderBy(name => name).ToArray());
     }
 
     [Fact]

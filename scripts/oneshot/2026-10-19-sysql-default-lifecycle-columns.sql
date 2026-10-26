@@ -9,7 +9,7 @@
 --
 -- 口径：
 --   1. 字段按物理列代号识别，并限定在既有标签集合内（同一张表里代号被挪作他用时跳过，
---      例如 COP_SHIPMENT_M.CREATE_DATE 的标签是「出货日期」，不是建立日期）。
+--      例如 COP_SHIPMENT_M.CREATED_TIME 的标签是「出货日期」，不是建立日期）。
 --   2. 只处理 FIELDS 中可见（IS_VISIBLE=1）、非虚拟、且物理列真实存在的字段。
 --   3. 缺少某个字段就跳过该字段，不因同组缺项而整组跳过。
 --   4. 已存在于默认列的这些字段一并移到末尾：最终默认列末尾固定是这组字段按序排列，
@@ -30,16 +30,16 @@ IF DB_NAME() <> N'EOS.ERP'
 -- ① 字段规格：顺序 + 可接受的既有标签 -----------------------------------------
 CREATE TABLE #spec (seq int NOT NULL PRIMARY KEY, fid nvarchar(50) NOT NULL);
 INSERT INTO #spec (seq, fid) VALUES
-    (1, N'CREATE_PERSON'),
-    (2, N'CREATE_DATE'),
-    (3, N'LAST_UPDATE_BY'),
-    (4, N'LAST_UPDATE_DATE'),
-    (5, N'CONFIRM_PERSON'),
-    (6, N'CONFIRM_DATE'),
-    (7, N'CONFIRM_TAG'),
-    (8, N'FINISHED_PERSON'),
-    (9, N'FINISHED_DATE'),
-    (10, N'FINISHED_TAG');
+    (1, N'CREATED_BY'),
+    (2, N'CREATED_TIME'),
+    (3, N'MODIFIED_BY'),
+    (4, N'MODIFIED_TIME'),
+    (5, N'APPROVED_BY'),
+    (6, N'APPROVED_TIME'),
+    (7, N'APPROVED'),
+    (8, N'FINISHED_BY'),
+    (9, N'FINISHED_TIME'),
+    (10, N'FINISHED');
 
 CREATE TABLE #labels (seq int NOT NULL, label nvarchar(50) NOT NULL, PRIMARY KEY (seq, label));
 INSERT INTO #labels (seq, label) VALUES

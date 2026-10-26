@@ -66,7 +66,7 @@ IF EXISTS (SELECT 1 FROM dbo.FIELDS WHERE LTRIM(RTRIM(T_ID))='$table' AND LTRIM(
         CHOOSE_T_DESC1=$(if ($tdesc) { "N'$(& $esc $tdesc)'" } else { 'NULL' }),
         CHOOSE_RETURNVAL1=$(if ($ret) { "N'$(& $esc $ret)'" } else { 'NULL' }),
         CHOOSE_FILTER1=$(if ($flt) { "N'$(& $esc $flt)'" } else { 'NULL' }),
-        LAST_UPDATE_BY='EOS-MIG', LAST_UPDATE_DATE=GETDATE()
+        MODIFIED_BY='EOS-MIG', MODIFIED_TIME=GETDATE()
     WHERE LTRIM(RTRIM(T_ID))='$table' AND LTRIM(RTRIM(F_ID))='$field';
 "@)
     $applied++

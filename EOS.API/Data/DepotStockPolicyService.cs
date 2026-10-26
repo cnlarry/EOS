@@ -521,10 +521,10 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             + "  BATCH_MODE=@batchMode, CAPACITY_MODE=@capacityMode, MIX_PRODUCT=@mixProduct, MIX_BATCH=@mixBatch, "
             + "  MONTH_CLOSE_BY_BATCH=@monthBatch, MONTH_CLOSE_BY_LOCATION=@monthLocation, "
             + "  MONTH_CLOSE_SCOPE_HALF_STOCK=@monthHalf, EXPIRY_MODE=@expiryMode, "
-            + "  LAST_UPDATE_BY=@actor, LAST_UPDATE_DATE=GETDATE() "
+            + "  MODIFIED_BY=@actor, MODIFIED_TIME=GETDATE() "
             + "WHEN NOT MATCHED THEN INSERT (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, "
             + "  MIX_PRODUCT, MIX_BATCH, MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK, "
-            + "  EXPIRY_MODE, LAST_UPDATE_BY, LAST_UPDATE_DATE) "
+            + "  EXPIRY_MODE, MODIFIED_BY, MODIFIED_TIME) "
             + "  VALUES (@depot, @locationMode, @storageMode, @batchMode, @capacityMode, @mixProduct, @mixBatch, "
             + "          @monthBatch, @monthLocation, @monthHalf, @expiryMode, @actor, GETDATE());",
             connection, transaction))

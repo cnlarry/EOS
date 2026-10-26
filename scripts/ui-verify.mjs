@@ -71,7 +71,7 @@ try {
   record('列表工具条不含批核/解批（收敛生效）', !buttonTitles.includes('批核') && !buttonTitles.includes('解批'), buttonTitles.join(' | '))
   await page.screenshot({ path: join(shotDir, 'workbench-1404.png'), fullPage: false })
 
-  // 3b. 双击进入浏览态 → 批核/解批按 CONFIRM_TAG 互斥可见
+  // 3b. 双击进入浏览态 → 批核/解批按 APPROVED 互斥可见
   await page.locator('.erp-master-table-region tbody tr').first().dblclick()
   try {
     await page.waitForURL(/\/workbench\/1404\/view\//, { timeout: 10000 })

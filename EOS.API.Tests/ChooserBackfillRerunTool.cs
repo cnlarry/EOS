@@ -627,7 +627,7 @@ public sealed class ChooserBackfillRerunTool
 
         builder.AppendLine("-- 1) FILTER_STRUCT 回填（键 + 原文 + 源表三重守卫）");
         builder.AppendLine("""
-            UPDATE c SET FILTER_STRUCT = r.STRUCT, LAST_UPDATE_BY = N'EOS-MIG', LAST_UPDATE_DATE = SYSDATETIME()
+            UPDATE c SET FILTER_STRUCT = r.STRUCT, MODIFIED_BY = N'EOS-MIG', MODIFIED_TIME = SYSDATETIME()
             FROM dbo.FIELD_DATASOURCE c
             JOIN #RERUN r ON r.T_ID = c.T_ID AND r.F_ID = c.F_ID AND r.SERIAL_NO = c.SERIAL_NO
             JOIN dbo.CHOOSER_FILTER_MIGRATION_LOG l ON l.T_ID = c.T_ID AND l.F_ID = c.F_ID AND l.SERIAL_NO = c.SERIAL_NO
@@ -688,7 +688,7 @@ public sealed class ChooserBackfillRerunTool
         builder.AppendLine();
         builder.AppendLine("-- 3) 受影响模块标脏");
         builder.AppendLine("""
-            INSERT INTO dbo.WORKBENCH_MODULE_DIRTY (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
+            INSERT INTO dbo.WORKBENCH_MODULE_DIRTY (M_IDX, DIRTY_TAG, MODIFIED_BY, MODIFIED_TIME)
             SELECT DISTINCT m.M_IDX, 1, N'EOS-MIG', GETDATE()
             FROM dbo.MODULES m
             WHERE (m.MASTER_TABLE IN (SELECT T_ID FROM #RERUN)

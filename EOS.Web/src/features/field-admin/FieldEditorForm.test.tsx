@@ -408,7 +408,7 @@ describe('FieldEditorForm', () => {
 
   it('系统列编辑态锁定结构控件', async () => {
     const { container } = renderForm('edit', {
-      load: vi.fn().mockResolvedValue(meta({ key: 'CONFIRM_TAG', label: '批核状态', isSystemColumn: true })),
+      load: vi.fn().mockResolvedValue(meta({ key: 'APPROVED', label: '批核状态', isSystemColumn: true })),
       save: vi.fn(),
     })
     await waitFor(() => expect(screen.getByDisplayValue('批核状态')).toBeInTheDocument())

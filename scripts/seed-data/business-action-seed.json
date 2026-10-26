@@ -412,7 +412,7 @@
               "targetField": "FIRST_SEND_DATE",
               "opCode": "ASSIGN_MIN",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -426,7 +426,7 @@
               "targetField": "FINISHED_SEND_DATE",
               "opCode": "ASSIGN_MAX",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -493,7 +493,7 @@
           "ops": [
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -507,7 +507,7 @@
             },
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -521,7 +521,7 @@
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -530,12 +530,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -544,12 +544,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -558,12 +558,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -572,12 +572,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -586,12 +586,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -600,7 +600,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             }
           ]
@@ -619,7 +619,7 @@
           "ops": [
             {
               "targetTable": "COP_SHIPMENT_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -633,7 +633,7 @@
             },
             {
               "targetTable": "COP_SHIPMENT_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -647,7 +647,7 @@
             },
             {
               "targetTable": "COP_SHIPMENT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -656,12 +656,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_SHIPMENT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -670,12 +670,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_SHIPMENT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -684,12 +684,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_SHIPMENT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -698,12 +698,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "COP_SHIPMENT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -712,12 +712,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "COP_SHIPMENT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -726,7 +726,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"SHIPMENT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SHIPMENT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SHIPMENT_TYPE\",\"source\":{\"field\":\"SHIPMENT_TYPE\"}},{\"target\":\"SHIPMENT_NO\",\"source\":{\"field\":\"SHIPMENT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             }
           ]
@@ -745,7 +745,7 @@
           "ops": [
             {
               "targetTable": "COP_FITOUT_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -759,7 +759,7 @@
             },
             {
               "targetTable": "COP_FITOUT_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -773,7 +773,7 @@
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -782,12 +782,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -796,12 +796,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -810,12 +810,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -824,12 +824,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -838,12 +838,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -852,7 +852,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             }
           ]
@@ -1091,7 +1091,7 @@
           "ops": [
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1105,7 +1105,7 @@
             },
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1119,7 +1119,7 @@
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1128,12 +1128,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1142,12 +1142,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1156,12 +1156,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1170,12 +1170,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1184,12 +1184,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1198,7 +1198,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             }
           ]
@@ -1501,7 +1501,7 @@
           "ops": [
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1515,7 +1515,7 @@
             },
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1529,7 +1529,7 @@
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1538,12 +1538,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1552,12 +1552,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1566,12 +1566,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1580,12 +1580,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1594,12 +1594,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -1608,7 +1608,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             }
           ]
@@ -1830,7 +1830,7 @@
               "targetField": "FINISHED_FITOUT_DATE",
               "opCode": "ASSIGN",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -1999,7 +1999,7 @@
           "ops": [
             {
               "targetTable": "COP_FITOUT_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2013,7 +2013,7 @@
             },
             {
               "targetTable": "COP_FITOUT_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2027,7 +2027,7 @@
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2036,12 +2036,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
               "remark": "备货返仓批核按当前量重算备货行/单结案（P_COP_FITOUT_FINISHED direct=-1）"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2050,12 +2050,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
               "remark": "备货返仓批核按当前量重算备货行/单结案（P_COP_FITOUT_FINISHED direct=-1）"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2064,12 +2064,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}]}]}",
               "remark": "备货返仓批核按当前量重算备货行/单结案（P_COP_FITOUT_FINISHED direct=-1）"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2078,12 +2078,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启备货单主表"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2092,12 +2092,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启备货单主表"
             },
             {
               "targetTable": "COP_FITOUT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2106,7 +2106,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"FITOUT_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"FITOUT_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_FITOUT_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"FITOUT_TYPE\",\"source\":{\"field\":\"FITOUT_TYPE\"}},{\"target\":\"FITOUT_NO\",\"source\":{\"field\":\"FITOUT_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启备货单主表"
             }
           ]
@@ -2309,7 +2309,7 @@
           "ops": [
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2323,7 +2323,7 @@
             },
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2337,7 +2337,7 @@
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2346,12 +2346,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": "订单变更批核后按完成度重算订单结案"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2360,12 +2360,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": "订单变更批核后按完成度重算订单结案"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2374,12 +2374,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": "订单变更批核后按完成度重算订单结案"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2388,12 +2388,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2402,12 +2402,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2416,7 +2416,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             }
           ]
@@ -2509,7 +2509,7 @@
           "ops": [
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2523,7 +2523,7 @@
             },
             {
               "targetTable": "COP_ORDER_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2537,7 +2537,7 @@
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2546,12 +2546,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": "ADR-012 收敛：复制自 1418 SEQ6（P_COP_ORDER_FINISHED(direct=1) 订单结案）"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2560,12 +2560,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": "ADR-012 收敛：复制自 1418 SEQ6（P_COP_ORDER_FINISHED(direct=1) 订单结案）"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2574,12 +2574,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}]}]}",
               "remark": "ADR-012 收敛：复制自 1418 SEQ6（P_COP_ORDER_FINISHED(direct=1) 订单结案）"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2588,12 +2588,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2602,12 +2602,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "COP_ORDER_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -2616,7 +2616,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"ORDER_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"ORDER_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_ORDER_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"ORDER_TYPE\",\"source\":{\"field\":\"ORDER_TYPE\"}},{\"target\":\"ORDER_NO\",\"source\":{\"field\":\"ORDER_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             }
           ]
@@ -3347,7 +3347,7 @@
           "ops": [
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3361,7 +3361,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3375,7 +3375,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3389,7 +3389,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3403,7 +3403,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3417,7 +3417,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3598,7 +3598,7 @@
           "ops": [
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3612,7 +3612,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3626,7 +3626,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3640,7 +3640,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -3654,7 +3654,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4164,7 +4164,7 @@
           "ops": [
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4178,7 +4178,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4192,7 +4192,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4206,7 +4206,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4220,7 +4220,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4234,7 +4234,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4248,7 +4248,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4262,7 +4262,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4820,7 +4820,7 @@
           "ops": [
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4834,7 +4834,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4848,7 +4848,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4862,7 +4862,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -4876,7 +4876,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5390,7 +5390,7 @@
           "ops": [
             {
               "targetTable": "PUR_APPLY_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5404,7 +5404,7 @@
             },
             {
               "targetTable": "PUR_APPLY_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5418,7 +5418,7 @@
             },
             {
               "targetTable": "PUR_APPLY_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5427,12 +5427,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"APPLY_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}]}]}",
               "remark": "采购批核按采购量重算请购行/单结案（P_PUR_APPLY_FINISHED direct=1）"
             },
             {
               "targetTable": "PUR_APPLY_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5441,12 +5441,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"APPLY_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}]}]}",
               "remark": "采购批核按采购量重算请购行/单结案（P_PUR_APPLY_FINISHED direct=1）"
             },
             {
               "targetTable": "PUR_APPLY_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5455,12 +5455,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"APPLY_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}]}]}",
               "remark": "采购批核按采购量重算请购行/单结案（P_PUR_APPLY_FINISHED direct=1）"
             },
             {
               "targetTable": "PUR_APPLY_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5469,12 +5469,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"APPLY_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启请购单主表"
             },
             {
               "targetTable": "PUR_APPLY_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5483,12 +5483,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"APPLY_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启请购单主表"
             },
             {
               "targetTable": "PUR_APPLY_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5497,7 +5497,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"APPLY_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"APPLY_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_APPLY_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"APPLY_TYPE\",\"source\":{\"field\":\"APPLY_TYPE\"}},{\"target\":\"APPLY_NO\",\"source\":{\"field\":\"APPLY_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启请购单主表"
             }
           ]
@@ -5732,7 +5732,7 @@
           "ops": [
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5746,7 +5746,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5755,12 +5755,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5769,12 +5769,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5783,12 +5783,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": null
             },
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5802,7 +5802,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5811,12 +5811,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5825,12 +5825,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -5839,7 +5839,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启"
             }
           ]
@@ -6008,7 +6008,7 @@
           "ops": [
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6022,7 +6022,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6036,7 +6036,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6045,12 +6045,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "退料批核按当前收量重算采购行/单结案（P_PUR_PURCHASE_FINISHED direct=-1）"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6059,12 +6059,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "退料批核按当前收量重算采购行/单结案（P_PUR_PURCHASE_FINISHED direct=-1）"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6073,12 +6073,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "退料批核按当前收量重算采购行/单结案（P_PUR_PURCHASE_FINISHED direct=-1）"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6087,12 +6087,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "批核后按未完成明细重新开启采购主表"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6101,12 +6101,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "批核后按未完成明细重新开启采购主表"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6115,7 +6115,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "批核后按未完成明细重新开启采购主表"
             }
           ]
@@ -6260,7 +6260,7 @@
           "ops": [
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6274,7 +6274,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6288,7 +6288,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6297,12 +6297,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "采购单无未结案行置结案"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6311,12 +6311,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "采购单结案人"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6325,12 +6325,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "采购单结案日期"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6339,12 +6339,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6353,12 +6353,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6367,7 +6367,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             }
           ]
@@ -6534,7 +6534,7 @@
           "ops": [
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6548,7 +6548,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6562,7 +6562,7 @@
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6571,12 +6571,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "退料批核按当前收量重算采购行/单结案（P_PUR_PURCHASE_FINISHED direct=-1）"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6585,12 +6585,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "退料批核按当前收量重算采购行/单结案（P_PUR_PURCHASE_FINISHED direct=-1）"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6599,12 +6599,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}]}]}",
               "remark": "退料批核按当前收量重算采购行/单结案（P_PUR_PURCHASE_FINISHED direct=-1）"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6613,12 +6613,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "批核后按未完成明细重新开启采购主表"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6627,12 +6627,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "批核后按未完成明细重新开启采购主表"
             },
             {
               "targetTable": "PUR_PURCHASE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -6641,7 +6641,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PURCHASE_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_PURCHASE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"PURCHASE_TYPE\",\"source\":{\"field\":\"PURCHASE_TYPE\"}},{\"target\":\"PURCHASE_NO\",\"source\":{\"field\":\"PURCHASE_NO\"}}],\"negate\":true}]}",
               "remark": "批核后按未完成明细重新开启采购主表"
             }
           ]
@@ -7055,7 +7055,7 @@
           "name": "出车任务完工置位",
           "failMode": "BLOCK",
           "condition": null,
-          "params": "{\"targets\":[{\"table\":\"CAR_MISSION_M\",\"refs\":[{\"target\":\"MISSION_TYPE\",\"source\":\"MISSION_TYPE\"},{\"target\":\"MISSION_NO\",\"source\":\"MISSION_NO\"}]}],\"state\":{\"FINISHED_TAG\":true}}",
+          "params": "{\"targets\":[{\"table\":\"CAR_MISSION_M\",\"refs\":[{\"target\":\"MISSION_TYPE\",\"source\":\"MISSION_TYPE\"},{\"target\":\"MISSION_NO\",\"source\":\"MISSION_NO\"}]}],\"state\":{\"FINISHED\":true}}",
           "reverse": "{\"kind\":\"clear-finish\"}",
           "remark": null,
           "sourceRef": "P_WF_CAR_ADDUP",
@@ -7391,7 +7391,7 @@
               "targetField": "FINISHED_WORK_DATE",
               "opCode": "ASSIGN",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -7523,7 +7523,7 @@
               "targetField": "FINISHED_WORK_IN_DATE",
               "opCode": "ASSIGN",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -7606,7 +7606,7 @@
           "ops": [
             {
               "targetTable": "MOC_WORK_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7620,7 +7620,7 @@
             },
             {
               "targetTable": "MOC_WORK_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7634,7 +7634,7 @@
             },
             {
               "targetTable": "MOC_WORK_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7643,12 +7643,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"WORK_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}]}]}",
               "remark": "工单无未结案行置结案"
             },
             {
               "targetTable": "MOC_WORK_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7657,12 +7657,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"WORK_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}]}]}",
               "remark": "工单结案人"
             },
             {
               "targetTable": "MOC_WORK_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7671,12 +7671,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"WORK_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}]}]}",
               "remark": "工单结案日期"
             },
             {
               "targetTable": "MOC_WORK_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7685,12 +7685,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"WORK_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "MOC_WORK_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7699,12 +7699,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"WORK_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             },
             {
               "targetTable": "MOC_WORK_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7713,7 +7713,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"WORK_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"WORK_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"MOC_WORK_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"WORK_TYPE\",\"source\":{\"field\":\"WORK_TYPE\"}},{\"target\":\"WORK_NO\",\"source\":{\"field\":\"WORK_NO\"}}],\"negate\":true}]}",
               "remark": "存在未完成明细时重新开启主表"
             }
           ]
@@ -7749,7 +7749,7 @@
               "targetField": "FINISHED_WORK_OUT_DATE",
               "opCode": "ASSIGN",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -7838,7 +7838,7 @@
           "ops": [
             {
               "targetTable": "SFC_PLAN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7852,7 +7852,7 @@
             },
             {
               "targetTable": "SFC_PLAN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7912,7 +7912,7 @@
           "ops": [
             {
               "targetTable": "SFC_PLAN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7926,7 +7926,7 @@
             },
             {
               "targetTable": "SFC_PLAN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -7986,7 +7986,7 @@
           "ops": [
             {
               "targetTable": "SFC_PLAN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8000,7 +8000,7 @@
             },
             {
               "targetTable": "SFC_PLAN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8924,7 +8924,7 @@
           "ops": [
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8938,7 +8938,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8952,7 +8952,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8966,7 +8966,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8980,7 +8980,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -8994,7 +8994,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9008,7 +9008,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9022,7 +9022,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9304,7 +9304,7 @@
           "ops": [
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9318,7 +9318,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9332,7 +9332,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9346,7 +9346,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9360,7 +9360,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9374,7 +9374,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9388,7 +9388,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -9402,7 +9402,7 @@
             },
             {
               "targetTable": "MOC_PRODUCE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -10107,7 +10107,7 @@
           "name": "开模/量产申请结案标记",
           "failMode": "BLOCK",
           "condition": null,
-          "params": "{\"targets\":[{\"table\":\"MOU_APPLY_M\",\"refs\":[{\"target\":\"APPLY_TYPE\",\"source\":\"APPLY_TYPE\"},{\"target\":\"APPLY_NO\",\"source\":\"APPLY_NO\"}]},{\"table\":\"MOU_BATCH_M\",\"refs\":[{\"target\":\"BATCH_TYPE\",\"source\":\"APPLY_TYPE\"},{\"target\":\"BATCH_NO\",\"source\":\"APPLY_NO\"}]}],\"state\":{\"FINISHED_TAG\":1,\"FINISHED_PERSON\":\"SYSTEM\",\"FINISHED_DATE\":\"now\"}}",
+          "params": "{\"targets\":[{\"table\":\"MOU_APPLY_M\",\"refs\":[{\"target\":\"APPLY_TYPE\",\"source\":\"APPLY_TYPE\"},{\"target\":\"APPLY_NO\",\"source\":\"APPLY_NO\"}]},{\"table\":\"MOU_BATCH_M\",\"refs\":[{\"target\":\"BATCH_TYPE\",\"source\":\"APPLY_TYPE\"},{\"target\":\"BATCH_NO\",\"source\":\"APPLY_NO\"}]}],\"state\":{\"FINISHED\":1,\"FINISHED_BY\":\"SYSTEM\",\"FINISHED_TIME\":\"now\"}}",
           "reverse": "{\"kind\":\"clear-finish\"}",
           "remark": null,
           "sourceRef": "P_WF_MOU_GET2 §结案",
@@ -10203,7 +10203,7 @@
           "name": "承认单结案盖章",
           "failMode": "BLOCK",
           "condition": null,
-          "params": "{\"targets\":[{\"table\":\"MOU_ACCEPT_M\",\"refs\":[{\"target\":\"ACCEPT_TYPE\",\"source\":\"ACCEPT_TYPE\"},{\"target\":\"ACCEPT_NO\",\"source\":\"ACCEPT_NO\"}]}],\"state\":{\"FINISHED_TAG\":true,\"FINISHED_DATE\":\"now\",\"FINISHED_PERSON\":\"SYSTEM\"}}",
+          "params": "{\"targets\":[{\"table\":\"MOU_ACCEPT_M\",\"refs\":[{\"target\":\"ACCEPT_TYPE\",\"source\":\"ACCEPT_TYPE\"},{\"target\":\"ACCEPT_NO\",\"source\":\"ACCEPT_NO\"}]}],\"state\":{\"FINISHED\":true,\"FINISHED_TIME\":\"now\",\"FINISHED_BY\":\"SYSTEM\"}}",
           "reverse": "{\"kind\":\"clear-finish\"}",
           "remark": null,
           "sourceRef": "P_WF_MOU_ACCEPTDELE",
@@ -10259,7 +10259,7 @@
               "targetField": "FINISHED_ANALYSIS_DATE",
               "opCode": "ASSIGN",
               "sourceScope": "MASTER",
-              "sourceField": "CREATE_DATE",
+              "sourceField": "CREATED_TIME",
               "sourceTable": null,
               "sourceAgg": null,
               "sourceConstant": null,
@@ -10940,7 +10940,7 @@
           "ops": [
             {
               "targetTable": "COP_SEND_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -10954,7 +10954,7 @@
             },
             {
               "targetTable": "COP_SEND_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -10968,7 +10968,7 @@
             },
             {
               "targetTable": "COP_SEND_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -10977,12 +10977,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"SEND_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}]}]}",
               "remark": "送货单无未完成行置结案"
             },
             {
               "targetTable": "COP_SEND_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -10991,12 +10991,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"SEND_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}]}]}",
               "remark": "送货单结案人"
             },
             {
               "targetTable": "COP_SEND_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11005,12 +11005,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"SEND_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}]}]}",
               "remark": "送货单结案日期"
             },
             {
               "targetTable": "COP_SEND_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11019,12 +11019,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"SEND_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}],\"negate\":true}]}",
               "remark": "送货单存在未完成行解除结案"
             },
             {
               "targetTable": "COP_SEND_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11033,12 +11033,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"SEND_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}],\"negate\":true}]}",
               "remark": "送货单解除结案清人"
             },
             {
               "targetTable": "COP_SEND_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11047,12 +11047,12 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"SEND_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_SEND_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"SEND_TYPE\",\"source\":{\"field\":\"SEND_TYPE\"}},{\"target\":\"SEND_NO\",\"source\":{\"field\":\"SEND_NO\"}}],\"negate\":true}]}",
               "remark": "送货单解除结案清日期"
             },
             {
               "targetTable": "COP_RETURN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11066,7 +11066,7 @@
             },
             {
               "targetTable": "COP_RETURN_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11080,7 +11080,7 @@
             },
             {
               "targetTable": "COP_RETURN_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11089,12 +11089,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"RETURN_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}]}]}",
               "remark": "退货单无未完成行置结案"
             },
             {
               "targetTable": "COP_RETURN_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11103,12 +11103,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"RETURN_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}]}]}",
               "remark": "退货单结案人"
             },
             {
               "targetTable": "COP_RETURN_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11117,12 +11117,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"RETURN_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}]}]}",
               "remark": "退货单结案日期"
             },
             {
               "targetTable": "COP_RETURN_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11131,12 +11131,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"RETURN_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}],\"negate\":true}]}",
               "remark": "退货单存在未完成行解除结案"
             },
             {
               "targetTable": "COP_RETURN_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11145,12 +11145,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"RETURN_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}],\"negate\":true}]}",
               "remark": "退货单解除结案清人"
             },
             {
               "targetTable": "COP_RETURN_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11159,7 +11159,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"RETURN_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"S_R_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"COP_RETURN_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RETURN_TYPE\",\"source\":{\"field\":\"RETURN_TYPE\"}},{\"target\":\"RETURN_NO\",\"source\":{\"field\":\"RETURN_NO\"}}],\"negate\":true}]}",
               "remark": "退货单解除结案清日期"
             }
           ]
@@ -11288,7 +11288,7 @@
           "ops": [
             {
               "targetTable": "COP_ACCOUNT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11302,7 +11302,7 @@
             },
             {
               "targetTable": "COP_ACCOUNT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11316,7 +11316,7 @@
             },
             {
               "targetTable": "COP_ACCOUNT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11330,7 +11330,7 @@
             },
             {
               "targetTable": "COP_ACCOUNT_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11344,7 +11344,7 @@
             },
             {
               "targetTable": "COP_ACCOUNT_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11358,7 +11358,7 @@
             },
             {
               "targetTable": "COP_ACCOUNT_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11372,7 +11372,7 @@
             },
             {
               "targetTable": "COP_PREPAY_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11386,7 +11386,7 @@
             },
             {
               "targetTable": "COP_PREPAY_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11400,7 +11400,7 @@
             },
             {
               "targetTable": "COP_PREPAY_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11414,7 +11414,7 @@
             },
             {
               "targetTable": "COP_PREPAY_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11428,7 +11428,7 @@
             },
             {
               "targetTable": "COP_PREPAY_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11442,7 +11442,7 @@
             },
             {
               "targetTable": "COP_PREPAY_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11644,7 +11644,7 @@
           "ops": [
             {
               "targetTable": "PUR_RECEIVE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11658,7 +11658,7 @@
             },
             {
               "targetTable": "PUR_RECEIVE_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11672,7 +11672,7 @@
             },
             {
               "targetTable": "PUR_RECEIVE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11681,12 +11681,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}]}]}",
               "remark": "收料单无未完成行置结案"
             },
             {
               "targetTable": "PUR_RECEIVE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11695,12 +11695,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}]}]}",
               "remark": "收料单结案人"
             },
             {
               "targetTable": "PUR_RECEIVE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11709,12 +11709,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}]}]}",
               "remark": "收料单结案日期"
             },
             {
               "targetTable": "PUR_RECEIVE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11723,12 +11723,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}],\"negate\":true}]}",
               "remark": "收料单存在未完成行解除结案"
             },
             {
               "targetTable": "PUR_RECEIVE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11737,12 +11737,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}],\"negate\":true}]}",
               "remark": "收料单解除结案清人"
             },
             {
               "targetTable": "PUR_RECEIVE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11751,12 +11751,12 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_RECEIVE_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"RECEIVE_TYPE\",\"source\":{\"field\":\"RECEIVE_TYPE\"}},{\"target\":\"RECEIVE_NO\",\"source\":{\"field\":\"RECEIVE_NO\"}}],\"negate\":true}]}",
               "remark": "收料单解除结案清日期"
             },
             {
               "targetTable": "PUR_CANCEL_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11770,7 +11770,7 @@
             },
             {
               "targetTable": "PUR_CANCEL_D",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11784,7 +11784,7 @@
             },
             {
               "targetTable": "PUR_CANCEL_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11793,12 +11793,12 @@
               "sourceConstant": "1",
               "sourceTerms": null,
               "match": "[{\"target\":\"CANCEL_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}]}]}",
               "remark": "退料单无未完成行置结案"
             },
             {
               "targetTable": "PUR_CANCEL_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11807,12 +11807,12 @@
               "sourceConstant": "SYSTEM",
               "sourceTerms": null,
               "match": "[{\"target\":\"CANCEL_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}]}]}",
               "remark": "退料单结案人"
             },
             {
               "targetTable": "PUR_CANCEL_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11821,12 +11821,12 @@
               "sourceConstant": "SYSDATETIME",
               "sourceTerms": null,
               "match": "[{\"target\":\"CANCEL_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}]}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}]}]}",
               "remark": "退料单结案日期"
             },
             {
               "targetTable": "PUR_CANCEL_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11835,12 +11835,12 @@
               "sourceConstant": "0",
               "sourceTerms": null,
               "match": "[{\"target\":\"CANCEL_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}],\"negate\":true}]}",
               "remark": "退料单存在未完成行解除结案"
             },
             {
               "targetTable": "PUR_CANCEL_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11849,12 +11849,12 @@
               "sourceConstant": null,
               "sourceTerms": null,
               "match": "[{\"target\":\"CANCEL_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}],\"negate\":true}]}",
               "remark": "退料单解除结案清人"
             },
             {
               "targetTable": "PUR_CANCEL_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11863,7 +11863,7 @@
               "sourceConstant": "NULL",
               "sourceTerms": null,
               "match": "[{\"target\":\"CANCEL_TYPE\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"R_C_NO\"}}]",
-              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED_TAG\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}],\"negate\":true}]}",
+              "condition": "{\"logic\":\"AND\",\"items\":[{\"type\":\"not-exists\",\"targetTable\":\"PUR_CANCEL_D\",\"condition\":{\"left\":{\"scope\":\"TARGET\",\"field\":\"FINISHED\"},\"op\":\"EQ\",\"right\":{\"value\":0}},\"match\":[{\"target\":\"CANCEL_TYPE\",\"source\":{\"field\":\"CANCEL_TYPE\"}},{\"target\":\"CANCEL_NO\",\"source\":{\"field\":\"CANCEL_NO\"}}],\"negate\":true}]}",
               "remark": "退料单解除结案清日期"
             }
           ]
@@ -11966,7 +11966,7 @@
           "ops": [
             {
               "targetTable": "PUR_DUE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11980,7 +11980,7 @@
             },
             {
               "targetTable": "PUR_DUE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -11994,7 +11994,7 @@
             },
             {
               "targetTable": "PUR_DUE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12008,7 +12008,7 @@
             },
             {
               "targetTable": "PUR_DUE_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12022,7 +12022,7 @@
             },
             {
               "targetTable": "PUR_DUE_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12036,7 +12036,7 @@
             },
             {
               "targetTable": "PUR_DUE_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12050,7 +12050,7 @@
             },
             {
               "targetTable": "PUR_PREPAY_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12064,7 +12064,7 @@
             },
             {
               "targetTable": "PUR_PREPAY_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12078,7 +12078,7 @@
             },
             {
               "targetTable": "PUR_PREPAY_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12092,7 +12092,7 @@
             },
             {
               "targetTable": "PUR_PREPAY_M",
-              "targetField": "FINISHED_TAG",
+              "targetField": "FINISHED",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12106,7 +12106,7 @@
             },
             {
               "targetTable": "PUR_PREPAY_M",
-              "targetField": "FINISHED_PERSON",
+              "targetField": "FINISHED_BY",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,
@@ -12120,7 +12120,7 @@
             },
             {
               "targetTable": "PUR_PREPAY_M",
-              "targetField": "FINISHED_DATE",
+              "targetField": "FINISHED_TIME",
               "opCode": "SET_WHEN",
               "sourceScope": "CONSTANT",
               "sourceField": null,

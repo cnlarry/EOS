@@ -13,11 +13,11 @@ public class WorkbenchInsertColumnsTests
     {
         var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["B"] = 1, ["A"] = 2, ["CREATE_PERSON"] = "u", ["LAST_UPDATE_BY"] = "u",
+            ["B"] = 1, ["A"] = 2, ["CREATED_BY"] = "u", ["MODIFIED_BY"] = "u",
         };
         var result = WorkbenchCommandHandler.BuildInsertColumns(
-            ["B", "A"], values, Physical("A", "B", "CREATE_PERSON", "LAST_UPDATE_BY"), []);
-        Assert.Equal(["B", "A", "CREATE_PERSON", "LAST_UPDATE_BY"], result);
+            ["B", "A"], values, Physical("A", "B", "CREATED_BY", "MODIFIED_BY"), []);
+        Assert.Equal(["B", "A", "CREATED_BY", "MODIFIED_BY"], result);
     }
 
     [Fact]

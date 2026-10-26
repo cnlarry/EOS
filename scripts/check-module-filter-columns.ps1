@@ -4,13 +4,13 @@
 
 .DESCRIPTION
     背景（2026-10-04 实测）：`14997 应收未收(明细)` 在统一表单**写名单**里，而它的模块 FILTER 是
-    `CONFIRM_TAG=1 AND FINISHED_TAG=0 AND SUM_AMOUNT-RECEIVE_AMOUNT>0`——新记录的 `CONFIRM_TAG`
+    `APPROVED=1 AND FINISHED=0 AND SUM_AMOUNT-RECEIVE_AMOUNT>0`——新记录的 `APPROVED`
     恒为 0、未收金额恒为 0，三个谓词一个都满足不了，于是「新增」入口必然报
     `RECORD_OUT_OF_MODULE_FILTER`。写名单里的模块却用不了新增，是用户可见的故障。
 
     判据（**只守写名单**：只有写名单才承诺"可新增"；只读名单与未入名单的模块不在此题内）：
 
-      1) 批核/结案状态位（`CONFIRM_TAG` / `FINISHED_TAG`）出现在 FILTER 里 ⇒ 一律失败。
+      1) 批核/结案状态位（`APPROVED` / `FINISHED`）出现在 FILTER 里 ⇒ 一律失败。
          这两个列由引擎在批核/结案时写，用户填不了、新记录恒为 0；"只看已批核记录"的模块
          不可能同时承诺可新增。
       2) 其余列：主表真实列中出现在 FILTER 文本里的每一个，必须有**至少一个**新增时能产生值的来源：
@@ -48,7 +48,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $defaultRulesPath = Join-Path $repoRoot 'EOS.API/Data/FormDefaultRules.cs'
 
-$stateBits = @('CONFIRM_TAG', 'FINISHED_TAG')
+$stateBits = @('APPROVED', 'FINISHED')
 
 function Get-WriteList {
     <# 写名单 = 模块声明「统一表单可写」（MODULES.UNIFIED_FORM_ENABLED / UNIFIED_FORM_EDIT_ENABLED，
@@ -199,7 +199,7 @@ WHERE o.name IN $tblList AND c.default_object_id <> 0;
         $sampleColDefaults = @{ 'T_SF|COLDEFED' = $true }
         $sampleCandidates = @(
             [pscustomobject]@{ ModuleId = '9001'; Desc = '合成-无任何来源'; Table = 'T_SF'; Column = 'NOTFILLABLE'; Filter = 'NOTFILLABLE=1' }
-            [pscustomobject]@{ ModuleId = '9002'; Desc = '合成-状态位'; Table = 'T_SF'; Column = 'CONFIRM_TAG'; Filter = 'CONFIRM_TAG=1' }
+            [pscustomobject]@{ ModuleId = '9002'; Desc = '合成-状态位'; Table = 'T_SF'; Column = 'APPROVED'; Filter = 'APPROVED=1' }
             [pscustomobject]@{ ModuleId = '9003'; Desc = '合成-用户可填'; Table = 'T_SF'; Column = 'FILLABLE'; Filter = 'FILLABLE=1' }
             [pscustomobject]@{ ModuleId = '9004'; Desc = '合成-元数据默认值'; Table = 'T_SF'; Column = 'DFTED'; Filter = 'DFTED=1' }
             [pscustomobject]@{ ModuleId = '9005'; Desc = '合成-代码默认值'; Table = 'T_SF'; Column = 'CODED'; Filter = 'CODED=1' }

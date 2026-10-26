@@ -11,9 +11,9 @@ public class WorkflowStatesLifecycleTests
         Assert.Equal(
             new[]
             {
-                "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
-                "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE",
-                "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE",
+                "CREATED_BY", "CREATED_TIME", "MODIFIED_BY", "MODIFIED_TIME",
+                "APPROVED", "APPROVED_BY", "APPROVED_TIME",
+                "FINISHED", "FINISHED_BY", "FINISHED_TIME",
             },
             WorkflowStates.LifecycleColumns);
     }
@@ -21,10 +21,10 @@ public class WorkflowStatesLifecycleTests
     [Fact]
     public void LifecycleSubsets_AreConsistent()
     {
-        Assert.Equal(["CONFIRM_TAG", "FINISHED_TAG"], WorkflowStates.LifecycleTagColumns);
+        Assert.Equal(["APPROVED", "FINISHED"], WorkflowStates.LifecycleTagColumns);
         Assert.Equal(8, WorkflowStates.LifecycleActorColumns.Length);
         Assert.Equal(
-            ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE"],
+            ["APPROVED", "APPROVED_BY", "APPROVED_TIME", "FINISHED", "FINISHED_BY", "FINISHED_TIME"],
             WorkflowStates.RecordStatusColumns);
         // 读取契约是全集的子集；状态位与经办列不相交
         foreach (var column in WorkflowStates.RecordStatusColumns)
@@ -39,8 +39,8 @@ public class WorkflowStatesLifecycleTests
     }
 
     [Theory]
-    [InlineData("CONFIRM_TAG", true)]
-    [InlineData("finished_date", true)]
+    [InlineData("APPROVED", true)]
+    [InlineData("finished_time", true)]
     [InlineData("OWNER", false)]
     [InlineData("OWNER_G", false)]
     [InlineData("CI", false)]

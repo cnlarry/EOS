@@ -272,7 +272,7 @@ public sealed class AssistantActionEndToEndTests : IAsyncLifetime
     private static async Task SeedAsync(SqlConnection connection) =>
         await ExecAsync(connection, """
             INSERT INTO dbo.COP_CHAFFER_M
-                (CHAFFER_TYPE, CHAFFER_NO, CHAFFER_DATE, CLIENT_ID, REMARK, CONFIRM_TAG, CREATE_PERSON, LAST_UPDATE_BY)
+                (CHAFFER_TYPE, CHAFFER_NO, CHAFFER_DATE, CLIENT_ID, REMARK, APPROVED, CREATED_BY, MODIFIED_BY)
             VALUES (@type, @no, '2026-09-01', NULL, N'初始备注', 0, N'ZZE2E', N'ZZE2E');
             """, ("@type", TestType), ("@no", SeededNo));
 

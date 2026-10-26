@@ -107,8 +107,8 @@
     "CURR_RATE": "1.0000",
     "SALES_ID": "admin",
     "BUYER_ID": "buyer1",
-    "CREATE_PERSON": "admin",
-    "CONFIRM_PERSON": "manager",
+    "CREATED_BY": "admin",
+    "APPROVED_BY": "manager",
     "GET_NO": "DD13010001",
     "GET_TYPE": "A",
     "PRODUCE_NO": "MP001"

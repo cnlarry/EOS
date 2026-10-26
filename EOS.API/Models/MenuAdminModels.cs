@@ -34,8 +34,8 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("DETAIL_TABLE")] string? DETAIL_TABLE,
     [property: JsonPropertyName("NOT_BACK_FIELDS_M")] string? NOT_BACK_FIELDS_M,
     [property: JsonPropertyName("NOT_BACK_FIELDS")] string? NOT_BACK_FIELDS,
-    [property: JsonPropertyName("LAST_UPDATE_BY")] string? LAST_UPDATE_BY,
-    [property: JsonPropertyName("LAST_UPDATE_DATE")] DateTime? LAST_UPDATE_DATE,
+    [property: JsonPropertyName("MODIFIED_BY")] string? MODIFIED_BY,
+    [property: JsonPropertyName("MODIFIED_TIME")] DateTime? MODIFIED_TIME,
     [property: JsonPropertyName("FORM_TABS")] string? FORM_TABS = null,
     [property: JsonPropertyName("FORM_COLUMNS")] int? FORM_COLUMNS = null,
     // 内置动作「受控注册码」字段（FORM_BUTTONS）于迁移 320 退役并物理删列：

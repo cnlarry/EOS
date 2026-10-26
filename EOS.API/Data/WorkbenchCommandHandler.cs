@@ -436,7 +436,7 @@ public sealed class WorkbenchCommandHandler(
         }
         var masterFields = form.MasterFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         // 批核/结案状态列：表单不可编辑，但记录读取契约必须返回（用于编辑前状态校验）
-        foreach (var statusColumn in new[] { "CONFIRM_TAG", "FINISHED_TAG" })
+        foreach (var statusColumn in new[] { "APPROVED", "FINISHED" })
         {
             if (!masterFields.Contains(statusColumn, StringComparer.OrdinalIgnoreCase)
                 && await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, statusColumn, token))
@@ -450,12 +450,12 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
         // 状态校验：已结案 / 已批核的单据禁止编辑
-        if (IsStatusTrue(current, "FINISHED_TAG"))
+        if (IsStatusTrue(current, "FINISHED"))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,
                 Workbench.LifecycleEditGuards.FinishedCode, Workbench.LifecycleEditGuards.FinishedMessage);
         }
-        if (IsStatusTrue(current, "CONFIRM_TAG"))
+        if (IsStatusTrue(current, "APPROVED"))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,
                 Workbench.LifecycleEditGuards.ConfirmedCode, Workbench.LifecycleEditGuards.ConfirmedMessage);
@@ -551,13 +551,13 @@ public sealed class WorkbenchCommandHandler(
             if (sets.Any(item => item.Column.Equals(column, StringComparison.OrdinalIgnoreCase))) continue;
             sets.Add((column, value));
         }
-        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_BY", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "MODIFIED_BY", token))
         {
-            sets.Add(("LAST_UPDATE_BY", employeeName));
+            sets.Add(("MODIFIED_BY", employeeName));
         }
-        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_DATE", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "MODIFIED_TIME", token))
         {
-            sets.Add(("LAST_UPDATE_DATE", DateTime.Now));
+            sets.Add(("MODIFIED_TIME", DateTime.Now));
         }
         if (sets.Count > 0)
         {
@@ -1512,8 +1512,8 @@ public sealed class WorkbenchCommandHandler(
     {
         var now = DateTime.Now;
         var audit = isNew
-            ? new (string Name, object Value)[] { ("CREATE_PERSON", employeeName), ("CREATE_DATE", now), ("LAST_UPDATE_BY", employeeName), ("LAST_UPDATE_DATE", now) }
-            : new (string Name, object Value)[] { ("LAST_UPDATE_BY", employeeName), ("LAST_UPDATE_DATE", now) };
+            ? new (string Name, object Value)[] { ("CREATED_BY", employeeName), ("CREATED_TIME", now), ("MODIFIED_BY", employeeName), ("MODIFIED_TIME", now) }
+            : new (string Name, object Value)[] { ("MODIFIED_BY", employeeName), ("MODIFIED_TIME", now) };
         foreach (var item in audit)
         {
             if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, table, item.Name, token))

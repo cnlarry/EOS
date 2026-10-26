@@ -67,7 +67,7 @@ public sealed class EffectPlanLoaderBlankFieldTests
              "MasterPkOrder":["RECEIVE_TYPE","RECEIVE_NO"],
              "BusinessActions":[
                {"seq":5,"eventCode":"APPROVE_EFFECT","effectKey":"field-accumulate","effectName":"结案","enabled":true,
-                "ops":[{"opSeq":7,"targetTable":"PUR_PURCHASE_M","targetField":"FINISHED_PERSON","opCode":"SET_WHEN",
+                "ops":[{"opSeq":7,"targetTable":"PUR_PURCHASE_M","targetField":"FINISHED_BY","opCode":"SET_WHEN",
                         "sourceScope":"CONSTANT","sourceConstant":""}]}]}
             """));
 
@@ -86,7 +86,7 @@ public sealed class EffectPlanLoaderBlankFieldTests
              "MasterPkOrder":["RECEIVE_TYPE","RECEIVE_NO"],
              "BusinessActions":[
                {"seq":5,"eventCode":"APPROVE_EFFECT","effectKey":"field-accumulate","effectName":"结案","enabled":true,
-                "ops":[{"opSeq":7,"targetTable":"PUR_PURCHASE_M","targetField":"FINISHED_PERSON","opCode":"SET_WHEN",
+                "ops":[{"opSeq":7,"targetTable":"PUR_PURCHASE_M","targetField":"FINISHED_BY","opCode":"SET_WHEN",
                         "sourceScope":"CONSTANT"}]}]}
             """));
 

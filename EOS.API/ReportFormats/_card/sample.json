@@ -24,12 +24,12 @@
       "displayFormat": null
     },
     {
-      "key": "CREATE_PERSON",
+      "key": "CREATED_BY",
       "label": "建立人",
       "displayFormat": null
     },
     {
-      "key": "CREATE_DATE",
+      "key": "CREATED_TIME",
       "label": "建立日期",
       "displayFormat": null
     }
@@ -50,8 +50,8 @@
     "CARD_NO": "C001",
     "CARD_NAME": "深圳测试客户有限公司",
     "CARD_TYPE": "客户",
-    "CREATE_PERSON": "admin",
-    "CREATE_DATE": "2026-08-31"
+    "CREATED_BY": "admin",
+    "CREATED_TIME": "2026-08-31"
   },
   "details": [
     {

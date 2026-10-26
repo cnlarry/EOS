@@ -58,7 +58,7 @@ internal static class PriceSyncExecutor
         parameters.Add(new EffectSqlParameter(system, "SYSTEM"));
 
         // Ensure a party price master row exists for the quoting party.
-        var ensureMaster = $"INSERT INTO dbo.{ServiceEffectSql.Q(cfg.Master)} ({ServiceEffectSql.Q(cfg.PartyColumn)}, CREATE_PERSON, CREATE_DATE) "
+        var ensureMaster = $"INSERT INTO dbo.{ServiceEffectSql.Q(cfg.Master)} ({ServiceEffectSql.Q(cfg.PartyColumn)}, CREATED_BY, CREATED_TIME) "
             + $"SELECT M.{ServiceEffectSql.Q(cfg.PartyColumn)}, {system}, M.QUOTE_DATE "
             + $"FROM dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M WHERE {masterWhere} "
             + $"AND NOT EXISTS (SELECT 1 FROM dbo.{ServiceEffectSql.Q(cfg.Master)} P WHERE P.{ServiceEffectSql.Q(cfg.PartyColumn)}=M.{ServiceEffectSql.Q(cfg.PartyColumn)})";
@@ -204,7 +204,7 @@ internal sealed record PriceSyncConfig(
                 throw new EffectConfigException($"price-sync 表不存在：{table}。");
         var required = new[]
         {
-            master + "." + party, master + ".CREATE_PERSON", master + ".CREATE_DATE",
+            master + "." + party, master + ".CREATED_BY", master + ".CREATED_TIME",
             detail + "." + party, detail + ".PRO_NO", detail + ".UNIT_ID", detail + ".CURR_ID",
             detail + ".TAX_ID", detail + ".TAX_TYPE", detail + ".REBATE", detail + ".PRICE",
             detail + ".OLD_PRICE", detail + ".VERIFY_PRICE_DATE", detail + ".IN_EFFECT_DATE",

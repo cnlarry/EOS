@@ -105,7 +105,7 @@ public sealed class AssistantMemoryStore(
         const string sql = """
             MERGE dbo.ASSISTANT_PROFILE AS target
             USING (SELECT @UserId AS USER_ID) AS source ON target.USER_ID = source.USER_ID
-            WHEN MATCHED THEN UPDATE SET PREF_JSON = @Prefs, UPDATED_AT = SYSUTCDATETIME()
+            WHEN MATCHED THEN UPDATE SET PREF_JSON = @Prefs, MODIFIED_TIME = SYSUTCDATETIME()
             WHEN NOT MATCHED THEN INSERT (USER_ID, PREF_JSON) VALUES (@UserId, @Prefs);
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -155,13 +155,13 @@ public sealed class AssistantMemoryStore(
         if (confirm)
         {
             await using var archive = new SqlCommand(
-                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME() WHERE USER_ID=@UserId AND STATUS=N'active' AND MEMORY_KEY=@Key;",
+                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', MODIFIED_TIME=SYSUTCDATETIME() WHERE USER_ID=@UserId AND STATUS=N'active' AND MEMORY_KEY=@Key;",
                 connection, transaction);
             archive.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
             archive.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = key;
             await archive.ExecuteNonQueryAsync(token);
             await using var activate = new SqlCommand(
-                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'active', UPDATED_AT=SYSUTCDATETIME(), LAST_ACCESSED_AT=SYSUTCDATETIME() WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
+                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'active', MODIFIED_TIME=SYSUTCDATETIME(), LAST_ACCESSED_AT=SYSUTCDATETIME() WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
                 connection, transaction);
             activate.Parameters.Add("@Id", SqlDbType.BigInt).Value = memoryId;
             activate.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
@@ -170,7 +170,7 @@ public sealed class AssistantMemoryStore(
         else
         {
             await using var reject = new SqlCommand(
-                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME() WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
+                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', MODIFIED_TIME=SYSUTCDATETIME() WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
                 connection, transaction);
             reject.Parameters.Add("@Id", SqlDbType.BigInt).Value = memoryId;
             reject.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
@@ -224,7 +224,7 @@ public sealed class AssistantMemoryStore(
                 // LRU 淘汰：归档最久未访问的一条，而不是拒绝写入。
                 await using var evict = new SqlCommand(
                     """
-                    UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME()
+                    UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', MODIFIED_TIME=SYSUTCDATETIME()
                     WHERE ID = (SELECT TOP 1 ID FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK)
                                 WHERE USER_ID=@UserId AND STATUS IN (N'active', N'pending')
                                 ORDER BY LAST_ACCESSED_AT);
@@ -239,7 +239,7 @@ public sealed class AssistantMemoryStore(
                 (USER_ID, MEMORY_TYPE, MEMORY_KEY, MEMORY_VALUE, SOURCE, SOURCE_MESSAGE_ID, CONFIDENCE, STATUS)
             OUTPUT INSERTED.ID, INSERTED.MEMORY_TYPE, INSERTED.MEMORY_KEY, INSERTED.MEMORY_VALUE,
                     INSERTED.SOURCE, INSERTED.CONFIDENCE, INSERTED.STATUS,
-                    INSERTED.UPDATED_AT, INSERTED.LAST_ACCESSED_AT
+                    INSERTED.MODIFIED_TIME, INSERTED.LAST_ACCESSED_AT
             VALUES (@UserId, @Type, @Key, @Value, @Source, @SourceMessageId, @Confidence, @Status);
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -267,7 +267,7 @@ public sealed class AssistantMemoryStore(
         await connection.OpenAsync(token);
         const string sql = """
             SELECT TOP 200 ID, MEMORY_TYPE, MEMORY_KEY, MEMORY_VALUE, SOURCE,
-                   CONFIDENCE, STATUS, UPDATED_AT, LAST_ACCESSED_AT
+                   CONFIDENCE, STATUS, MODIFIED_TIME, LAST_ACCESSED_AT
             FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK)
             WHERE USER_ID=@UserId AND STATUS=@Status
             ORDER BY LAST_ACCESSED_AT DESC;
@@ -295,7 +295,7 @@ public sealed class AssistantMemoryStore(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME()
+            UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', MODIFIED_TIME=SYSUTCDATETIME()
             WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'active';
             SELECT @@ROWCOUNT;
             """;

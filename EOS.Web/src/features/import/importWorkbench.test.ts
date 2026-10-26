@@ -35,10 +35,10 @@ describe('buildRowStates', () => {
 
   it('对不上任何源列的字段错误落到整行原因里，不会丢', () => {
     const states = buildRowStates(result([
-      { rowNumber: 2, ok: false, code: 'RECORD_OUT_OF_MODULE_FILTER', message: '新建记录不满足模块过滤条件。', fieldErrors: [{ field: 'CONFIRM_TAG', message: '不在范围内。', code: 'X' }] },
+      { rowNumber: 2, ok: false, code: 'RECORD_OUT_OF_MODULE_FILTER', message: '新建记录不满足模块过滤条件。', fieldErrors: [{ field: 'APPROVED', message: '不在范围内。', code: 'X' }] },
     ]), 1, { 0: 'CLIENT_ID' })
 
-    expect(states[0].rowIssues).toEqual(['CONFIRM_TAG：不在范围内。'])
+    expect(states[0].rowIssues).toEqual(['APPROVED：不在范围内。'])
     expect(states[0].cellIssues).toEqual({})
   })
 

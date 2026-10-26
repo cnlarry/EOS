@@ -307,7 +307,7 @@ public sealed class WorkflowEngine(
     /// 同意：顺序步整步通过；会签步（IS_SIGN=1）按 PASS_PERCENT 计数阈值 + MUST_SIGNER 推进；
     /// 非空 jumpNo 且具备 FORWARD_POWER 时向前跳（'0'=直接结束，中间未批任务标记跳过）；
     /// 驳回：解批前置校验（NOT_BACK_FIELDS）后重置 [jumpNo, 当前] 区间任务并退回目标步（空=第一步）；
-    /// 末步/跳转结束：落主表 CONFIRM_TAG + 效果链副作用 + WF_APPROVE 历史。
+    /// 末步/跳转结束：落主表 APPROVED + 效果链副作用 + WF_APPROVE 历史。
     /// </summary>
     public async Task<(bool Success, string? ErrorCode, string? ErrorMessage, bool FlowFinished, string? Message)> ApproveTaskAsync(
         long myTaskId,
@@ -551,8 +551,8 @@ public sealed class WorkflowEngine(
             // 故按身份串原样嵌入。其值由 WorkbenchKeyCondition 在写入时完成单引号转义，回读不加工，
             // 嵌入安全依赖该转义不被移除——修改 Build 时必须同步此处。
             await using var confirm = new SqlCommand(
-                $"UPDATE dbo.[{masterTable}] SET CONFIRM_PERSON=@Person, CONFIRM_DATE=GETDATE(), CONFIRM_TAG=1 " +
-                $"WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};", connection, finalTransaction);
+                $"UPDATE dbo.[{masterTable}] SET APPROVED_BY=@Person, APPROVED_TIME=GETDATE(), APPROVED=1 " +
+                $"WHERE ISNULL(APPROVED,0)=0 AND {keyCondition};", connection, finalTransaction);
             confirm.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = userId;
             var affected = await confirm.ExecuteNonQueryAsync(token);
             if (affected == 0)
@@ -1003,7 +1003,7 @@ public sealed class WorkflowEngine(
             });
         await reader.DisposeAsync();
         await using var confirmCommand = new SqlCommand("""
-            SELECT KEY_VALUE_DESC, LAST_UPDATE_BY
+            SELECT KEY_VALUE_DESC, MODIFIED_BY
             FROM dbo.WF_APPROVE WHERE M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;
             """, connection);
         confirmCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -1103,7 +1103,7 @@ public sealed class WorkflowEngine(
 
     /// <summary>
     /// 发起人撤回在途流程（v2.1）：仅发起人可在流程未完成（WF_STATE='0'）且单据未确认时
-    /// 撤回；未处理任务标记 'W'（已撤回）并写日志，主表保持 CONFIRM_TAG=0（可编辑后重新提交）。
+    /// 撤回；未处理任务标记 'W'（已撤回）并写日志，主表保持 APPROVED=0（可编辑后重新提交）。
     /// </summary>
     public async Task<RecordSaveResult> WithdrawAsync(
         int moduleId,
@@ -1161,10 +1161,10 @@ public sealed class WorkflowEngine(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NOT_FLOW_INITIATOR",
                 "仅发起人可撤回该流程。");
 
-        // 单据未最终确认（CONFIRM_TAG=0）才能撤回
+        // 单据未最终确认（APPROVED=0）才能撤回
         var keyWhere = WorkbenchSql.BuildKeyWhere(pkColumns, keyValues);
         await using (var confirm = new SqlCommand(
-            $"SELECT TOP 1 ISNULL(CONFIRM_TAG,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyWhere};",
+            $"SELECT TOP 1 ISNULL(APPROVED,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyWhere};",
             connection, transaction))
         {
             WorkbenchSql.AddKeyParameters(confirm, pkColumns, keyValues);

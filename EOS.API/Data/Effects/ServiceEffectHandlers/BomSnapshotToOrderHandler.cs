@@ -174,7 +174,7 @@ public sealed class BomSnapshotToOrderHandler : IEffectServiceHandler
             "INSERT INTO dbo." + q(config.TargetMasterTable)
             + " (" + q(config.TypeField) + ", " + q(config.NoField) + ", " + q(config.TargetProductField)
             + ", " + q(config.TargetEditionField) + ", " + q("BATCH_QTY") + ", "
-            + q("CREATE_PERSON") + ", " + q("CREATE_DATE") + ", " + q("CONFIRM_TAG") + ") "
+            + q("CREATED_BY") + ", " + q("CREATED_TIME") + ", " + q("APPROVED") + ") "
             + "SELECT DISTINCT @type, @no, e.PARENT_NO, e.PARENT_EDITION, sm." + q("BATCH_QTY") + ", "
             + "@executor, SYSDATETIME(), 0 "
             + "FROM #EDGE e "

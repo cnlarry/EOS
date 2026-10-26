@@ -7,11 +7,11 @@
 
     ① **占位字段名**。FIELDS.F_DESC 是表单与列表 label 的唯一来源，读取侧的兜底是
        「空则回落字段代号（F_ID）」。但历史上一次性元数据补齐脚本把"无说明"写成了**字符串**
-       `'NULL'`（280 行，2026-08-09，`LAST_UPDATE_BY='EOS-DOC-GEN'`）与 HTML 空实体 `'&nbsp;'`
+       `'NULL'`（280 行，2026-08-09，`MODIFIED_BY='EOS-DOC-GEN'`）与 HTML 空实体 `'&nbsp;'`
        （36 行）。这两类值**非空**，兜底拦不住，于是原样显示到标签上——用户在统一表单上看到
        字面量 "NULL"。注意 NULL / 空串是**合法**的（读取侧会回落 F_ID），不算失败。
 
-    ② **状态位进入复合格**。`CONFIRM_TAG`/`FINISHED_TAG` 被配成版式行的 `CELL_ROLE=2`（同格从字段，
+    ② **状态位进入复合格**。`APPROVED`/`FINISHED` 被配成版式行的 `CELL_ROLE=2`（同格从字段，
        如并入「批核人」格）后，表单只渲染主字段的 label，状态位自己的标签永远不出现——表现就是
        "有批核人、批核日期，却没有批核状态"。元数据本身没错，错在布局把它们配成了附件。
        判据落在**模块级版式表**（`MODULE_FORM_LAYOUT`）：字段级 `FIELDS.FORM_CELL_*` 已退役。
@@ -44,7 +44,7 @@ try {
     # ① 占位字段名
     $placeholder = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @"
 SELECT N'PLACEHOLDER | ' + LTRIM(RTRIM(f.T_ID)) + N'.' + LTRIM(RTRIM(f.F_ID))
-       + N' | F_DESC=' + f.F_DESC + N' | 最近修改=' + LTRIM(RTRIM(ISNULL(f.LAST_UPDATE_BY,'')))
+       + N' | F_DESC=' + f.F_DESC + N' | 最近修改=' + LTRIM(RTRIM(ISNULL(f.MODIFIED_BY,'')))
 FROM dbo.FIELDS f
 WHERE f.F_DESC IN ($placeholderList)
 ORDER BY f.T_ID, f.F_ID;
@@ -61,7 +61,7 @@ SELECT N'LAYOUT_COMPOSITE | M_IDX=' + CONVERT(nvarchar(12), l.M_IDX) + N' | ' + 
        + N' | CELL_ROLE=' + CONVERT(nvarchar(12), l.CELL_ROLE)
        + N' | CELL_GROUP=' + LTRIM(RTRIM(ISNULL(l.CELL_GROUP, N'<null>')))
 FROM dbo.MODULE_FORM_LAYOUT l
-WHERE LTRIM(RTRIM(l.F_ID)) IN (N'CONFIRM_TAG', N'FINISHED_TAG')
+WHERE LTRIM(RTRIM(l.F_ID)) IN (N'APPROVED', N'FINISHED')
   AND (ISNULL(l.CELL_ROLE, 0) <> 0 OR l.CELL_GROUP IS NOT NULL)
 ORDER BY l.M_IDX, l.T_ID, l.F_ID;
 '@
@@ -88,13 +88,13 @@ FROM sample;
         $layoutSample = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
 WITH sample AS (
     SELECT * FROM (VALUES
-        (N'CONFIRM_TAG',  CAST(0 AS int), CAST(NULL AS nvarchar(50))),
-        (N'CONFIRM_TAG',  CAST(2 AS int), N'CONFIRM_PERSON'),
-        (N'FINISHED_TAG', CAST(0 AS int), N'FINISHED_GROUP'),
-        (N'FINISHED_TAG', CAST(0 AS int), CAST(NULL AS nvarchar(50)))
+        (N'APPROVED',  CAST(0 AS int), CAST(NULL AS nvarchar(50))),
+        (N'APPROVED',  CAST(2 AS int), N'APPROVED_BY'),
+        (N'FINISHED', CAST(0 AS int), N'FINISHED_GROUP'),
+        (N'FINISHED', CAST(0 AS int), CAST(NULL AS nvarchar(50)))
     ) AS t(F_ID, CELL_ROLE, CELL_GROUP)
 )
-SELECT N'LAYOUT_COMPOSITE=' + CONVERT(nvarchar(12), SUM(CASE WHEN F_ID IN (N'CONFIRM_TAG', N'FINISHED_TAG')
+SELECT N'LAYOUT_COMPOSITE=' + CONVERT(nvarchar(12), SUM(CASE WHEN F_ID IN (N'APPROVED', N'FINISHED')
         AND (ISNULL(CELL_ROLE, 0) <> 0 OR CELL_GROUP IS NOT NULL) THEN 1 ELSE 0 END))
 FROM sample;
 '@

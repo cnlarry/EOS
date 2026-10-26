@@ -60,7 +60,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
             SELECT COUNT_BIG(1), ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)),0), ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)),0)
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
             INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
-            WHERE s.USER_ID = @UserId AND m.ROLE = 2 AND m.CREATED_AT >= @DayStart;
+            WHERE s.USER_ID = @UserId AND m.ROLE = 2 AND m.CREATED_TIME >= @DayStart;
             """,
             command => command.Parameters.AddWithValue("@UserId", userId), dayStartUtc, token);
 
@@ -69,7 +69,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
             """
             SELECT COUNT_BIG(1), ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)),0), ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)),0)
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
-            WHERE m.ROLE = 2 AND m.CREATED_AT >= @DayStart;
+            WHERE m.ROLE = 2 AND m.CREATED_TIME >= @DayStart;
             """,
             _ => { }, dayStartUtc, token);
 
@@ -81,7 +81,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
                 SELECT CAST(m.ELAPSED_MS AS float) AS MS,
                        PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY CAST(m.ELAPSED_MS AS float)) OVER () AS P95
                 FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
-                WHERE m.ROLE = 2 AND m.ELAPSED_MS IS NOT NULL AND m.CREATED_AT >= @DayStart
+                WHERE m.ROLE = 2 AND m.ELAPSED_MS IS NOT NULL AND m.CREATED_TIME >= @DayStart
             ) x;
             """;
         await using var connection = connections.Create();
@@ -107,7 +107,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
                    ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)),0), ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)),0)
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
             INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
-            WHERE m.ROLE = 2 AND m.CREATED_AT >= @DayStart
+            WHERE m.ROLE = 2 AND m.CREATED_TIME >= @DayStart
             GROUP BY s.USER_ID
             ORDER BY ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)),0) + ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)),0) DESC;
             """;
@@ -135,9 +135,9 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
                    COUNT_BIG(1),
                    ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0),
                    ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0),
-                   ISNULL(MAX(m.CREATED_AT), SYSUTCDATETIME())
+                   ISNULL(MAX(m.CREATED_TIME), SYSUTCDATETIME())
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
-            WHERE m.ROLE = 2 AND m.CREATED_AT >= @Since
+            WHERE m.ROLE = 2 AND m.CREATED_TIME >= @Since
             GROUP BY ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)')
             ORDER BY ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0)
                      + ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0) DESC;
@@ -164,13 +164,13 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
     {
         // 按 UTC 自然日切分，与其它用量口径一致（别在这里悄悄换成服务器本地时区）
         const string sql = """
-            SELECT CAST(m.CREATED_AT AS date) AS USAGE_DAY,
+            SELECT CAST(m.CREATED_TIME AS date) AS USAGE_DAY,
                    COUNT_BIG(1),
                    ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0),
                    ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0)
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
-            WHERE m.ROLE = 2 AND m.CREATED_AT >= @Since
-            GROUP BY CAST(m.CREATED_AT AS date)
+            WHERE m.ROLE = 2 AND m.CREATED_TIME >= @Since
+            GROUP BY CAST(m.CREATED_TIME AS date)
             ORDER BY USAGE_DAY;
             """;
         await using var connection = connections.Create();
@@ -227,7 +227,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
             SET RESERVED_MICROYUAN = CASE WHEN RESERVED_MICROYUAN >= @Reserve THEN RESERVED_MICROYUAN - @Reserve ELSE 0 END,
                 SPENT_MICROYUAN = SPENT_MICROYUAN + @Actual,
                 REQUESTS = REQUESTS + @Completed,
-                UPDATED_AT = SYSUTCDATETIME()
+                MODIFIED_TIME = SYSUTCDATETIME()
             WHERE USER_ID = @UserId AND USAGE_DATE = @Day;
             """;
         foreach (var key in new[] { userId, "*" })
@@ -274,7 +274,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
             """
             UPDATE dbo.ASSISTANT_USAGE_DAY
             SET RESERVED_MICROYUAN = RESERVED_MICROYUAN + @Reserve,
-                UPDATED_AT = SYSUTCDATETIME()
+                MODIFIED_TIME = SYSUTCDATETIME()
             WHERE USER_ID = @UserId AND USAGE_DATE = @Day
               AND SPENT_MICROYUAN + RESERVED_MICROYUAN + @Reserve <= @Cap;
             """, connection, transaction);

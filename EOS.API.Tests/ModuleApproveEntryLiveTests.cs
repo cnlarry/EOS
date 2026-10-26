@@ -180,9 +180,9 @@ public sealed class ModuleApproveEntryLiveTests : IDisposable
             SELECT COUNT(*) FROM dbo.MODULES m
             WHERE ISNULL(m.APPROVE_ENABLED,0)=1
               AND LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,N''))) <> N''
-              AND (COL_LENGTH(N'dbo.'+LTRIM(RTRIM(m.MASTER_TABLE)),N'CONFIRM_TAG') IS NULL
-                OR COL_LENGTH(N'dbo.'+LTRIM(RTRIM(m.MASTER_TABLE)),N'CONFIRM_PERSON') IS NULL
-                OR COL_LENGTH(N'dbo.'+LTRIM(RTRIM(m.MASTER_TABLE)),N'CONFIRM_DATE') IS NULL);
+              AND (COL_LENGTH(N'dbo.'+LTRIM(RTRIM(m.MASTER_TABLE)),N'APPROVED') IS NULL
+                OR COL_LENGTH(N'dbo.'+LTRIM(RTRIM(m.MASTER_TABLE)),N'APPROVED_BY') IS NULL
+                OR COL_LENGTH(N'dbo.'+LTRIM(RTRIM(m.MASTER_TABLE)),N'APPROVED_TIME') IS NULL);
             """);
         Assert.Equal(0, broken);
     }
@@ -193,7 +193,7 @@ public sealed class ModuleApproveEntryLiveTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,M_ROOT_IDX,SORT_IDX,M_TAG,MASTER_TABLE,LAST_UPDATE_BY)
+            INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,M_ROOT_IDX,SORT_IDX,M_TAG,MASTER_TABLE,MODIFIED_BY)
             VALUES (@Id,N'批核入口集成测试-临时模块',N'/workbench',@Id,9998,1,@Table,N'integration-test');
             """, connection);
         command.Parameters.Add("@Id", SqlDbType.Int).Value = _moduleId;
@@ -209,7 +209,7 @@ public sealed class ModuleApproveEntryLiveTests : IDisposable
         await using var command = new SqlCommand(
             """
             INSERT INTO dbo.MODULE_BUSINESS_ACTION
-                (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,ENABLED,FAIL_MODE,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,ENABLED,FAIL_MODE,CREATED_BY,CREATED_TIME,CONFIRM_TAG)
             VALUES
                 (@Id,N'SAVE',1,N'field-accumulate',1,N'BLOCK',N'integration-test',GETDATE(),0),
                 (@Id,N'APPROVE_EFFECT',2,N'inventory-move',1,N'BLOCK',N'integration-test',GETDATE(),0),
@@ -233,9 +233,9 @@ public sealed class ModuleApproveEntryLiveTests : IDisposable
         SELECT TOP 1 t.name
         FROM sys.tables t
         WHERE t.name IN (SELECT LTRIM(RTRIM(T_ID)) FROM dbo.TABLES)
-          AND (COL_LENGTH(N'dbo.'+t.name,N'CONFIRM_TAG') IS NULL
-            OR COL_LENGTH(N'dbo.'+t.name,N'CONFIRM_PERSON') IS NULL
-            OR COL_LENGTH(N'dbo.'+t.name,N'CONFIRM_DATE') IS NULL)
+          AND (COL_LENGTH(N'dbo.'+t.name,N'APPROVED') IS NULL
+            OR COL_LENGTH(N'dbo.'+t.name,N'APPROVED_BY') IS NULL
+            OR COL_LENGTH(N'dbo.'+t.name,N'APPROVED_TIME') IS NULL)
         ORDER BY t.name;
         """);
 

@@ -36,11 +36,11 @@ describe('businessActionText', () => {
 
     expect(formatOpSentence({
       targetTable: 'PUR_PURCHASE_D',
-      targetField: 'FINISHED_TAG',
+      targetField: 'FINISHED',
       opCode: 'SET_WHEN',
       sourceScope: 'CONSTANT',
       sourceConstant: '1',
-    })).toBe("PUR_PURCHASE_D.FINISHED_TAG := 常量 '1'")
+    })).toBe("PUR_PURCHASE_D.FINISHED := 常量 '1'")
 
     expect(formatOpSentence({
       targetTable: 'MOC_PRODUCE_D',
@@ -103,9 +103,9 @@ describe('businessActionText', () => {
       logic: 'AND',
       items: [
         { type: 'field-compare', left: { scope: 'TARGET', field: 'RECEIVE_QTY' }, op: 'GE', right: { scope: 'TARGET', field: 'QTY' } },
-        { type: 'value-eq', field: { scope: 'TARGET', field: 'FINISHED_TAG' }, value: 1 },
+        { type: 'value-eq', field: { scope: 'TARGET', field: 'FINISHED' }, value: 1 },
       ],
-    }))).toBe('目标行.RECEIVE_QTY >= 目标行.QTY 且 目标行.FINISHED_TAG = 1')
+    }))).toBe('目标行.RECEIVE_QTY >= 目标行.QTY 且 目标行.FINISHED = 1')
     expect(formatCondition(JSON.stringify({ type: 'switch', key: 'PRO_MRP', value: true }))).toBe('系统开关 PRO_MRP = true')
     expect(formatCondition(null)).toBeNull()
   })

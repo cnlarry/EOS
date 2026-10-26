@@ -12,11 +12,11 @@ namespace EOS.API.Data;
 /// 工作台审批服务：
 /// 批核/解批/结案/未结案/自动批核 + 状态机副作用 + 幂等 + 删除补偿守卫。
 /// 补偿语义（落定）：
-/// - 结案单据（FINISHED_TAG=1）禁止删除，需先取消结案；
-/// - 任何已批核单据（CONFIRM_TAG=1，含自动批核模块）禁止删除，需先解批；
+/// - 结案单据（FINISHED=1）禁止删除，需先取消结案；
+/// - 任何已批核单据（APPROVED=1，含自动批核模块）禁止删除，需先解批；
 /// - 已产生库存流水的单据禁止删除。**解批是冲销留痕**：它另写一条反向流水、原流水按审计保留，
 ///   所以解批之后再删仍会被拒——这是设计的必然结果，不是可以绕过的中间态。
-/// 批核副作用 SP 自带事务（自动提交），状态守卫（CONFIRM_TAG/FINISHED_TAG）防重复副作用，
+/// 批核副作用 SP 自带事务（自动提交），状态守卫（APPROVED/FINISHED）防重复副作用，
 /// 幂等键提供顺序重放保护；解批前置 NOBACK 校验原样保留。
 /// </summary>
 public sealed class WorkbenchApprovalService(
@@ -58,9 +58,9 @@ public sealed class WorkbenchApprovalService(
 
     /// <summary>
     /// 结案/取消结案。
-    /// 语义：更新主表 FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE，并同步该单明细表的 FINISHED_TAG
+    /// 语义：更新主表 FINISHED/FINISHED_BY/FINISHED_TIME，并同步该单明细表的 FINISHED
     /// （单据级结案即"全部结案"），随后跑 ENDCASE / UNENDCASE 效果链——三者同一事务。
-    /// 结案仅允许 FINISHED_TAG=0，取消结案仅允许 FINISHED_TAG=1（守卫防重复/冲突）。
+    /// 结案仅允许 FINISHED=0，取消结案仅允许 FINISHED=1（守卫防重复/冲突）。
     /// </summary>
     public async Task<RecordSaveResult> FinishAsync(
         WorkbenchDefinition definition,
@@ -112,10 +112,10 @@ public sealed class WorkbenchApprovalService(
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         // 缺列不再静默返回成功（调用方会误以为已批核），而是显式失败并引导补列。
-        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "APPROVED", token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
-                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 APPROVED 列：请补列后重发布，或关闭自动批核。");
         }
         var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
@@ -127,7 +127,7 @@ public sealed class WorkbenchApprovalService(
         {
             return RecordSaveResult.Success(keyValues);
         }
-        var confirmSql = $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};";
+        var confirmSql = $"UPDATE dbo.[{definition.MasterTable}] SET APPROVED_BY=@ConfirmPerson,APPROVED_TIME=GETDATE(),APPROVED=1 WHERE ISNULL(APPROVED,0)=0 AND {keyWhere};";
         await using (var confirmCommand = new SqlCommand(confirmSql, connection))
         {
             confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = confirmPerson.Trim();
@@ -151,7 +151,7 @@ public sealed class WorkbenchApprovalService(
     /// 效果引擎接管后的批核/解批生效链——自动批核与手工批核**共用这一条**：
     /// 同一事务内依次执行「该阶段校验闸 → 守卫翻转确认状态 → 效果链 → 审计」，
     /// 任一步失败整链回滚：确认状态自然还原、效果零写入（的阻断语义，无需补偿写）。
-    /// 幂等与并发安全：状态翻转带 `ISNULL(CONFIRM_TAG,0)=0` 守卫，重复触发/并发触发时
+    /// 幂等与并发安全：状态翻转带 `ISNULL(APPROVED,0)=0` 守卫，重复触发/并发触发时
     /// 只有第一个写者会执行效果链，其余直接按"已生效"成功返回，不会重复累计。
     /// </summary>
     private async Task<RecordSaveResult> RunEngineApprovalAsync(
@@ -216,10 +216,10 @@ public sealed class WorkbenchApprovalService(
         // 命令必须显式带上事务，否则驱动直接拒绝执行。真实路径在开事务之前调用，传 null。
         SqlTransaction? transaction = null)
     {
-        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CONFIRM_TAG", token))
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "APPROVED", token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
-                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 APPROVED 列：请补列后重发布，或关闭自动批核。");
         }
         var originalState = await ReadConfirmStateAsync(
             connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction);
@@ -309,7 +309,7 @@ public sealed class WorkbenchApprovalService(
     /// <summary>
     /// 批核/解批的**事务内核心**：校验闸 → 翻转确认状态 → 效果链 → 审计，**不提交**。
     /// 提交由调用方决定——真实路径提交，预演路径无条件回滚，两条路共用这一段。
-    /// 翻转必须在这里做（而不是只跑效果链）：效果条件可能引用 CONFIRM_TAG，
+    /// 翻转必须在这里做（而不是只跑效果链）：效果条件可能引用 APPROVED，
     /// 不翻转就求值会得到错误答案。
     /// </summary>
     public async Task<ApprovalCoreResult> RunApprovalCoreAsync(
@@ -337,8 +337,8 @@ public sealed class WorkbenchApprovalService(
         var beforeConfirm = await ReadConfirmStateAsync(
             connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction);
         var confirmSql = approve
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyWhere};";
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET APPROVED_BY=@ConfirmPerson,APPROVED_TIME=GETDATE(),APPROVED=1 WHERE ISNULL(APPROVED,0)=0 AND {keyWhere};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET APPROVED_BY=@ConfirmPerson,APPROVED_TIME=GETDATE(),APPROVED=0 WHERE APPROVED=1 AND {keyWhere};";
         await using (var confirmCommand = new SqlCommand(confirmSql, connection, transaction))
         {
             confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = confirmPerson.Trim();
@@ -352,7 +352,7 @@ public sealed class WorkbenchApprovalService(
                         approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。"));
             }
         }
-        // 解批会把 CONFIRM_PERSON / CONFIRM_DATE 一并覆盖（状态列只存"最后一位操作人"），
+        // 解批会把 APPROVED_BY / APPROVED_TIME 一并覆盖（状态列只存"最后一位操作人"），
         // 因此"当初是谁在何时结的账"**只**留在这条审计的旧值里——反结账留痕靠的就是它。
         var confirmChanges = ConfirmStateChanges(
             beforeConfirm,
@@ -432,8 +432,8 @@ public sealed class WorkbenchApprovalService(
         IReadOnlyList<string> keyValues,
         CancellationToken token)
     {
-        var hasConfirm = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CONFIRM_TAG", token);
-        var hasFinished = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_TAG", token);
+        var hasConfirm = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "APPROVED", token);
+        var hasFinished = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED", token);
         if (!hasConfirm && !hasFinished)
         {
             return null;
@@ -443,11 +443,11 @@ public sealed class WorkbenchApprovalService(
         var stateColumns = new List<string>();
         if (hasConfirm)
         {
-            stateColumns.Add("CONFIRM_TAG");
+            stateColumns.Add("APPROVED");
         }
         if (hasFinished)
         {
-            stateColumns.Add("FINISHED_TAG");
+            stateColumns.Add("FINISHED");
         }
         var sql = $"SELECT {string.Join(',', stateColumns.Select(column => $"ISNULL([{column}],0)"))} FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) WHERE {keyWhere};";
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -457,8 +457,8 @@ public sealed class WorkbenchApprovalService(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        var confirmIndex = stateColumns.FindIndex(column => column == "CONFIRM_TAG");
-        var finishedIndex = stateColumns.FindIndex(column => column == "FINISHED_TAG");
+        var confirmIndex = stateColumns.FindIndex(column => column == "APPROVED");
+        var finishedIndex = stateColumns.FindIndex(column => column == "FINISHED");
         var confirm = confirmIndex >= 0 && reader.GetBoolean(confirmIndex);
         var finished = finishedIndex >= 0 && reader.GetBoolean(finishedIndex);
         await reader.DisposeAsync();
@@ -494,13 +494,13 @@ public sealed class WorkbenchApprovalService(
         SqlConnection connection, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
         CancellationToken token, SqlTransaction? transaction = null)
     {
-        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, table, "FINISHED_TAG", token))
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, table, "FINISHED", token))
         {
             return null;
         }
         var keyWhere = WorkbenchSql.BuildKeyWhere(pkColumns, keyValues);
         await using var command = new SqlCommand(
-            $"SELECT FINISHED_TAG FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere};", connection, transaction);
+            $"SELECT FINISHED FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere};", connection, transaction);
         WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
         await using var reader = await command.ExecuteReaderAsync(token);
         return await reader.ReadAsync(token) && !reader.IsDBNull(0) ? reader.GetBoolean(0) : null;
@@ -549,11 +549,11 @@ public sealed class WorkbenchApprovalService(
         if (approve && definition.AutoApprove)
         {
             // 与保存路径同口径，缺列显式失败（否则 ReadConfirmStateAsync 直查
-            // CONFIRM_TAG 会抛 SQL 异常，以 500 收场）。
-            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+            // APPROVED 会抛 SQL 异常，以 500 收场）。
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "APPROVED", token))
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
-                    $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+                    $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 APPROVED 列：请补列后重发布，或关闭自动批核。");
             }
             var state = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
             if (state is null)
@@ -584,7 +584,7 @@ public sealed class WorkbenchApprovalService(
 
     /// <summary>
     /// 无副作用批核/解批（无流程、无效果链）：先过 APPROVE / DEAPPROVE 阶段的**声明式校验闸**，
-    /// 再翻转 CONFIRM_TAG（+经办人/日期）并写审计；解批另保留 NOT_BACK_FIELDS 前置校验。
+    /// 再翻转 APPROVED（+经办人/日期）并写审计；解批另保留 NOT_BACK_FIELDS 前置校验。
     /// 与保存路径的自动批核对称（那边无能力即纯状态翻转）。
     ///
     /// **校验闸这一步不能省**：它是模块的声明式校验目录，与"谁负责执行批核"无关——
@@ -603,10 +603,10 @@ public sealed class WorkbenchApprovalService(
         // 校验闸 → 状态翻转 → 审计走**同一事务**：校验不过时状态与审计都不落库
         // （与引擎接管路径 RunApprovalCoreAsync 同形）。早退返回时未提交，事务随之回滚。
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CONFIRM_TAG", token))
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "APPROVED", token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
-                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 APPROVED 列：请补列后重发布，或关闭自动批核。");
         }
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction);
         if (originalState is null)
@@ -643,8 +643,8 @@ public sealed class WorkbenchApprovalService(
         }
         var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var confirmSql = approve
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyWhere};";
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET APPROVED_BY=@ConfirmPerson,APPROVED_TIME=GETDATE(),APPROVED=1 WHERE ISNULL(APPROVED,0)=0 AND {keyWhere};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET APPROVED_BY=@ConfirmPerson,APPROVED_TIME=GETDATE(),APPROVED=0 WHERE APPROVED=1 AND {keyWhere};";
         await using (var confirmCommand = new SqlCommand(confirmSql, connection, transaction))
         {
             confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
@@ -706,11 +706,11 @@ public sealed class WorkbenchApprovalService(
     /// <summary>
     /// 结案/取消结案的**事务内核心**：主表标记 → 明细标记 → 效果链 → 审计，**不提交**（提交由调用方决定）。
     /// 四步同一事务，任一步失败整笔回滚——不许出现"标记翻了但预留没释放"这类半截状态。
-    /// 重复点击在第一步就被守卫挡下（`ISNULL(FINISHED_TAG,0)` 判据 + 影响 0 行），
+    /// 重复点击在第一步就被守卫挡下（`ISNULL(FINISHED,0)` 判据 + 影响 0 行），
     /// 此时尚未写入任何东西，也不会跑效果链：重复结案不会变成"再释放一次"。
     /// </summary>
     /// <remarks>
-    /// 明细腿的口径是**全部结案**：单据级结案同时把该单明细行的 `FINISHED_TAG` 置为同一方向。
+    /// 明细腿的口径是**全部结案**：单据级结案同时把该单明细行的 `FINISHED` 置为同一方向。
     /// 现代界面只有一个单据级结案入口，映射的是既有实现 `doFinish(type=3)`（明细全置位 + 主表置位）；
     /// 明细表没有该列（含单表模块）就跳过这一步。
     /// </remarks>
@@ -725,23 +725,23 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token)
     {
         var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
-        var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_TAG", token);
+        var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED", token);
         if (!hasTag)
         {
             return ApprovalCoreResult.BlockedBy(
                 RecordSaveResult.Failed(RecordAccessStatus.NotFound, "ENDCASE_NOT_SUPPORTED", "该模块不支持结案操作。"));
         }
-        var hasPerson = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_PERSON", token);
-        var hasDate = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_DATE", token);
+        var hasPerson = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_BY", token);
+        var hasDate = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_TIME", token);
         var detailTable = string.IsNullOrWhiteSpace(definition.DetailTable) ? null : definition.DetailTable;
         var hasDetailTag = detailTable is not null
-            && await WorkbenchSql.ColumnExistsAsync(connection, transaction, detailTable, "FINISHED_TAG", token);
+            && await WorkbenchSql.ColumnExistsAsync(connection, transaction, detailTable, "FINISHED", token);
         var masterSql = finish
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyWhere};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE FINISHED_TAG=1 AND {keyWhere};";
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED=1{(hasPerson ? ",FINISHED_BY=@Person" : string.Empty)}{(hasDate ? ",FINISHED_TIME=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED,0)=0 AND {keyWhere};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED=0{(hasPerson ? ",FINISHED_BY=@Person" : string.Empty)}{(hasDate ? ",FINISHED_TIME=GETDATE()" : string.Empty)} WHERE FINISHED=1 AND {keyWhere};";
         var detailSql = detailTable is null || !hasDetailTag
             ? null
-            : $"UPDATE dbo.[{detailTable}] SET FINISHED_TAG={(finish ? 1 : 0)} WHERE {keyWhere};";
+            : $"UPDATE dbo.[{detailTable}] SET FINISHED={(finish ? 1 : 0)} WHERE {keyWhere};";
 
         await using (var command = new SqlCommand(masterSql, connection, transaction))
         {
@@ -901,7 +901,7 @@ public sealed class WorkbenchApprovalService(
     /// 批核 / 解批写进审计的**前后值**：这次动作改的就是确认状态那三列。
     /// </summary>
     /// <remarks>
-    /// 为什么非记不可（而不是"审计有事件就够了"）：解批会把 `CONFIRM_PERSON` / `CONFIRM_DATE`
+    /// 为什么非记不可（而不是"审计有事件就够了"）：解批会把 `APPROVED_BY` / `APPROVED_TIME`
     /// **一并覆盖**（这三列只存"最后一位操作人"），于是"当初是谁在何时结的账"在状态列上**不留痕迹**，
     /// 只留在这条审计的旧值里。 要求反结账必须留痕，靠的就是它。
     /// 三次调用点（引擎路径 / 无副作用路径 / 自动批核）共用本方法，前后值形态一致。
@@ -916,11 +916,11 @@ public sealed class WorkbenchApprovalService(
         }
         return
         [
-            new("CONFIRM_TAG", FlagText(old.Tag), FlagText(now.Tag), null),
-            // CONFIRM_PERSON 是定长 NCHAR：读出来带尾随空格；写入时本服务先 Trim()，
+            new("APPROVED", FlagText(old.Tag), FlagText(now.Tag), null),
+            // APPROVED_BY 是定长 NCHAR：读出来带尾随空格；写入时本服务先 Trim()，
             // 故新旧值都按去空格记，前后值口径与写入口径一致。
-            new("CONFIRM_PERSON", old.Person?.Trim(), now.Person?.Trim(), null),
-            new("CONFIRM_DATE", DateText(old.Date), DateText(now.Date), null)
+            new("APPROVED_BY", old.Person?.Trim(), now.Person?.Trim(), null),
+            new("APPROVED_TIME", DateText(old.Date), DateText(now.Date), null)
         ];
     }
 
@@ -933,7 +933,7 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token, SqlTransaction? transaction = null)
     {
         var keyWhere = WorkbenchSql.BuildKeyWhere(pkColumns, keyValues);
-        var sql = $"SELECT CONFIRM_TAG,CONFIRM_PERSON,CONFIRM_DATE FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere};";
+        var sql = $"SELECT APPROVED,APPROVED_BY,APPROVED_TIME FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere};";
         await using var command = new SqlCommand(sql, connection, transaction);
         WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
         await using var reader = await command.ExecuteReaderAsync(token);

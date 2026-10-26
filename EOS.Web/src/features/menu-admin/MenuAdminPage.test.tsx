@@ -13,7 +13,7 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
   NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
   FORM_TABS: null, FORM_COLUMNS: null,
-  LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
+  MODIFIED_BY: null, MODIFIED_TIME: null,
   M_ICON: null,
   Icon: null,
   APPROVE_ENABLED: false,
@@ -1074,12 +1074,12 @@ describe('MenuAdminPage', () => {
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /客户订单/ }))
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
-    await waitFor(() => expect(screen.getByText(/缺少 CONFIRM_TAG/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/缺少 APPROVED/)).toBeInTheDocument())
   })
 
   it('主表具备状态列时不提示', async () => {
     mockPageGet(async (path: string) => {
-      if (path.includes('/admin/tables/') && path.endsWith('/columns')) return [{ name: 'ORDER_NO' }, { name: 'CONFIRM_TAG' }]
+      if (path.includes('/admin/tables/') && path.endsWith('/columns')) return [{ name: 'ORDER_NO' }, { name: 'APPROVED' }]
       return { total: 2, modules: [moduleNode(11, '基本参数', null), { ...withTables, M_IDX: 1405, M_DESC: '客户订单', M_P_IDX: null, AUTO_APPROVE: true }] }
     })
     renderPage()
@@ -1087,7 +1087,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /客户订单/ }))
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByLabelText('操作主表名')).toHaveValue('COMPANY'))
-    expect(screen.queryByText(/缺少 CONFIRM_TAG/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/缺少 APPROVED/)).not.toBeInTheDocument()
   })
 
   it('230101 只定义模块本身：页签只剩基础 / 主表 / 子表，行为配置已全部迁出', async () => {

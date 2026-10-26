@@ -15,7 +15,7 @@ namespace EOS.API.Features.Import;
 /// </para>
 ///
 /// <para>
-/// 这是用户偏好级数据：不参与发布、不进统一表单、不写审计（写入者由 LAST_UPDATE_BY 留档）。
+/// 这是用户偏好级数据：不参与发布、不进统一表单、不写审计（写入者由 MODIFIED_BY 留档）。
 /// 读写在同一条参数化语句里完成，表名不来自任何输入。
 /// </para>
 /// </summary>
@@ -25,8 +25,8 @@ public sealed class ImportMappingStore(DbConnectionFactory connections)
     private const int MaxEntries = 500;
 
     private const string SelectSql = """
-        SELECT TOP 1 LTRIM(RTRIM(ISNULL(SOURCE_NAME,''))), MAPPING_JSON, LAST_UPDATE_DATE,
-               LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY,'')))
+        SELECT TOP 1 LTRIM(RTRIM(ISNULL(SOURCE_NAME,''))), MAPPING_JSON, MODIFIED_TIME,
+               LTRIM(RTRIM(ISNULL(MODIFIED_BY,'')))
         FROM dbo.IMPORT_MAPPING
         WHERE USER_ID = @UserId AND M_IDX = @ModuleId;
         """;
@@ -42,9 +42,9 @@ public sealed class ImportMappingStore(DbConnectionFactory connections)
            ON target.USER_ID = source.USER_ID AND target.M_IDX = source.M_IDX
         WHEN MATCHED THEN
             UPDATE SET SOURCE_NAME = @SourceName, MAPPING_JSON = @MappingJson,
-                       LAST_UPDATE_BY = @UpdatedBy, LAST_UPDATE_DATE = SYSDATETIME()
+                       MODIFIED_BY = @UpdatedBy, MODIFIED_TIME = SYSDATETIME()
         WHEN NOT MATCHED THEN
-            INSERT (USER_ID, M_IDX, SOURCE_NAME, MAPPING_JSON, LAST_UPDATE_BY, LAST_UPDATE_DATE)
+            INSERT (USER_ID, M_IDX, SOURCE_NAME, MAPPING_JSON, MODIFIED_BY, MODIFIED_TIME)
             VALUES (@UserId, @ModuleId, @SourceName, @MappingJson, @UpdatedBy, SYSDATETIME());
         """;
 

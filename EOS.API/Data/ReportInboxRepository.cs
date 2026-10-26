@@ -31,7 +31,7 @@ public sealed class ReportInboxRepository(
         const string sql = """
             SELECT ID, LTRIM(RTRIM(USER_ID)), M_IDX, LTRIM(RTRIM(REPORT_ID)),
                    LTRIM(RTRIM(SCHEDULE_TYPE)), RUN_HOUR, RUN_MINUTE, WEEKDAY, MONTH_DAY,
-                   ISNULL(ENABLED_TAG,0), LAST_RUN_AT, LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY,''))), LAST_UPDATE_DATE
+                   ISNULL(ENABLED_TAG,0), LAST_RUN_AT, LTRIM(RTRIM(ISNULL(MODIFIED_BY,''))), MODIFIED_TIME
             FROM dbo.REPORT_SUBSCRIPTION WITH (NOLOCK)
             WHERE USER_ID=@UserId ORDER BY ID;
             """;
@@ -63,7 +63,7 @@ public sealed class ReportInboxRepository(
     {
         const string sql = """
             INSERT INTO dbo.REPORT_SUBSCRIPTION
-                (USER_ID,M_IDX,REPORT_ID,SCHEDULE_TYPE,RUN_HOUR,RUN_MINUTE,WEEKDAY,MONTH_DAY,ENABLED_TAG,CREATE_PERSON,CREATE_DATE)
+                (USER_ID,M_IDX,REPORT_ID,SCHEDULE_TYPE,RUN_HOUR,RUN_MINUTE,WEEKDAY,MONTH_DAY,ENABLED_TAG,CREATED_BY,CREATED_TIME)
             OUTPUT INSERTED.ID
             VALUES (@UserId,@ModuleId,@ReportId,@ScheduleType,@RunHour,@RunMinute,@Weekday,@MonthDay,@Enabled,@User,SYSDATETIME());
             """;
@@ -84,7 +84,7 @@ public sealed class ReportInboxRepository(
         const string sql = """
             UPDATE dbo.REPORT_SUBSCRIPTION
             SET REPORT_ID=@ReportId,SCHEDULE_TYPE=@ScheduleType,RUN_HOUR=@RunHour,RUN_MINUTE=@RunMinute,
-                WEEKDAY=@Weekday,MONTH_DAY=@MonthDay,ENABLED_TAG=@Enabled,LAST_UPDATE_BY=@User,LAST_UPDATE_DATE=SYSDATETIME()
+                WEEKDAY=@Weekday,MONTH_DAY=@MonthDay,ENABLED_TAG=@Enabled,MODIFIED_BY=@User,MODIFIED_TIME=SYSDATETIME()
             WHERE ID=@Id AND USER_ID=@UserId;
             """;
         await using var connection = connections.Create();
@@ -148,7 +148,7 @@ public sealed class ReportInboxRepository(
         const string sql = """
             SELECT ID, LTRIM(RTRIM(USER_ID)), M_IDX, LTRIM(RTRIM(REPORT_ID)),
                    LTRIM(RTRIM(SCHEDULE_TYPE)), RUN_HOUR, RUN_MINUTE, WEEKDAY, MONTH_DAY,
-                   ISNULL(ENABLED_TAG,0), LAST_RUN_AT, LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY,''))), LAST_UPDATE_DATE
+                   ISNULL(ENABLED_TAG,0), LAST_RUN_AT, LTRIM(RTRIM(ISNULL(MODIFIED_BY,''))), MODIFIED_TIME
             FROM dbo.REPORT_SUBSCRIPTION WITH (NOLOCK)
             WHERE ISNULL(ENABLED_TAG,0)=1
               AND (LAST_RUN_AT IS NULL OR DATEDIFF(MINUTE, LAST_RUN_AT, @Now) >= 1)

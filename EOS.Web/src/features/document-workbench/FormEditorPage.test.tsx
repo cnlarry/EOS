@@ -44,7 +44,7 @@ const formDefinition: FormDefinition = {
     field('FLAG', '启用', { dataType: 'bit', defaultValue: '1' }),
   ],
   // 浏览态固定区：生命周期字段不参与版式，只随 view 下发；这里给一个建立日期作代表。
-  lifecycleFields: [field('CREATE_DATE', '创建时间', { dataType: 'datetime', serverFilled: true, isReadonly: true })],
+  lifecycleFields: [field('CREATED_TIME', '创建时间', { dataType: 'datetime', serverFilled: true, isReadonly: true })],
   detailFields: [field('ITEM', '明细项', { isRequired: true })],
   masterPkOrder: ['PRO_NO', 'EDITION'],
   detailNoFields: 'PRO_NO',
@@ -70,7 +70,7 @@ const formDefinition: FormDefinition = {
 }
 
 const recordBundle = {
-  master: { PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true, CREATE_DATE: '2026-08-01T00:00:00Z' },
+  master: { PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true, CREATED_TIME: '2026-08-01T00:00:00Z' },
   details: [{ ITEM: 'X1' }],
 }
 
@@ -432,7 +432,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -445,7 +445,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: true } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -460,7 +460,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -480,7 +480,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: false } }
       if (p.includes('/workflow/1209/history')) return { rows: [
         { kind: 'task', step: '000', stepDesc: '提交送审', approver: 'admin', state: 'A', message: '请加急', date: '2026-08-26 10:00' },
         { kind: 'task', step: '001', stepDesc: '一级审批', approver: 'admin', state: 'Y', message: '同意', date: '2026-08-26 10:01' },
@@ -497,13 +497,13 @@ describe('FormEditorPage', () => {
     expect(screen.getByText('流程完成')).toBeInTheDocument()
   })
 
-  it('浏览模式点击结案调用 endcase 并刷新记录（FINISHED_TAG=false）', async () => {
+  it('浏览模式点击结案调用 endcase 并刷新记录（FINISHED=false）', async () => {
     const postMock = vi.fn().mockResolvedValue({ key: ['P1', 'A'] })
     apiClientMock.post.mockImplementation(postMock)
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, canEndCase: true, canUnEndCase: false }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -519,7 +519,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, canEndCase: false, canUnEndCase: false }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -528,11 +528,11 @@ describe('FormEditorPage', () => {
     expect(screen.queryByRole('button', { name: '取消结案' })).not.toBeInTheDocument()
   })
 
-  it('浏览模式已审批（CONFIRM_TAG=true）时编辑按钮禁用，批核/解批互斥仍显示解批', async () => {
+  it('浏览模式已审批（APPROVED=true）时编辑按钮禁用，批核/解批互斥仍显示解批', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: true, FINISHED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -545,7 +545,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true, canApprove: false, canDeapprove: false }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false, FINISHED_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: false, FINISHED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -553,11 +553,11 @@ describe('FormEditorPage', () => {
     expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
   })
 
-  it('浏览模式已结案显示取消结案按钮（FINISHED_TAG=true + canUnEndCase）', async () => {
+  it('浏览模式已结案显示取消结案按钮（FINISHED=true + canUnEndCase）', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, canEndCase: true, canUnEndCase: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: true } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED: true } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -565,11 +565,11 @@ describe('FormEditorPage', () => {
     expect(screen.queryByRole('button', { name: '结案' })).not.toBeInTheDocument()
   })
 
-  it('浏览模式已结案（FINISHED_TAG=true）时编辑/解批按钮禁用', async () => {
+  it('浏览模式已结案（FINISHED=true）时编辑/解批按钮禁用', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: true } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: true, FINISHED: true } }
       throw new Error(`unexpected GET ${p}`)
     })
     renderEditor('/workbench/1209/view/P1/A')
@@ -622,7 +622,7 @@ describe('FormEditorPage', () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
       if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
-      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: false } }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, APPROVED: true, FINISHED: false } }
       throw new Error(`unexpected GET ${p}`)
     })
     const { unmount: unmountConfirmed } = renderEditor('/workbench/1209/view/P1/A')
@@ -1411,10 +1411,10 @@ describe('FormEditorPage', () => {
 
   it('浏览态：生命周期字段从业务网格移出，状态在工具栏、经办信息在底部固定区等分四组', async () => {
     const lifecycle = [
-      field('CREATE_PERSON', '建立人'), field('CREATE_DATE', '建立日期'),
-      field('LAST_UPDATE_BY', '修改人'), field('LAST_UPDATE_DATE', '修改日期'),
-      field('CONFIRM_TAG', '批核状态'), field('CONFIRM_PERSON', '批核人'), field('CONFIRM_DATE', '批核日期'),
-      field('FINISHED_TAG', '结案状态'), field('FINISHED_PERSON', '结案人'), field('FINISHED_DATE', '结案日期'),
+      field('CREATED_BY', '建立人'), field('CREATED_TIME', '建立日期'),
+      field('MODIFIED_BY', '修改人'), field('MODIFIED_TIME', '修改日期'),
+      field('APPROVED', '批核状态'), field('APPROVED_BY', '批核人'), field('APPROVED_TIME', '批核日期'),
+      field('FINISHED', '结案状态'), field('FINISHED_BY', '结案人'), field('FINISHED_TIME', '结案日期'),
     ]
     const viewForm = {
       ...formDefinition,
@@ -1430,12 +1430,12 @@ describe('FormEditorPage', () => {
           ...recordBundle,
           master: {
             ...recordBundle.master,
-            CONFIRM_TAG: true,
-            FINISHED_TAG: false,
-            CREATE_PERSON: '管理员',
-            CREATE_DATE: '2026-10-14T11:16:43',
-            CONFIRM_PERSON: '王五',
-            CONFIRM_DATE: '2026-10-14T11:16:43',
+            APPROVED: true,
+            FINISHED: false,
+            CREATED_BY: '管理员',
+            CREATED_TIME: '2026-10-14T11:16:43',
+            APPROVED_BY: '王五',
+            APPROVED_TIME: '2026-10-14T11:16:43',
           },
         }
       }
@@ -1447,7 +1447,7 @@ describe('FormEditorPage', () => {
     expect(screen.getByText('未结案')).toBeInTheDocument()
     expect(screen.queryByText('单据信息')).not.toBeInTheDocument()
     // 生命周期字段不再占业务网格的格位
-    expect(container.querySelector('.erp-form-grid [data-field-key="CREATE_DATE"]')).toBeNull()
+    expect(container.querySelector('.erp-form-grid [data-field-key="CREATED_TIME"]')).toBeNull()
     const block = container.querySelector<HTMLElement>('.erp-form-lifecycle')
     expect(block).not.toBeNull()
     expect(block!.style.getPropertyValue('--erp-lifecycle-groups')).toBe('4')

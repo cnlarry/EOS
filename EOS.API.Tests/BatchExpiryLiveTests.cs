@@ -309,7 +309,7 @@ public sealed class BatchExpiryLiveTests
             -- 库别行只把批次档位设为"保留"，其余维度保持最松：本用例考的是效期，不是档位组合。
             INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH)
                 VALUES (@Depot, 0, N'FIXED', 1, 0, 1, 1);
-            INSERT INTO dbo.INV_OCCUR_IN_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, LAST_UPDATE_BY)
+            INSERT INTO dbo.INV_OCCUR_IN_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, MODIFIED_BY)
                 VALUES (@Type, @No, '2026-09-01', N'ADR25EX');
             """,
             ("@Depot", Depot), ("@Pro", Product), ("@Unit", Unit), ("@Type", Type), ("@No", No));
@@ -333,7 +333,7 @@ public sealed class BatchExpiryLiveTests
         {
             await ExecuteAsync(connection, transaction,
                 "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, "
-                + "CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG) "
+                + "CREATED_BY, CREATED_TIME, APPROVED, FINISHED) "
                 + "VALUES (N'EXLOT1', @Pro, @InSum, @OutSum, @Effect, N'ADR25EX', SYSDATETIME(), 0, 0)",
                 ("@Pro", Product), ("@InSum", row.InSum), ("@OutSum", row.OutSum), ("@Effect", row.EffectDate));
         }

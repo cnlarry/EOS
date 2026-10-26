@@ -75,7 +75,7 @@ public sealed class ReportFormLayoutRepository(
         {
             const string insertLayoutSql = """
                 INSERT INTO dbo.REPORT_FORM_LAYOUT
-                    (BASE_FORMAT_ID, OWNER_ID, LAYOUT_JSON, LAYOUT_VERSION, KIND, CREATE_PERSON, LAST_UPDATE_BY, LAST_UPDATE_DATE)
+                    (BASE_FORMAT_ID, OWNER_ID, LAYOUT_JSON, LAYOUT_VERSION, KIND, CREATED_BY, MODIFIED_BY, MODIFIED_TIME)
                 OUTPUT INSERTED.LAYOUT_ID
                 VALUES (@ModuleId, @OwnerId, @LayoutJson, 1, 'document', @UserId, @UserId, SYSDATETIME());
                 """;
@@ -131,8 +131,8 @@ public sealed class ReportFormLayoutRepository(
                 UPDATE dbo.REPORT_FORM_LAYOUT
                 SET LAYOUT_JSON = @LayoutJson,
                     LAYOUT_VERSION = LAYOUT_VERSION + 1,
-                    LAST_UPDATE_BY = @UserId,
-                    LAST_UPDATE_DATE = SYSDATETIME()
+                    MODIFIED_BY = @UserId,
+                    MODIFIED_TIME = SYSDATETIME()
                 WHERE LAYOUT_ID = @LayoutId;
                 """;
             await using var command = new SqlCommand(updateSql, connection, transaction);
@@ -157,7 +157,7 @@ public sealed class ReportFormLayoutRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT VERSION, LTRIM(RTRIM(ISNULL(CREATE_PERSON, ''))), CREATE_DATE
+            SELECT VERSION, LTRIM(RTRIM(ISNULL(CREATED_BY, ''))), CREATED_TIME
             FROM dbo.REPORT_FORM_LAYOUT_VERSION WITH (NOLOCK)
             WHERE LAYOUT_ID = @LayoutId
             ORDER BY VERSION DESC;
@@ -217,8 +217,8 @@ public sealed class ReportFormLayoutRepository(
                 UPDATE dbo.REPORT_FORM_LAYOUT
                 SET LAYOUT_JSON = @LayoutJson,
                     LAYOUT_VERSION = LAYOUT_VERSION + 1,
-                    LAST_UPDATE_BY = @UserId,
-                    LAST_UPDATE_DATE = SYSDATETIME()
+                    MODIFIED_BY = @UserId,
+                    MODIFIED_TIME = SYSDATETIME()
                 WHERE LAYOUT_ID = @LayoutId;
                 """;
             await using var command = new SqlCommand(restoreSql, connection, transaction);
@@ -245,7 +245,7 @@ public sealed class ReportFormLayoutRepository(
             IF NOT EXISTS (SELECT 1 FROM dbo.REPORT_FORM_LAYOUT_VERSION
                            WHERE LAYOUT_ID = @LayoutId AND VERSION = @Version)
                 INSERT INTO dbo.REPORT_FORM_LAYOUT_VERSION
-                    (LAYOUT_ID, VERSION, LAYOUT_JSON, CREATE_PERSON, CREATE_DATE)
+                    (LAYOUT_ID, VERSION, LAYOUT_JSON, CREATED_BY, CREATED_TIME)
                 VALUES
                     (@LayoutId, @Version, @LayoutJson, @UserId, SYSDATETIME());
             """;
@@ -301,12 +301,12 @@ public sealed class ReportFormLayoutRepository(
             IF EXISTS (SELECT 1 FROM dbo.REPORT_LAYOUT WHERE KIND = N'HEADER' AND LAYOUT_ID = @HeaderId)
                 UPDATE dbo.REPORT_LAYOUT
                 SET LAYOUT_DESC = @Name, CONTENT = @Content, IMAGE_PATH = @LogoPath,
-                    LAST_UPDATE_BY = @UserId, LAST_UPDATE_DATE = SYSDATETIME()
+                    MODIFIED_BY = @UserId, MODIFIED_TIME = SYSDATETIME()
                 WHERE KIND = N'HEADER' AND LAYOUT_ID = @HeaderId;
             ELSE
                 INSERT INTO dbo.REPORT_LAYOUT
                     (LAYOUT_ID, KIND, LAYOUT_DESC, CONTENT, IMAGE_PATH, IS_DEFAULT,
-                     CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE)
+                     CREATED_BY, CREATED_TIME, MODIFIED_BY, MODIFIED_TIME)
                 VALUES
                     (@HeaderId, N'HEADER', @Name, @Content, @LogoPath, 0,
                      @UserId, SYSDATETIME(), @UserId, SYSDATETIME());
@@ -332,12 +332,12 @@ public sealed class ReportFormLayoutRepository(
             IF EXISTS (SELECT 1 FROM dbo.REPORT_FORM_BINDING WHERE FORM_TYPE = @ModuleId AND CLIENT_ID = @ClientId)
                 UPDATE dbo.REPORT_FORM_BINDING
                 SET HEADER_ID = @HeaderId, TAIL_ID = @TailId, PRINT_PRICE = @PrintPrice,
-                    LAST_UPDATE_BY = @UserId, LAST_UPDATE_DATE = SYSDATETIME()
+                    MODIFIED_BY = @UserId, MODIFIED_TIME = SYSDATETIME()
                 WHERE FORM_TYPE = @ModuleId AND CLIENT_ID = @ClientId;
             ELSE
                 INSERT INTO dbo.REPORT_FORM_BINDING
                     (FORM_TYPE, CLIENT_ID, HEADER_ID, TAIL_ID, PRINT_PRICE,
-                     CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE)
+                     CREATED_BY, CREATED_TIME, MODIFIED_BY, MODIFIED_TIME)
                 VALUES
                     (@ModuleId, @ClientId, @HeaderId, @TailId, @PrintPrice,
                      @UserId, SYSDATETIME(), @UserId, SYSDATETIME());
@@ -417,11 +417,11 @@ public sealed class ReportFormLayoutRepository(
         const string sql = """
             IF EXISTS (SELECT 1 FROM dbo.REPORT_FORM_BINDING WHERE FORM_TYPE = @ModuleId AND CLIENT_ID = @ClientId)
                 UPDATE dbo.REPORT_FORM_BINDING
-                SET LAYOUT_ID = @LayoutId, LAST_UPDATE_BY = @UserId, LAST_UPDATE_DATE = SYSDATETIME()
+                SET LAYOUT_ID = @LayoutId, MODIFIED_BY = @UserId, MODIFIED_TIME = SYSDATETIME()
                 WHERE FORM_TYPE = @ModuleId AND CLIENT_ID = @ClientId;
             ELSE
                 INSERT INTO dbo.REPORT_FORM_BINDING
-                    (FORM_TYPE, CLIENT_ID, LAYOUT_ID, CREATE_PERSON, CREATE_DATE, LAST_UPDATE_BY, LAST_UPDATE_DATE)
+                    (FORM_TYPE, CLIENT_ID, LAYOUT_ID, CREATED_BY, CREATED_TIME, MODIFIED_BY, MODIFIED_TIME)
                 VALUES
                     (@ModuleId, @ClientId, @LayoutId, @UserId, SYSDATETIME(), @UserId, SYSDATETIME());
             """;

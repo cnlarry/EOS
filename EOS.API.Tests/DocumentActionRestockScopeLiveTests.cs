@@ -94,7 +94,7 @@ public sealed class DocumentActionRestockScopeLiveTests : IAsyncLifetime
             ("@d", TestDepot), ("@za", ZoneA), ("@zb", ZoneB));
         await ExecAsync(connection,
             $"""
-            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATED_BY,CREATED_TIME,APPROVED)
             VALUES (@pa,@d,@za,N'',5,N'DbUp',SYSDATETIME(),0),
                    (@pb,@d,@zb,N'',7,N'DbUp',SYSDATETIME(),0);
             """,
@@ -103,7 +103,7 @@ public sealed class DocumentActionRestockScopeLiveTests : IAsyncLifetime
         // 盘点单：两行 A 区旧明细（其中一行盘点数是人填的 99，重盘后必须消失），未批核。
         await ExecAsync(connection,
             $"""
-            INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,COUNT_DATE,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE)
+            INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,COUNT_DATE,APPROVED,CREATED_BY,CREATED_TIME)
             VALUES (@type,@no,@d,SYSDATETIME(),0,N'DbUp',SYSDATETIME());
             INSERT INTO dbo.{DetailTable}
                 (CHECK_STOCK_TYPE,CHECK_STOCK_NO,SERIAL_NO,PRO_NO,DEPOT_ID,ACCOUNT_QTY,CHECK_QTY,LOCATION_NO,BATCH_NO)
@@ -115,7 +115,7 @@ public sealed class DocumentActionRestockScopeLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", RestockScopeHandler.ActionKey));
@@ -307,7 +307,7 @@ public sealed class DocumentActionRestockScopeLiveTests : IAsyncLifetime
     {
         await using var connection = await OpenAsync();
         await ExecAsync(connection,
-            $"UPDATE dbo.{MasterTable} SET FINISHED_TAG=1 WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
+            $"UPDATE dbo.{MasterTable} SET FINISHED=1 WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
 
         var result = await RunAsync(ZoneB);

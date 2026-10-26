@@ -136,8 +136,8 @@ public sealed class AssistantApprovalRequestService(
         AssistantApprovalAction action, ModulePermission permission, string userId,
         IReadOnlyDictionary<string, object?> row, IReadOnlyList<string> keys)
     {
-        var confirmed = Flag(row, "CONFIRM_TAG");
-        var finished = Flag(row, "FINISHED_TAG");
+        var confirmed = Flag(row, "APPROVED");
+        var finished = Flag(row, "FINISHED");
         var status = finished ? "已结案" : confirmed ? "已批核（未结案）" : "未批核";
 
         var facts = new GetModuleFlowTool.FlowActionInput(

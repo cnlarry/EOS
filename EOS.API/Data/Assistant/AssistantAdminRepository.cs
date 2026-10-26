@@ -91,8 +91,8 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
     {
         (AssistantSessionSort.Title, true) => "s.TITLE ASC",
         (AssistantSessionSort.Title, false) => "s.TITLE DESC",
-        (AssistantSessionSort.Created, true) => "s.CREATED_AT ASC",
-        (AssistantSessionSort.Created, false) => "s.CREATED_AT DESC",
+        (AssistantSessionSort.Created, true) => "s.CREATED_TIME ASC",
+        (AssistantSessionSort.Created, false) => "s.CREATED_TIME DESC",
         (AssistantSessionSort.Messages, true) => $"{MessageCountExpr} ASC",
         (AssistantSessionSort.Messages, false) => $"{MessageCountExpr} DESC",
         (AssistantSessionSort.Tokens, true) => $"{MessageTokensExpr} ASC",
@@ -121,7 +121,7 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
               AND (@Owner IS NULL OR s.USER_ID = @Owner)
             """;
         var sql = $"""
-            SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_AT, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
+            SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_TIME, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
                    {MessageCountExpr}, {MessageTokensExpr}, n.EMP_NAME
             {filter}
             ORDER BY {OrderByClause(sort, ascending)}, s.ID DESC

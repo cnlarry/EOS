@@ -107,8 +107,8 @@ public class RecordPayloadValidatorTests
     [Fact]
     public void AuditColumn_IsServerOwned()
     {
-        Assert.True(RecordPayloadValidator.IsAuditColumn("CREATE_PERSON"));
-        Assert.True(RecordPayloadValidator.IsAuditColumn("last_update_date"));
+        Assert.True(RecordPayloadValidator.IsAuditColumn("CREATED_BY"));
+        Assert.True(RecordPayloadValidator.IsAuditColumn("modified_time"));
         Assert.False(RecordPayloadValidator.IsAuditColumn("REMARK"));
         // 归属三列（CI/OWNER/OWNER_G）已随列下线，不再是服务端持有列。
         Assert.False(RecordPayloadValidator.IsAuditColumn("OWNER"));

@@ -103,7 +103,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no)
-                INSERT INTO dbo.{MasterTable} (PRODUCE_TYPE,PRODUCE_NO,PRO_NO,QTY,SPARE_QTY,REWORK_TAG,OUTSIDE_TAG,FINISHED_TAG,PRODUCE_DATE)
+                INSERT INTO dbo.{MasterTable} (PRODUCE_TYPE,PRODUCE_NO,PRO_NO,QTY,SPARE_QTY,REWORK_TAG,OUTSIDE_TAG,FINISHED,PRODUCE_DATE)
                 VALUES (@type,@no,@fin,10,0,0,0,0,CONVERT(nvarchar(10),SYSDATETIME(),120));
             """,
             ("@type", TestType), ("@no", TestNo), ("@fin", FinishedProduct));
@@ -113,7 +113,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
             await ExecAsync(connection,
                 """
                 IF NOT EXISTS (SELECT 1 FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO))=@pro)
-                    INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                    INSERT INTO dbo.PRODUCT (PRO_NO,PRO_NAME,UNIT_ID,CREATED_BY,CREATED_TIME,APPROVED)
                     SELECT @pro, N'子制令用例料号', (SELECT TOP 1 UNIT_ID FROM dbo.PRODUCT WHERE LTRIM(RTRIM(ISNULL(UNIT_ID,N'')))<>N'' ORDER BY PRO_NO),
                            N'DbUp', SYSDATETIME(), 0;
                 """,
@@ -130,7 +130,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", ProduceGenSubHandler.ActionKey));
@@ -349,7 +349,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
     {
         await using var connection = await OpenAsync();
         await ExecAsync(connection,
-            $"UPDATE dbo.{MasterTable} SET FINISHED_TAG=1 WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
+            $"UPDATE dbo.{MasterTable} SET FINISHED=1 WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
 
         var result = await RunAsync();

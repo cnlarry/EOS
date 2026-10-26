@@ -146,10 +146,10 @@ public sealed class FormLayoutSubmissionTests
         var layout = FormLayoutSubmission.Normalize(
             Request(master:
             [
-                new FormLayoutRowInput("CREATE_PERSON"),
+                new FormLayoutRowInput("CREATED_BY"),
                 new FormLayoutRowInput("A"),
-                new FormLayoutRowInput("CONFIRM_TAG"),
-                new FormLayoutRowInput("LAST_UPDATE_BY"),
+                new FormLayoutRowInput("APPROVED"),
+                new FormLayoutRowInput("MODIFIED_BY"),
             ]));
 
         Assert.Equal(["A"], layout.Master.Select(row => row.Key).ToArray());
@@ -162,9 +162,9 @@ public sealed class FormLayoutSubmissionTests
         var layout = FormLayoutSubmission.Normalize(
             Request(master:
             [
-                new FormLayoutRowInput("CREATE_PERSON"),
-                new FormLayoutRowInput("CONFIRM_DATE"),
-                new FormLayoutRowInput("FINISHED_TAG"),
+                new FormLayoutRowInput("CREATED_BY"),
+                new FormLayoutRowInput("APPROVED_TIME"),
+                new FormLayoutRowInput("FINISHED"),
             ]));
 
         Assert.Empty(layout.Master);
@@ -174,10 +174,10 @@ public sealed class FormLayoutSubmissionTests
     [Fact]
     public void Normalize_DoesNotFilterDetailFinishedTag()
     {
-        // 明细的 FINISHED_TAG 是行级状态，不是主表生命周期字段，不能被同一条过滤规则误删
+        // 明细的 FINISHED 是行级状态，不是主表生命周期字段，不能被同一条过滤规则误删
         var layout = FormLayoutSubmission.Normalize(
-            Request(master: [new FormLayoutRowInput("A")], detail: [new FormDetailLayoutRowInput("FINISHED_TAG")]));
+            Request(master: [new FormLayoutRowInput("A")], detail: [new FormDetailLayoutRowInput("FINISHED")]));
 
-        Assert.Equal(["FINISHED_TAG"], layout.Detail.Select(row => row.Key).ToArray());
+        Assert.Equal(["FINISHED"], layout.Detail.Select(row => row.Key).ToArray());
     }
 }

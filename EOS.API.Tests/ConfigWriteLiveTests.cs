@@ -100,7 +100,7 @@ public sealed class ConfigWriteLiveTests : IDisposable
         await ExecuteAsync(
             """
             INSERT INTO dbo.FIELD_DATASOURCE (T_ID,F_ID,SERIAL_NO,ACTIVE_TAG,SOURCE_T_ID,SOURCE_DESC,
-                CREATE_BY,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES (@Table,@Field,1,1,N'COMPANY',N'客户来源','IT',GETDATE(),'IT',GETDATE());
             """,
             ("@Table", sourceTable), ("@Field", field));
@@ -384,7 +384,7 @@ public sealed class ConfigWriteLiveTests : IDisposable
             """
             INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_READONLY,
                 DISPLAY_LENGTH,ITEM_ALIGN,HEADER_ALIGN,IS_COST,IS_SECRECY,CAN_COPY,IS_VIRTUAL,IS_AUTOINC,
-                LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                MODIFIED_BY,MODIFIED_TIME)
             VALUES (@Table,@Field,@Description,N'nvarchar',1,1,@Visible,@Readonly,
                 @Width,N'left',N'center',0,0,1,0,0,'IT',GETDATE());
             """,
@@ -417,7 +417,7 @@ public sealed class ConfigWriteLiveTests : IDisposable
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "SELECT LAST_UPDATE_DATE FROM dbo.FIELDS WHERE T_ID=@Table AND LTRIM(RTRIM(F_ID))=@Field;", connection);
+            "SELECT MODIFIED_TIME FROM dbo.FIELDS WHERE T_ID=@Table AND LTRIM(RTRIM(F_ID))=@Field;", connection);
         command.Parameters.AddWithValue("@Table", table);
         command.Parameters.AddWithValue("@Field", field);
         var value = await command.ExecuteScalarAsync();

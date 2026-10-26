@@ -317,7 +317,7 @@ public sealed class FormLayoutRepository(
         const string rowSql = """
             INSERT INTO dbo.MODULE_FORM_LAYOUT
                 (M_IDX, T_ID, F_ID, TAB_NO, ORDER_NO, SPAN, ROW_SPAN, NEW_LINE, SECTION_ID, CELL_GROUP, CELL_ROLE,
-                 IS_HIDDEN, UPDATED_BY, UPDATED_AT)
+                 IS_HIDDEN, MODIFIED_BY, MODIFIED_TIME)
             VALUES (@ModuleId, @Table, @Field, @TabNo, @OrderNo, @Span, @RowSpan, @NewLine, @SectionId, @CellGroup,
                     @CellRole, @Hidden, @UpdatedBy, SYSUTCDATETIME());
             """;
@@ -511,7 +511,7 @@ public sealed class FormLayoutRepository(
             const string rowSql = """
                 INSERT INTO dbo.MODULE_FORM_LAYOUT
                     (M_IDX, T_ID, F_ID, TAB_NO, ORDER_NO, SPAN, ROW_SPAN, NEW_LINE, SECTION_ID, CELL_GROUP,
-                     CELL_ROLE, IS_HIDDEN, UPDATED_BY, UPDATED_AT)
+                     CELL_ROLE, IS_HIDDEN, MODIFIED_BY, MODIFIED_TIME)
                 VALUES (@ModuleId, @Table, @Field, @TabNo, @OrderNo, @Span, @RowSpan, @NewLine, @SectionId,
                         @CellGroup, @CellRole, @Hidden, @UpdatedBy, SYSUTCDATETIME());
                 """;
@@ -604,7 +604,7 @@ public sealed class FormLayoutRepository(
     {
         const string sql = """
             SELECT CONVERT(nvarchar(23), MAX(STAMP), 121)
-            FROM (SELECT UPDATED_AT AS STAMP FROM dbo.MODULE_FORM_LAYOUT WHERE M_IDX=@ModuleId
+            FROM (SELECT MODIFIED_TIME AS STAMP FROM dbo.MODULE_FORM_LAYOUT WHERE M_IDX=@ModuleId
                   UNION ALL
                   SELECT NULL AS STAMP FROM dbo.MODULE_FORM_TAB WHERE M_IDX=@ModuleId) t;
             """;

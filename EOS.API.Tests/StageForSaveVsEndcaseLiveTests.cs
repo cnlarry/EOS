@@ -48,10 +48,10 @@ public sealed class StageForSaveVsEndcaseLiveTests : IAsyncLifetime
         await ExecAsync(connection, """
             INSERT INTO dbo.MOC_PRODUCE_M
                 (PRODUCE_TYPE, PRODUCE_NO, PRODUCE_DATE, PRO_NO, ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO,
-                 CONFIRM_TAG, FINISHED_TAG)
+                 APPROVED, FINISHED)
                 VALUES (@type, @no, '2026-09-27', @product, @orderType, @orderNo, 999, 0, 0);
             INSERT INTO dbo.MOC_PRODUCE_D
-                (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, SERIAL_NO, NEED_QTY, USED_QTY, FINISHED_TAG)
+                (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, SERIAL_NO, NEED_QTY, USED_QTY, FINISHED)
                 VALUES (@type, @no, @product, 1, 1, 0, 0);
             """,
             ("@type", ProduceType), ("@no", ProduceNo), ("@product", MissingProduct),
@@ -101,7 +101,7 @@ public sealed class StageForSaveVsEndcaseLiveTests : IAsyncLifetime
         await using (var connection = await OpenAsync())
         {
             Assert.True(await ScalarAsync<bool>(connection, """
-                SELECT ISNULL(FINISHED_TAG,0) FROM dbo.MOC_PRODUCE_M
+                SELECT ISNULL(FINISHED,0) FROM dbo.MOC_PRODUCE_M
                  WHERE LTRIM(RTRIM(PRODUCE_TYPE)) = @type AND LTRIM(RTRIM(PRODUCE_NO)) = @no;
                 """, ("@type", ProduceType), ("@no", ProduceNo)));
         }

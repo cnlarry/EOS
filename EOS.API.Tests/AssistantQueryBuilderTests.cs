@@ -12,12 +12,12 @@ public class AssistantQueryBuilderTests
         {
             new("PURCHASE_NO", "采购单号", "nvarchar", 100, "left", IsPrimaryKey: true, IsVisible: true, IsQueryable: true),
             new("PURCHASE_DATE", "采购日期", "datetime", 100, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: true),
-            new("CONFIRM_DATE", "批核日期", "datetime", 100, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
-            new("CONFIRM_PERSON", "批核人", "nvarchar", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
-            new("CONFIRM_TAG", "批核状态", "bit", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
-            new("FINISHED_DATE", "结案日期", "datetime", 100, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
-            new("FINISHED_PERSON", "结案人", "nvarchar", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
-            new("FINISHED_TAG", "结案状态", "bit", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
+            new("APPROVED_TIME", "批核日期", "datetime", 100, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
+            new("APPROVED_BY", "批核人", "nvarchar", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
+            new("APPROVED", "批核状态", "bit", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
+            new("FINISHED_TIME", "结案日期", "datetime", 100, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
+            new("FINISHED_BY", "结案人", "nvarchar", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
+            new("FINISHED", "结案状态", "bit", 60, "left", IsPrimaryKey: false, IsVisible: true, IsQueryable: false),
         };
         fields.AddRange(extra);
         return new WorkbenchDefinition(
@@ -54,7 +54,7 @@ public class AssistantQueryBuilderTests
     {
         var result = AssistantQueryBuilder.Build(PurchaseDefinition(), null, null, "approved", null, null);
         var condition = Assert.Single(result.Query!.Conditions);
-        Assert.Equal("CONFIRM_TAG", condition.Field);
+        Assert.Equal("APPROVED", condition.Field);
         Assert.Equal("1", condition.Value);
     }
 
@@ -62,10 +62,10 @@ public class AssistantQueryBuilderTests
     public void UnapprovedAndFinished_MapsToExpectedFields()
     {
         var unapproved = AssistantQueryBuilder.Build(PurchaseDefinition(), null, null, "unapproved", null, null);
-        Assert.Equal("CONFIRM_TAG", Assert.Single(unapproved.Query!.Conditions).Field);
+        Assert.Equal("APPROVED", Assert.Single(unapproved.Query!.Conditions).Field);
         Assert.Equal("0", Assert.Single(unapproved.Query!.Conditions).Value);
         var finished = AssistantQueryBuilder.Build(PurchaseDefinition(), null, null, "finished", null, null);
-        Assert.Equal("FINISHED_TAG", Assert.Single(finished.Query!.Conditions).Field);
+        Assert.Equal("FINISHED", Assert.Single(finished.Query!.Conditions).Field);
     }
 
     [Fact]

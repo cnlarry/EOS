@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 自动批核（MODULES.AUTO_APPROVE=1）接入效果引擎后的真库验收：
 /// 正常自动批核（状态翻转 + 审计）、重复触发幂等（不重复累计）、
-/// 引擎拦截时状态还原且零残留（：阻断 + 效果零写入 + CONFIRM_TAG 还原）。
+/// 引擎拦截时状态还原且零残留（：阻断 + 效果零写入 + APPROVED 还原）。
 /// 合成单据一律用 ADR12 专用键，用例结束即删除。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
@@ -107,7 +107,7 @@ public sealed class AutoApproveEffectLiveTests
         await connection.OpenAsync();
         await ExecAsync(connection, """
             DELETE FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B;
-            INSERT INTO dbo.INV_BATCH_M(BATCH_NO, PRO_NO, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE)
+            INSERT INTO dbo.INV_BATCH_M(BATCH_NO, PRO_NO, APPROVED, APPROVED_BY, APPROVED_TIME)
             VALUES (@B, @P, 0, NULL, NULL);
             """, ("@B", BatchNo), ("@P", BatchProNo));
         try
@@ -121,11 +121,11 @@ public sealed class AutoApproveEffectLiveTests
             var first = await service.AutoApproveAsync(definition, [BatchNo, BatchProNo], ConfirmPerson, "tester", CancellationToken.None);
             Assert.Equal(RecordAccessStatus.Ok, first.Status);
             Assert.Equal(1, await ScalarAsync(connection,
-                "SELECT ISNULL(CONFIRM_TAG,0) FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B AND PRO_NO=@P;",
+                "SELECT ISNULL(APPROVED,0) FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B AND PRO_NO=@P;",
                 ("@B", BatchNo), ("@P", BatchProNo)));
             // 经办人 = 保存人（不是 SYSTEM 占位）
             Assert.Equal(ConfirmPerson, (await ScalarStringAsync(connection,
-                "SELECT CONFIRM_PERSON FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B AND PRO_NO=@P;",
+                "SELECT APPROVED_BY FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B AND PRO_NO=@P;",
                 ("@B", BatchNo), ("@P", BatchProNo))).Trim());
             // 审计摘要保留"自动批核"的区分（状态列已不再承担该信息）
             Assert.Equal(1, await ScalarAsync(connection,
@@ -153,7 +153,7 @@ public sealed class AutoApproveEffectLiveTests
         await ExecAsync(connection, """
             DELETE FROM dbo.INV_LOAN_D WHERE LOAN_TYPE=N'ADR12' AND LOAN_NO=@N;
             DELETE FROM dbo.INV_LOAN_M WHERE LOAN_TYPE=N'ADR12' AND LOAN_NO=@N;
-            INSERT INTO dbo.INV_LOAN_M(LOAN_TYPE, LOAN_NO, LOAN_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE)
+            INSERT INTO dbo.INV_LOAN_M(LOAN_TYPE, LOAN_NO, LOAN_DATE, APPROVED, APPROVED_BY, APPROVED_TIME)
             VALUES (N'ADR12', @N, CONVERT(datetime, N'2026-09-17', 120), 0, NULL, NULL);
             INSERT INTO dbo.INV_LOAN_D(LOAN_TYPE, LOAN_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY)
             VALUES (N'ADR12', @N, 1, @P, N'CP', 5);
@@ -171,9 +171,9 @@ public sealed class AutoApproveEffectLiveTests
             Assert.NotEqual(RecordAccessStatus.Ok, result.Status);
             Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage), "拦截必须带回可读原因");
             Assert.Equal("WORKFLOW_FAILED", result.ErrorCode);
-            // 状态还原：拦截发生在同一事务内，CONFIRM_TAG 保持未批核
+            // 状态还原：拦截发生在同一事务内，APPROVED 保持未批核
             Assert.Equal(0, await ScalarAsync(connection,
-                "SELECT ISNULL(CONFIRM_TAG,0) FROM dbo.INV_LOAN_M WHERE LOAN_TYPE=N'ADR12' AND LOAN_NO=@N;", ("@N", LoanNo)));
+                "SELECT ISNULL(APPROVED,0) FROM dbo.INV_LOAN_M WHERE LOAN_TYPE=N'ADR12' AND LOAN_NO=@N;", ("@N", LoanNo)));
             // 效果零写入：既没有库存流水，也没有为该品号建余额行
             Assert.Equal(0, await ScalarAsync(connection,
                 "SELECT COUNT(*) FROM dbo.INV_DEPOT_LOG WHERE MUTUALITY_TYPE=N'ADR12' AND MUTUALITY_NO=@N;", ("@N", LoanNo)));
@@ -201,7 +201,7 @@ public sealed class AutoApproveEffectLiveTests
         await connection.OpenAsync();
         await ExecAsync(connection, """
             DELETE FROM dbo.PUR_RECEIVE_M WHERE RECEIVE_TYPE=N'ADR12' AND RECEIVE_NO=@N;
-            INSERT INTO dbo.PUR_RECEIVE_M(RECEIVE_TYPE, RECEIVE_NO, RECEIVE_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE)
+            INSERT INTO dbo.PUR_RECEIVE_M(RECEIVE_TYPE, RECEIVE_NO, RECEIVE_DATE, APPROVED, APPROVED_BY, APPROVED_TIME)
             VALUES (N'ADR12', @N, CONVERT(datetime, N'2026-09-17', 120), 1, N'tester', SYSDATETIME());
             """, ("@N", ReceiveNo));
         try
@@ -226,7 +226,7 @@ public sealed class AutoApproveEffectLiveTests
     {
         // 1607 收料单的 APPROVE 期目录规则「收料数量超过采购单可收数量」：
         // 自造一张采购行（上限 1）与一张收 5 个的收料单，批核必须被目录校验拦住；
-        // 因为校验闸与状态翻转在同一事务，CONFIRM_TAG 保持未批核（零残留）。
+        // 因为校验闸与状态翻转在同一事务，APPROVED 保持未批核（零残留）。
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
         await ExecAsync(connection, """
@@ -234,11 +234,11 @@ public sealed class AutoApproveEffectLiveTests
             DELETE FROM dbo.PUR_RECEIVE_M WHERE RECEIVE_TYPE=N'ADR12' AND RECEIVE_NO=@RN;
             DELETE FROM dbo.PUR_PURCHASE_D WHERE PURCHASE_TYPE=N'ADR12' AND PURCHASE_NO=@PN;
             DELETE FROM dbo.PUR_PURCHASE_M WHERE PURCHASE_TYPE=N'ADR12' AND PURCHASE_NO=@PN;
-            INSERT INTO dbo.PUR_PURCHASE_M(PURCHASE_TYPE, PURCHASE_NO, PURCHASE_DATE, CONFIRM_TAG)
+            INSERT INTO dbo.PUR_PURCHASE_M(PURCHASE_TYPE, PURCHASE_NO, PURCHASE_DATE, APPROVED)
             VALUES (N'ADR12', @PN, CONVERT(datetime, N'2026-09-17', 120), 1);
             INSERT INTO dbo.PUR_PURCHASE_D(PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, RECEIVE_QTY)
             VALUES (N'ADR12', @PN, 1, N'ADR12AUTOPRO', N'CP', 1, 0);
-            INSERT INTO dbo.PUR_RECEIVE_M(RECEIVE_TYPE, RECEIVE_NO, RECEIVE_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE)
+            INSERT INTO dbo.PUR_RECEIVE_M(RECEIVE_TYPE, RECEIVE_NO, RECEIVE_DATE, APPROVED, APPROVED_BY, APPROVED_TIME)
             VALUES (N'ADR12', @RN, CONVERT(datetime, N'2026-09-17', 120), 0, NULL, NULL);
             INSERT INTO dbo.PUR_RECEIVE_D(RECEIVE_TYPE, RECEIVE_NO, SERIAL_NO, PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, PRO_NO, DEPOT_ID, QTY)
             VALUES (N'ADR12', @RN, 1, N'ADR12', @PN, 1, N'ADR12AUTOPRO', N'CP', 5);
@@ -255,7 +255,7 @@ public sealed class AutoApproveEffectLiveTests
             Assert.Contains("收料数量超过采购单可收数量", result.ErrorMessage ?? string.Empty);
             // 状态未翻转、采购行已收量未被累加（效果零写入）
             Assert.Equal(0, await ScalarAsync(connection,
-                "SELECT ISNULL(CONFIRM_TAG,0) FROM dbo.PUR_RECEIVE_M WHERE RECEIVE_TYPE=N'ADR12' AND RECEIVE_NO=@N;",
+                "SELECT ISNULL(APPROVED,0) FROM dbo.PUR_RECEIVE_M WHERE RECEIVE_TYPE=N'ADR12' AND RECEIVE_NO=@N;",
                 ("@N", ReceiveNo)));
             Assert.Equal(0d, await ScalarDoubleAsync(connection,
                 "SELECT ISNULL(RECEIVE_QTY,0) FROM dbo.PUR_PURCHASE_D WHERE PURCHASE_TYPE=N'ADR12' AND PURCHASE_NO=@N AND SERIAL_NO=1;",

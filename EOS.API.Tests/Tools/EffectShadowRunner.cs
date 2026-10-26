@@ -65,9 +65,9 @@ public sealed class EffectShadowRunner
     // so any two non-null values on both sides are treated as equivalent.
     private static readonly IReadOnlySet<string> NowLikeColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "CONFIRM_DATE", "FINISHED_DATE", "LATELY_IN_DATE", "LATELY_OUT_DATE", "LAST_IN_DATE",
-        "LAST_OUT_DATE", "LAST_TRADE_DATE", "CREATE_DATE", "LAST_UPDATE_DATE", "EFFECT_DATE",
-        "BATCH_DATE", "MUTUALITY_DATE", "OCCURRED_AT", "CREATED_DATE",
+        "APPROVED_TIME", "FINISHED_TIME", "LATELY_IN_DATE", "LATELY_OUT_DATE", "LAST_IN_DATE",
+        "LAST_OUT_DATE", "LAST_TRADE_DATE", "CREATED_TIME", "MODIFIED_TIME", "EFFECT_DATE",
+        "BATCH_DATE", "MUTUALITY_DATE", "OCCURRED_AT", "CREATED_TIME",
     };
 
     private static readonly JsonSerializerOptions ReportJsonOptions = new()
@@ -259,7 +259,7 @@ public sealed class EffectShadowRunner
           // the key resolver is master-only (see ResolveRecordKeys3307Async); the
           // placeholder detail is never queried.
           3307 => new(3307, "3307", "QC_SAMPLE_M", "QC_SAMPLE_D",
-              "PRO_NO", "PRO_NO", "CONFIRM_DATE",
+              "PRO_NO", "PRO_NO", "APPROVED_TIME",
               null, null, null, "样品管理"),
           2917 => new(2917, "2917", "MOU_ACCEPTDELE_M", "MOU_ACCEPTDELE_D",
               "ACCEPTDELE_TYPE", "ACCEPTDELE_NO", "ACCEPTDELE_DATE",
@@ -298,7 +298,7 @@ public sealed class EffectShadowRunner
           // sys.objects) and a single-column master key: Key2Column repeats
           // Key1Column with a master-only resolver (3307 pattern).
           2401 => new(2401, "2401", "SAMPLE_PRO", "SAMPLE_PRO_D",
-              "PRO_NO", "PRO_NO", "CONFIRM_DATE",
+              "PRO_NO", "PRO_NO", "APPROVED_TIME",
               null, null, null, "样品基本资料"),
         170102 => new(170102, "170102", "COP_RECEIPT_M", "COP_RECEIPT_D",
             "RECEIPT_TYPE", "RECEIPT_NO", "RECEIPT_DATE",
@@ -508,7 +508,7 @@ public sealed class EffectShadowRunner
     private static async Task<int> ReadConfirmTagAsync(SqlConnection connection, ModuleShadowSpec spec, IReadOnlyList<string> keys)
     {
         await using var command = new SqlCommand(
-            $"SELECT ISNULL(CONFIRM_TAG,0) FROM dbo.{spec.MasterTable} WHERE {spec.Key1Column}=@Type AND {spec.Key2Column}=@No;",
+            $"SELECT ISNULL(APPROVED,0) FROM dbo.{spec.MasterTable} WHERE {spec.Key1Column}=@Type AND {spec.Key2Column}=@No;",
             connection);
         command.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = keys[0];
         command.Parameters.Add("@No", SqlDbType.NChar, 20).Value = keys[1];
@@ -773,7 +773,7 @@ public sealed class EffectShadowRunner
             const string failureSql = """
                 SELECT TOP 1 M.RECEIVE_TYPE, M.RECEIVE_NO
                 FROM dbo.PUR_RECEIVE_M M
-                WHERE ISNULL(M.CONFIRM_TAG,0)=0
+                WHERE ISNULL(M.APPROVED,0)=0
                   AND NOT EXISTS (SELECT 1 FROM dbo.INV_DEPOT_LOG L
                                   WHERE LTRIM(RTRIM(L.MUTUALITY_TYPE))=LTRIM(RTRIM(M.RECEIVE_TYPE))
                                     AND LTRIM(RTRIM(L.MUTUALITY_NO))=LTRIM(RTRIM(M.RECEIVE_NO)))
@@ -804,7 +804,7 @@ public sealed class EffectShadowRunner
             const string deapproveSql = """
                 SELECT TOP 1 M.RECEIVE_TYPE, M.RECEIVE_NO
                 FROM dbo.PUR_RECEIVE_M M
-                WHERE ISNULL(M.CONFIRM_TAG,0)=1
+                WHERE ISNULL(M.APPROVED,0)=1
                   AND EXISTS (SELECT 1 FROM dbo.INV_DEPOT_LOG L
                               WHERE LTRIM(RTRIM(L.MUTUALITY_TYPE))=LTRIM(RTRIM(M.RECEIVE_TYPE))
                                 AND LTRIM(RTRIM(L.MUTUALITY_NO))=LTRIM(RTRIM(M.RECEIVE_NO)))
@@ -818,7 +818,7 @@ public sealed class EffectShadowRunner
                       JOIN dbo.INV_PRO_DEPOT S
                         ON S.PRO_NO=X.PRO_NO AND S.DEPOT_ID=X.DEPOT_ID
                       WHERE ISNULL(S.QTY,0) + 0.001 < X.QTY)
-                ORDER BY ISNULL(M.CONFIRM_DATE, M.RECEIVE_DATE) DESC, M.RECEIVE_NO DESC;
+                ORDER BY ISNULL(M.APPROVED_TIME, M.RECEIVE_DATE) DESC, M.RECEIVE_NO DESC;
                 """;
             await using var deapproveCommand = new SqlCommand(deapproveSql, connection);
             await using var deapproveReader = await deapproveCommand.ExecuteReaderAsync();
@@ -835,7 +835,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.RECEIVE_TYPE, M.RECEIVE_NO
             FROM dbo.PUR_RECEIVE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND NOT EXISTS (SELECT 1 FROM dbo.INV_DEPOT_LOG L
                               WHERE LTRIM(RTRIM(L.MUTUALITY_TYPE))=LTRIM(RTRIM(M.RECEIVE_TYPE))
                                 AND LTRIM(RTRIM(L.MUTUALITY_NO))=LTRIM(RTRIM(M.RECEIVE_NO)))
@@ -925,7 +925,7 @@ public sealed class EffectShadowRunner
         if (failure)
         {
             sql = "SELECT TOP 1 M.SEND_TYPE, M.SEND_NO FROM dbo.COP_SEND_M M "
-                + "WHERE ISNULL(M.CONFIRM_TAG,0)=0 AND " + noLogHistory
+                + "WHERE ISNULL(M.APPROVED,0)=0 AND " + noLogHistory
                 + " AND " + SendOverActiveChecks
                 + " ORDER BY M.SEND_DATE DESC, M.SEND_NO DESC;";
             emptyMessage = "未找到可触发失败分支的超送送货单。";
@@ -937,11 +937,11 @@ public sealed class EffectShadowRunner
             sql = """
                 SELECT TOP 1 M.SEND_TYPE, M.SEND_NO
                 FROM dbo.COP_SEND_M M
-                WHERE ISNULL(M.CONFIRM_TAG,0)=1
+                WHERE ISNULL(M.APPROVED,0)=1
                   AND EXISTS (SELECT 1 FROM dbo.INV_DEPOT_LOG L
                               WHERE LTRIM(RTRIM(L.MUTUALITY_TYPE))=LTRIM(RTRIM(M.SEND_TYPE))
                                 AND LTRIM(RTRIM(L.MUTUALITY_NO))=LTRIM(RTRIM(M.SEND_NO)))
-                ORDER BY ISNULL(M.CONFIRM_DATE, M.SEND_DATE) DESC, M.SEND_NO DESC;
+                ORDER BY ISNULL(M.APPROVED_TIME, M.SEND_DATE) DESC, M.SEND_NO DESC;
                 """;
             emptyMessage = "未找到可解批对拍的已批核送货单（自动选单无结果）。";
         }
@@ -950,7 +950,7 @@ public sealed class EffectShadowRunner
             // Outbound approval additionally requires on-hand stock: exclude documents
             // that would trip the inventory sufficiency gate on either path.
             sql = "SELECT TOP 1 M.SEND_TYPE, M.SEND_NO FROM dbo.COP_SEND_M M "
-                + "WHERE ISNULL(M.CONFIRM_TAG,0)=0 AND " + noLogHistory
+                + "WHERE ISNULL(M.APPROVED,0)=0 AND " + noLogHistory
                 + " AND EXISTS (SELECT 1 FROM dbo.COP_SEND_D D"
                 + " WHERE D.SEND_TYPE=M.SEND_TYPE AND D.SEND_NO=M.SEND_NO)"
                 + " AND NOT " + SendOverActiveChecks
@@ -1103,8 +1103,8 @@ public sealed class EffectShadowRunner
     {
         var sql = $"""
             UPDATE dbo.{spec.MasterTable}
-            SET CONFIRM_PERSON=@Person, CONFIRM_DATE=SYSDATETIME(), CONFIRM_TAG=@ConfirmTag
-            WHERE CONFIRM_TAG=@ExpectTag AND {spec.Key1Column}=@Key1 AND {spec.Key2Column}=@Key2;
+            SET APPROVED_BY=@Person, APPROVED_TIME=SYSDATETIME(), APPROVED=@ConfirmTag
+            WHERE APPROVED=@ExpectTag AND {spec.Key1Column}=@Key1 AND {spec.Key2Column}=@Key2;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = "shadow";
@@ -1957,7 +1957,7 @@ public sealed class EffectShadowRunner
         if (failure)
         {
             sql = "SELECT TOP 1 M.RETURN_TYPE, M.RETURN_NO FROM dbo.COP_RETURN_M M "
-                + "WHERE ISNULL(M.CONFIRM_TAG,0)=0 AND " + noLogHistory
+                + "WHERE ISNULL(M.APPROVED,0)=0 AND " + noLogHistory
                 + " AND " + ReturnOverDelivered
                 + " ORDER BY M.RETURN_DATE DESC, M.RETURN_NO DESC;";
             emptyMessage = "未找到可触发失败分支的超退客户退货单。";
@@ -1967,18 +1967,18 @@ public sealed class EffectShadowRunner
             sql = """
                 SELECT TOP 1 M.RETURN_TYPE, M.RETURN_NO
                 FROM dbo.COP_RETURN_M M
-                WHERE ISNULL(M.CONFIRM_TAG,0)=1
+                WHERE ISNULL(M.APPROVED,0)=1
                   AND EXISTS (SELECT 1 FROM dbo.INV_DEPOT_LOG L
                               WHERE LTRIM(RTRIM(L.MUTUALITY_TYPE))=LTRIM(RTRIM(M.RETURN_TYPE))
                                 AND LTRIM(RTRIM(L.MUTUALITY_NO))=LTRIM(RTRIM(M.RETURN_NO)))
-                ORDER BY ISNULL(M.CONFIRM_DATE, M.RETURN_DATE) DESC, M.RETURN_NO DESC;
+                ORDER BY ISNULL(M.APPROVED_TIME, M.RETURN_DATE) DESC, M.RETURN_NO DESC;
                 """;
             emptyMessage = "未找到可解批对拍的已批核退货单（自动选单无结果）。";
         }
         else
         {
             sql = "SELECT TOP 1 M.RETURN_TYPE, M.RETURN_NO FROM dbo.COP_RETURN_M M "
-                + "WHERE ISNULL(M.CONFIRM_TAG,0)=0 AND " + noLogHistory
+                + "WHERE ISNULL(M.APPROVED,0)=0 AND " + noLogHistory
                 + " AND EXISTS (SELECT 1 FROM dbo.COP_RETURN_D D"
                 + " WHERE D.RETURN_TYPE=M.RETURN_TYPE AND D.RETURN_NO=M.RETURN_NO)"
                 + " AND NOT " + ReturnOverDelivered
@@ -2003,13 +2003,13 @@ public sealed class EffectShadowRunner
             ? """
               SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
               FROM dbo.COP_CALLBACK_M M
-              WHERE ISNULL(M.CONFIRM_TAG,0)=1
-              ORDER BY ISNULL(M.CONFIRM_DATE, M.CALLBACK_DATE) DESC, M.CALLBACK_NO DESC;
+              WHERE ISNULL(M.APPROVED,0)=1
+              ORDER BY ISNULL(M.APPROVED_TIME, M.CALLBACK_DATE) DESC, M.CALLBACK_NO DESC;
               """
             : """
               SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
               FROM dbo.COP_CALLBACK_M M
-              WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              WHERE ISNULL(M.APPROVED,0)=0
                 AND EXISTS (SELECT 1 FROM dbo.COP_CALLBACK_D D
                             WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO)
               ORDER BY M.CALLBACK_DATE DESC, M.CALLBACK_NO DESC;
@@ -2141,7 +2141,7 @@ public sealed class EffectShadowRunner
         const string approveSql = """
             SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
             FROM dbo.PUR_CALLBACK_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D D
                           WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO
                             AND (EXISTS (SELECT 1 FROM dbo.PUR_RECEIVE_D R
@@ -2155,10 +2155,10 @@ public sealed class EffectShadowRunner
         const string deapproveSql = """
             SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
             FROM dbo.PUR_CALLBACK_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=1
+            WHERE ISNULL(M.APPROVED,0)=1
               AND EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D D
                           WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO)
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.CALLBACK_DATE) DESC, M.CALLBACK_NO DESC;
+            ORDER BY ISNULL(M.APPROVED_TIME, M.CALLBACK_DATE) DESC, M.CALLBACK_NO DESC;
             """;
         await using var command = new SqlCommand(deapprove ? deapproveSql : approveSql, connection);
         await using var reader = await command.ExecuteReaderAsync();
@@ -2218,7 +2218,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.ACCOUNT_TYPE, M.ACCOUNT_NO
             FROM dbo.COP_ACCOUNT_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND EXISTS (SELECT 1 FROM dbo.COP_ACCOUNT_D D
                           WHERE D.ACCOUNT_TYPE=M.ACCOUNT_TYPE AND D.ACCOUNT_NO=M.ACCOUNT_NO)
               AND NOT EXISTS (
@@ -2255,7 +2255,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.DUE_TYPE, M.DUE_NO
             FROM dbo.PUR_DUE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND EXISTS (SELECT 1 FROM dbo.PUR_DUE_D D
                           WHERE D.DUE_TYPE=M.DUE_TYPE AND D.DUE_NO=M.DUE_NO)
               AND NOT EXISTS (
@@ -2297,7 +2297,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.QUOTE_TYPE, M.QUOTE_NO
             FROM dbo.COP_QUOTE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND EXISTS (SELECT 1 FROM dbo.COP_QUOTE_D D
                           WHERE D.QUOTE_TYPE=M.QUOTE_TYPE AND D.QUOTE_NO=M.QUOTE_NO)
             ORDER BY M.QUOTE_DATE DESC, M.QUOTE_NO DESC;
@@ -2326,7 +2326,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.QUOTE_TYPE, M.QUOTE_NO
             FROM dbo.PUR_QUOTE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND EXISTS (SELECT 1 FROM dbo.PUR_QUOTE_D D
                           WHERE D.QUOTE_TYPE=M.QUOTE_TYPE AND D.QUOTE_NO=M.QUOTE_NO)
             ORDER BY M.QUOTE_DATE DESC, M.QUOTE_NO DESC;
@@ -2588,10 +2588,10 @@ public sealed class EffectShadowRunner
             const string sql = """
                 SELECT TOP 1 M.CHANGE_ORDER_TYPE, M.CHANGE_ORDER_NO
                 FROM dbo.COP_ORDER_CHANGE_M M
-                WHERE ISNULL(M.CONFIRM_TAG,0)=1
+                WHERE ISNULL(M.APPROVED,0)=1
                   AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_D D
                               WHERE D.CHANGE_ORDER_TYPE=M.CHANGE_ORDER_TYPE AND D.CHANGE_ORDER_NO=M.CHANGE_ORDER_NO)
-                ORDER BY ISNULL(M.CONFIRM_DATE, M.CHANGE_ORDER_DATE) DESC;
+                ORDER BY ISNULL(M.APPROVED_TIME, M.CHANGE_ORDER_DATE) DESC;
                 """;
             await using var command = new SqlCommand(sql, connection);
             await using var reader = await command.ExecuteReaderAsync();
@@ -2602,7 +2602,7 @@ public sealed class EffectShadowRunner
         const string approveSql = """
             SELECT TOP 1 M.CHANGE_ORDER_TYPE, M.CHANGE_ORDER_NO
             FROM dbo.COP_ORDER_CHANGE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+            WHERE ISNULL(M.APPROVED,0)=0
               AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_D D
                           WHERE D.CHANGE_ORDER_TYPE=M.CHANGE_ORDER_TYPE AND D.CHANGE_ORDER_NO=M.CHANGE_ORDER_NO)
             ORDER BY M.CHANGE_ORDER_DATE DESC;
@@ -2664,10 +2664,10 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.CHANGE_PURCHASE_TYPE, M.CHANGE_PURCHASE_NO
             FROM dbo.PUR_PURCHASE_CHANGE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            WHERE ISNULL(M.APPROVED,0)=@confirm
               AND EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_CHANGE_D D
                           WHERE D.CHANGE_PURCHASE_TYPE=M.CHANGE_PURCHASE_TYPE AND D.CHANGE_PURCHASE_NO=M.CHANGE_PURCHASE_NO)
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.CHANGE_PURCHASE_DATE) DESC;
+            ORDER BY ISNULL(M.APPROVED_TIME, M.CHANGE_PURCHASE_DATE) DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -2721,10 +2721,10 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.CHANGE_PRODUCE_TYPE, M.CHANGE_PRODUCE_NO
             FROM dbo.MOC_PRODUCE_CHANGE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            WHERE ISNULL(M.APPROVED,0)=@confirm
               AND EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_D D
                           WHERE D.CHANGE_PRODUCE_TYPE=M.CHANGE_PRODUCE_TYPE AND D.CHANGE_PRODUCE_NO=M.CHANGE_PRODUCE_NO)
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.CHANGE_PRODUCE_DATE) DESC;
+            ORDER BY ISNULL(M.APPROVED_TIME, M.CHANGE_PRODUCE_DATE) DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -2750,7 +2750,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.ORDER_TYPE, M.ORDER_NO
             FROM dbo.COP_ORDER_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            WHERE ISNULL(M.APPROVED,0)=@confirm
               AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_D D
                           WHERE D.ORDER_TYPE=M.ORDER_TYPE AND D.ORDER_NO=M.ORDER_NO)
               AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_D D
@@ -2780,10 +2780,10 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.PRODUCE_TYPE, M.PRODUCE_NO
             FROM dbo.MOC_PRODUCE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            WHERE ISNULL(M.APPROVED,0)=@confirm
               AND EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_D D
                           WHERE D.PRODUCE_TYPE=M.PRODUCE_TYPE AND D.PRODUCE_NO=M.PRODUCE_NO)
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.PRODUCE_DATE) DESC, M.PRODUCE_NO DESC;
+            ORDER BY ISNULL(M.APPROVED_TIME, M.PRODUCE_DATE) DESC, M.PRODUCE_NO DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -2810,7 +2810,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.WAGE_TYPE, M.WAGE_NO
             FROM dbo.HR_WAGE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            WHERE ISNULL(M.APPROVED,0)=@confirm
               AND ISNULL(M.IF_SECRECY,0)=@secrecy
               AND EXISTS (
                   SELECT 1 FROM dbo.HR_WAGE_D D
@@ -2821,7 +2821,7 @@ public sealed class EffectShadowRunner
                           AND DM.DIMISSION_NO=D.DIMISSION_NO)
                     AND EXISTS (
                         SELECT 1 FROM dbo.HR_EMPLOYEE E WHERE E.EMP_ID=D.EMP_ID))
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.WAGE_DATE) DESC, M.WAGE_NO DESC;
+            ORDER BY ISNULL(M.APPROVED_TIME, M.WAGE_DATE) DESC, M.WAGE_NO DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -2970,10 +2970,10 @@ public sealed class EffectShadowRunner
         var confirm = deapprove ? "1" : "0";
         var sql = $"SELECT TOP 1 M.[{spec.Key1Column}], M.[{spec.Key2Column}] "
             + $"FROM dbo.[{spec.MasterTable}] M "
-            + $"WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm "
+            + $"WHERE ISNULL(M.APPROVED,0)=@confirm "
             + $"AND EXISTS (SELECT 1 FROM dbo.[{spec.DetailTable}] D "
             + $"WHERE D.[{spec.Key1Column}]=M.[{spec.Key1Column}] AND D.[{spec.Key2Column}]=M.[{spec.Key2Column}]) "
-            + $"ORDER BY ISNULL(M.CONFIRM_DATE, M.[{spec.DateColumn}]) DESC;";
+            + $"ORDER BY ISNULL(M.APPROVED_TIME, M.[{spec.DateColumn}]) DESC;";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
         await using var reader = await command.ExecuteReaderAsync();
@@ -2999,8 +2999,8 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.ACCEPT_TYPE, M.ACCEPT_NO
             FROM dbo.MOU_ACCEPT_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.ACCEPT_DATE) DESC;
+            WHERE ISNULL(M.APPROVED,0)=@confirm
+            ORDER BY ISNULL(M.APPROVED_TIME, M.ACCEPT_DATE) DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -3094,8 +3094,8 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.PRO_NO, M.PRO_NO
             FROM dbo.QC_SAMPLE_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.CREATE_DATE) DESC;
+            WHERE ISNULL(M.APPROVED,0)=@confirm
+            ORDER BY ISNULL(M.APPROVED_TIME, M.CREATED_TIME) DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -3124,8 +3124,8 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.FILLOIL_TYPE, M.FILLOIL_NO
             FROM dbo.CAR_FILLOIL_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.FILLOIL_DATE) DESC;
+            WHERE ISNULL(M.APPROVED,0)=@confirm
+            ORDER BY ISNULL(M.APPROVED_TIME, M.FILLOIL_DATE) DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -3155,8 +3155,8 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT TOP 1 M.PRO_NO, M.PRO_NO
             FROM dbo.SAMPLE_PRO M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
-            ORDER BY ISNULL(M.CONFIRM_DATE, M.CREATE_DATE) DESC;
+            WHERE ISNULL(M.APPROVED,0)=@confirm
+            ORDER BY ISNULL(M.APPROVED_TIME, M.CREATED_TIME) DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@confirm", confirm);
@@ -3654,7 +3654,7 @@ public sealed class EffectShadowRunner
 
     /// <summary>
     /// Vehicle mission statistics (1908, P_WF_CAR_ADDUP): approval stamps
-    /// FINISHED_TAG=1 on the referenced missions, deapproval clears it. The compared
+    /// FINISHED=1 on the referenced missions, deapproval clears it. The compared
     /// footprint is the document plus the stamped mission rows.
     /// </summary>
     private static IReadOnlyList<TableSpec> BuildTableSpecsCarAddup(MasterContext master)
@@ -3714,7 +3714,7 @@ public sealed class EffectShadowRunner
 
     /// <summary>
     /// Accept-deletion document (2917, P_WF_MOU_ACCEPTDELE): approval closes the
-    /// referenced accepts (FINISHED_TAG/DATE/PERSON), deapproval reopens them. The
+    /// referenced accepts (FINISHED/DATE/PERSON), deapproval reopens them. The
     /// compared footprint is the document plus the stamped accept rows.
     /// </summary>
     private static IReadOnlyList<TableSpec> BuildTableSpecsMouAcceptdele(MasterContext master)
@@ -3738,7 +3738,7 @@ public sealed class EffectShadowRunner
     /// <summary>
     /// Process-plan documents (2709/2710/2711, P_WF_SFC_PLAN_PROCESS): approval
     /// accumulates the detail quantity onto the referenced plan lines and recomputes
-    /// their FINISHED_TAG by quantity; deapproval mirrors it. The compared footprint
+    /// their FINISHED by quantity; deapproval mirrors it. The compared footprint
     /// is the document plus the touched plan lines.
     /// </summary>
     private static IReadOnlyList<TableSpec> BuildTableSpecsSfcPlanProcess(MasterContext master)
@@ -4622,7 +4622,7 @@ public sealed class EffectShadowRunner
         if (failure)
         {
             sql = "SELECT TOP 1 M.PRODUCT_IN_TYPE, M.PRODUCT_IN_NO FROM dbo.MOC_PRODUCT_IN_M M "
-                + "WHERE ISNULL(M.CONFIRM_TAG,0)=0 AND " + noLogHistory
+                + "WHERE ISNULL(M.APPROVED,0)=0 AND " + noLogHistory
                 + " AND " + ProductInOverProduce
                 + " ORDER BY M.PRODUCT_IN_DATE DESC, M.PRODUCT_IN_NO DESC;";
             emptyMessage = "未找到可触发失败分支的超收生产入库单。";
@@ -4633,7 +4633,7 @@ public sealed class EffectShadowRunner
             sql = """
                 SELECT TOP 1 M.PRODUCT_IN_TYPE, M.PRODUCT_IN_NO
                 FROM dbo.MOC_PRODUCT_IN_M M
-                WHERE ISNULL(M.CONFIRM_TAG,0)=1
+                WHERE ISNULL(M.APPROVED,0)=1
                   AND EXISTS (SELECT 1 FROM dbo.INV_DEPOT_LOG L
                               WHERE LTRIM(RTRIM(L.MUTUALITY_TYPE))=LTRIM(RTRIM(M.PRODUCT_IN_TYPE))
                                 AND LTRIM(RTRIM(L.MUTUALITY_NO))=LTRIM(RTRIM(M.PRODUCT_IN_NO)))
@@ -4647,14 +4647,14 @@ public sealed class EffectShadowRunner
                       JOIN dbo.INV_PRO_DEPOT S
                         ON S.PRO_NO=X.PRO_NO AND S.DEPOT_ID=X.DEPOT_ID
                       WHERE ISNULL(S.QTY,0) + 0.001 < X.QTY)
-                ORDER BY ISNULL(M.CONFIRM_DATE, M.PRODUCT_IN_DATE) DESC, M.PRODUCT_IN_NO DESC;
+                ORDER BY ISNULL(M.APPROVED_TIME, M.PRODUCT_IN_DATE) DESC, M.PRODUCT_IN_NO DESC;
                 """;
             emptyMessage = "未找到可解批对拍的已批核生产入库单（自动选单无结果）。";
         }
         else
         {
             sql = "SELECT TOP 1 M.PRODUCT_IN_TYPE, M.PRODUCT_IN_NO FROM dbo.MOC_PRODUCT_IN_M M "
-                + "WHERE ISNULL(M.CONFIRM_TAG,0)=0 AND " + noLogHistory
+                + "WHERE ISNULL(M.APPROVED,0)=0 AND " + noLogHistory
                 + " AND EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_IN_D D"
                 + " WHERE D.PRODUCT_IN_TYPE=M.PRODUCT_IN_TYPE AND D.PRODUCT_IN_NO=M.PRODUCT_IN_NO)"
                 + " AND NOT " + ProductInOverProduce
@@ -5212,7 +5212,7 @@ public sealed class EffectShadowRunner
             }
             foreach (var row in rows)
             {
-                var fields = new[] { "FINISHED_TAG", "FINISHED_PERSON", "QTY", "RECEIVE_QTY", "IN_BUY_QTY", "MRP_QTY" };
+                var fields = new[] { "FINISHED", "FINISHED_BY", "QTY", "RECEIVE_QTY", "IN_BUY_QTY", "MRP_QTY" };
                 var summary = string.Join(" ", fields
                     .Where(field => row.Cells.ContainsKey(field))
                     .Select(field => field + "=" + ToKeyPart(row.Cells[field])));
@@ -5327,16 +5327,16 @@ public sealed class EffectShadowRunner
             1418, "*", "*", "NOT_SEND_QTY"),
         new(" + ",
             "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
-            1418, "*", "COP_ORDER_D", "FINISHED_TAG"),
+            1418, "*", "COP_ORDER_D", "FINISHED"),
         new(" + ",
             "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
-            1418, "*", "COP_ORDER_M", "FINISHED_TAG"),
+            1418, "*", "COP_ORDER_M", "FINISHED"),
         new(" + ",
             "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
-            1418, "*", "COP_ORDER_M", "FINISHED_PERSON"),
+            1418, "*", "COP_ORDER_M", "FINISHED_BY"),
         new(" + ",
             "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
-            1418, "*", "COP_ORDER_M", "FINISHED_DATE"),
+            1418, "*", "COP_ORDER_M", "FINISHED_TIME"),
         new("  P0/P1 + 翻译台账 1608/1612",
             "采购退料/扣款退料批核减少在途采购量、解批加回（既有存储过程 未实现该步）",
             1608, "*", "*", "IN_BUY_QTY"),
@@ -5360,22 +5360,22 @@ public sealed class EffectShadowRunner
             180207, "*", "*", "USED_REST_OVERTIME"),
         new("",
             "解批按 clear-finish 清完工戳（完成标记解除）；既有实现保留",
-            2913, "*", "*", "FINISHED_TAG"),
+            2913, "*", "*", "FINISHED"),
         new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
-            2913, "*", "*", "FINISHED_PERSON"),
+            2913, "*", "*", "FINISHED_BY"),
         new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
-            2913, "*", "*", "FINISHED_DATE"),
+            2913, "*", "*", "FINISHED_TIME"),
         new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
-            2917, "*", "*", "FINISHED_PERSON"),
+            2917, "*", "*", "FINISHED_BY"),
         new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
-            2917, "*", "*", "FINISHED_DATE"),
+            2917, "*", "*", "FINISHED_TIME"),
         new("",
             "解批按 clear-finish 清完工戳（完成标记解除）；既有实现保留",
-            2917, "*", "*", "FINISHED_TAG"),
+            2917, "*", "*", "FINISHED"),
         new("",
             "打样入库解批按量减扣：旧 P_WF_SAM_IN 解批分支误写 +d.QTY（批核/解批同向），采纳引擎",
             2403, "*", "SAMPLE_PRO", "QTY"),
@@ -5387,7 +5387,7 @@ public sealed class EffectShadowRunner
             1606, "*", "PUR_APPLY_D", "PURCHASE_QTY"),
         new(" +  ",
             "请购行结案判定随已采购量：既有实现在已采购量为 NULL 时比较退化为假，按 coalesce 后的数量重算",
-            1606, "*", "PUR_APPLY_D", "FINISHED_TAG"),
+            1606, "*", "PUR_APPLY_D", "FINISHED"),
     ];
 
     private sealed record AcceptedDivergence(

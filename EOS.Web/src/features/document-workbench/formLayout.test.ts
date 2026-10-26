@@ -207,23 +207,23 @@ describe('packFormSections 分节', () => {
 
   it('生命周期列不特判：位置与次序完全按传入次序（版式）', () => {
     const sections = packFormSections(
-      [field('CONFIRM_TAG'), field('REMARK'), field('CREATE_PERSON'), field('BILL_NO')],
+      [field('APPROVED'), field('REMARK'), field('CREATED_BY'), field('BILL_NO')],
       4,
     )
     expect(titles(sections)).toEqual([null])
-    expect(keys(sections)).toEqual([['CONFIRM_TAG', 'REMARK', 'CREATE_PERSON', 'BILL_NO']])
+    expect(keys(sections)).toEqual([['APPROVED', 'REMARK', 'CREATED_BY', 'BILL_NO']])
   })
 
   it('生命周期列落在分节里时随分节走，不被抽到末尾', () => {
     const sections = packFormSections(
       [
         field('A', { sectionId: '基本信息' }),
-        field('CONFIRM_PERSON', { sectionId: '基本信息' }),
-        field('CREATE_DATE', { sectionId: '审核信息' }),
+        field('APPROVED_BY', { sectionId: '基本信息' }),
+        field('CREATED_TIME', { sectionId: '审核信息' }),
       ],
       2,
     )
     expect(titles(sections)).toEqual(['基本信息', '审核信息'])
-    expect(keys(sections)).toEqual([['A', 'CONFIRM_PERSON'], ['CREATE_DATE']])
+    expect(keys(sections)).toEqual([['A', 'APPROVED_BY'], ['CREATED_TIME']])
   })
 })

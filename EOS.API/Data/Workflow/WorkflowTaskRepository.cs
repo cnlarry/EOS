@@ -20,7 +20,7 @@ public sealed class WorkflowTaskRepository(DbConnectionFactory connections)
     public sealed record PendingTask(int ModuleId, string Title, long Pending);
 
     /// <summary>
-    /// 各模块未批核（<c>CONFIRM_TAG=0</c>）单据计数。模块清单由调用方按权限过滤后传入——
+    /// 各模块未批核（<c>APPROVED=0</c>）单据计数。模块清单由调用方按权限过滤后传入——
     /// 权限判定留在控制器侧的策略入口，这里只负责取数。
     /// </summary>
     public async Task<IReadOnlyList<PendingTask>> CountPendingAsync(
@@ -38,7 +38,7 @@ public sealed class WorkflowTaskRepository(DbConnectionFactory connections)
         {
             if (!WorkbenchSql.Identifier.IsMatch(table)) continue;
             await using var command = new SqlCommand(
-                $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE ISNULL(CONFIRM_TAG,0)=0;", connection);
+                $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE ISNULL(APPROVED,0)=0;", connection);
             var pending = Convert.ToInt64(await command.ExecuteScalarAsync(token));
             result.Add(new PendingTask(moduleId, titles.GetValueOrDefault(moduleId, string.Empty), pending));
         }

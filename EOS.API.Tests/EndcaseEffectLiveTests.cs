@@ -85,10 +85,10 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@rpro, @depot, @location, @batch, @qty, @qty, @qty, 3, @qty * 3),
                        (@rpro2, @depot, @location, @batch, @qty, @qty, @qty, 3, @qty * 3);
-            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED_TAG, CONFIRM_TAG)
+            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED, APPROVED)
                 VALUES (N'ZZENDC', N'ZZENDC-MO1', 0, 1);
             -- 明细主键是 (单别, 单号, 料号)：两条未领需求各挂一个料号，合计 10 + 6
-            INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, SERIAL_NO, NEED_QTY, USED_QTY, FINISHED_TAG)
+            INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, SERIAL_NO, NEED_QTY, USED_QTY, FINISHED)
                 VALUES (N'ZZENDC', N'ZZENDC-MO1', @ipro, 1, 10, 0, 0),
                        (N'ZZENDC', N'ZZENDC-MO1', @ipro2, 2, 6, 0, 0);
             """, ("@rpro", ReserveProduct), ("@rpro2", ReserveProduct2), ("@ipro", IssueProduct),
@@ -273,7 +273,7 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
             Assert.True(await ScalarAsync<bool>(connection, MasterFinishedSql));
             Assert.Equal(2, await ScalarAsync<int>(connection, """
                 SELECT COUNT(*) FROM dbo.MOC_PRODUCE_D
-                 WHERE PRODUCE_TYPE = N'ZZENDC' AND PRODUCE_NO = N'ZZENDC-MO1' AND ISNULL(FINISHED_TAG,0) = 1;
+                 WHERE PRODUCE_TYPE = N'ZZENDC' AND PRODUCE_NO = N'ZZENDC-MO1' AND ISNULL(FINISHED,0) = 1;
                 """));
         }
         // 明细已结案 ⇒ 该单的"生产未领"需求不再计入（这正是既有实现结案在读侧的行为）
@@ -422,7 +422,7 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
         await ExecAsync(connection, """
             INSERT INTO dbo.INV_RESERVE
                 (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO, RESERVE_QTY, REASON, STATUS,
-                 CREATE_PERSON, CREATE_DATE)
+                 CREATED_BY, CREATED_TIME)
                 VALUES (@pro, @depot, @location, @batch, N'1502', N'ZZENDC-MO1', @qty, N'ZZENDC 用例', N'A', @user, GETDATE());
             """, ("@pro", product), ("@depot", Depot), ("@location", Location), ("@batch", Batch),
             ("@qty", quantity), ("@user", TestUser));
@@ -484,12 +484,12 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
             string.Empty, string.Empty);
 
     private const string MasterFinishedSql =
-        "SELECT ISNULL(FINISHED_TAG,0) FROM dbo.MOC_PRODUCE_M WHERE PRODUCE_TYPE = N'ZZENDC' AND PRODUCE_NO = N'ZZENDC-MO1';";
+        "SELECT ISNULL(FINISHED,0) FROM dbo.MOC_PRODUCE_M WHERE PRODUCE_TYPE = N'ZZENDC' AND PRODUCE_NO = N'ZZENDC-MO1';";
 
     private const string DetailAllFinishedSql = """
         SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_D
                                   WHERE PRODUCE_TYPE = N'ZZENDC' AND PRODUCE_NO = N'ZZENDC-MO1'
-                                    AND ISNULL(FINISHED_TAG,0) = 0) THEN 0 ELSE 1 END;
+                                    AND ISNULL(FINISHED,0) = 0) THEN 0 ELSE 1 END;
         """;
 
     /// <summary>审计基线：本次动作之前的最大事件号（审计只增不删，增量断言靠它）。</summary>
@@ -545,7 +545,7 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
               FROM dbo.MOC_PRODUCE_M m
               JOIN dbo.MOC_PRODUCE_D d
                 ON m.PRODUCE_TYPE = d.PRODUCE_TYPE AND m.PRODUCE_NO = d.PRODUCE_NO
-             WHERE m.CONFIRM_TAG = 1 AND d.FINISHED_TAG = 0 AND d.NEED_QTY > d.USED_QTY
+             WHERE m.APPROVED = 1 AND d.FINISHED = 0 AND d.NEED_QTY > d.USED_QTY
                AND m.PRODUCE_TYPE = N'ZZENDC' AND m.PRODUCE_NO = N'ZZENDC-MO1';
             """);
     }

@@ -21,7 +21,7 @@ namespace EOS.API.Tests;
 /// 一条完整的弧：**批核（=关账）→ 记账被拒 → 解批（=反结账）→ 记账恢复 → 再次批核 → 又被拒**，
 /// 每一步都断言 `AUDIT_EVENT` + `AUDIT_FIELD_CHANGE` 的前后值。
 ///
-/// 这条弧里最要紧的一条断言是**解批审计的旧值**：解批会把 `CONFIRM_PERSON` / `CONFIRM_DATE`
+/// 这条弧里最要紧的一条断言是**解批审计的旧值**：解批会把 `APPROVED_BY` / `APPROVED_TIME`
 /// 一并覆盖（那三列只存"最后一位操作人"），"当初是谁在何时结的账"在状态列上就此消失，
 /// 只留在审计的旧值里。只断言"有事件"而不看前后值，等于没验。
 ///
@@ -74,11 +74,11 @@ public sealed class MonthCloseReopenLiveTests
             // 批核审计：状态位 0→1，且经办人从"空"变成具体的人
             var approveEvent = await LatestEventAsync(connection, transaction, "APPROVE");
             var approveChanges = await ChangesAsync(connection, transaction, approveEvent);
-            Assert.Equal("0", approveChanges["CONFIRM_TAG"].Old);
-            Assert.Equal("1", approveChanges["CONFIRM_TAG"].New);
-            Assert.Null(approveChanges["CONFIRM_PERSON"].Old);
-            Assert.Equal(Confirmer, approveChanges["CONFIRM_PERSON"].New);
-            Assert.False(string.IsNullOrWhiteSpace(approveChanges["CONFIRM_DATE"].New));
+            Assert.Equal("0", approveChanges["APPROVED"].Old);
+            Assert.Equal("1", approveChanges["APPROVED"].New);
+            Assert.Null(approveChanges["APPROVED_BY"].Old);
+            Assert.Equal(Confirmer, approveChanges["APPROVED_BY"].New);
+            Assert.False(string.IsNullOrWhiteSpace(approveChanges["APPROVED_TIME"].New));
 
             // ② 关账生效：落在该期末之前的记账被拒
             await Assert.ThrowsAsync<PeriodClosedException>(() => InventoryPeriodService.EnsureLedgerWritableAsync(
@@ -96,12 +96,12 @@ public sealed class MonthCloseReopenLiveTests
             // 解批审计：**旧值里留着原批核人与原批核时间**——状态列已被覆盖，这是唯一痕迹
             var deapproveEvent = await LatestEventAsync(connection, transaction, "DEAPPROVE");
             var deapproveChanges = await ChangesAsync(connection, transaction, deapproveEvent);
-            Assert.Equal("1", deapproveChanges["CONFIRM_TAG"].Old);
-            Assert.Equal("0", deapproveChanges["CONFIRM_TAG"].New);
-            Assert.Equal(Confirmer, deapproveChanges["CONFIRM_PERSON"].Old);
-            Assert.Equal(Reopener, deapproveChanges["CONFIRM_PERSON"].New);
+            Assert.Equal("1", deapproveChanges["APPROVED"].Old);
+            Assert.Equal("0", deapproveChanges["APPROVED"].New);
+            Assert.Equal(Confirmer, deapproveChanges["APPROVED_BY"].Old);
+            Assert.Equal(Reopener, deapproveChanges["APPROVED_BY"].New);
             Assert.Equal(
-                DateText(date!.Value), deapproveChanges["CONFIRM_DATE"].Old);
+                DateText(date!.Value), deapproveChanges["APPROVED_TIME"].Old);
 
             // ④ 反结账后写入恢复
             await InventoryPeriodService.EnsureLedgerWritableAsync(
@@ -182,7 +182,7 @@ public sealed class MonthCloseReopenLiveTests
         await ExecuteAsync(connection, transaction, """
             DELETE FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @Type;
             INSERT INTO dbo.INV_PRO_MONTH_M
-                (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE, CREATE_PERSON, CREATE_DATE)
+                (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, APPROVED_BY, APPROVED_TIME, CREATED_BY, CREATED_TIME)
                 VALUES (@Type, @No, '2023-12-31', 0, NULL, NULL, N'ADR20D', GETDATE());
             """, ("@Type", MonthType), ("@No", MonthNo));
 
@@ -190,7 +190,7 @@ public sealed class MonthCloseReopenLiveTests
         SqlConnection connection, SqlTransaction transaction)
     {
         await using var command = new SqlCommand(
-            "SELECT CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE FROM dbo.INV_PRO_MONTH_M "
+            "SELECT APPROVED, APPROVED_BY, APPROVED_TIME FROM dbo.INV_PRO_MONTH_M "
             + "WHERE MONTH_TYPE = @Type AND MONTH_NO = @No;", connection, transaction);
         command.Parameters.Add("@Type", SqlDbType.NVarChar, 20).Value = MonthType;
         command.Parameters.Add("@No", SqlDbType.NVarChar, 40).Value = MonthNo;
@@ -198,7 +198,7 @@ public sealed class MonthCloseReopenLiveTests
         Assert.True(await reader.ReadAsync(), "月结单夹具应当存在。");
         return (
             reader.IsDBNull(0) ? null : reader.GetBoolean(0),
-            // CONFIRM_PERSON 是定长 NCHAR，直接读会带尾随空格
+            // APPROVED_BY 是定长 NCHAR，直接读会带尾随空格
             reader.IsDBNull(1) ? null : reader.GetString(1).Trim(),
             reader.IsDBNull(2) ? null : reader.GetDateTime(2));
     }

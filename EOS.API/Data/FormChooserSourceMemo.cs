@@ -146,7 +146,7 @@ internal static class FormChooserSourceMemo
     {
         const string sql = """
             INSERT INTO dbo.FORM_CHOOSER_SOURCE_MEMO
-                (M_IDX, T_ID, F_ID, KEY_VALUES, MASTER_KEY_VALUES, SOURCE_SERIAL_NO, UPDATED_BY, UPDATED_AT)
+                (M_IDX, T_ID, F_ID, KEY_VALUES, MASTER_KEY_VALUES, SOURCE_SERIAL_NO, MODIFIED_BY, MODIFIED_TIME)
             VALUES (@ModuleId, @Table, @Field, @KeyValues, @MasterKey, @Serial, @User, SYSUTCDATETIME());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);

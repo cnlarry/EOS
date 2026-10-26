@@ -14,7 +14,7 @@ public class EffectParamPhysicalValidatorTests
         "CUS_EXPORT_M", "CUS_EXPORT_M.EXPORT_TYPE", "CUS_EXPORT_M.EXPORT_NO",
         "CUS_EXPORT_D", "CUS_EXPORT_D.EXPORT_TYPE", "CUS_EXPORT_D.EXPORT_NO", "CUS_EXPORT_D.PRO_NO",
         "CUS_PRODUCT", "CUS_PRODUCT.PRO_ID", "CUS_PRODUCT.INSIDE_NAME",
-        "MOU_APPLY_M", "MOU_APPLY_M.APPLY_TYPE", "MOU_APPLY_M.APPLY_NO", "MOU_APPLY_M.FINISHED_TAG",
+        "MOU_APPLY_M", "MOU_APPLY_M.APPLY_TYPE", "MOU_APPLY_M.APPLY_NO", "MOU_APPLY_M.FINISHED",
         "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_M.OCCUR_TYPE", "INV_OCCUR_OUT_M.OCCUR_NO",
         "INV_OCCUR_OUT_D", "INV_OCCUR_OUT_D.OCCUR_TYPE", "INV_OCCUR_OUT_D.OCCUR_NO",
         "INV_OCCUR_OUT_D.PRO_NO", "INV_OCCUR_OUT_D.DEPOT_ID", "INV_OCCUR_OUT_D.QTY",
@@ -65,7 +65,7 @@ public class EffectParamPhysicalValidatorTests
     {
         var issues = EffectParamPhysicalValidator.Validate(
             "set-state",
-            """{"targets":[{"table":"MOU_APPLY_M","refs":[{"target":"APPLY_NO","source":"EXPORT_NO"}]}],"state":{"FINISHED_TAG":1}}""",
+            """{"targets":[{"table":"MOU_APPLY_M","refs":[{"target":"APPLY_NO","source":"EXPORT_NO"}]}],"state":{"FINISHED":1}}""",
             CustomsPlan(), Columns);
 
         Assert.Empty(issues);

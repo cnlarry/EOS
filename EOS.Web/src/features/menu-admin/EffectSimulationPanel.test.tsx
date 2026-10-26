@@ -96,7 +96,7 @@ function report(overrides: Record<string, unknown> = {}) {
         outcome: 'skipped',
         conditionMatched: false,
         rowsAffected: 0,
-        condition: JSON.stringify({ type: 'field-compare', left: { scope: 'DETAIL', field: 'FINISHED_TAG' }, op: 'NEQ', right: { constant: '1' } }),
+        condition: JSON.stringify({ type: 'field-compare', left: { scope: 'DETAIL', field: 'FINISHED' }, op: 'NEQ', right: { constant: '1' } }),
         skipReason: '条件未命中（该动作的条件对本单不成立）。',
         message: null,
         ops: [],

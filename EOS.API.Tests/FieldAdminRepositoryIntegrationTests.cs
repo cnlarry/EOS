@@ -185,7 +185,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         var fIdx = await NextFreeFIdxAsync(table);
         var reportModuleId = Random.Shared.Next(100_000_000, 999_999_999);
         var sql = $"""
-            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,MODIFIED_BY,MODIFIED_TIME)
             VALUES (N'{table}',N'{field}',N'联动清理测试','nvarchar',1,1,0,'IT',GETDATE());
             INSERT INTO dbo.SYS_DEFAULT_COLUMN (T_ID,T_ID_R,F_IDX,F_ID)
             VALUES (N'{table}',N'{table}',{fIdx},N'{field}');
@@ -241,9 +241,9 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         var ghost = $"ZZ_FA_GHOST_{Random.Shared.Next(100000, 999999)}";
         var virtualField = $"ZZ_FA_VIRT_{Random.Shared.Next(100000, 999999)}";
         var sql = $"""
-            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,VIRTUAL_EXP,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,VIRTUAL_EXP,MODIFIED_BY,MODIFIED_TIME)
             VALUES (N'{table}',N'{ghost}',N'幽灵字段测试','nvarchar',0,0,0,0,NULL,'IT',GETDATE());
-            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,VIRTUAL_EXP,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.FIELDS (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,VIRTUAL_EXP,MODIFIED_BY,MODIFIED_TIME)
             VALUES (N'{table}',N'{virtualField}',N'虚拟字段测试','nvarchar',0,0,0,1,N'COMPANY_ID','IT',GETDATE());
             """;
 

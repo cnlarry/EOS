@@ -97,7 +97,7 @@ public sealed class PurPayCatalogLiveTests
             DECLARE @sum_prepay DECIMAL(18,2) =
                 (SELECT SUM(PREPAY_AMOUNT) FROM dbo.PUR_PAY_PREPAY WHERE PAY_TYPE=@Type AND PAY_NO=@No);
             UPDATE dbo.PUR_PAY_M SET PREPAY_SUM=@sum_prepay, PAYOUT_SUM=AMOUNT_TAX-REBATE_SUM-@sum_prepay,
-                   LAST_UPDATE_DATE=GETDATE()
+                   MODIFIED_TIME=GETDATE()
              WHERE PAY_TYPE=@Type AND PAY_NO=@No;
             """, ("@Type", Type), ("@No", No));
 

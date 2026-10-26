@@ -59,7 +59,7 @@ const blockedPublish = {
     definitionVersion: null,
     passed: false,
     checks: [
-      { code: 'lifecycle_columns', passed: false, message: '主表缺少 CONFIRM_TAG。', severity: 'error' },
+      { code: 'lifecycle_columns', passed: false, message: '主表缺少 APPROVED。', severity: 'error' },
       { code: 'effect_engine_keys_implemented', passed: true, message: '效果键全部可执行。', severity: 'info' },
     ],
   },
@@ -207,6 +207,6 @@ describe('ModuleActionsPage', () => {
     const alert = await screen.findByRole('alert')
     // 整句被 <span> 切成多个文本节点，按 textContent 断言（按纯文本匹配会碎）
     expect(alert).toHaveTextContent('已保存，但未生效')
-    expect(within(alert).getByText('主表缺少 CONFIRM_TAG。')).toBeInTheDocument()
+    expect(within(alert).getByText('主表缺少 APPROVED。')).toBeInTheDocument()
   })
 })

@@ -54,7 +54,7 @@ function handlers(): ViewToolbarHandlers {
 
 function state(overrides: Partial<ViewToolbarState> = {}): ViewToolbarState {
   return {
-    master: { CONFIRM_TAG: false, FINISHED_TAG: false },
+    master: { APPROVED: false, FINISHED: false },
     isConfirmed: false,
     isFinished: false,
     flowInProgress: false,
@@ -70,7 +70,7 @@ describe('buildViewToolbarItems', () => {
   })
 
   it('回退集：已批核且已结案 → deapprove + unendcase（无 approve/endcase）', () => {
-    const items = buildViewToolbarItems(form(), state({ master: { CONFIRM_TAG: true, FINISHED_TAG: true }, isConfirmed: true, isFinished: true }), handlers())
+    const items = buildViewToolbarItems(form(), state({ master: { APPROVED: true, FINISHED: true }, isConfirmed: true, isFinished: true }), handlers())
     expect(items.map(item => item.action)).toEqual(['deapprove', 'unendcase', 'print'])
   })
 
@@ -79,14 +79,14 @@ describe('buildViewToolbarItems', () => {
     expect(items.some(item => item.action === 'approve')).toBe(false)
   })
 
-  it('无结案能力（主表没有 FINISHED_TAG）时结案/取消结案不出现', () => {
+  it('无结案能力（主表没有 FINISHED）时结案/取消结案不出现', () => {
     const noFinish = form({ hasFinishCapability: false })
     const items = buildViewToolbarItems(noFinish, state(), handlers())
     expect(items.map(item => item.action)).toEqual(['approve', 'print'])
   })
 
   it('已结案时 approve/deapprove 禁用（disabled）', () => {
-    const approved = buildViewToolbarItems(form(), state({ isFinished: true, master: { CONFIRM_TAG: true, FINISHED_TAG: true } }), handlers())
+    const approved = buildViewToolbarItems(form(), state({ isFinished: true, master: { APPROVED: true, FINISHED: true } }), handlers())
     const deapprove = approved.find(item => item.action === 'deapprove')
     expect(deapprove?.disabled).toBe(true)
   })
@@ -102,14 +102,14 @@ describe('buildViewToolbarItems', () => {
     const f = form({ hasWorkflow: false, hasStatelessApprove: false })
     const items = buildViewToolbarItems(f, state(), handlers())
     expect(items.some(item => item.action === 'approve' || item.action === 'deapprove')).toBe(false)
-    const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
+    const confirmed = buildViewToolbarItems(f, state({ master: { APPROVED: true, FINISHED: false } }), handlers())
     expect(confirmed.some(item => item.action === 'approve' || item.action === 'deapprove')).toBe(false)
   })
 
   it('无副作用自动批核显示批核/解批（与服务端同口径）', () => {
     const f = form({ hasWorkflow: false, hasStatelessApprove: true })
     expect(buildViewToolbarItems(f, state(), handlers()).map(item => item.action)).toContain('approve')
-    const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
+    const confirmed = buildViewToolbarItems(f, state({ master: { APPROVED: true, FINISHED: false } }), handlers())
     expect(confirmed.map(item => item.action)).toContain('deapprove')
   })
 
@@ -118,7 +118,7 @@ describe('buildViewToolbarItems', () => {
     // 但批核/解批入口必须照常显示（退役遗留过程后按钮不得消失）。
     const f = form({ hasWorkflow: false, hasStatelessApprove: false, hasApproveCapability: true })
     expect(buildViewToolbarItems(f, state(), handlers()).map(item => item.action)).toContain('approve')
-    const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
+    const confirmed = buildViewToolbarItems(f, state({ master: { APPROVED: true, FINISHED: false } }), handlers())
     expect(confirmed.map(item => item.action)).toContain('deapprove')
   })
 

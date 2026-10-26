@@ -20,7 +20,7 @@ namespace EOS.API.Tests;
 ///
 /// 逐条对上 的验收：账面数按**最新库存**重算、**盘点数不变**、
 /// **明细行数与位置/批次不丢**、重复点击幂等、无授权 403、失败零残留（BLOCK 回滚）。
-/// 未批核不允许重算（前置条件 CONFIRM_TAG=1）在服务端每次点击都复核。
+/// 未批核不允许重算（前置条件 APPROVED=1）在服务端每次点击都复核。
 ///
 /// 单据与明细在本用例内造（键以 ZZ 前缀隔离），结束即删除；库存表只读不改。
 /// 需要 MSSQL_ERP_CONN。
@@ -110,7 +110,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no)
-                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,CONFIRM_TAG,CREATE_PERSON,CREATE_DATE)
+                INSERT INTO dbo.{MasterTable} (CHECK_STOCK_TYPE,CHECK_STOCK_NO,DEPOT_ID,APPROVED,CREATED_BY,CREATED_TIME)
                 VALUES (@type,@no,@depot,0,N'DbUp',SYSDATETIME());
             """,
             ("@type", TestType), ("@no", TestNo), ("@depot", stock.Depot));
@@ -142,7 +142,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", RecalcAccountHandler.ActionKey));
@@ -173,7 +173,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
 
     private static WorkbenchDefinition Definition(bool confirmed)
     {
-        // 与迁移 219 配出来的一致：MANUAL 行 + 已批核才能点（CONFIRM_TAG=1）+ 需二次确认。
+        // 与迁移 219 配出来的一致：MANUAL 行 + 已批核才能点（APPROVED=1）+ 需二次确认。
         var actions = JsonSerializer.SerializeToElement(new object[]
         {
             new
@@ -185,7 +185,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
                 label = "重算账面数量",
                 confirmTag = true,
                 failMode = "BLOCK",
-                condition = """{"logic":"AND","items":[{"type":"value-eq","field":{"scope":"MASTER","field":"CONFIRM_TAG"},"value":1}]}""",
+                condition = """{"logic":"AND","items":[{"type":"value-eq","field":{"scope":"MASTER","field":"APPROVED"},"value":1}]}""",
             },
         });
         return new WorkbenchDefinition(
@@ -247,7 +247,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
     {
         await using var connection = await OpenAsync();
         await ExecAsync(connection,
-            $"UPDATE dbo.{MasterTable} SET CONFIRM_TAG=@tag WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
+            $"UPDATE dbo.{MasterTable} SET APPROVED=@tag WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@tag", confirmed), ("@type", TestType), ("@no", TestNo));
     }
 

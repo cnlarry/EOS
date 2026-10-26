@@ -164,9 +164,9 @@ public sealed class FormLayoutValidatorTests
     public void HiddenSystemColumn_IsRejected()
     {
         var issues = FormLayoutValidator.Validate(
-            Layout([Row("CREATE_PERSON", hidden: true)]),
-            Fields(Fact("CREATE_PERSON", primaryKey: false, lifecycle: true, required: true)), Fields());
-        Assert.Contains(issues, issue => issue.Code == "FORM_LAYOUT_REQUIRED_HIDDEN" && issue.Key == "CREATE_PERSON");
+            Layout([Row("CREATED_BY", hidden: true)]),
+            Fields(Fact("CREATED_BY", primaryKey: false, lifecycle: true, required: true)), Fields());
+        Assert.Contains(issues, issue => issue.Code == "FORM_LAYOUT_REQUIRED_HIDDEN" && issue.Key == "CREATED_BY");
     }
 
     [Fact]

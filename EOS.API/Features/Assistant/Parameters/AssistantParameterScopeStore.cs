@@ -22,7 +22,7 @@ public sealed class AssistantParameterScopeStore(
     DbConnectionFactory connections,
     WorkbenchAuditWriter auditWriter)
 {
-    private const string SelectColumns = "SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, LAST_UPDATE_BY, LAST_UPDATE_DATE";
+    private const string SelectColumns = "SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, MODIFIED_BY, MODIFIED_TIME";
 
     /// <summary>
     /// 管理界面列表用的列清单：在 <see cref="SelectColumns"/> 之外多带一列**显示名**。
@@ -40,7 +40,7 @@ public sealed class AssistantParameterScopeStore(
     /// </para>
     /// </summary>
     private const string LabelledSelectColumns = """
-        s.SCOPE_TYPE, s.SCOPE_KEY, s.PARAM_KEY, s.PARAM_VALUE, s.LAST_UPDATE_BY, s.LAST_UPDATE_DATE,
+        s.SCOPE_TYPE, s.SCOPE_KEY, s.PARAM_KEY, s.PARAM_VALUE, s.MODIFIED_BY, s.MODIFIED_TIME,
         CASE WHEN s.SCOPE_TYPE = N'MODULE' THEN ISNULL(m.M_DESC, N'')
              ELSE ISNULL(NULLIF(LTRIM(RTRIM(n.EMP_NAME)), N''), N'') END AS SCOPE_LABEL
         """;
@@ -114,7 +114,7 @@ public sealed class AssistantParameterScopeStore(
             // 而不是抛 2627 让界面看到一句看不懂的错
             await using (var update = new SqlCommand("""
                 UPDATE dbo.ASSISTANT_PARAM_SCOPE
-                SET PARAM_VALUE = @Value, LAST_UPDATE_BY = @Actor, LAST_UPDATE_DATE = GETDATE()
+                SET PARAM_VALUE = @Value, MODIFIED_BY = @Actor, MODIFIED_TIME = GETDATE()
                 WHERE SCOPE_TYPE = @Type AND SCOPE_KEY = @Key AND PARAM_KEY = @Param;
                 """, connection, transaction))
             {
@@ -125,7 +125,7 @@ public sealed class AssistantParameterScopeStore(
                 {
                     await using var insert = new SqlCommand("""
                         INSERT INTO dbo.ASSISTANT_PARAM_SCOPE
-                            (SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, CREATE_PERSON, CREATE_DATE)
+                            (SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, CREATED_BY, CREATED_TIME)
                         VALUES (@Type, @Key, @Param, @Value, @Actor, GETDATE());
                         """, connection, transaction);
                     AddKey(insert, scopeType, scopeKey, paramKey);

@@ -74,7 +74,7 @@ describe('ModuleGroupsPage', () => {
     apiClientMock.delete.mockReset()
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path === '/admin/module-groups/overview') return overview
-      if (path.endsWith('/fields')) return { fields: ['PAY_DATE', 'FINISHED_TAG'] }
+      if (path.endsWith('/fields')) return { fields: ['PAY_DATE', 'FINISHED'] }
       return groupView
     })
     apiClientMock.post.mockResolvedValue(chooserData)
@@ -132,8 +132,8 @@ describe('ModuleGroupsPage', () => {
 
     fireEvent.change(name, { target: { value: '应付年月' } })
     fireEvent.change(dialog.getByLabelText('分组表达式'), { target: { value: 'CAST(YEAR(PAY_DATE) AS VARCHAR)' } })
-    fireEvent.change(dialog.getByLabelText('插入主表字段'), { target: { value: 'FINISHED_TAG' } })
-    expect(dialog.getByLabelText('分组表达式')).toHaveValue('CAST(YEAR(PAY_DATE) AS VARCHAR)FINISHED_TAG')
+    fireEvent.change(dialog.getByLabelText('插入主表字段'), { target: { value: 'FINISHED' } })
+    expect(dialog.getByLabelText('分组表达式')).toHaveValue('CAST(YEAR(PAY_DATE) AS VARCHAR)FINISHED')
 
     fireEvent.click(dialog.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
@@ -141,7 +141,7 @@ describe('ModuleGroupsPage', () => {
     expect(path).toBe('/admin/module-groups/170204/1')
     expect(body).toEqual({
       description: '应付年月',
-      expression: 'CAST(YEAR(PAY_DATE) AS VARCHAR)FINISHED_TAG',
+      expression: 'CAST(YEAR(PAY_DATE) AS VARCHAR)FINISHED',
     })
     // 逐行写：未动的第二行不该被提交
     expect(apiClientMock.put).toHaveBeenCalledTimes(1)
@@ -167,13 +167,13 @@ describe('ModuleGroupsPage', () => {
 
     await waitFor(() => expect(screen.queryByRole('button', { name: '确认' })).toBeNull())
     fireEvent.change(dialog.getByLabelText('分组名称'), { target: { value: '结案' } })
-    fireEvent.change(dialog.getByLabelText('分组表达式'), { target: { value: 'FINISHED_TAG' } })
+    fireEvent.change(dialog.getByLabelText('分组表达式'), { target: { value: 'FINISHED' } })
     fireEvent.click(dialog.getByRole('button', { name: '保存' }))
 
     // 新增走 POST（不是 PUT），且落到刚选的那个模块上
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/module-groups/180651',
-      { description: '结案', expression: 'FINISHED_TAG' },
+      { description: '结案', expression: 'FINISHED' },
     ))
     expect(apiClientMock.put).not.toHaveBeenCalled()
   })

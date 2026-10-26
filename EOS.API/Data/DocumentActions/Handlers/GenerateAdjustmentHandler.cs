@@ -17,7 +17,7 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 ///   ② 下游单据走统一记录创建路径（`WorkbenchCommandHandler.CreateRecordAsync`）：单号、归属、校验、
 ///      审计与效果链一律照常生效，处理器不自己拼 INSERT。
 ///
-/// **业务幂等（`once`＝转后结案锁死）**：生成成功后在同一事务里置盘点单 `FINISHED_TAG=1` 并写回
+/// **业务幂等（`once`＝转后结案锁死）**：生成成功后在同一事务里置盘点单 `FINISHED=1` 并写回
 /// `ADJUST_TYPE/ADJUST_NO`；再次点击会被这两道守卫拒绝。结案锁死配套的服务端守卫见
 /// `WorkbenchApprovalService`（已结案拒绝解批），前端另在已结案时禁用编辑/删除/解批。
 ///
@@ -49,7 +49,7 @@ internal sealed class GenerateAdjustmentHandler(
     private const string CheckedQtyField = "CHECK_QTY";
     private const string AdjustTypeField = "ADJUST_TYPE";
     private const string AdjustNoField = "ADJUST_NO";
-    private const string FinishedTagField = "FINISHED_TAG";
+    private const string FinishedTagField = "FINISHED";
     private const string CountDateField = "COUNT_DATE";
     private const string TargetDateField = "OCCUR_DATE";
     private const string TargetQtyField = "QTY";
@@ -367,8 +367,8 @@ internal sealed class GenerateAdjustmentHandler(
             UPDATE dbo.{q(definition.MasterTable)}
                SET {q(AdjustTypeField)}=@adjustType, {q(AdjustNoField)}=@adjustNo,
                    {q(FinishedTagField)}=1,
-                   {q("FINISHED_PERSON")}=@finishedPerson, {q("FINISHED_DATE")}=SYSDATETIME(),
-                   {q("LAST_UPDATE_BY")}=@finishedPerson, {q("LAST_UPDATE_DATE")}=SYSDATETIME()
+                   {q("FINISHED_BY")}=@finishedPerson, {q("FINISHED_TIME")}=SYSDATETIME(),
+                   {q("MODIFIED_BY")}=@finishedPerson, {q("MODIFIED_TIME")}=SYSDATETIME()
              WHERE {where} AND ISNULL({q(FinishedTagField)}, 0)=0 AND ISNULL({q(AdjustNoField)}, N'')=N'';
             """, context.Connection, context.Transaction);
         command.Parameters.Add("@adjustType", SqlDbType.NVarChar, 20).Value = adjustType;

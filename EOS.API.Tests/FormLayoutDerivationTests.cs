@@ -28,15 +28,15 @@ public sealed class FormLayoutDerivationTests
         var onlyLifecycle = new FormLayoutDefinition(
             [],
             [
-                new FormLayoutRow("CREATE_PERSON", 1, 1, 1, 1, false, null, null, 0, false),
-                new FormLayoutRow("CONFIRM_DATE", 1, 2, 1, 1, false, null, null, 0, false),
+                new FormLayoutRow("CREATED_BY", 1, 1, 1, 1, false, null, null, 0, false),
+                new FormLayoutRow("APPROVED_TIME", 1, 2, 1, 1, false, null, null, 0, false),
             ],
             [],
             MasterCustomized: true);
         var mixed = new FormLayoutDefinition(
             [],
             [
-                new FormLayoutRow("CREATE_PERSON", 1, 1, 1, 1, false, null, null, 0, false),
+                new FormLayoutRow("CREATED_BY", 1, 1, 1, 1, false, null, null, 0, false),
                 new FormLayoutRow("B", 1, 2, 1, 1, false, null, null, 0, false),
                 new FormLayoutRow("A", 1, 3, 1, 1, false, null, null, 0, false),
             ],

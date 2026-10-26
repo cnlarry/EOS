@@ -98,12 +98,12 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         (ids, sortIds) = await QueryOrderAsync();
         Assert.Equal([_childIds[1], _childIds[3], _childIds[2], _childIds[0]], ids);
 
-        // 审计字段：重排后 LAST_UPDATE_BY 落库
+        // 审计字段：重排后 MODIFIED_BY 落库
         await using (var connection = new SqlConnection(ConnectionString.Value))
         {
             await connection.OpenAsync();
             await using var command = new SqlCommand(
-                "SELECT COUNT(*) FROM dbo.MODULES WHERE M_IDX=@Id AND LAST_UPDATE_BY='IT';", connection);
+                "SELECT COUNT(*) FROM dbo.MODULES WHERE M_IDX=@Id AND MODIFIED_BY='IT';", connection);
             command.Parameters.Add("@Id", SqlDbType.Int).Value = _childIds[3];
             Assert.Equal(1, (int)(await command.ExecuteScalarAsync() ?? 0));
         }
@@ -186,7 +186,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         {
             await connection.OpenAsync();
             await using var command = new SqlCommand(
-                "SELECT M_P_IDX,M_ROOT_IDX,LAST_UPDATE_BY FROM dbo.MODULES WHERE M_IDX=@Id;", connection);
+                "SELECT M_P_IDX,M_ROOT_IDX,MODIFIED_BY FROM dbo.MODULES WHERE M_IDX=@Id;", connection);
             command.Parameters.Add("@Id", SqlDbType.Int).Value = _childIds[1];
             await using var reader = await command.ExecuteReaderAsync();
             Assert.True(await reader.ReadAsync());
@@ -334,7 +334,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
             MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
             NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
-            LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null, FORM_TABS: null, FORM_COLUMNS: null,
+            MODIFIED_BY: null, MODIFIED_TIME: null, FORM_TABS: null, FORM_COLUMNS: null,
             M_ICON: "product");
 
         var id = await _repository.SaveAsync(input, null, "IT", CancellationToken.None);
@@ -369,7 +369,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
             MASTER_TABLE: "NOT_A_TABLE", FILTER: null, DETAIL_TABLE: null,
             NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
-            LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null);
+            MODIFIED_BY: null, MODIFIED_TIME: null);
 
         await Assert.ThrowsAsync<ArgumentException>(
             () => _repository.SaveAsync(input, null, "IT", CancellationToken.None));

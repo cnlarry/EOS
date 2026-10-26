@@ -162,7 +162,7 @@ public sealed class EffectPlanLoader
         var scope = OptionalString(element, "sourceScope") ?? "MASTER";
         if (!SourceScopes.Contains(scope))
             throw new EffectConfigException($"公式行来源域 '{scope}' 不在 MASTER/DETAIL/TABLE/TARGET/CONSTANT 内。");
-        // CONSTANT 的取值本身可以是空串（"清空该列"是真实语义，如 FINISHED_PERSON=''），
+        // CONSTANT 的取值本身可以是空串（"清空该列"是真实语义，如 FINISHED_BY=''），
         // 故常量不做空白归一；真正缺省时属性不存在，仍按未设置 fail-closed。
         var constant = scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase)
             ? RawString(element, "sourceConstant")

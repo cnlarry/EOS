@@ -67,8 +67,8 @@ public sealed class ContractSyncHandler : IEffectServiceHandler
             + $"WHERE d.{q(spec.MasterTypeColumn)} = @ct AND d.{q(spec.MasterNoColumn)} = @cn "
             + $"AND d.{q("EMP_ID")} = E.{q("EMP_ID")})";
         var membership = includeSelf
-            ? "(m.CONFIRM_TAG = 1 OR (m.CONT_TYPE = @ct AND m.CONT_NO = @cn))"
-            : "(m.CONFIRM_TAG = 1 AND NOT (m.CONT_TYPE = @ct AND m.CONT_NO = @cn))";
+            ? "(m.APPROVED = 1 OR (m.CONT_TYPE = @ct AND m.CONT_NO = @cn))"
+            : "(m.APPROVED = 1 AND NOT (m.CONT_TYPE = @ct AND m.CONT_NO = @cn))";
         var backfill = $"UPDATE E SET {q("CONTRACT_DATE")} = t.{q("END_DATE")}, "
             + $"{q("CONTRACT_BEGIN_DATE")} = t.{q("BEGIN_DATE")}, {q("CONTRACT_NO")} = t.{q("CONTRACT_NO")} "
             + $"FROM dbo.{q(spec.TargetTable)} E JOIN ("
@@ -132,7 +132,7 @@ internal sealed record ContractSyncSpec(
             target, target + ".EMP_ID", target + ".CONTRACT_DATE",
             target + ".CONTRACT_BEGIN_DATE", target + ".CONTRACT_NO",
             plan.MasterTable, plan.MasterTable + "." + typeColumn, plan.MasterTable + "." + noColumn,
-            plan.MasterTable + ".CONFIRM_TAG",
+            plan.MasterTable + ".APPROVED",
             plan.DetailTable, plan.DetailTable + "." + typeColumn, plan.DetailTable + "." + noColumn,
             plan.DetailTable + ".EMP_ID", plan.DetailTable + ".BEGIN_DATE",
             plan.DetailTable + ".END_DATE", plan.DetailTable + ".CONTRACT_NO",

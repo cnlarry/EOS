@@ -103,7 +103,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
         var hash = PasswordHasher.Hash(newPassword);
         const string updateSql = """
             UPDATE dbo.SYS_USER_ACCOUNT
-            SET USER_PWD=@Hash, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
+            SET USER_PWD=@Hash, MODIFIED_BY=@UpdatedBy, MODIFIED_TIME=GETDATE()
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;
         await using var update = new SqlCommand(updateSql, connection);

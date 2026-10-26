@@ -16,7 +16,7 @@ namespace EOS.API.Data.Workbench;
 /// <list type="bullet">
 /// <item>**批核**：上游未批核时本单没有来源，批核要被拦住（B 未批核则批核 C 应被拒）。</item>
 /// <item>**解批**：下游已批核时不许解批（引用链逐级解开：A→B→C，解批 A 要求 B 未批核）。</item>
-/// <item>**豁免只有一条**：对面表**没有 `CONFIRM_TAG` 列**（那种表没有"批核状态"可言，无从校验）。
+/// <item>**豁免只有一条**：对面表**没有 `APPROVED` 列**（那种表没有"批核状态"可言，无从校验）。
 /// 另有两条"这条链看不全"的技术性放行：对面表里没有匹配的行、键列在本单上读不到值。
 /// **除此之外没有例外** —— 单据引用基础资料（制令单→产品、发货单→客户、采购单→厂商）同样要查
 /// 上游是否批核；"引用了未审核的主档"本来就该拦住，那是数据没审核，不是误拦。</item>
@@ -177,7 +177,7 @@ internal static class DocumentChainGuard
         SqlConnection connection, SqlTransaction? transaction, string table, CancellationToken token)
     {
         await using var command = new SqlCommand("""
-            SELECT CASE WHEN COL_LENGTH('dbo.' + @Table, 'CONFIRM_TAG') IS NULL THEN 0 ELSE 1 END;
+            SELECT CASE WHEN COL_LENGTH('dbo.' + @Table, 'APPROVED') IS NULL THEN 0 ELSE 1 END;
             """, connection, transaction);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
         return Convert.ToInt32(await command.ExecuteScalarAsync(token) ?? 0, System.Globalization.CultureInfo.InvariantCulture) == 1;
@@ -191,7 +191,7 @@ internal static class DocumentChainGuard
         SqlConnection connection, SqlTransaction? transaction, Edge edge,
         IReadOnlyList<(string Column, string Value)> match, bool approve, CancellationToken token)
     {
-        var confirmPredicate = approve ? "ISNULL(CONFIRM_TAG,0) = 0" : "ISNULL(CONFIRM_TAG,0) = 1";
+        var confirmPredicate = approve ? "ISNULL(APPROVED,0) = 0" : "ISNULL(APPROVED,0) = 1";
         var predicates = string.Join(" AND ", match.Select((item, index) => $"[{item.Column}] = @v{index}"));
         var display = $"[{match[0].Column}]";
         await using var command = new SqlCommand($"""

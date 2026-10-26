@@ -7,9 +7,9 @@ function field(key: string, label: string, overrides: Partial<FormFieldDefinitio
   return {
     key,
     label,
-    dataType: key.endsWith('_DATE') ? 'datetime' : 'nvarchar',
+    dataType: key.endsWith('_TIME') ? 'datetime' : 'nvarchar',
     displayLength: 60,
-    displayFormat: key.endsWith('_DATE') ? 'yyyy-MM-dd HH:mm:ss' : null,
+    displayFormat: key.endsWith('_TIME') ? 'yyyy-MM-dd HH:mm:ss' : null,
     isRequired: false,
     verifyIndex: null,
     regex: null,
@@ -41,10 +41,10 @@ function field(key: string, label: string, overrides: Partial<FormFieldDefinitio
 }
 
 const lifecycleFields = [
-  field('CREATE_PERSON', '建立人'), field('CREATE_DATE', '建立日期'),
-  field('LAST_UPDATE_BY', '修改人'), field('LAST_UPDATE_DATE', '修改日期'),
-  field('CONFIRM_TAG', '批核状态'), field('CONFIRM_PERSON', '批核人'), field('CONFIRM_DATE', '批核日期'),
-  field('FINISHED_TAG', '结案状态'), field('FINISHED_PERSON', '结案人'), field('FINISHED_DATE', '结案日期'),
+  field('CREATED_BY', '建立人'), field('CREATED_TIME', '建立日期'),
+  field('MODIFIED_BY', '修改人'), field('MODIFIED_TIME', '修改日期'),
+  field('APPROVED', '批核状态'), field('APPROVED_BY', '批核人'), field('APPROVED_TIME', '批核日期'),
+  field('FINISHED', '结案状态'), field('FINISHED_BY', '结案人'), field('FINISHED_TIME', '结案日期'),
 ]
 
 function form(overrides: Partial<FormDefinition> = {}): FormDefinition {
@@ -89,16 +89,16 @@ function form(overrides: Partial<FormDefinition> = {}): FormDefinition {
 }
 
 const master = {
-  CONFIRM_TAG: true,
-  FINISHED_TAG: false,
-  CREATE_PERSON: '管理员',
-  CREATE_DATE: '2026-10-14T11:16:43',
-  LAST_UPDATE_BY: '管理员',
-  LAST_UPDATE_DATE: '2026-10-14T11:16:43',
-  CONFIRM_PERSON: '王五',
-  CONFIRM_DATE: '2026-10-14T11:16:43',
-  FINISHED_PERSON: null,
-  FINISHED_DATE: null,
+  APPROVED: true,
+  FINISHED: false,
+  CREATED_BY: '管理员',
+  CREATED_TIME: '2026-10-14T11:16:43',
+  MODIFIED_BY: '管理员',
+  MODIFIED_TIME: '2026-10-14T11:16:43',
+  APPROVED_BY: '王五',
+  APPROVED_TIME: '2026-10-14T11:16:43',
+  FINISHED_BY: null,
+  FINISHED_TIME: null,
 }
 
 describe('LifecycleStatusBar', () => {
@@ -115,7 +115,7 @@ describe('LifecycleStatusBar', () => {
       lifecycleFields: lifecycleFields.filter(field => !field.key.startsWith('FINISHED_')),
     })
     const { container } = render(
-      <LifecycleStatusBar form={noClose} master={{ CONFIRM_TAG: true }} />,
+      <LifecycleStatusBar form={noClose} master={{ APPROVED: true }} />,
     )
     expect(screen.getByText('已批核')).toBeInTheDocument()
     expect(screen.queryByText('未结案')).not.toBeInTheDocument()
@@ -123,7 +123,7 @@ describe('LifecycleStatusBar', () => {
   })
 
   it('在途流程显示审批中', () => {
-    render(<LifecycleStatusBar form={form()} master={{ CONFIRM_TAG: false, FINISHED_TAG: false }} flowInProgress />)
+    render(<LifecycleStatusBar form={form()} master={{ APPROVED: false, FINISHED: false }} flowInProgress />)
     expect(screen.getByText('审批中')).toBeInTheDocument()
   })
 
@@ -155,7 +155,7 @@ describe('LifecycleInfoBlock', () => {
       lifecycleFields: lifecycleFields.filter(field => !field.key.startsWith('FINISHED_')),
     })
     const { container } = render(
-      <LifecycleInfoBlock form={noClose} master={{ CONFIRM_TAG: true, CONFIRM_PERSON: '王五', CONFIRM_DATE: '2026-10-14T11:16:43' }} />,
+      <LifecycleInfoBlock form={noClose} master={{ APPROVED: true, APPROVED_BY: '王五', APPROVED_TIME: '2026-10-14T11:16:43' }} />,
     )
     const block = container.querySelector<HTMLElement>('.erp-form-lifecycle')
     expect(block!.style.getPropertyValue('--erp-lifecycle-groups')).toBe('3')

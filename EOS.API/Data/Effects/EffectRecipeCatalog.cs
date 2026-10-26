@@ -79,7 +79,7 @@ public static class EffectRecipeCatalog
             FormulaMode: true,
             RequiresRelation: true,
             ReversePreset: "recompute",
-            ParamsHint: "targets 指定判定哪张表；direction 取 -1 表示“不超过”；condition/marker 可选；写入动作用公式行表达（FINISHED_TAG 置 1、FINISHED_PERSON 写 SYSTEM、FINISHED_DATE 写当前时间）。",
+            ParamsHint: "targets 指定判定哪张表；direction 取 -1 表示“不超过”；condition/marker 可选；写入动作用公式行表达（FINISHED 置 1、FINISHED_BY 写 SYSTEM、FINISHED_TIME 写当前时间）。",
             Note: "主表与明细通常成对配置（X_M 与 X_D 各一组），只配一半会出现“单据结案了、明细没有”。"),
 
         new(

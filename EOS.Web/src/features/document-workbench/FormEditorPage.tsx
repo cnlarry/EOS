@@ -33,6 +33,7 @@ import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer, type ChooserAnchor } from './FormFieldRenderer'
 import { ChooserSourceMenu } from './ChooserSourceMenu'
 import { LifecycleInfoBlock, LifecycleStatusBar } from './LifecycleInfo'
+import { LIFECYCLE_KEYS } from './lifecycleKeys'
 import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { packFormSections, resolveTabColumns } from './formLayout'
@@ -1815,9 +1816,9 @@ export function FormEditorPage() {
   const viewItems: ErpCommandItem[] = isView ? (() => {
                 const currentKey = buildKey(form, masterValues)
                 const master = recordQuery.data?.master
-                // Document status (server-returned): CONFIRM_TAG / FINISHED_TAG
-                const isConfirmed = master?.CONFIRM_TAG === true
-                const isFinished = master?.FINISHED_TAG === true
+                // Document status (server-returned): APPROVED / FINISHED
+                const isConfirmed = master?.[LIFECYCLE_KEYS.approved] === true
+                const isFinished = master?.[LIFECYCLE_KEYS.finished] === true
                 // A3：在途流程状态（WF_MONITOR.WF_STATE='0'）——流程审批中的单据禁止编辑/删除，批核改显示撤回
                 const flowInProgress = recordQuery.data?.flowState === 'InProgress'
                 // 单据状态只有记录返回后才知道：记录未就绪时不做"可编辑/可删除"假设，先禁用，

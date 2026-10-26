@@ -268,7 +268,7 @@ public sealed class BatchExpiryReportLiveTests
                 INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR25RP 临期仓');
                 INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, SEQ_NO, STATUS)
                     VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A');
-                INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG)
+                INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATED_BY, CREATED_TIME, APPROVED, FINISHED)
                     VALUES (N'ADR25RPLOT_EXPIRED', @Pro, 5, 0, @Expired, N'ADR25RP', SYSDATETIME(), 0, 0),
                            (N'ADR25RPLOT_NEAR', @Pro, 3, 0, @Near, N'ADR25RP', SYSDATETIME(), 0, 0),
                            (N'ADR25RPLOT_FAR', @Pro, 7, 0, @Far, N'ADR25RP', SYSDATETIME(), 0, 0),

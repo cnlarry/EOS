@@ -83,8 +83,8 @@ export interface MenuAdminModule {
   NOT_BACK_FIELDS: string | null
   FORM_TABS: string | null
   FORM_COLUMNS: number | null
-  LAST_UPDATE_BY: string | null
-  LAST_UPDATE_DATE: string | null
+  MODIFIED_BY: string | null
+  MODIFIED_TIME: string | null
   M_ICON: string | null
   Icon: string | null
   /** 模块声明「启用批核」（库列 `MODULES.APPROVE_ENABLED`，ADR-035）：这个模块要有批核入口。 */
@@ -184,8 +184,8 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   NOT_BACK_FIELDS: null,
   FORM_TABS: null,
   FORM_COLUMNS: null,
-  LAST_UPDATE_BY: null,
-  LAST_UPDATE_DATE: null,
+  MODIFIED_BY: null,
+  MODIFIED_TIME: null,
   M_ICON: null,
   Icon: null,
   APPROVE_ENABLED: false,
@@ -385,7 +385,7 @@ export function MenuAdminPage() {
     enabled: versionsOpen && selectedId != null,
   })
 
-  // 配置期提示：主表缺少 CONFIRM_TAG 但具备批核能力（自动批核/批核过程/
+  // 配置期提示：主表缺少 APPROVED 但具备批核能力（自动批核/批核过程/
   // 批核按钮）时预警——发布会被 lifecycle_columns 门拦截。仅提示不阻断保存（草稿工作区），
   // 不自动补列（物理列变更走 DbUp 版本化迁移，不设一键补列）；是否发布由服务端终裁。
   const masterTableName = draft?.MASTER_TABLE ?? null
@@ -454,7 +454,7 @@ export function MenuAdminPage() {
     && Boolean(masterTableName)
     && draft?.AUTO_APPROVE === true
     && masterColumns.data !== undefined
-    && !masterColumns.data.some((column) => column.name.toLowerCase() === 'confirm_tag')
+    && !masterColumns.data.some((column) => column.name.toLowerCase() === 'approved')
   const stateBadge = moduleStateBadge(
     draft,
     selected,
@@ -1223,7 +1223,7 @@ export function MenuAdminPage() {
                         </div>
                         {masterMissingConfirmTag && (
                           <div className="alert alert-warning py-2 px-3 small mb-2">
-                            主表缺少 CONFIRM_TAG：当前配置具备批核能力（自动批核/批核过程/批核按钮），发布时将被 lifecycle_columns 门拦截。请补列后重发布，或关闭批核能力。
+                            主表缺少 APPROVED：当前配置具备批核能力（自动批核/批核过程/批核按钮），发布时将被 lifecycle_columns 门拦截。请补列后重发布，或关闭批核能力。
                           </div>
                         )}
                         {isWorkbenchShape && (
@@ -1387,9 +1387,9 @@ export function MenuAdminPage() {
                       <span className={`badge ${stateBadge.className}`} title={stateBadge.title}>{stateBadge.label}</span>
                     )}
                   </div>
-                  {selected?.LAST_UPDATE_BY && (
+                  {selected?.MODIFIED_BY && (
                     <div className="text-secondary mt-2" style={{ fontSize: 12 }}>
-                      最后更新：{selected.LAST_UPDATE_BY}（{selected.LAST_UPDATE_DATE ? new Date(selected.LAST_UPDATE_DATE).toLocaleString() : '—'}）
+                      最后更新：{selected.MODIFIED_BY}（{selected.MODIFIED_TIME ? new Date(selected.MODIFIED_TIME).toLocaleString() : '—'}）
                     </div>
                   )}
                 </div>

@@ -12,7 +12,7 @@ namespace EOS.API.Data.Effects;
 /// transaction and then rolls it back unconditionally, reporting what would have happened.
 ///
 /// Two properties make the report trustworthy rather than decorative: the state flip really
-/// happens before the chain runs (an effect condition reading CONFIRM_TAG must see the value it
+/// happens before the chain runs (an effect condition reading APPROVED must see the value it
 /// would see), and every exit path rolls back. The audit row the chain writes disappears with
 /// the rollback, which is why a simulation leaves no trace in AUDIT_EVENT.
 /// </summary>

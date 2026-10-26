@@ -156,16 +156,19 @@ $retiredObjects = @(
         Pattern = '\bINV_PRO_DEPOT_ORPHAN_DEPOT_BACKUP\b'
     }
     # MODULES 八列旧系统遗产退役（迁移 324，2026-10-06 决策清单 #144）：批核状态/所有者/所有者组/
-    # 批核日期/批核人/公司别/建立人/建立日期。判据必须**限定 MODULES.**——CONFIRM_TAG / CREATE_DATE /
-    # CI 这些名字在业务主表上到处都是（合同、考勤、生产单自己就有批核位），裸名匹配会满仓误报。
+    # 批核日期/批核人/公司别/建立人/建立日期。判据必须**限定 MODULES.**——这些名字在业务主表上到处都是
+    # （合同、考勤、生产单自己就有批核位），裸名匹配会满仓误报。
+    # 两套名字一起列：迁移 324 删掉的旧名（CONFIRM_TAG/CONFIRM_PERSON/CONFIRM_DATE/CREATE_PERSON/CREATE_DATE）
+    # 与生命周期列收敛后的新名（APPROVED/APPROVED_BY/APPROVED_TIME/CREATED_BY/CREATED_TIME）——
+    # MODULES 上任何一个都不存在，点名即错。
     # REMARK 没在退役之列（它是保留下来写备注的那一列）。
     # 覆盖不到的形态（已知缺口，登记在案）：别名写法（`FROM dbo.MODULES m ... m.CONFIRM_TAG`）——
     # 本仓 SQL 一律写 `MODULES.<列>`（不别名），别名形态若要判需要像 SYS_USER_ACCOUNT.G_IDX 那样的别名分析，
     # 收益不抵复杂度；真写出来也会在运行时立刻报"列名无效"，不会静默。
     [pscustomobject]@{
         Name          = 'MODULES 八列旧系统遗产'
-        Reason        = 'MODULES 的 CONFIRM_TAG/OWNER/OWNER_G/CONFIRM_DATE/CONFIRM_PERSON/CI/CREATE_PERSON/CREATE_DATE 已退役并物理删列（REMARK 保留），见 Migrations/324_drop_modules_legacy_columns.sql'
-        Pattern       = '(?i)MODULES\s*\.\s*(?:CONFIRM_TAG|CONFIRM_PERSON|CONFIRM_DATE|OWNER_G|OWNER|CI|CREATE_PERSON|CREATE_DATE)\b'
+        Reason        = 'MODULES 的批核/建立四组列与 OWNER/OWNER_G/CI 已退役并物理删列（REMARK 保留）：旧名见 Migrations/324_drop_modules_legacy_columns.sql，新名（APPROVED 等）同属不存在列'
+        Pattern       = '(?i)MODULES\s*\.\s*(?:CONFIRM_TAG|CONFIRM_PERSON|CONFIRM_DATE|CREATE_PERSON|CREATE_DATE|APPROVED|APPROVED_BY|APPROVED_TIME|CREATED_BY|CREATED_TIME|OWNER_G|OWNER|CI)\b'
     }
     # 行归属三列退役（迁移 334）：CI / OWNER / OWNER_G 从全库物理删列
     # （DEPT.CI / SYS_EMPLOYEE.CI 保留——那是部门/员工的公司归属，不是行归属；WF_APPROVE.OWNER 是
@@ -310,9 +313,11 @@ if ($SelfTest) {
         'INSERT INTO dbo.MODULES (M_IDX,M_DESC,EFFECT_ENGINE_TAG) VALUES (@Id,N''x'',1);',
         'SELECT g.G_IDX FROM dbo.SYSTEMP g;',
         'SELECT TASK_ID FROM dbo.TASK WHERE M_IDX=@Id;',
-        # 退役的 MODULES 八列（迁移 324）与死表（迁移 325）
+        # 退役的 MODULES 八列（迁移 324，旧名与新名都点名即错）
         'SELECT MODULES.M_IDX, MODULES.CONFIRM_TAG FROM dbo.MODULES WHERE MODULES.OWNER_G IS NULL;',
         'SELECT MODULES.CI, MODULES.CREATE_PERSON, MODULES.CREATE_DATE FROM dbo.MODULES;',
+        'SELECT MODULES.M_IDX, MODULES.APPROVED FROM dbo.MODULES;',
+        'SELECT MODULES.CREATED_BY, MODULES.CREATED_TIME FROM dbo.MODULES;',
         'SELECT COUNT(*) FROM dbo.SYSQR_DA;',
         'SELECT TOP 10 * FROM dbo.SYSDF WHERE M_IDX=@Id;',
         'SELECT W.WORK_NO FROM dbo.SYS_WORK_TASK W WHERE W.W_M_IDX=@Id;',
@@ -349,8 +354,8 @@ if ($SelfTest) {
         'SELECT s.M_IDX, s.VERSION FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WHERE s.IS_CURRENT = 1;',
         'SELECT M_IDX AS MODULE_ID FROM dbo.AUDIT_EVENT;',
         # 同名列在别的主表上照常使用：退役判据限定 MODULES.，不能把合同/考勤的批核列一起判死
-        'SELECT c.CONFIRM_TAG, c.CONFIRM_PERSON, c.CONFIRM_DATE FROM dbo.CONTRACT c WHERE c.CI=@Ci;',
-        'SELECT e.CREATE_DATE, e.CREATE_PERSON FROM dbo.HR_EMPLOYEE e;',
+        'SELECT c.APPROVED, c.APPROVED_BY, c.APPROVED_TIME FROM dbo.CONTRACT c WHERE c.CI=@Ci;',
+        'SELECT e.CREATED_TIME, e.CREATED_BY FROM dbo.HR_EMPLOYEE e;',
         # 退役对象的**存在性探针**是合法用法（退役测试就是这么断言的），只判 SQL 上下文
         'SELECT OBJECT_ID(''dbo.SYSDF'',''U'') AS O;',
         'SELECT OBJECT_ID(''dbo.SYS_WORK_TASK'',''U'') AS O;',

@@ -63,7 +63,7 @@ internal sealed class InventoryFreezeHandler : IDocumentUserAction
         await using (var command = new SqlCommand("""
             INSERT INTO dbo.INV_FREEZE
                 (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO, FREEZE_QTY, REASON, STATUS,
-                 CREATE_PERSON, CREATE_DATE)
+                 CREATED_BY, CREATED_TIME)
                 VALUES (@pro, @depot, @location, @batch, N'', N'', @qty, @reason, N'A', @actor, GETDATE());
             """, context.Connection, context.Transaction))
         {
@@ -91,7 +91,7 @@ internal sealed class InventoryFreezeHandler : IDocumentUserAction
 /// 库存解冻（D7-⑥ 的"手工释放兜底"，WS-21）。
 /// </summary>
 /// <remarks>
-/// 按**先建先解**（`CREATE_DATE, SOURCE_NO`）把这一格的占用逐笔释放：够一笔就整笔置 `STATUS='C'`，
+/// 按**先建先解**（`CREATED_TIME, SOURCE_NO`）把这一格的占用逐笔释放：够一笔就整笔置 `STATUS='C'`，
 /// 不够就减该笔的 `FREEZE_QTY`（部分释放）。释放完照样**按可用量服务的口径重算** `USEABLE_QTY`——
 /// 与冻结同一个收口点，这样"解冻后可用量回升"不是另写的一段算术。
 /// </remarks>
@@ -254,7 +254,7 @@ internal static class InventoryFreezeAction
     {
         await using var command = new SqlCommand(
             $"SELECT LTRIM(RTRIM(SOURCE_TYPE)), LTRIM(RTRIM(SOURCE_NO)), ISNULL({quantityColumn},0) FROM dbo.{table} "
-            + $"WHERE {WhereClause} AND RTRIM(STATUS) = N'A' ORDER BY CREATE_DATE, SOURCE_NO;",
+            + $"WHERE {WhereClause} AND RTRIM(STATUS) = N'A' ORDER BY CREATED_TIME, SOURCE_NO;",
             context.Connection, context.Transaction);
         AddSlotParameters(command, slot);
         var rows = new List<(string, string, double)>();
@@ -288,10 +288,10 @@ internal static class InventoryFreezeAction
             var whole = row.Quantity - release <= Epsilon;
             await using var command = new SqlCommand(
                 whole
-                    ? $"UPDATE dbo.{table} SET STATUS = N'C', LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+                    ? $"UPDATE dbo.{table} SET STATUS = N'C', MODIFIED_BY = @actor, MODIFIED_TIME = GETDATE() "
                       + $"WHERE {WhereClause} AND SOURCE_TYPE = @sourceType AND SOURCE_NO = @sourceNo;"
                     : $"UPDATE dbo.{table} SET {quantityColumn} = {quantityColumn} - @release, "
-                      + "LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+                      + "MODIFIED_BY = @actor, MODIFIED_TIME = GETDATE() "
                       + $"WHERE {WhereClause} AND SOURCE_TYPE = @sourceType AND SOURCE_NO = @sourceNo;",
                 context.Connection, context.Transaction);
             AddSlotParameters(command, slot);
@@ -343,7 +343,7 @@ internal static class InventoryFreezeAction
 
         await using (var update = new SqlCommand(
             $"UPDATE dbo.{table} SET STATUS = N'C', RELEASE_KIND = @releaseKind, "
-            + "LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+            + "MODIFIED_BY = @actor, MODIFIED_TIME = GETDATE() "
             + "WHERE RTRIM(STATUS) = N'A' AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType "
             + "AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;", connection, transaction))
         {
@@ -396,7 +396,7 @@ internal static class InventoryFreezeAction
 
         await using (var update = new SqlCommand(
             $"UPDATE dbo.{table} SET STATUS = N'A', RELEASE_KIND = NULL, "
-            + "LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+            + "MODIFIED_BY = @actor, MODIFIED_TIME = GETDATE() "
             + "WHERE RTRIM(STATUS) = N'C' AND RTRIM(ISNULL(RELEASE_KIND, N'')) = @releaseKind "
             + "AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;",
             connection, transaction))

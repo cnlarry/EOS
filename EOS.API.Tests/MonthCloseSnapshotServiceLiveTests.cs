@@ -142,7 +142,7 @@ public sealed class MonthCloseSnapshotServiceLiveTests
         {
             await SeedAsync(connection, transaction, byBatch: false);
             await ExecuteAsync(connection, transaction,
-                "UPDATE dbo.INV_PRO_MONTH_M SET CONFIRM_TAG = 1 WHERE MONTH_NO = @No;", ("@No", SubjectPeriod));
+                "UPDATE dbo.INV_PRO_MONTH_M SET APPROVED = 1 WHERE MONTH_NO = @No;", ("@No", SubjectPeriod));
 
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => SnapshotService().GenerateAsync(
                 connection, transaction, Request(SubjectPeriod), CancellationToken.None));
@@ -282,13 +282,13 @@ public sealed class MonthCloseSnapshotServiceLiveTests
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY) VALUES (@Pro, @Depot, 9999);
 
             -- 上一期（已批核）：100 @ 5
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                 VALUES (@Type, @Opening, '2023-12-31', 1, N'ZZMC', GETDATE());
             INSERT INTO dbo.INV_PRO_MONTH_D (MONTH_TYPE, MONTH_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, PRICE)
                 VALUES (@Type, @Opening, 1, @Pro, @Depot, 100, 5);
 
             -- 本期（未批核，待生成）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                 VALUES (@Type, @Subject, '2024-01-31', 0, N'ZZMC', GETDATE());
 
             -- 本期收发：+30 入（批次 ZZMCB1）、−20 出

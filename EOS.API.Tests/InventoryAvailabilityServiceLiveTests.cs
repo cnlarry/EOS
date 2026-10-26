@@ -43,7 +43,7 @@ public sealed class InventoryAvailabilityServiceLiveTests : IAsyncLifetime
         await CleanupAsync(connection);
         await ExecAsync(connection, """
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE) VALUES (@pro, N'ZZAVL 可用量料件', N'规格', '3');
-            INSERT INTO dbo.INV_CHECK_STOCK_M (CHECK_STOCK_TYPE, CHECK_STOCK_NO, CONFIRM_TAG, FINISHED_TAG)
+            INSERT INTO dbo.INV_CHECK_STOCK_M (CHECK_STOCK_TYPE, CHECK_STOCK_NO, APPROVED, FINISHED)
                 VALUES (N'ZZAVL', N'ZZAVL-CS1', 1, 0);
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@pro, @depot, N'-', @batch, @qty, @qty, 3, @qty * 3);
@@ -117,7 +117,7 @@ public sealed class InventoryAvailabilityServiceLiveTests : IAsyncLifetime
         await SeedReserveAsync("A", SourceType, SourceNo, ReserveQty);
         // 来源单据结案（释放钩子没跑到）——读取时就不该再占着
         await ExecOnceAsync(
-            "UPDATE dbo.INV_CHECK_STOCK_M SET FINISHED_TAG = 1 WHERE CHECK_STOCK_TYPE = N'ZZAVL' AND CHECK_STOCK_NO = N'ZZAVL-CS1';");
+            "UPDATE dbo.INV_CHECK_STOCK_M SET FINISHED = 1 WHERE CHECK_STOCK_TYPE = N'ZZAVL' AND CHECK_STOCK_NO = N'ZZAVL-CS1';");
 
         var result = await ReadAsync(Slot);
         Assert.Equal(0, result.Frozen);

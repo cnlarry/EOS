@@ -29,7 +29,7 @@ namespace EOS.API.Tests;
 ///   ① 能改人工语义列（`EFFECT_DATE`）**并落审计前后值**；
 ///   ② 引擎维护列（`IN_SUM` 等）**服务端拒**——即使配置把它声明成参数、请求体里带着它；
 ///   ③ **不产生库存流水**（不触发 `inventory-move`、`INV_DEPOT_LOG` 一行不加）；
-///   ④ 探路（`CONFIRM_TAG=1` + `confirm=false`）**一个字都不写**。
+///   ④ 探路（`APPROVED=1` + `confirm=false`）**一个字都不写**。
 /// </summary>
 [Trait("Category", "Integration")]
 [Collection("live-database")]
@@ -64,7 +64,7 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
             "INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE) VALUES (@pro, N'ZZMFW 受控写入料件', N'规格', '3');",
             ("@pro", TestProduct));
         await ExecAsync(connection, """
-            INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, BATCH_DATE, EFFECT_DATE, AGAIN_CHECK_DATE, IN_SUM, OUT_SUM, CONFIRM_TAG)
+            INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, BATCH_DATE, EFFECT_DATE, AGAIN_CHECK_DATE, IN_SUM, OUT_SUM, APPROVED)
                 VALUES (@batch, @pro, '2026-01-02', @effect, '2026-01-03', @inSum, 2, 0);
             """, ("@batch", BatchNo), ("@pro", TestProduct), ("@effect", OriginalEffectDate), ("@inSum", OriginalInSum));
         // 按钮级授权是 fail-closed：不插这一行，连"能按按钮"都谈不上（但那正是它的设计）

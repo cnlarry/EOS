@@ -257,7 +257,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     {
         const string sql = """
             SELECT PARAM_KEY, PARAM_VALUE, VALUE_TYPE, DEFAULT_VALUE, GROUP_CODE, GROUP_LABEL,
-                   DESC_TEXT, EFFECT_SCOPE, SEQ_NO, OPTIONS, LAST_UPDATE_BY, LAST_UPDATE_DATE
+                   DESC_TEXT, EFFECT_SCOPE, SEQ_NO, OPTIONS, MODIFIED_BY, MODIFIED_TIME
             FROM dbo.SYS_PARAMETER WITH (NOLOCK)
             WHERE OWNER_MODULE = @Owner
             ORDER BY GROUP_SEQ, SEQ_NO, PARAM_KEY;
@@ -380,7 +380,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
                 await using var update = new SqlCommand(
                     """
                     UPDATE dbo.SYS_PARAMETER
-                    SET PARAM_VALUE = @Value, LAST_UPDATE_BY = @User, LAST_UPDATE_DATE = GETDATE()
+                    SET PARAM_VALUE = @Value, MODIFIED_BY = @User, MODIFIED_TIME = GETDATE()
                     WHERE OWNER_MODULE = @Owner AND PARAM_KEY = @Key;
                     """, connection, transaction);
                 update.Parameters.Add("@Value", SqlDbType.NVarChar, 4000).Value = (object?)newValue ?? DBNull.Value;

@@ -131,7 +131,7 @@ public class FormFieldSelectorTests
     [Fact]
     public void AuditColumns_AreServerOwned()
     {
-        var field = Select([Row("LAST_UPDATE_BY")], "view").Single();
+        var field = Select([Row("MODIFIED_BY")], "view").Single();
         Assert.True(field.ServerFilled);
         Assert.True(field.IsReadonly);
     }
@@ -139,7 +139,7 @@ public class FormFieldSelectorTests
     [Fact]
     public void LifecycleActorColumns_HiddenInNewAndEdit_ShownReadonlyInView()
     {
-        var rows = new[] { Row("CREATE_PERSON"), Row("CONFIRM_DATE"), Row("FINISHED_PERSON"), Row("A") };
+        var rows = new[] { Row("CREATED_BY"), Row("APPROVED_TIME"), Row("FINISHED_BY"), Row("A") };
         Assert.Equal(["A"], Select(rows, "new").Select(field => field.Key));
         Assert.Equal(["A"], Select(rows, "edit").Select(field => field.Key));
         var viewed = Select(rows, "view");
@@ -229,14 +229,14 @@ public class FormFieldSelectorTests
     [Fact]
     public void StatusTagFields_AreExcludedFromForm()
     {
-        var result = Select([Row("CONFIRM_TAG"), Row("FINISHED_TAG"), Row("A")]);
+        var result = Select([Row("APPROVED"), Row("FINISHED"), Row("A")]);
         Assert.Equal(["A"], result.Select(field => field.Key));
     }
 
     [Fact]
     public void StatusTagFields_ShownReadonlyInView()
     {
-        var viewed = Select([Row("CONFIRM_TAG"), Row("FINISHED_TAG")], "view");
+        var viewed = Select([Row("APPROVED"), Row("FINISHED")], "view");
         Assert.Equal(2, viewed.Count);
         foreach (var field in viewed)
         {

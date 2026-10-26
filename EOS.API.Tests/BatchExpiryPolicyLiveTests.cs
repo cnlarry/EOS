@@ -357,11 +357,11 @@ public sealed class BatchExpiryPolicyLiveTests
                 VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A');
             INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, EXPIRY_MODE)
                 VALUES (@Depot, 0, N'FIXED', 1, 0, 1, 1, @ExpiryMode);
-            INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG)
+            INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATED_BY, CREATED_TIME, APPROVED, FINISHED)
                 VALUES (@Batch, @Pro, 10, @Expired, N'ADR25PX', SYSDATETIME(), 0, 0);
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, USEABLE_QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@Pro, @Depot, N'-', @Batch, 10, 10, 10, 5, 50);
-            INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, LAST_UPDATE_BY)
+            INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, MODIFIED_BY)
                 VALUES (@Type, @OutNo, '2026-09-01', N'ADR25PX');
             INSERT INTO dbo.INV_OCCUR_OUT_D (OCCUR_TYPE, OCCUR_NO, SERIAL_NO, PRO_NO, QTY, DEPOT_ID, LOCATION_NO, BATCH_NO, UNIT_ID)
                 VALUES (@Type, @OutNo, 1, @Pro, 4, @Depot, N'-', @Batch, @Unit);
@@ -396,7 +396,7 @@ public sealed class BatchExpiryPolicyLiveTests
             -- 效期档位给 2（拒绝）不影响入库侧，本用例考的是"必填"那一半。
             INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, EXPIRY_MODE)
                 VALUES (@Depot, 3, N'FIXED', @BatchMode, 0, 1, 1, 2);
-            INSERT INTO dbo.INV_OCCUR_IN_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, LAST_UPDATE_BY)
+            INSERT INTO dbo.INV_OCCUR_IN_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, MODIFIED_BY)
                 VALUES (@Type, @InNo, '2026-09-01', N'ADR25PX');
             INSERT INTO dbo.INV_OCCUR_IN_D (OCCUR_TYPE, OCCUR_NO, SERIAL_NO, PRO_NO, QTY, DEPOT_ID, LOCATION_NO, BATCH_NO, UNIT_ID, EFFECT_DATE)
                 VALUES (@Type, @InNo, 1, @Pro, 5, @Depot, @Bin, @Batch, @Unit, @DocEffect);
@@ -407,7 +407,7 @@ public sealed class BatchExpiryPolicyLiveTests
         if (existingExpiry is { } expiry)
         {
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, FINISHED_TAG) "
+                "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE, CREATED_BY, CREATED_TIME, APPROVED, FINISHED) "
                 + "VALUES (@Batch, @Pro, 0, @Effect, N'ADR25PX', SYSDATETIME(), 0, 0)",
                 ("@Batch", Batch), ("@Pro", Product), ("@Effect", expiry));
         }

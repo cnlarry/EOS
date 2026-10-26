@@ -27,10 +27,10 @@ public class ConditionTemplateDslConverterTests
     [Fact]
     public void FixedSelect_ParsesOptionsAndField()
     {
-        var expr = "批核:{MOC_PRODUCE_M.CONFIRM_TAG}=true;未批核:{MOC_PRODUCE_M.CONFIRM_TAG}=false";
-        var result = ConditionTemplateDslConverter.Convert(2, expr, "", "MOC_PRODUCE_M.CONFIRM_TAG", "CONFIRM");
+        var expr = "批核:{MOC_PRODUCE_M.APPROVED}=true;未批核:{MOC_PRODUCE_M.APPROVED}=false";
+        var result = ConditionTemplateDslConverter.Convert(2, expr, "", "MOC_PRODUCE_M.APPROVED", "CONFIRM");
         Assert.NotNull(result.Template);
-        Assert.Contains("MOC_PRODUCE_M.CONFIRM_TAG", result.Template);
+        Assert.Contains("MOC_PRODUCE_M.APPROVED", result.Template);
         Assert.Contains("批核", result.Template);
         Assert.Contains("{p.CONFIRM}", result.Template);
         Assert.Null(result.Error);

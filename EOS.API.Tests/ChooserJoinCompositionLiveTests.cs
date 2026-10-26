@@ -13,7 +13,7 @@ namespace EOS.API.Tests;
 /// 这是执行期错误——只看拼出来的字符串是看不出来的，所以本用例把两段拼好后**真的执行一次**。
 ///
 /// 真实触发例（模块 1405 明细字段 PRO_NO 的来源表 CLIENT_PRICE_D）：
-/// 过滤条件引用 <c>PRODUCT.BUSINESS_TAG</c> / <c>PRODUCT.CONFIRM_TAG</c> ⇒ 过滤段拼进 PRODUCT；
+/// 过滤条件引用 <c>PRODUCT.BUSINESS_TAG</c> / <c>PRODUCT.APPROVED</c> ⇒ 过滤段拼进 PRODUCT；
 /// 回填映射要 <c>PRODUCT.PRO_NAME</c> / <c>PRO_SPEC</c> 等虚拟列 ⇒ 虚拟列解析再拼一次 PRODUCT。
 /// 修法：<c>BuildJoinClause</c> 回传本段实际出现的别名，虚拟列解析把重复的别名让出去
 /// （别名两侧同源同一张 QUERY_RELATION，让出的那一段必然已存在）。

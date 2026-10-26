@@ -127,7 +127,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     {
         const string sql = """
             INSERT INTO dbo.ASSISTANT_SESSION (USER_ID)
-            OUTPUT INSERTED.ID, INSERTED.USER_ID, INSERTED.TITLE, INSERTED.CREATED_AT, INSERTED.LAST_ACTIVE_AT
+            OUTPUT INSERTED.ID, INSERTED.USER_ID, INSERTED.TITLE, INSERTED.CREATED_TIME, INSERTED.LAST_ACTIVE_AT
             VALUES (@UserId);
             """;
         return await QuerySingleSession(sql, cmd => cmd.Parameters.AddWithValue("@UserId", userId), token)
@@ -149,7 +149,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
               AND (@Keyword IS NULL OR s.TITLE LIKE @Keyword ESCAPE '\')
             """;
         const string sql = $"""
-            SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_AT, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
+            SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_TIME, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
                    (SELECT COUNT(*) FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK) WHERE m.SESSION_ID = s.ID)
             {filter}
             ORDER BY s.LAST_ACTIVE_AT DESC, s.ID DESC
@@ -200,7 +200,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     public async Task<AssistantSessionDto?> GetSessionAsync(string userId, long sessionId, CancellationToken token)
     {
         const string sql = """
-            SELECT ID, USER_ID, TITLE, CREATED_AT, LAST_ACTIVE_AT, ARCHIVED_AT
+            SELECT ID, USER_ID, TITLE, CREATED_TIME, LAST_ACTIVE_AT, ARCHIVED_AT
             FROM dbo.ASSISTANT_SESSION WITH (NOLOCK)
             WHERE ID = @Id AND USER_ID = @UserId;
             """;
@@ -272,7 +272,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     {
         const string sql = """
             SELECT m.ID, m.SESSION_ID, m.ROLE, m.CONTENT, m.MODEL_NAME,
-                   m.PROMPT_TOKENS, m.COMPLETION_TOKENS, m.ELAPSED_MS, m.CORRELATION_ID, m.CREATED_AT,
+                   m.PROMPT_TOKENS, m.COMPLETION_TOKENS, m.ELAPSED_MS, m.CORRELATION_ID, m.CREATED_TIME,
                    m.TOOL_CALLS_JSON, m.FEEDBACK, m.FEEDBACK_REASON, m.FINISH_REASON
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
             INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
@@ -310,7 +310,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
             INSERT INTO dbo.ASSISTANT_MESSAGE (SESSION_ID, ROLE, CONTENT, CORRELATION_ID)
             OUTPUT INSERTED.ID, INSERTED.SESSION_ID, INSERTED.ROLE, INSERTED.CONTENT,
                    INSERTED.MODEL_NAME, INSERTED.PROMPT_TOKENS, INSERTED.COMPLETION_TOKENS,
-                   INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_AT
+                   INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_TIME
             SELECT @SessionId, 1, @Content, @CorrelationId
             WHERE EXISTS (SELECT 1 FROM dbo.ASSISTANT_SESSION WHERE ID = @SessionId AND USER_ID = @UserId);
             """;
@@ -335,7 +335,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
                 PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CORRELATION_ID, IS_ESTIMATED, FINISH_REASON)
             OUTPUT INSERTED.ID, INSERTED.SESSION_ID, INSERTED.ROLE, INSERTED.CONTENT,
                     INSERTED.MODEL_NAME, INSERTED.PROMPT_TOKENS, INSERTED.COMPLETION_TOKENS,
-                    INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_AT
+                    INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_TIME
             SELECT @SessionId, 2, @Content, @ModelName, @PromptTokens, @CompletionTokens, @ElapsedMs, @CorrelationId, @Estimated,
                    @FinishReason
             WHERE EXISTS (SELECT 1 FROM dbo.ASSISTANT_SESSION WHERE ID = @SessionId AND USER_ID = @UserId);

@@ -364,19 +364,19 @@ ORDER BY r.STAGE, r.M_IDX, r.SEQ;
     # CONFIRMED_EDIT_FORBIDDEN before any write).
     $blockers = @(
         [pscustomobject]@{
-            Id = 'BL-01'; ModuleId = '-'; ModuleName = '（任意带 FINISHED_TAG 的单据模块）'; Stage = 'EDIT'; SeqNo = 0
+            Id = 'BL-01'; ModuleId = '-'; ModuleName = '（任意带 FINISHED 的单据模块）'; Stage = 'EDIT'; SeqNo = 0
             Key = 'record-state'; Enabled = $true
             Message = '记录已结案，禁止编辑（请先取消结案）。'; MessageSource = 'code'
-            TriggerSummary = '主表 FINISHED_TAG=1 的记录提交修改即拒'
-            EvidenceSource = 'WorkbenchCommandHandler（FINISHED_EDIT_FORBIDDEN）+ 单据生命周期列 FINISHED_TAG'
+            TriggerSummary = '主表 FINISHED=1 的记录提交修改即拒'
+            EvidenceSource = 'WorkbenchCommandHandler（FINISHED_EDIT_FORBIDDEN）+ 单据生命周期列 FINISHED'
             SuggestedClass = 'blockers'
         },
         [pscustomobject]@{
-            Id = 'BL-02'; ModuleId = '-'; ModuleName = '（任意带 CONFIRM_TAG 的单据模块）'; Stage = 'EDIT'; SeqNo = 0
+            Id = 'BL-02'; ModuleId = '-'; ModuleName = '（任意带 APPROVED 的单据模块）'; Stage = 'EDIT'; SeqNo = 0
             Key = 'record-state'; Enabled = $true
             Message = '记录已批核，禁止编辑（请先解批）。'; MessageSource = 'code'
-            TriggerSummary = '主表 CONFIRM_TAG=1 的记录提交修改即拒'
-            EvidenceSource = 'WorkbenchCommandHandler（CONFIRMED_EDIT_FORBIDDEN）+ 单据生命周期列 CONFIRM_TAG'
+            TriggerSummary = '主表 APPROVED=1 的记录提交修改即拒'
+            EvidenceSource = 'WorkbenchCommandHandler（CONFIRMED_EDIT_FORBIDDEN）+ 单据生命周期列 APPROVED'
             SuggestedClass = 'blockers'
         }
     )

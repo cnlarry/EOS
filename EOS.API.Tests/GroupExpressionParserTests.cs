@@ -7,7 +7,7 @@ public class GroupExpressionParserTests
 {
     private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
-        "DEPT_ID", "SALES_ID", "PAY_DATE", "FINISHED_TAG", "QUOTE_DATE", "QTY",
+        "DEPT_ID", "SALES_ID", "PAY_DATE", "FINISHED", "QUOTE_DATE", "QTY",
         "COUNT_MONTH", "IN_DATE", "SORT_ID", "CLIENT_ID", "APPROVE_STATE", "PURCHASE_ID",
     };
 
@@ -60,10 +60,10 @@ public class GroupExpressionParserTests
     [Fact]
     public void Compiles_SimpleCase()
     {
-        const string expression = "case PUR_PAY_OTHER.FINISHED_TAG when 1 then 'YES' else 'NO' end";
+        const string expression = "case PUR_PAY_OTHER.FINISHED when 1 then 'YES' else 'NO' end";
         var ok = GroupExpressionParser.TryCompile(expression, "PUR_PAY_OTHER", Allowed, out var compiled);
         Assert.True(ok);
-        Assert.Equal("CASE [FINISHED_TAG] WHEN 1 THEN N'YES' ELSE N'NO' END", compiled);
+        Assert.Equal("CASE [FINISHED] WHEN 1 THEN N'YES' ELSE N'NO' END", compiled);
     }
 
     [Fact]

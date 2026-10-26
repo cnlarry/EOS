@@ -251,8 +251,8 @@ public sealed class DiagnosisGoldenSetTests(ITestOutputHelper output)
                 attempted.Add(column!);
                 break;
             case "blockers":
-                confirmed = current.Trigger.Contains("CONFIRM_TAG=1", StringComparison.Ordinal);
-                finished = current.Trigger.Contains("FINISHED_TAG=1", StringComparison.Ordinal);
+                confirmed = current.Trigger.Contains("APPROVED=1", StringComparison.Ordinal);
+                finished = current.Trigger.Contains("FINISHED=1", StringComparison.Ordinal);
                 break;
         }
 

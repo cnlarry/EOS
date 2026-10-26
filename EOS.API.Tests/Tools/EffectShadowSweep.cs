@@ -266,15 +266,15 @@ public sealed class EffectShadowSweep
         }
         var hasDetail = !string.IsNullOrWhiteSpace(detailTable) && await TableExistsAsync(connection, detailTable);
         var deapprove = shadowEvent.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
-        // The runner flips CONFIRM_TAG with a strict predicate (CONFIRM_TAG=0/1), so a document
+        // The runner flips APPROVED with a strict predicate (APPROVED=0/1), so a document
         // whose flag is NULL is not usable as a sample even though ISNULL would match it.
         var sql = "SELECT TOP (@Limit) M.[" + key1 + "], M.[" + key2 + "] FROM dbo.[" + masterTable + "] M"
-            + " WHERE M.CONFIRM_TAG=@Confirm"
+            + " WHERE M.APPROVED=@Confirm"
             + (hasDetail
                 ? " AND EXISTS (SELECT 1 FROM dbo.[" + detailTable + "] D WHERE D.[" + key1 + "]=M.[" + key1
                     + "] AND D.[" + key2 + "]=M.[" + key2 + "])"
                 : string.Empty)
-            + " ORDER BY ISNULL(M.CONFIRM_DATE, M.[" + dateColumn + "]) DESC, M.[" + key2 + "] DESC;";
+            + " ORDER BY ISNULL(M.APPROVED_TIME, M.[" + dateColumn + "]) DESC, M.[" + key2 + "] DESC;";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Limit", SqlDbType.Int).Value = limit;
         command.Parameters.Add("@Confirm", SqlDbType.Bit).Value = deapprove;

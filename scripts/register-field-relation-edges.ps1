@@ -175,7 +175,7 @@ foreach ($entry in $groups.Values) {
         [void]$sql.AppendLine('END')
         [void]$sql.AppendLine('ELSE')
         [void]$sql.AppendLine('BEGIN')
-        [void]$sql.AppendLine("    INSERT dbo.FIELD_RELATION (FROM_TABLE, FROM_COLUMN, TO_TABLE, TO_COLUMN, DESCRIPTION, RELATION_ID, RELATION_NAME, RELATION_KIND, SOURCE_SCOPE, KEY_ORDINAL, CREATE_PERSON, CREATE_DATE)")
+        [void]$sql.AppendLine("    INSERT dbo.FIELD_RELATION (FROM_TABLE, FROM_COLUMN, TO_TABLE, TO_COLUMN, DESCRIPTION, RELATION_ID, RELATION_NAME, RELATION_KIND, SOURCE_SCOPE, KEY_ORDINAL, CREATED_BY, CREATED_TIME)")
         [void]$sql.AppendLine("    VALUES (N'$fromTable', N'$fromColumn', N'$toTable', N'$toColumn', N'$name', $nextId, N'$name', N'EFFECT', N'$scope', $ordinal, N'seed-agent', SYSDATETIME());")
         [void]$sql.AppendLine('END')
     }

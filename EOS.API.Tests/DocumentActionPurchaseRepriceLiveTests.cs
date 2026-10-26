@@ -91,7 +91,7 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE PURCHASE_TYPE=@type AND PURCHASE_NO=@no)
-                INSERT INTO dbo.{MasterTable} (PURCHASE_TYPE,PURCHASE_NO,SUPPLIER_ID,CURR_RATE,FINISHED_TAG,CREATE_PERSON,CREATE_DATE)
+                INSERT INTO dbo.{MasterTable} (PURCHASE_TYPE,PURCHASE_NO,SUPPLIER_ID,CURR_RATE,FINISHED,CREATED_BY,CREATED_TIME)
                 VALUES (@type,@no,@sup,1,0,N'DbUp',SYSDATETIME());
             INSERT INTO dbo.{DetailTable}
                 (PURCHASE_TYPE,PURCHASE_NO,SERIAL_NO,PRO_NO,UNIT_ID,CURR_ID,TAX_ID,TAX_TYPE,TAX_RATE,PRICE,REBATE,QTY,CURR_RATE)
@@ -104,7 +104,7 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", PurchaseRepriceHandler.ActionKey));
@@ -283,7 +283,7 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
     {
         await using var connection = await OpenAsync();
         await ExecAsync(connection,
-            $"UPDATE dbo.{MasterTable} SET FINISHED_TAG=1 WHERE PURCHASE_TYPE=@type AND PURCHASE_NO=@no;",
+            $"UPDATE dbo.{MasterTable} SET FINISHED=1 WHERE PURCHASE_TYPE=@type AND PURCHASE_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
 
         var result = await RunAsync();

@@ -37,7 +37,7 @@ function formDefinition(overrides: Partial<FormDefinition> = {}): FormDefinition
         isReadonly: true,
         choosers: [{ active: true, table: 'CLIENT', description: '客户主档', moduleId: null, filter: null, returnMapping: '[{"target":"CLIENT_ID","column":"CLIENT_ID"},{"target":"CLIENT_NAME","column":"CLIENT_NAME"}]', serialNo: 1 }],
       }),
-      field('CREATE_DATE', '创建时间', { dataType: 'datetime', serverFilled: true, isReadonly: true }),
+      field('CREATED_TIME', '创建时间', { dataType: 'datetime', serverFilled: true, isReadonly: true }),
     ],
     detailFields: [],
     masterPkOrder: ['CHAFFER_TYPE', 'CHAFFER_NO'],

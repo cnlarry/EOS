@@ -35,7 +35,7 @@ internal sealed class RestockScopeHandler : IDocumentUserAction, IDocumentAction
     private const string NoField = "CHECK_STOCK_NO";
     private const string ScopeField = "LOCATION_ROOT_NO";
     private const string MasterDepotField = "DEPOT_ID";
-    private const string FinishedField = "FINISHED_TAG";
+    private const string FinishedField = "FINISHED";
     private const string AdjustNoField = "ADJUST_NO";
     private const string SerialField = "SERIAL_NO";
     private const string DetailProductField = "PRO_NO";

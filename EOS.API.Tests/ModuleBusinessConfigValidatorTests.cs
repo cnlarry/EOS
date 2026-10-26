@@ -258,7 +258,7 @@ public class ModuleBusinessConfigValidatorTests
                 new BusinessActionDto(4, "APPROVE_EFFECT", "completion-close",
                     Ops:
                     [
-                        new BusinessActionOpDto(1, "COP_SEND_D", "FINISHED_TAG", "SET_WHEN", "CONSTANT",
+                        new BusinessActionOpDto(1, "COP_SEND_D", "FINISHED", "SET_WHEN", "CONSTANT",
                             SourceConstant: "1"),
                         new BusinessActionOpDto(2, "", "", "", ""),
                     ])
@@ -282,7 +282,7 @@ public class ModuleBusinessConfigValidatorTests
                 new BusinessActionDto(2, "APPROVE_EFFECT", "completion-close",
                     Ops:
                     [
-                        new BusinessActionOpDto(1, "MOC_PRODUCE_D", "FINISHED_TAG", "SET_WHEN", "CONSTANT", SourceConstant: "1"),
+                        new BusinessActionOpDto(1, "MOC_PRODUCE_D", "FINISHED", "SET_WHEN", "CONSTANT", SourceConstant: "1"),
                     ])
             ],
             []);
@@ -312,7 +312,7 @@ public class ModuleBusinessConfigValidatorTests
         var request = new SaveModuleBusinessConfigRequest(
             [
                 new BusinessActionDto(1, "APPROVE_EFFECT", "completion-close",
-                    Ops: [new BusinessActionOpDto(1, "COP_SEND_M", "FINISHED_PERSON", "SET_WHEN", "CONSTANT", SourceConstant: "")])
+                    Ops: [new BusinessActionOpDto(1, "COP_SEND_M", "FINISHED_BY", "SET_WHEN", "CONSTANT", SourceConstant: "")])
             ],
             []);
 
@@ -327,7 +327,7 @@ public class ModuleBusinessConfigValidatorTests
         var request = new SaveModuleBusinessConfigRequest(
             [
                 new BusinessActionDto(1, "APPROVE_EFFECT", "completion-close",
-                    Ops: [new BusinessActionOpDto(1, "COP_SEND_M", "FINISHED_PERSON", "SET_WHEN", "CONSTANT", SourceConstant: null)])
+                    Ops: [new BusinessActionOpDto(1, "COP_SEND_M", "FINISHED_BY", "SET_WHEN", "CONSTANT", SourceConstant: null)])
             ],
             []);
 

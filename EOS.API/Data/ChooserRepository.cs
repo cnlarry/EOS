@@ -676,7 +676,7 @@ public sealed class ChooserRepository(
         AddCommonParameters(command, keyword, page, pageSize);
         command.Parameters.Add("@Table", SqlDbType.VarChar, 100).Value = targetTable;
         command.Parameters.Add("@Exclude", SqlDbType.VarChar, -1).Value = exclude;
-        // 生命周期字段固定显示、不参与版式：主表字段池不得再给出这 10 列（明细的 FINISHED_TAG
+        // 生命周期字段固定显示、不参与版式：主表字段池不得再给出这 10 列（明细的 FINISHED
         // 是行级状态，仍按普通列处理）。
         var lifecycleFilter = table == "master"
             ? " AND LTRIM(RTRIM(f.F_ID)) NOT IN (SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@LifecycleFields, ','))"

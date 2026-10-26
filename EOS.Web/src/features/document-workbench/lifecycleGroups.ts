@@ -9,6 +9,8 @@
  * `WorkflowStates.LifecycleColumns`，前端只消费下发下来的 key/label。
  */
 
+import { LIFECYCLE_PREFIXES } from './lifecycleKeys'
+
 export type LifecycleGroupKey = 'create' | 'modify' | 'approve' | 'close'
 
 export interface LifecycleFieldLike {
@@ -21,7 +23,7 @@ export interface LifecycleFieldLike {
 export interface LifecycleGroup<T extends LifecycleFieldLike> {
   key: LifecycleGroupKey
   label: string
-  /** 经办人列（CREATE_PERSON / LAST_UPDATE_BY / CONFIRM_PERSON / FINISHED_PERSON） */
+  /** 经办人列（CREATED_BY / MODIFIED_BY / APPROVED_BY / FINISHED_BY） */
   person: T | null
   /** 经办日期列（*_DATE） */
   date: T | null
@@ -38,24 +40,24 @@ const LABELS: Record<LifecycleGroupKey, string> = {
 
 function groupOf(key: string): LifecycleGroupKey | null {
   const upper = key.toUpperCase()
-  if (upper.startsWith('CREATE_')) return 'create'
-  if (upper.startsWith('LAST_UPDATE_')) return 'modify'
-  if (upper.startsWith('CONFIRM_')) return 'approve'
-  if (upper.startsWith('FINISHED_')) return 'close'
+  if (upper.startsWith(LIFECYCLE_PREFIXES.created)) return 'create'
+  if (upper.startsWith(LIFECYCLE_PREFIXES.modified)) return 'modify'
+  if (upper.startsWith(LIFECYCLE_PREFIXES.approved)) return 'approve'
+  if (upper.startsWith(LIFECYCLE_PREFIXES.finished)) return 'close'
   return null
 }
 
 function roleOf(key: string): 'person' | 'date' | null {
   const upper = key.toUpperCase()
-  if (upper.endsWith('_DATE')) return 'date'
-  if (upper.endsWith('_PERSON') || upper.endsWith('_BY')) return 'person'
+  if (upper.endsWith('_TIME')) return 'date'
+  if (upper.endsWith('_BY')) return 'person'
   return null
 }
 
 /**
  * 把生命周期字段按语义分组。
  *
- * - 状态位（`CONFIRM_TAG` / `FINISHED_TAG`）不进入固定区：它们由工具栏状态徽标承载；
+ * - 状态位（`APPROVED` / `FINISHED`）不进入固定区：它们由工具栏状态徽标承载；
  * - `includeApprove` / `includeClose` 默认 true；无结案能力的模块传 `includeClose: false`，
  *   结果是三组，调用方的等分栅格按 groups.length 排；
  * - 某组只有状态位、没有经办人/日期时不会产生空组。

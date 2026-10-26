@@ -212,7 +212,7 @@ public sealed class FieldAdminRepository(
             SELECT LTRIM(RTRIM(T_ID)),LTRIM(RTRIM(T_DESC)),LTRIM(RTRIM(ISNULL(T_KIND,''))),LTRIM(RTRIM(ISNULL(T_TYPE,''))),
                    T_REMARK,FK_T_ID_1,FK_T_ID_2,FK_T_ID_3,FK_T_ID_4,FK_T_ID_5,
                    QUERY_RELATION,DF_CONDITION,DF_VERIFY,CAST(COALESCE(CAN_IMPORT,0) AS bit),
-                   LAST_UPDATE_BY,LAST_UPDATE_DATE
+                   MODIFIED_BY,MODIFIED_TIME
             FROM dbo.TABLES WITH (NOLOCK)
             WHERE T_ID=@TableId;
             """;
@@ -263,7 +263,7 @@ public sealed class FieldAdminRepository(
         }
 
         const string sql = """
-            INSERT INTO dbo.TABLES (T_ID,T_DESC,T_KIND,T_TYPE,T_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.TABLES (T_ID,T_DESC,T_KIND,T_TYPE,T_REMARK,MODIFIED_BY,MODIFIED_TIME)
             VALUES (@TableId,@Description,@Kind,@Type,@Remark,@UpdatedBy,GETDATE());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -302,7 +302,7 @@ public sealed class FieldAdminRepository(
         const string sql = """
             UPDATE dbo.TABLES SET
                 T_DESC=@Description,T_KIND=@Kind,T_TYPE=@Type,T_REMARK=@Remark,
-                LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+                MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE()
             WHERE T_ID=@TableId;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -500,7 +500,7 @@ public sealed class FieldAdminRepository(
         var isView = string.Equals(physical.ObjectType, "V", StringComparison.OrdinalIgnoreCase);
         var tableInput = new FieldAdminTableInput(physical.Description, isView ? "V" : "P", isView ? "VIEW" : "TABLE", null);
         const string insertTableSql = """
-            INSERT INTO dbo.TABLES (T_ID,T_DESC,T_KIND,T_TYPE,T_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.TABLES (T_ID,T_DESC,T_KIND,T_TYPE,T_REMARK,MODIFIED_BY,MODIFIED_TIME)
             VALUES (@TableId,@Description,@Kind,@Type,@Remark,@UpdatedBy,GETDATE());
             """;
         await using (var insert = new SqlCommand(insertTableSql, connection, transaction))
@@ -715,7 +715,7 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_COST,0) AS bit),CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,
                    BROWSE_URL,BROWSE_M_IDX,CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
                    CAST(COALESCE(IS_VIRTUAL,0) AS bit),VIRTUAL_EXP,CAST(COALESCE(CAN_COPY,1) AS bit),CAST(COALESCE(IS_AUTOINC,0) AS bit),
-                   CONVERT_FUNCTION,LAST_UPDATE_BY,LAST_UPDATE_DATE,CAST(COALESCE(IS_PK,0) AS bit)
+                   CONVERT_FUNCTION,MODIFIED_BY,MODIFIED_TIME,CAST(COALESCE(IS_PK,0) AS bit)
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -982,7 +982,7 @@ public sealed class FieldAdminRepository(
                 (T_ID,F_ID,F_DESC,F_TYPE,BROWSE_URL,BROWSE_M_IDX,ONLY_CHOOSE,CHOOSE_PAGE,CHOOSE_MULTI,
                  REGEX,DISPLAY_LENGTH,DISPLAY_FORMAT,HEADER_ALIGN,ITEM_ALIGN,IS_VERIFY,VERIFY_INDEX,
                  IS_READONLY,IS_VISIBLE,IS_VIRTUAL,IS_AUTOINC,IS_QUERY,IS_COST,IS_SECRECY,DFT_VALUE,
-                 CAN_COPY,IS_DEFAULT_FIELDS,CONVERT_FUNCTION,F_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 CAN_COPY,IS_DEFAULT_FIELDS,CONVERT_FUNCTION,F_REMARK,MODIFIED_BY,MODIFIED_TIME)
             VALUES
                 (@TableId,@FieldId,@Label,@DataType,NULL,@BrowseModuleId,@OnlyChoose,@ChoosePage,@ChooseMultiple,
                  @Regex,@Width,@Format,@HeaderAlign,@Align,@Required,@VerifyIndex,
@@ -1100,7 +1100,7 @@ public sealed class FieldAdminRepository(
                 FORM_OPTIONS=@FormOptions,
                 VIRTUAL_EXP=CASE WHEN @WriteVirtualExp=1 THEN @VirtualExp ELSE VIRTUAL_EXP END,
                 CONVERT_FUNCTION=CASE WHEN @WriteConvertFunction=1 THEN @ConvertFunction ELSE CONVERT_FUNCTION END,
-                LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+                MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE()
             WHERE T_ID=@TableId AND F_ID=@FieldId;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -1530,7 +1530,7 @@ public sealed class FieldAdminRepository(
         const string insertSql = """
             INSERT INTO dbo.FIELD_DATASOURCE
                 (T_ID,F_ID,SERIAL_NO,ACTIVE_TAG,SOURCE_T_ID,SOURCE_DESC,SOURCE_M_IDX,FILTER_STRUCT,RETURN_ITEMS,
-                 CREATE_BY,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES (@TableId,@FieldId,@SerialNo,@Active,@SourceTable,@SourceDesc,@SourceModule,@FilterStruct,@ReturnItems,
                     @UpdatedBy,GETDATE(),@UpdatedBy,GETDATE());
             """;
@@ -1746,7 +1746,7 @@ public sealed class FieldAdminRepository(
         const string sql = """
             INSERT INTO dbo.FIELDS
                 (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,IS_COST,IS_SECRECY,
-                 IS_READONLY,IS_AUTOINC,IS_PK,CAN_COPY,DISPLAY_LENGTH,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 IS_READONLY,IS_AUTOINC,IS_PK,CAN_COPY,DISPLAY_LENGTH,MODIFIED_BY,MODIFIED_TIME)
             VALUES
                 (@TableId,@FieldId,@Description,@DataType,1,1,1,0,0,0,
                  @Readonly,@AutoIncrement,@PrimaryKey,1,100,@UpdatedBy,GETDATE());

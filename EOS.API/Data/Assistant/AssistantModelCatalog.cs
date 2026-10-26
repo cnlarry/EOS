@@ -169,7 +169,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
 {
     private const string ProviderColumns = """
         PROVIDER_ID, CODE, DISPLAY_NAME, BASE_URL, API_KEY_ENV_VAR, TIMEOUT_SECONDS,
-        ENABLED, SORT_IDX, REMARK, CREATED_AT, UPDATED_AT
+        ENABLED, SORT_IDX, REMARK, CREATED_TIME, MODIFIED_TIME
         """;
 
     // 列清单**新增列一律追加到末尾**：读数按位置（ReadModel 的 offset + n），插在中间会让所有偏移
@@ -177,7 +177,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     private const string ModelColumns = """
         MODEL_ID, PROVIDER_ID, MODEL_CODE, DISPLAY_NAME, CONTEXT_WINDOW, MAX_OUTPUT_TOKENS,
         DEFAULT_TEMPERATURE, TIMEOUT_SECONDS, INPUT_PER_MILLION_YUAN, OUTPUT_PER_MILLION_YUAN,
-        SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_AT, UPDATED_AT, KIND, DIMENSION
+        SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_TIME, MODIFIED_TIME, KIND, DIMENSION
         """;
 
     // 联查用的列清单写成两段**带别名的字面量**，而不是把上面的字面量做字符串替换：
@@ -185,7 +185,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     private const string ActiveModelColumns = """
         m.MODEL_ID, m.PROVIDER_ID, m.MODEL_CODE, m.DISPLAY_NAME, m.CONTEXT_WINDOW, m.MAX_OUTPUT_TOKENS,
         m.DEFAULT_TEMPERATURE, m.TIMEOUT_SECONDS, m.INPUT_PER_MILLION_YUAN, m.OUTPUT_PER_MILLION_YUAN,
-        m.SUPPORTS_TOOLS, m.IS_ACTIVE, m.ENABLED, m.SORT_IDX, m.REMARK, m.CREATED_AT, m.UPDATED_AT,
+        m.SUPPORTS_TOOLS, m.IS_ACTIVE, m.ENABLED, m.SORT_IDX, m.REMARK, m.CREATED_TIME, m.MODIFIED_TIME,
         m.KIND, m.DIMENSION
         """;
 
@@ -194,7 +194,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
 
     private const string ActiveProviderColumns = """
         p.PROVIDER_ID, p.CODE, p.DISPLAY_NAME, p.BASE_URL, p.API_KEY_ENV_VAR, p.TIMEOUT_SECONDS,
-        p.ENABLED, p.SORT_IDX, p.REMARK, p.CREATED_AT, p.UPDATED_AT
+        p.ENABLED, p.SORT_IDX, p.REMARK, p.CREATED_TIME, p.MODIFIED_TIME
         """;
 
     // ==================================================================
@@ -235,7 +235,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     {
         const string sql = """
             INSERT INTO dbo.ASSISTANT_PROVIDER
-                (CODE, DISPLAY_NAME, BASE_URL, API_KEY_ENV_VAR, TIMEOUT_SECONDS, ENABLED, SORT_IDX, REMARK, CREATED_BY, UPDATED_BY)
+                (CODE, DISPLAY_NAME, BASE_URL, API_KEY_ENV_VAR, TIMEOUT_SECONDS, ENABLED, SORT_IDX, REMARK, CREATED_BY, MODIFIED_BY)
             OUTPUT INSERTED.PROVIDER_ID
             VALUES
                 (@Code, @DisplayName, @BaseUrl, @EnvVar, @Timeout, @Enabled, @SortIdx, @Remark, @Actor, @Actor);
@@ -255,7 +255,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
             UPDATE dbo.ASSISTANT_PROVIDER
             SET CODE = @Code, DISPLAY_NAME = @DisplayName, BASE_URL = @BaseUrl, API_KEY_ENV_VAR = @EnvVar,
                 TIMEOUT_SECONDS = @Timeout, ENABLED = @Enabled, SORT_IDX = @SortIdx, REMARK = @Remark,
-                UPDATED_AT = SYSUTCDATETIME(), UPDATED_BY = @Actor
+                MODIFIED_TIME = SYSUTCDATETIME(), MODIFIED_BY = @Actor
             WHERE PROVIDER_ID = @Id;
             """;
         await using var conn = connections.Create();
@@ -398,7 +398,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
                 INPUT_PER_MILLION_YUAN = @InputPrice, OUTPUT_PER_MILLION_YUAN = @OutputPrice,
                 SUPPORTS_TOOLS = @SupportsTools, ENABLED = @Enabled, SORT_IDX = @SortIdx, REMARK = @Remark,
                 KIND = @Kind, DIMENSION = @Dimension,
-                UPDATED_AT = SYSUTCDATETIME(), UPDATED_BY = @Actor
+                MODIFIED_TIME = SYSUTCDATETIME(), MODIFIED_BY = @Actor
             WHERE MODEL_ID = @Id;
             """;
         await using var conn = connections.Create();
@@ -448,7 +448,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
         int affected;
         await using (var set = new SqlCommand("""
             UPDATE m
-            SET m.IS_ACTIVE = 1, m.UPDATED_AT = SYSUTCDATETIME(), m.UPDATED_BY = @Actor
+            SET m.IS_ACTIVE = 1, m.MODIFIED_TIME = SYSUTCDATETIME(), m.MODIFIED_BY = @Actor
             FROM dbo.ASSISTANT_MODEL m
             INNER JOIN dbo.ASSISTANT_PROVIDER p ON p.PROVIDER_ID = m.PROVIDER_ID
             WHERE m.MODEL_ID = @Id AND m.ENABLED = 1 AND p.ENABLED = 1 AND m.KIND = @Kind;
@@ -492,7 +492,7 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
             INSERT INTO dbo.ASSISTANT_MODEL
                 (PROVIDER_ID, MODEL_CODE, DISPLAY_NAME, CONTEXT_WINDOW, MAX_OUTPUT_TOKENS,
                  DEFAULT_TEMPERATURE, TIMEOUT_SECONDS, INPUT_PER_MILLION_YUAN, OUTPUT_PER_MILLION_YUAN,
-                 SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_BY, UPDATED_BY,
+                 SUPPORTS_TOOLS, IS_ACTIVE, ENABLED, SORT_IDX, REMARK, CREATED_BY, MODIFIED_BY,
                  KIND, DIMENSION)
             OUTPUT INSERTED.MODEL_ID
             VALUES

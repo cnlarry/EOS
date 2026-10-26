@@ -134,7 +134,7 @@ public sealed record FormDefinition(int ModuleId, string Title, string MasterTab
     // 不进 `MasterFields`、不参与版式；前端把它们渲染成工具栏状态徽标 + 主卡底部固定信息区。
     // new/edit 为空；view 才有值（仍按字段级权限过滤）。
     IReadOnlyList<FormFieldDefinition>? LifecycleFields = null,
-    // 主表是否有 `FINISHED_TAG`（结案能力）：没有该列的模块不显示结案状态、底部只有三组。
+    // 主表是否有 `FINISHED`（结案能力）：没有该列的模块不显示结案状态、底部只有三组。
     // 与 `WorkbenchApprovalService.RunFinishCoreAsync` 的「该模块不支持结案操作」判据同源（物理列存在性），
     // 不是当前用户的 `ENDCASE_TAG` 权限位。
     bool HasFinishCapability = false);

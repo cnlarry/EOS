@@ -21,12 +21,12 @@
         "type": "string"
       },
       {
-        "key": "CREATE_PERSON",
+        "key": "CREATED_BY",
         "label": "建立人",
         "type": "string"
       },
       {
-        "key": "CREATE_DATE",
+        "key": "CREATED_TIME",
         "label": "建立日期",
         "type": "date"
       }

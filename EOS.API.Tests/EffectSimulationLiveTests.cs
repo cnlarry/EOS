@@ -107,7 +107,7 @@ public sealed class EffectSimulationLiveTests
                 continue;
             }
 
-            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "CONFIRM_TAG", token))
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "APPROVED", token))
             {
                 continue;
             }
@@ -118,7 +118,7 @@ public sealed class EffectSimulationLiveTests
             }
             var projection = string.Join(',', pk.Select(column => $"LTRIM(RTRIM([{column}]))"));
             await using var documentCommand = new SqlCommand(
-                $"SELECT TOP 1 {projection} FROM dbo.[{table}] WITH (NOLOCK) WHERE ISNULL(CONFIRM_TAG,0)=0 ORDER BY {projection};",
+                $"SELECT TOP 1 {projection} FROM dbo.[{table}] WITH (NOLOCK) WHERE ISNULL(APPROVED,0)=0 ORDER BY {projection};",
                 connection);
             await using var documentReader = await documentCommand.ExecuteReaderAsync(token);
             if (!await documentReader.ReadAsync(token))
@@ -416,7 +416,7 @@ public sealed class EffectSimulationLiveTests
         await using var blocking = (SqlTransaction)await blocker.BeginTransactionAsync(token);
         var where = string.Join(" AND ", candidate.PkColumns.Select((column, index) => $"[{column}]=@k{index}"));
         await using (var hold = new SqlCommand(
-            $"UPDATE dbo.[{candidate.MasterTable}] SET CONFIRM_PERSON=CONFIRM_PERSON WHERE {where};", blocker, blocking))
+            $"UPDATE dbo.[{candidate.MasterTable}] SET APPROVED_BY=APPROVED_BY WHERE {where};", blocker, blocking))
         {
             for (var index = 0; index < candidate.KeyValues.Count; index++)
             {
@@ -746,7 +746,7 @@ public sealed class EffectSimulationLiveTests
         var where = string.Join(" AND ", candidate.PkColumns.Select((column, index) =>
             $"LTRIM(RTRIM([{column}]))=@k{index}"));
         await using var command = new SqlCommand(
-            $"SELECT ISNULL(CONFIRM_TAG,0) FROM dbo.[{candidate.MasterTable}] WITH (NOLOCK) WHERE {where};", connection);
+            $"SELECT ISNULL(APPROVED,0) FROM dbo.[{candidate.MasterTable}] WITH (NOLOCK) WHERE {where};", connection);
         for (var index = 0; index < candidate.KeyValues.Count; index++)
         {
             command.Parameters.AddWithValue($"@k{index}", candidate.KeyValues[index]);

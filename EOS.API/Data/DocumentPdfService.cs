@@ -232,7 +232,7 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
             {
                 right.Item().Text(
                     $"业务：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("SALES_ID"))}{PdfLayout.FormatValue(data.Master.GetValueOrDefault("BUYER_ID"))}").FontSize(8);
-                right.Item().Text($"制单：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CREATE_PERSON"))}").FontSize(8);
+                right.Item().Text($"制单：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CREATED_BY"))}").FontSize(8);
             });
         });
         content.Item().PaddingTop(6).Table(table =>
@@ -295,8 +295,8 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
         });
         content.Item().PaddingTop(10).Row(signature =>
         {
-            signature.RelativeItem().Text($"制表：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CREATE_PERSON"))}").FontSize(8);
-            signature.RelativeItem().AlignCenter().Text($"审核：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CONFIRM_PERSON"))}").FontSize(8);
+            signature.RelativeItem().Text($"制表：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CREATED_BY"))}").FontSize(8);
+            signature.RelativeItem().AlignCenter().Text($"审核：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("APPROVED_BY"))}").FontSize(8);
             signature.RelativeItem().AlignRight().Text("客户/厂商确认：").FontSize(8);
         });
     }

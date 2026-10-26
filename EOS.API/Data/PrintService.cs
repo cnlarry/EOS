@@ -169,9 +169,9 @@ public sealed class PrintService(
     {
         if(string.IsNullOrWhiteSpace(text))return text;
         var result=text;
-        result=result.Replace("{1}",FieldValue(master,"CREATE_PERSON"));
-        result=result.Replace("{2}",FieldValue(master,"LAST_UPDATE_BY"));
-        result=result.Replace("{5}",FieldValue(master,"CONFIRM_PERSON"));
+        result=result.Replace("{1}",FieldValue(master,"CREATED_BY"));
+        result=result.Replace("{2}",FieldValue(master,"MODIFIED_BY"));
+        result=result.Replace("{5}",FieldValue(master,"APPROVED_BY"));
         result=result.Replace("{7}",Environment.UserName);
         return result;
     }

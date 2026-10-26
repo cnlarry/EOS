@@ -574,7 +574,7 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             await using (var seed = new SqlCommand("""
-                INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG)
+                INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE, CREATED_BY, CREATED_TIME, APPROVED)
                     VALUES (N'ADR12CUR1', N'集成测试本位币', 2, 1, N'ADR12', GETDATE(), 0);
                 INSERT INTO dbo.INV_CHECK_STOCK_D (CHECK_STOCK_TYPE, CHECK_STOCK_NO, SERIAL_NO, CHECK_QTY)
                     VALUES (N'ADR12', N'ADR12STOCK1', 1, -5);
@@ -949,7 +949,7 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             await using (var seed = new SqlCommand("""
-                INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, CONFIRM_TAG, CLIENT_ORDER_NO)
+                INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, APPROVED, CLIENT_ORDER_NO)
                 VALUES (N'DD', N'ZZT2609ORD01', 0, NULL);
                 INSERT INTO dbo.COP_ORDER_D (ORDER_TYPE, ORDER_NO, SERIAL_NO, FINISHED_SEND_QTY, FINISHED_SPARE_QTY, FINISHED_PRODUCE_QTY, FINISHED_PRODUCE_SPARE_QTY)
                 VALUES (N'DD', N'ZZT2609ORD01', 1, 5, 0, 5, 0);
@@ -970,7 +970,7 @@ public sealed class EffectValidationLiveDataTests
 
             // ② 批核后：变更明细数量 2 < 已送货 5 → 命中
             await using (var approve = new SqlCommand(
-                "UPDATE dbo.COP_ORDER_M SET CONFIRM_TAG = 1 WHERE ORDER_TYPE = N'DD' AND ORDER_NO = N'ZZT2609ORD01';",
+                "UPDATE dbo.COP_ORDER_M SET APPROVED = 1 WHERE ORDER_TYPE = N'DD' AND ORDER_NO = N'ZZT2609ORD01';",
                 connection, transaction))
             {
                 await approve.ExecuteNonQueryAsync(token);
@@ -991,7 +991,7 @@ public sealed class EffectValidationLiveDataTests
 
             // ④ 客户订单号与另一订单重复 → 拒绝
             await using (var dup = new SqlCommand(
-                "INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, CONFIRM_TAG, CLIENT_ORDER_NO) VALUES (N'DD', N'ZZT2609ORD02', 1, N'ZZT2609CON01');",
+                "INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, APPROVED, CLIENT_ORDER_NO) VALUES (N'DD', N'ZZT2609ORD02', 1, N'ZZT2609CON01');",
                 connection, transaction))
             {
                 await dup.ExecuteNonQueryAsync(token);
@@ -1026,7 +1026,7 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             await using (var seed = new SqlCommand("""
-                INSERT INTO dbo.PUR_PURCHASE_M (PURCHASE_TYPE, PURCHASE_NO, CONFIRM_TAG)
+                INSERT INTO dbo.PUR_PURCHASE_M (PURCHASE_TYPE, PURCHASE_NO, APPROVED)
                 VALUES (N'ZZ', N'ZZT2609PUR01', 0);
                 INSERT INTO dbo.PUR_PURCHASE_D (PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO, RECEIVE_QTY)
                 VALUES (N'ZZ', N'ZZT2609PUR01', 1, 6);
@@ -1047,7 +1047,7 @@ public sealed class EffectValidationLiveDataTests
 
             // ② 原单批核后：变更明细数量 4 < 已收货 6 → 命中并回报本单序号
             await using (var approve = new SqlCommand(
-                "UPDATE dbo.PUR_PURCHASE_M SET CONFIRM_TAG = 1 WHERE PURCHASE_TYPE = N'ZZ' AND PURCHASE_NO = N'ZZT2609PUR01';",
+                "UPDATE dbo.PUR_PURCHASE_M SET APPROVED = 1 WHERE PURCHASE_TYPE = N'ZZ' AND PURCHASE_NO = N'ZZT2609PUR01';",
                 connection, transaction))
             {
                 await approve.ExecuteNonQueryAsync(token);
@@ -1084,7 +1084,7 @@ public sealed class EffectValidationLiveDataTests
         {
             // 制令单：未批核 + 已生产 8（变更主表数量 5 更低）；制令明细已领料 4（变更明细应领 2 更低）
             await using (var seed = new SqlCommand("""
-                INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, CONFIRM_TAG, FINISHED_QTY, FINISHED_SPARE_QTY)
+                INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, APPROVED, FINISHED_QTY, FINISHED_SPARE_QTY)
                 VALUES (N'ZZ', N'ZZT2609PRD03', 0, 8, 0);
                 INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, SERIAL_NO, USED_QTY)
                 VALUES (N'ZZ', N'ZZT2609PRD03', N'ZZT2609PRO02', 1, 4);
@@ -1105,7 +1105,7 @@ public sealed class EffectValidationLiveDataTests
 
             // ② 原单批核后：变更量不得小于已生产（主表级）
             await using (var approve = new SqlCommand(
-                "UPDATE dbo.MOC_PRODUCE_M SET CONFIRM_TAG = 1 WHERE PRODUCE_TYPE = N'ZZ' AND PRODUCE_NO = N'ZZT2609PRD03';",
+                "UPDATE dbo.MOC_PRODUCE_M SET APPROVED = 1 WHERE PRODUCE_TYPE = N'ZZ' AND PRODUCE_NO = N'ZZT2609PRD03';",
                 connection, transaction))
             {
                 await approve.ExecuteNonQueryAsync(token);

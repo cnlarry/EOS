@@ -56,12 +56,12 @@
         "type": "string"
       },
       {
-        "key": "CREATE_PERSON",
+        "key": "CREATED_BY",
         "label": "制单人",
         "type": "string"
       },
       {
-        "key": "CONFIRM_PERSON",
+        "key": "APPROVED_BY",
         "label": "批核人",
         "type": "string"
       }

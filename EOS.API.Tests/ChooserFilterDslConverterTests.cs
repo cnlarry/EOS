@@ -21,7 +21,7 @@ public sealed class ChooserFilterDslConverterTests
     public void Convert_SimpleChain_Tier1()
     {
         var result = ChooserFilterDslConverter.Convert(
-            "CLIENT.BUSINESS_TAG=0 AND CLIENT.CONFIRM_TAG = 1", "ORDER_M", Opts("CLIENT"));
+            "CLIENT.BUSINESS_TAG=0 AND CLIENT.APPROVED = 1", "ORDER_M", Opts("CLIENT"));
         Assert.Equal(1, result.Tier);
         Assert.NotNull(result.Struct);
         Assert.Equal(2, result.Struct!.Items.Count);
@@ -61,7 +61,7 @@ public sealed class ChooserFilterDslConverterTests
     public void Convert_CrossTableWithJoinClosure_Compiles()
     {
         var result = ChooserFilterDslConverter.Convert(
-            "ISNULL(COP_SEND_M.CONFIRM_TAG,0)=1 AND COP_SEND_M.CLIENT_ID='{m.CLIENT_ID}' AND ISNULL(COP_SEND_D.FINISHED_TAG,0)=0",
+            "ISNULL(COP_SEND_M.APPROVED,0)=1 AND COP_SEND_M.CLIENT_ID='{m.CLIENT_ID}' AND ISNULL(COP_SEND_D.FINISHED,0)=0",
             "COP_SEND_D", Opts("COP_SEND_M"));
         Assert.NotNull(result.Struct);
         var compile = ChooserFilterCompiler.Compile(result.Struct!, "COP_SEND_D", Opts("COP_SEND_M").JoinAliases, null);
@@ -84,7 +84,7 @@ public sealed class ChooserFilterDslConverterTests
     public void Convert_IsNullZeroMacro_Tier1()
     {
         var result = ChooserFilterDslConverter.Convert(
-            "ISNULL(CLIENT.BUSINESS_TAG,0)=0 AND ISNULL(CLIENT.CONFIRM_TAG,0)=1", "ORDER_M", Opts("CLIENT"));
+            "ISNULL(CLIENT.BUSINESS_TAG,0)=0 AND ISNULL(CLIENT.APPROVED,0)=1", "ORDER_M", Opts("CLIENT"));
         Assert.Equal(1, result.Tier);
         Assert.Equal("ISNULL_ZERO", result.Struct!.Items[0].Operator);
         Assert.Equal("EQ", result.Struct.Items[1].Operator);

@@ -350,7 +350,7 @@ public sealed class AttendanceCalcService(
         await using var command = new SqlCommand($"""
             SELECT LTRIM(RTRIM(c.EMP_ID)), m.COUNT_DATE
             FROM dbo.HR_DIARY_D m
-            INNER JOIN dbo.HR_EMPLOYEE_CARD c ON c.CARD_ID=m.CARD_ID AND c.CONFIRM_TAG=1
+            INNER JOIN dbo.HR_EMPLOYEE_CARD c ON c.CARD_ID=m.CARD_ID AND c.APPROVED=1
             WHERE m.COUNT_DATE>=@Start AND m.COUNT_DATE<@End
               AND c.EMP_ID IN ({placeholders})
               AND m.COUNT_DATE>=c.BEGIN_DATE AND (c.END_DATE IS NULL OR m.COUNT_DATE<DATEADD(day,1,c.END_DATE));
@@ -495,7 +495,7 @@ public sealed class AttendanceCalcService(
                    NULLIF(LTRIM(RTRIM(ISNULL(d.IN_TIME4,''))),''),NULLIF(LTRIM(RTRIM(ISNULL(d.OUT_TIME4,''))),''),d.WORK_HOURS4,d.ADD_HOURS4
             FROM dbo.HR_ADJUST_M m INNER JOIN dbo.HR_ADJUST_D d
               ON d.ADJUST_TYPE=m.ADJUST_TYPE AND d.ADJUST_NO=m.ADJUST_NO
-            WHERE m.CONFIRM_TAG=1 AND d.COUNT_DATE>=@Start AND d.COUNT_DATE<=@End;
+            WHERE m.APPROVED=1 AND d.COUNT_DATE>=@Start AND d.COUNT_DATE<=@End;
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -528,7 +528,7 @@ public sealed class AttendanceCalcService(
                    NULLIF(LTRIM(RTRIM(ISNULL(d.START_TIME,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.END_TIME,''))),'')
             FROM dbo.HR_RECESS_M m INNER JOIN dbo.HR_RECESS_D d
               ON d.RECESS_TYPE=m.RECESS_TYPE AND d.RECESS_NO=m.RECESS_NO
-            WHERE m.CONFIRM_TAG=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
+            WHERE m.APPROVED=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -550,7 +550,7 @@ public sealed class AttendanceCalcService(
                    NULLIF(LTRIM(RTRIM(ISNULL(d.START_TIME,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.END_TIME,''))),'')
             FROM dbo.HR_LEAVE_M m INNER JOIN dbo.HR_LEAVE_D d
               ON d.LEAVE_TYPE=m.LEAVE_TYPE AND d.LEAVE_NO=m.LEAVE_NO
-            WHERE m.CONFIRM_TAG=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
+            WHERE m.APPROVED=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -572,7 +572,7 @@ public sealed class AttendanceCalcService(
                    NULLIF(LTRIM(RTRIM(ISNULL(d.START_TIME,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.END_TIME,''))),'')
             FROM dbo.HR_EVECTION_M m INNER JOIN dbo.HR_EVECTION_D d
               ON d.EVECTION_TYPE=m.EVECTION_TYPE AND d.EVECTION_NO=m.EVECTION_NO
-            WHERE m.CONFIRM_TAG=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
+            WHERE m.APPROVED=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -593,7 +593,7 @@ public sealed class AttendanceCalcService(
             SELECT LTRIM(RTRIM(d.EMP_ID)), CONVERT(varchar(10),d.FIRST_DAY,120), CONVERT(varchar(10),d.END_DAY,120)
             FROM dbo.HR_EXCHANGE_M m INNER JOIN dbo.HR_EXCHANGE_D d
               ON d.EXCHANGE_TYPE=m.EXCHANGE_TYPE AND d.EXCHANGE_NO=m.EXCHANGE_NO
-            WHERE m.CONFIRM_TAG=1 AND ((d.FIRST_DAY>=@Start AND d.FIRST_DAY<=@End) OR (d.END_DAY>=@Start AND d.END_DAY<=@End));
+            WHERE m.APPROVED=1 AND ((d.FIRST_DAY>=@Start AND d.FIRST_DAY<=@End) OR (d.END_DAY>=@Start AND d.END_DAY<=@End));
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -616,7 +616,7 @@ public sealed class AttendanceCalcService(
                    NULLIF(LTRIM(RTRIM(ISNULL(d.ON4,''))),''),NULLIF(LTRIM(RTRIM(ISNULL(d.OUT4,''))),'')
             FROM dbo.HR_SIGN_M m INNER JOIN dbo.HR_SIGN_D d
               ON d.SIGN_TYPE=m.SIGN_TYPE AND d.SIGN_NO=m.SIGN_NO
-            WHERE m.CONFIRM_TAG=1 AND d.COUNT_DATE>=@Start AND d.COUNT_DATE<=@End;
+            WHERE m.APPROVED=1 AND d.COUNT_DATE>=@Start AND d.COUNT_DATE<=@End;
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -647,7 +647,7 @@ public sealed class AttendanceCalcService(
                    ISNULL(CAST(d.REST_OVERTIME AS float),0), ISNULL(CAST(d.HOLIDAY_OVERTIME AS float),0)
             FROM dbo.HR_APPLY_M m INNER JOIN dbo.HR_APPLY_D d
               ON d.APPLY_TYPE=m.APPLY_TYPE AND d.APPLY_NO=m.APPLY_NO
-            WHERE m.CONFIRM_TAG=1 AND m.COUNT_DATE>=@Start AND m.COUNT_DATE<=@End;
+            WHERE m.APPROVED=1 AND m.COUNT_DATE>=@Start AND m.COUNT_DATE<=@End;
             """, connection);
         command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
         command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
@@ -666,7 +666,7 @@ public sealed class AttendanceCalcService(
         await using var command = new SqlCommand($"""
             SELECT LTRIM(RTRIM(pd.EMP_ID)), LTRIM(RTRIM(ISNULL(pd.[{dayColumn}],'')))
             FROM dbo.HRM_PLAN_D pd
-            INNER JOIN dbo.HRM_PLAN_M pm ON pm.PLAN_TYPE=pd.PLAN_TYPE AND pm.PLAN_NO=pd.PLAN_NO AND pm.CONFIRM_TAG=1
+            INNER JOIN dbo.HRM_PLAN_M pm ON pm.PLAN_TYPE=pd.PLAN_TYPE AND pm.PLAN_NO=pd.PLAN_NO AND pm.APPROVED=1
             WHERE pm.COUNT_MONTH=@Month AND pd.EMP_ID IN ({string.Join(',', employees.Select((_, i) => $"@e{i}"))})
               AND pd.[{dayColumn}] IS NOT NULL AND LTRIM(RTRIM(pd.[{dayColumn}]))<>'';
             """, connection);

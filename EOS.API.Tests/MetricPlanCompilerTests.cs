@@ -34,7 +34,7 @@ public sealed class MetricPlanCompilerTests
     public void Compile_Routes_Master_Row_Filter_Through_Exists()
     {
         var rowFilter = new MetricRowFilterPlan("COP_ORDER_M", ["ORDER_TYPE", "ORDER_NO"],
-            [new MetricFilterCondition("CONFIRM_TAG", "=", true)]);
+            [new MetricFilterCondition("APPROVED", "=", true)]);
         var plan = MetricPlanCompiler.Compile(
             Parse("SUM(AMOUNT_TAX)"), "COP_ORDER_D", rowFilter, [],
             "COP_ORDER_M", ["ORDER_TYPE", "ORDER_NO"], null, null);
@@ -42,7 +42,7 @@ public sealed class MetricPlanCompilerTests
             "SELECT SUM([AMOUNT_TAX]) FROM dbo.[COP_ORDER_D] WITH (NOLOCK)" +
             " WHERE EXISTS (SELECT 1 FROM dbo.[COP_ORDER_M] WITH (NOLOCK)" +
             " WHERE [ORDER_TYPE]=dbo.[COP_ORDER_D].[ORDER_TYPE] AND [ORDER_NO]=dbo.[COP_ORDER_D].[ORDER_NO]" +
-            " AND [CONFIRM_TAG]=@rf0);",
+            " AND [APPROVED]=@rf0);",
             plan.Sql);
         Assert.True((bool)plan.Parameters.Single(p => p.Name == "@rf0").Value);
     }
@@ -103,7 +103,7 @@ public sealed class MetricPlanCompilerTests
     public void Compile_Refuses_Master_Predicates_Without_Join_Keys()
     {
         var rowFilter = new MetricRowFilterPlan("COP_ORDER_M", ["ORDER_NO"],
-            [new MetricFilterCondition("CONFIRM_TAG", "=", true)]);
+            [new MetricFilterCondition("APPROVED", "=", true)]);
         Assert.Throws<InvalidOperationException>(() => MetricPlanCompiler.Compile(
             Parse("SUM(AMOUNT_TAX)"), "COP_ORDER_D", rowFilter, [],
             "COP_ORDER_M", [], null, null));

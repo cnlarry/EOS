@@ -31,8 +31,8 @@ public sealed class SituationDigestTests
     private static Dictionary<string, object?> OverdueRow(string key, DateTime created) => new()
     {
         ["DD_NO"] = key,
-        ["CREATE_DATE"] = created,
-        ["CONFIRM_TAG"] = false,
+        ["CREATED_TIME"] = created,
+        ["APPROVED"] = false,
     };
 
     [Fact]
@@ -40,7 +40,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData(
             [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 3, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();
@@ -63,8 +63,8 @@ public sealed class SituationDigestTests
         var query = Assert.Single(gateway.RowQueries);
         Assert.Equal(1606, query.ModuleId);
         Assert.NotNull(query.Query);
-        Assert.Contains(query.Query!.Conditions, condition => condition.Field == "CREATE_DATE" && condition.Operator == "lte");
-        Assert.Contains(query.Query.Conditions, condition => condition.Field == "CONFIRM_TAG" && condition.Value == "0");
+        Assert.Contains(query.Query!.Conditions, condition => condition.Field == "CREATED_TIME" && condition.Operator == "lte");
+        Assert.Contains(query.Query.Conditions, condition => condition.Field == "APPROVED" && condition.Value == "0");
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData([], 0, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();
         permissions.Browsable.Add(1606);
@@ -92,7 +92,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         var permissions = new AssistantSituationDoubles.FakePermissions(); // 无权
         var facts = new AssistantSituationDoubles.FakeFacts();
         facts.ActivityModules.Add(1606);
@@ -129,7 +129,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData(
             [
                 OverdueRow("DD1", DateTime.UtcNow.Date.AddDays(-30)),
@@ -152,7 +152,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData(
             [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();
@@ -165,11 +165,11 @@ public sealed class SituationDigestTests
 
         var query = Assert.Single(gateway.RowQueries);
         // 取数口径：新→旧（否则按模块默认排序会取到多年前的遗留单，实测 3120 天前）
-        Assert.Equal("CREATE_DATE", query.SortField);
+        Assert.Equal("CREATED_TIME", query.SortField);
         Assert.Equal("desc", query.SortDirection);
         // 年龄上界生效：早于上界的单据不进摘要
         var lowerBound = Assert.Single(query.Query!.Conditions,
-            condition => condition.Field == "CREATE_DATE" && condition.Operator == "gte");
+            condition => condition.Field == "CREATED_TIME" && condition.Operator == "gte");
         Assert.Equal(DateTime.UtcNow.Date.AddDays(-90).ToString("yyyy-MM-dd"), lowerBound.Value);
     }
 
@@ -178,7 +178,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData([], 0, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();
         permissions.Browsable.Add(1606);
@@ -208,7 +208,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData([OverdueRow("DD1", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();
         permissions.Browsable.Add(1606);
@@ -233,7 +233,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData(
             [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();
@@ -257,7 +257,7 @@ public sealed class SituationDigestTests
     {
         var gateway = new AssistantSituationDoubles.FakeGateway();
         gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
-            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+            1606, "客户订单", ["DD_NO", "CREATED_TIME", "APPROVED"], ["DD_NO"]);
         gateway.Rows[1606] = new WorkbenchData(
             [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
         var permissions = new AssistantSituationDoubles.FakePermissions();

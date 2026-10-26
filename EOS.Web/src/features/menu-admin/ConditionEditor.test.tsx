@@ -137,7 +137,7 @@ describe('ConditionEditor', () => {
         targetTable: 'PUR_PURCHASE_D',
         negate: true,
         match: [{ target: 'PURCHASE_NO', source: { scope: 'DETAIL', field: 'PURCHASE_NO' } }],
-        condition: { type: 'value-eq', field: { scope: 'TARGET', field: 'FINISHED_TAG' }, value: 0 },
+        condition: { type: 'value-eq', field: { scope: 'TARGET', field: 'FINISHED' }, value: 0 },
       }],
     }))
 
@@ -164,17 +164,17 @@ describe('ConditionEditor', () => {
         type: 'not-exists',
         targetTable: 'PUR_PURCHASE_D',
         match: [{ target: 'PURCHASE_NO', source: { field: 'PURCHASE_NO' } }],
-        condition: { left: { scope: 'TARGET', field: 'FINISHED_TAG' }, op: 'EQ', right: { value: 0 } },
+        condition: { left: { scope: 'TARGET', field: 'FINISHED' }, op: 'EQ', right: { value: 0 } },
       }],
     }))
 
     expect(await screen.findByText(/且子查询行满足/)).toBeInTheDocument()
     // 内层比较式：左字段 + 比较符 + 右侧常量勾选。
-    expect(screen.getByDisplayValue('FINISHED_TAG')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('FINISHED')).toBeInTheDocument()
     expect(screen.getByDisplayValue('=')).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: '右侧比常量' })).toBeChecked()
 
-    fireEvent.change(screen.getByDisplayValue('FINISHED_TAG'), { target: { value: 'END_TAG' } })
+    fireEvent.change(screen.getByDisplayValue('FINISHED'), { target: { value: 'END_TAG' } })
     await waitFor(() => expect(onChange).toHaveBeenCalled())
     const written = JSON.parse(onChange.mock.calls.at(-1)![0])
     expect(written.items[0].condition.left).toEqual({ scope: 'TARGET', field: 'END_TAG' })

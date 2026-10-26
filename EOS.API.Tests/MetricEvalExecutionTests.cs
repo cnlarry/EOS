@@ -174,9 +174,9 @@ public sealed class AssistantLatencyMetricsTests
             await connection.OpenAsync();
             await using var command = new SqlCommand($"""
                 DECLARE @SessionId bigint;
-                INSERT INTO dbo.ASSISTANT_SESSION (USER_ID, TITLE, CREATED_AT) VALUES ('{userId}', 'latency-probe-{suffix}', SYSDATETIME());
+                INSERT INTO dbo.ASSISTANT_SESSION (USER_ID, TITLE, CREATED_TIME) VALUES ('{userId}', 'latency-probe-{suffix}', SYSDATETIME());
                 SET @SessionId = SCOPE_IDENTITY();
-                INSERT INTO dbo.ASSISTANT_MESSAGE (SESSION_ID, ROLE, CONTENT, PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CREATED_AT)
+                INSERT INTO dbo.ASSISTANT_MESSAGE (SESSION_ID, ROLE, CONTENT, PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CREATED_TIME)
                 VALUES (@SessionId, 2, 'a', 1, 1, 100, SYSDATETIME()),
                        (@SessionId, 2, 'b', 1, 1, 200, SYSDATETIME()),
                        (@SessionId, 2, 'c', 1, 1, 300, SYSDATETIME()),

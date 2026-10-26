@@ -52,7 +52,7 @@ public sealed class HumanResourceJobsService(DbConnectionFactory connections)
             if (exists)
             {
                 await using var update = new SqlCommand(
-                    "UPDATE dbo.HR_EMPLOYEE_CARD SET BEGIN_DATE=@bd,END_DATE=@ed,LAST_UPDATE_BY=@u,LAST_UPDATE_DATE=@d WHERE EMP_ID=@e AND CARD_ID=@c;", connection, transaction);
+                    "UPDATE dbo.HR_EMPLOYEE_CARD SET BEGIN_DATE=@bd,END_DATE=@ed,MODIFIED_BY=@u,MODIFIED_TIME=@d WHERE EMP_ID=@e AND CARD_ID=@c;", connection, transaction);
                 update.Parameters.Add("@bd", SqlDbType.DateTime).Value = startDate;
                 update.Parameters.Add("@ed", SqlDbType.DateTime).Value = (object?)endDate ?? DBNull.Value;
                 update.Parameters.Add("@u", SqlDbType.NVarChar, 50).Value = executor;
@@ -65,7 +65,7 @@ public sealed class HumanResourceJobsService(DbConnectionFactory connections)
             else
             {
                 await using var insert = new SqlCommand(
-                    "INSERT INTO dbo.HR_EMPLOYEE_CARD (EMP_ID,CARD_ID,BEGIN_DATE,END_DATE,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE) VALUES (@e,@c,@bd,@ed,@u,@d,@u,@d);", connection, transaction);
+                    "INSERT INTO dbo.HR_EMPLOYEE_CARD (EMP_ID,CARD_ID,BEGIN_DATE,END_DATE,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME) VALUES (@e,@c,@bd,@ed,@u,@d,@u,@d);", connection, transaction);
                 insert.Parameters.Add("@e", SqlDbType.NVarChar, 30).Value = empId;
                 insert.Parameters.Add("@c", SqlDbType.NVarChar, 30).Value = cardId;
                 insert.Parameters.Add("@bd", SqlDbType.DateTime).Value = startDate;
@@ -146,7 +146,7 @@ public sealed class HumanResourceJobsService(DbConnectionFactory connections)
                             UPDATE d SET d.ON1=t.IN_TIME1,d.OUT1=t.OUT_TIME1,d.TIMETYPE_ID=t.TIMETYPE_ID
                             FROM dbo.HRM_DIARY d
                             INNER JOIN dbo.HRM_PLAN_D pd ON pd.EMP_ID=d.EMP_ID
-                            INNER JOIN dbo.HRM_PLAN_M pm ON pm.PLAN_TYPE=pd.PLAN_TYPE AND pm.PLAN_NO=pd.PLAN_NO AND pm.CONFIRM_TAG=1
+                            INNER JOIN dbo.HRM_PLAN_M pm ON pm.PLAN_TYPE=pd.PLAN_TYPE AND pm.PLAN_NO=pd.PLAN_NO AND pm.APPROVED=1
                             INNER JOIN dbo.HRM_TIMETYPE t ON t.TIMETYPE_ID=pd.[{dayColumn}]
                             WHERE d.COUNT_DATE=@date AND pm.COUNT_MONTH=CONVERT(varchar(6),@date,112) AND pd.[{dayColumn}] IS NOT NULL AND LTRIM(RTRIM(pd.[{dayColumn}]))<>'';
                             """, connection, transaction);

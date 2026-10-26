@@ -160,7 +160,7 @@ public sealed class FormPrimaryKeyReadonlyLiveTests : IAsyncLifetime
         await ExecAsync(connection, """
             INSERT INTO dbo.DEPOT
                 (DEPOT_ID, DEPOT_NAME, TEL, ADDRESS, PRINCIPAL, REMARK, MRP,
-                 CREATE_PERSON, CREATE_DATE, CONFIRM_TAG)
+                 CREATED_BY, CREATED_TIME, APPROVED)
             VALUES (@id, @name, N'', N'', N'', N'', 1, N'ZZPKR', SYSDATETIME(), 0);
             """, ("@id", TestDepot), ("@name", TestDepotName));
 

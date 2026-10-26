@@ -132,18 +132,18 @@ public sealed class ModuleBusinessConfigScopeLiveTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,M_ROOT_IDX,SORT_IDX,M_TAG,MASTER_TABLE,LAST_UPDATE_BY)
+            INSERT INTO dbo.MODULES (M_IDX,M_DESC,M_URL,M_ROOT_IDX,SORT_IDX,M_TAG,MASTER_TABLE,MODIFIED_BY)
             VALUES (@Id,N'配置作用域集成测试-临时模块',N'/workbench',@Id,9997,1,N'ACC_ACCOUNT',N'scope-test');
 
             INSERT INTO dbo.MODULE_BUSINESS_ACTION
-                (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,LABEL,ENABLED,FAIL_MODE,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,LABEL,ENABLED,FAIL_MODE,CREATED_BY,CREATED_TIME,CONFIRM_TAG)
             VALUES
                 (@Id,N'SAVE',1,N'job-enqueue',NULL,1,N'BLOCK',N'scope-test',GETDATE(),0),
                 (@Id,N'APPROVE_EFFECT',2,N'job-enqueue',NULL,1,N'BLOCK',N'scope-test',GETDATE(),0),
                 (@Id,N'MANUAL',3,@Button,N'测试按钮',1,N'BLOCK',N'scope-test',GETDATE(),0);
 
             INSERT INTO dbo.MODULE_VALIDATION_RULE
-                (M_IDX,STAGE,SEQ,VALIDATION_KEY,ENABLED,PARAM_STRUCT,CREATE_PERSON,CREATE_DATE)
+                (M_IDX,STAGE,SEQ,VALIDATION_KEY,ENABLED,PARAM_STRUCT,CREATED_BY,CREATED_TIME)
             VALUES
                 (@Id,N'SAVE',1,N'reference-exists',1,N'{}',N'scope-test',GETDATE()),
                 (@Id,N'SAVE',2,N'reference-exists',1,N'{}',N'scope-test',GETDATE());

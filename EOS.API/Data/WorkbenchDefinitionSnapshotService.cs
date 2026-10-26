@@ -24,7 +24,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
     {
         const string sql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.M_URL,''))),
-                   ISNULL(d.DIRTY_TAG,0), d.LAST_MODIFIED_BY, d.LAST_MODIFIED_AT,
+                   ISNULL(d.DIRTY_TAG,0), d.MODIFIED_BY, d.MODIFIED_TIME,
                    s.VERSION, s.PUBLISHED_AT, s.PUBLISHED_BY, s.VALIDATION_STATUS,
                    -- 「启用」= 运行期有统一表单（可写与仅浏览都算）：取模块声明，现读
                    ISNULL(m.UNIFIED_FORM_ENABLED, 0)
@@ -365,7 +365,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
         return (master, detail);
     }
 
-    /// <summary>来源元数据版本：模块行与主/子表字段 LAST_UPDATE_DATE 的最大时间戳（ISO-8601）。</summary>
+    /// <summary>来源元数据版本：模块行与主/子表字段 MODIFIED_TIME 的最大时间戳（ISO-8601）。</summary>
     private async Task<string?> ReadSourceMetadataVersionAsync(
         int moduleId, string masterTable, string? detailTable, CancellationToken token)
     {
@@ -375,11 +375,11 @@ public sealed class WorkbenchDefinitionSnapshotService(
         }
         const string sql = """
             SELECT CONVERT(nvarchar(30), MAX(v), 126) FROM (
-                SELECT ISNULL(LAST_UPDATE_DATE, GETDATE()) AS v FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId
+                SELECT ISNULL(MODIFIED_TIME, GETDATE()) AS v FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId
                 UNION ALL
-                SELECT ISNULL(LAST_UPDATE_DATE, GETDATE()) FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@Master
+                SELECT ISNULL(MODIFIED_TIME, GETDATE()) FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@Master
                 UNION ALL
-                SELECT ISNULL(LAST_UPDATE_DATE, GETDATE()) FROM dbo.FIELD_DATASOURCE WITH (NOLOCK) WHERE T_ID=@Master
+                SELECT ISNULL(MODIFIED_TIME, GETDATE()) FROM dbo.FIELD_DATASOURCE WITH (NOLOCK) WHERE T_ID=@Master
             ) t;
             """;
         await using var connection = connections.Create();

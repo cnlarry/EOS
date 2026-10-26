@@ -67,9 +67,9 @@ public sealed class BomNewVersionLiveTests
 
             var state = await ReadAsync(
                 """
-                SELECT LTRIM(RTRIM(CREATE_PERSON)) + '|' + CONVERT(nvarchar(2), CONFIRM_TAG)
-                     + '|' + CASE WHEN LAST_UPDATE_DATE IS NULL THEN 'NULL' ELSE 'SET' END
-                     + '|' + LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY, N'')))
+                SELECT LTRIM(RTRIM(CREATED_BY)) + '|' + CONVERT(nvarchar(2), APPROVED)
+                     + '|' + CASE WHEN MODIFIED_TIME IS NULL THEN 'NULL' ELSE 'SET' END
+                     + '|' + LTRIM(RTRIM(ISNULL(MODIFIED_BY, N'')))
                 FROM dbo.BOM_STRU_M WHERE PRO_NO=@pro AND EDITION=N'02';
                 """, token);
             // 新版次是刚写入的记录：最后修改人与时间必须同步落地，

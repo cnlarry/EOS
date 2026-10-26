@@ -238,7 +238,7 @@ public sealed class KnowledgeRepository(DbConnectionFactory connections) : IKnow
         long docId;
         await using (var insert = new SqlCommand(
             """
-            INSERT INTO dbo.KB_DOCUMENT (COLLECTION_ID, TITLE, SOURCE_URI, CONTENT_HASH, VISIBILITY, VERSION, CREATE_BY)
+            INSERT INTO dbo.KB_DOCUMENT (COLLECTION_ID, TITLE, SOURCE_URI, CONTENT_HASH, VISIBILITY, VERSION, CREATED_BY)
             OUTPUT INSERTED.DOC_ID
             VALUES (@Collection, @Title, @Source, @Hash, @Vis, @Version, @By);
             """, connection, transaction))

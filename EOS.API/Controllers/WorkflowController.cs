@@ -63,8 +63,8 @@ public sealed class WorkflowController(
     /// <summary>
     /// 待办工作台（2102 我的任务最小可用版）：工作流引擎（WFFORM/WF_MYTASK）未启用
     /// ，等价实现为"当前用户可浏览的需批核单据清单"——
-    /// 各业务模块未批核（CONFIRM_TAG=0）单据计数 + 工作台直达入口（直接批核模型）。
-    /// 模块/表名来自服务端常量白名单，计数 SQL 仅引用白名单表 + CONFIRM_TAG 列。
+    /// 各业务模块未批核（APPROVED=0）单据计数 + 工作台直达入口（直接批核模型）。
+    /// 模块/表名来自服务端常量白名单，计数 SQL 仅引用白名单表 + APPROVED 列。
     /// </summary>
     [HttpGet("my-tasks")]
     public async Task<IActionResult> MyTasks(CancellationToken token)

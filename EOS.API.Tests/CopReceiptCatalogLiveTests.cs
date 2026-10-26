@@ -98,7 +98,7 @@ public sealed class CopReceiptCatalogLiveTests
             DECLARE @sum_prepay DECIMAL(18,2) =
                 (SELECT SUM(PREPAY_AMOUNT) FROM dbo.COP_RECEIPT_PREPAY WHERE RECEIPT_TYPE=@Type AND RECEIPT_NO=@No);
             UPDATE dbo.COP_RECEIPT_M SET PREPAY_SUM=@sum_prepay, RECEIVE_SUM=AMOUNT_TAX-REBATE_SUM-@sum_prepay,
-                   LAST_UPDATE_DATE=GETDATE()
+                   MODIFIED_TIME=GETDATE()
              WHERE RECEIPT_TYPE=@Type AND RECEIPT_NO=@No;
             """, ("@Type", Type), ("@No", No));
 

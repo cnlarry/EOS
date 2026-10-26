@@ -201,7 +201,7 @@ describe('FieldAdminPage', () => {
       if (p.includes('/admin/tables/') && p.endsWith('/fields')) return {
         items: [
           fieldsPage.items[0],
-          { ...fieldsPage.items[1], fieldId: 'CONFIRM_TAG', description: '批核状态', isSystemColumn: true },
+          { ...fieldsPage.items[1], fieldId: 'APPROVED', description: '批核状态', isSystemColumn: true },
         ],
         total: 2,
         page: 1,

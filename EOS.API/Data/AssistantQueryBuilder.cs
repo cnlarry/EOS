@@ -79,8 +79,8 @@ public static class AssistantQueryBuilder
     }
 
     /// <summary>
-    /// 状态归一化 → 白名单字段：approved/unapproved 命中"批核"标签字段（如 CONFIRM_TAG），
-    /// finished/unfinished 命中"结案"标签字段（如 FINISHED_TAG）。值按 bit 字段输出 "1"/"0"。
+    /// 状态归一化 → 白名单字段：approved/unapproved 命中"批核"标签字段（如 APPROVED），
+    /// finished/unfinished 命中"结案"标签字段（如 FINISHED）。值按 bit 字段输出 "1"/"0"。
     /// </summary>
     public static (string? FieldKey, string Value) ResolveStatus(
         IReadOnlyList<WorkbenchField> fields,

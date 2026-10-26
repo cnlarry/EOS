@@ -36,7 +36,7 @@ public static class InventoryPeriodService
     {
         await using var command = new SqlCommand(
             $"SELECT TOP 1 MONTH_TYPE, MONTH_NO, MONTH_DATE FROM dbo.{MonthTable} "
-            + "WHERE CONFIRM_TAG = 1 AND MONTH_DATE >= @date "
+            + "WHERE APPROVED = 1 AND MONTH_DATE >= @date "
             + "ORDER BY MONTH_DATE ASC, MONTH_NO ASC;",
             connection, transaction);
         command.Parameters.Add("@date", SqlDbType.DateTime).Value = businessDate;

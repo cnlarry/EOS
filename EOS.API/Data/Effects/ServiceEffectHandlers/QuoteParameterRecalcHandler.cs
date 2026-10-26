@@ -41,7 +41,7 @@ public sealed class QuoteParameterRecalcHandler : IEffectServiceHandler
         var quotePrice = $"(SELECT d.PRO_NO, MAX(d.PRICE*d.CURR_RATE*(CASE d.TAX_TYPE WHEN 'I' THEN 1/(1+d.TAX_RATE/100) ELSE 1 END)) QUOTE_PRICE "
             + $"FROM dbo.{ServiceEffectSql.Q(master)} m JOIN dbo.{ServiceEffectSql.Q(detail)} d "
             + $"ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO "
-            + $"WHERE m.CONFIRM_TAG=1 AND m.IN_EFFECT_DATE>=CAST(GETDATE() AS date) "
+            + $"WHERE m.APPROVED=1 AND m.IN_EFFECT_DATE>=CAST(GETDATE() AS date) "
             + $"AND EXISTS (SELECT 1 FROM dbo.{ServiceEffectSql.Q(detail)} x "
             + $"WHERE x.QUOTE_TYPE={qType} AND x.QUOTE_NO={qNo} AND x.PRO_NO=d.PRO_NO) "
             + "GROUP BY d.PRO_NO)";
@@ -105,7 +105,7 @@ internal sealed record QuoteParameterConfig(string TargetTable, string Mode, str
         {
             target + ".STUFF_ID", target + ".MATERIAL_SUM", target + ".MATERIAL_PCT", target + ".PRICE",
             plan.MasterTable + ".QUOTE_TYPE", plan.MasterTable + ".QUOTE_NO",
-            plan.MasterTable + ".CONFIRM_TAG", plan.MasterTable + ".IN_EFFECT_DATE",
+            plan.MasterTable + ".APPROVED", plan.MasterTable + ".IN_EFFECT_DATE",
             plan.DetailTable + ".PRO_NO", plan.DetailTable + ".PRICE", plan.DetailTable + ".CURR_RATE",
             plan.DetailTable + ".TAX_TYPE", plan.DetailTable + ".TAX_RATE", plan.DetailTable + ".QUOTE_TYPE",
             plan.DetailTable + ".QUOTE_NO", "STUFF.STUFF_ID",

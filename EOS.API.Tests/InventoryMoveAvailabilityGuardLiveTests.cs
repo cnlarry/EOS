@@ -75,7 +75,7 @@ public sealed class InventoryMoveAvailabilityGuardLiveTests : IAsyncLifetime
             INSERT INTO dbo.INV_FREEZE (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO, FREEZE_QTY, STATUS, REASON)
                 VALUES (@pro, @depot, @location, @batch, N'', N'', @freeze, N'A', N'ZZAVID 用例');
             INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM) VALUES (@batch, @pro, @qty, 0);
-            INSERT INTO dbo.INV_LOAN_M (LOAN_TYPE, LOAN_NO, LOAN_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE)
+            INSERT INTO dbo.INV_LOAN_M (LOAN_TYPE, LOAN_NO, LOAN_DATE, APPROVED, APPROVED_BY, APPROVED_TIME)
                 VALUES (@type, @no, '2026-03-01', 0, NULL, NULL);
             """, ("@pro", Product), ("@depot", Depot), ("@location", Location), ("@batch", Batch),
             ("@unit", Unit), ("@qty", StockQty), ("@usable", Available), ("@freeze", FreezeQty),

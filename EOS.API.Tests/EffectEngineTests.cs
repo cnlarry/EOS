@@ -168,15 +168,15 @@ public class EffectEngineTests
         // The target is the module master: an unscoped write to any other table is
         // rejected by the executor, so the fixture keeps the scoped shape.
         var op = new EffectOpPlan(
-            1, "PUR_RECEIVE_M", "FINISHED_DATE", "SET_WHEN",
+            1, "PUR_RECEIVE_M", "FINISHED_TIME", "SET_WHEN",
             new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"),
             null, null, null, null, null);
         var plan = new ModuleEffectPlan(1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
             Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
         plan = plan with { MasterPkOrder = new[] { "RECEIVE_TYPE", "RECEIVE_NO" } };
         var (sql, parameters) = executor.BuildUpdate(op, plan, new[] { "CGSL", "SLD18070037" });
-        Assert.Contains("T.[FINISHED_DATE] = SYSDATETIME()", sql);
-        Assert.DoesNotContain("FINISHED_DATE] = @cp", sql);
+        Assert.Contains("T.[FINISHED_TIME] = SYSDATETIME()", sql);
+        Assert.DoesNotContain("FINISHED_TIME] = @cp", sql);
         Assert.DoesNotContain(parameters, parameter => parameter.Value as string == "SYSDATETIME");
     }
 
@@ -184,7 +184,7 @@ public class EffectEngineTests
     public void Condition_negated_not_exists_compiles_to_exists()
     {
         var condition = JsonDocument.Parse(
-            """{"logic":"AND","items":[{"type":"not-exists","targetTable":"COP_SEND_D","condition":{"left":{"scope":"TARGET","field":"FINISHED_TAG"},"op":"EQ","right":{"value":0}},"match":[{"target":"SEND_TYPE","source":{"field":"SEND_TYPE"}},{"target":"SEND_NO","source":{"field":"SEND_NO"}}],"negate":true}]}""")
+            """{"logic":"AND","items":[{"type":"not-exists","targetTable":"COP_SEND_D","condition":{"left":{"scope":"TARGET","field":"FINISHED"},"op":"EQ","right":{"value":0}},"match":[{"target":"SEND_TYPE","source":{"field":"SEND_TYPE"}},{"target":"SEND_NO","source":{"field":"SEND_NO"}}],"negate":true}]}""")
             .RootElement.Clone();
         var fragment = new EffectConditionCompiler().Compile(
             condition, (scope, _) => scope.Equals("TARGET", StringComparison.OrdinalIgnoreCase) ? "T" : null,
@@ -198,14 +198,14 @@ public class EffectEngineTests
     {
         var executor = new EffectFormulaExecutor();
         var op = new EffectOpPlan(
-            1, "COP_ACCOUNT_M", "FINISHED_DATE", "SET_WHEN",
+            1, "COP_ACCOUNT_M", "FINISHED_TIME", "SET_WHEN",
             new EffectSourceRef("CONSTANT", null, null, "NULL"),
             null, null, null, null, null);
         var plan = new ModuleEffectPlan(170101, "COP_ACCOUNT_M", "COP_ACCOUNT_D", "v1",
             Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
         plan = plan with { MasterPkOrder = new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" } };
         var (sql, parameters) = executor.BuildUpdate(op, plan, new[] { "YFDZ", "YJD2018187" });
-        Assert.Contains("T.[FINISHED_DATE] = @cp", sql);
+        Assert.Contains("T.[FINISHED_TIME] = @cp", sql);
         Assert.Contains(parameters, parameter => parameter.Value is null);
     }
 
@@ -251,7 +251,7 @@ public class EffectEngineTests
     {
         var clearFinish = JsonSerializer.SerializeToElement(new { kind = "clear-finish" });
         var flag = EffectFormulaExecutor.ResolveOpForEvent(
-            new EffectOpPlan(1, "CAR_MISSION_M", "FINISHED_TAG", "ASSIGN",
+            new EffectOpPlan(1, "CAR_MISSION_M", "FINISHED", "ASSIGN",
                 new EffectSourceRef("CONSTANT", null, null, "1"), null, null, null, null, null),
             EffectEvent.Deapprove, clearFinish);
         Assert.Equal("SET_WHEN", flag!.OpCode);
@@ -259,13 +259,13 @@ public class EffectEngineTests
         Assert.Equal("0", flag.Source.Constant);
 
         var date = EffectFormulaExecutor.ResolveOpForEvent(
-            new EffectOpPlan(2, "MOU_ACCEPT_M", "FINISHED_DATE", "ASSIGN",
+            new EffectOpPlan(2, "MOU_ACCEPT_M", "FINISHED_TIME", "ASSIGN",
                 new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"), null, null, null, null, null),
             EffectEvent.Deapprove, clearFinish);
         Assert.Equal("NULL", date!.Source.Constant);
 
         var person = EffectFormulaExecutor.ResolveOpForEvent(
-            new EffectOpPlan(3, "MOU_ACCEPT_M", "FINISHED_PERSON", "ASSIGN",
+            new EffectOpPlan(3, "MOU_ACCEPT_M", "FINISHED_BY", "ASSIGN",
                 new EffectSourceRef("CONSTANT", null, null, "SYSTEM"), null, null, null, null, null),
             EffectEvent.Deapprove, clearFinish);
         Assert.Equal(string.Empty, person!.Source.Constant);
@@ -312,19 +312,19 @@ public class EffectEngineTests
         Assert.Equal("0", serial!.Source.Constant);
 
         var flag = EffectFormulaExecutor.ResolveOpForEvent(
-            new EffectOpPlan(3, "CUS_ACCOUNT_M", "FINISHED_TAG", "ASSIGN",
+            new EffectOpPlan(3, "CUS_ACCOUNT_M", "FINISHED", "ASSIGN",
                 new EffectSourceRef("CONSTANT", null, null, "1"), null, null, null, null, null),
             EffectEvent.Deapprove, unfinish);
         Assert.Equal("0", flag!.Source.Constant);
 
         var person = EffectFormulaExecutor.ResolveOpForEvent(
-            new EffectOpPlan(4, "CUS_ACCOUNT_M", "FINISHED_PERSON", "ASSIGN",
+            new EffectOpPlan(4, "CUS_ACCOUNT_M", "FINISHED_BY", "ASSIGN",
                 new EffectSourceRef("CONSTANT", null, null, "SYSTEM"), null, null, null, null, null),
             EffectEvent.Deapprove, unfinish);
         Assert.Equal("SYSTEM", person!.Source.Constant);
 
         var date = EffectFormulaExecutor.ResolveOpForEvent(
-            new EffectOpPlan(5, "CUS_ACCOUNT_M", "FINISHED_DATE", "ASSIGN",
+            new EffectOpPlan(5, "CUS_ACCOUNT_M", "FINISHED_TIME", "ASSIGN",
                 new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"), null, null, null, null, null),
             EffectEvent.Deapprove, unfinish);
         Assert.Equal("SYSDATETIME", date!.Source.Constant);
@@ -745,7 +745,7 @@ public class ServiceEffectHandlerTests
         plan = plan with { MasterPkOrder = new[] { "QUOTE_TYPE", "QUOTE_NO" } };
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "CLIENT_PRICE_M", "CLIENT_PRICE_M.CLIENT_ID", "CLIENT_PRICE_M.CREATE_PERSON", "CLIENT_PRICE_M.CREATE_DATE",
+            "CLIENT_PRICE_M", "CLIENT_PRICE_M.CLIENT_ID", "CLIENT_PRICE_M.CREATED_BY", "CLIENT_PRICE_M.CREATED_TIME",
             "CLIENT_PRICE_D", "CLIENT_PRICE_D.CLIENT_ID", "CLIENT_PRICE_D.PRO_NO", "CLIENT_PRICE_D.UNIT_ID",
             "CLIENT_PRICE_D.CURR_ID", "CLIENT_PRICE_D.TAX_ID", "CLIENT_PRICE_D.TAX_TYPE", "CLIENT_PRICE_D.REBATE",
             "CLIENT_PRICE_D.PRICE", "CLIENT_PRICE_D.OLD_PRICE", "CLIENT_PRICE_D.VERIFY_PRICE_DATE", "CLIENT_PRICE_D.IN_EFFECT_DATE",
@@ -802,7 +802,7 @@ public class ServiceEffectHandlerTests
             "COP_QUOTE_PARAMETER", "COP_QUOTE_PARAMETER.STUFF_ID", "COP_QUOTE_PARAMETER.MATERIAL_SUM",
             "COP_QUOTE_PARAMETER.MATERIAL_PCT", "COP_QUOTE_PARAMETER.PRICE", "COP_QUOTE_PARAMETER.TAX_SUM",
             "COP_QUOTE_PARAMETER.TAX_PCT", "STUFF", "STUFF.STUFF_ID",
-            "PUR_QUOTE_M", "PUR_QUOTE_M.QUOTE_TYPE", "PUR_QUOTE_M.QUOTE_NO", "PUR_QUOTE_M.CONFIRM_TAG",
+            "PUR_QUOTE_M", "PUR_QUOTE_M.QUOTE_TYPE", "PUR_QUOTE_M.QUOTE_NO", "PUR_QUOTE_M.APPROVED",
             "PUR_QUOTE_M.IN_EFFECT_DATE", "PUR_QUOTE_D", "PUR_QUOTE_D.PRO_NO", "PUR_QUOTE_D.PRICE",
             "PUR_QUOTE_D.CURR_RATE", "PUR_QUOTE_D.TAX_TYPE", "PUR_QUOTE_D.TAX_RATE",
             "PUR_QUOTE_D.QUOTE_TYPE", "PUR_QUOTE_D.QUOTE_NO",
@@ -1085,7 +1085,7 @@ public class EffectFormulaScopeGuardTests
     public void Update_on_the_module_master_stays_allowed()
     {
         var op = new EffectOpPlan(
-            1, "PUR_RECEIVE_M", "FINISHED_DATE", "SET_WHEN",
+            1, "PUR_RECEIVE_M", "FINISHED_TIME", "SET_WHEN",
             new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"),
             null, null, null, null, null);
         var (sql, _) = new EffectFormulaExecutor().BuildUpdate(op, Plan(), new[] { "CGSL", "SLD18070037" });

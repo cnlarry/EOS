@@ -40,7 +40,7 @@ public sealed class MenuAdminRepository(
         var sql = """
             SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,MODULES.MODIFIED_BY,MODULES.MODIFIED_TIME,
                    NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
@@ -241,7 +241,7 @@ public sealed class MenuAdminRepository(
         var sql = """
             SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,MODULES.MODIFIED_BY,MODULES.MODIFIED_TIME,
                    NULL AS FORM_TABS,NULL AS FORM_COLUMNS,M_ICON,
                    (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
@@ -318,7 +318,7 @@ public sealed class MenuAdminRepository(
             siblingIds.Insert(targetIndex, id);
 
             const string updateSql = """
-                UPDATE dbo.MODULES SET SORT_IDX=@SortIdx,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+                UPDATE dbo.MODULES SET SORT_IDX=@SortIdx,MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE()
                 WHERE M_IDX=@Id;
                 """;
             for (var position = 0; position < siblingIds.Count; position++)
@@ -425,7 +425,7 @@ public sealed class MenuAdminRepository(
                 await using var update = new SqlCommand(
                     """
                     UPDATE dbo.MODULES SET M_P_IDX=@NewParent,M_ROOT_IDX=@NewRoot,
-                                           LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+                                           MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE()
                     WHERE M_IDX=@Id;
                     """, connection, transaction);
                 update.Parameters.Add("@NewParent", SqlDbType.Int).Value = newParent == 0 ? (object)DBNull.Value : newParent;
@@ -609,7 +609,7 @@ public sealed class MenuAdminRepository(
         var name = (description ?? string.Empty).Trim();
         if (name.Length == 0) throw new ArgumentException("菜单名称不允许为空。");
         if (name.Length > 500) throw new ArgumentException("菜单名称过长（最多 500 字）。");
-        const string sql = "UPDATE dbo.MODULES SET M_DESC=@Name,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE() WHERE M_IDX=@Id;";
+        const string sql = "UPDATE dbo.MODULES SET M_DESC=@Name,MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE() WHERE M_IDX=@Id;";
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Name", SqlDbType.NVarChar, 500).Value = name;
@@ -627,7 +627,7 @@ public sealed class MenuAdminRepository(
     /// </summary>
     public async Task SetEnabledAsync(int id, bool enabled, string updatedBy, CancellationToken token)
     {
-        const string sql = "UPDATE dbo.MODULES SET M_TAG=@Enabled,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE() WHERE M_IDX=@Id;";
+        const string sql = "UPDATE dbo.MODULES SET M_TAG=@Enabled,MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE() WHERE M_IDX=@Id;";
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Enabled", SqlDbType.Bit).Value = enabled;
@@ -1093,7 +1093,7 @@ public sealed class MenuAdminRepository(
         string updatedBy, CancellationToken token)
     {
         const string sql = """
-            UPDATE dbo.MODULES SET SORT_IDX=@SortIdx,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+            UPDATE dbo.MODULES SET SORT_IDX=@SortIdx,MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE()
             WHERE M_IDX=@Id;
             """;
         for (var position = 0; position < ids.Count; position++)
@@ -1150,12 +1150,12 @@ public sealed class MenuAdminRepository(
             INSERT INTO dbo.MODULES
              (M_IDX,M_ALIAS,M_DESC,M_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-              MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+              MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,MODIFIED_BY,MODIFIED_TIME,
               M_ICON,REMARK,APPROVE_ENABLED,UNIFIED_FORM_ENABLED,UNIFIED_FORM_EDIT_ENABLED)
                VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
                @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
-               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,@LAST_UPDATE_BY,GETDATE(),
+               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,@MODIFIED_BY,GETDATE(),
                @M_ICON,@REMARK,@APPROVE_ENABLED,@UNIFIED_FORM_ENABLED,@UNIFIED_FORM_EDIT_ENABLED);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
@@ -1172,7 +1172,7 @@ public sealed class MenuAdminRepository(
               IF_COPY=@IF_COPY,ERROR_NO_SAVE=@ERROR_NO_SAVE,SORT_FIELDS=@SORT_FIELDS,
               MASTER_TABLE=@MASTER_TABLE,FILTER=@FILTER,DETAIL_TABLE=@DETAIL_TABLE,
               NOT_BACK_FIELDS_M=@NOT_BACK_FIELDS_M,NOT_BACK_FIELDS=@NOT_BACK_FIELDS,
-              LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
+              MODIFIED_BY=@MODIFIED_BY,MODIFIED_TIME=GETDATE(),
               M_ICON=@M_ICON,
               REMARK=@REMARK,
               APPROVE_ENABLED=@APPROVE_ENABLED,
@@ -1209,7 +1209,7 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@DETAIL_TABLE", (object?)m.DETAIL_TABLE ?? DBNull.Value);
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS_M", (object?)m.NOT_BACK_FIELDS_M ?? DBNull.Value);
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS", (object?)m.NOT_BACK_FIELDS ?? DBNull.Value);
-        command.Parameters.AddWithValue("@LAST_UPDATE_BY", updatedBy);
+        command.Parameters.AddWithValue("@MODIFIED_BY", updatedBy);
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
         // 批核入口声明（ADR-035）：勾选时校验主表批核三列，见 EnsureApproveColumnsAsync
         command.Parameters.Add("@APPROVE_ENABLED", SqlDbType.Bit).Value = m.ApproveEnabled;

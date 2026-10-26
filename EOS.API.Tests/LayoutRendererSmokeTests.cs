@@ -48,7 +48,7 @@ public class LayoutRendererSmokeTests
         {
             ["ORDER_NO"] = "DD13010001", ["ORDER_DATE"] = new DateTime(2026, 8, 31),
             ["CLIENT_ID"] = "C001", ["CLIENT_NAME"] = "深圳测试客户有限公司",
-            ["AMOUNT_TAX"] = 1240.00m, ["CREATE_PERSON"] = "admin", ["CONFIRM_PERSON"] = "manager",
+            ["AMOUNT_TAX"] = 1240.00m, ["CREATED_BY"] = "admin", ["APPROVED_BY"] = "manager",
         },
         Details:
         [

@@ -131,7 +131,7 @@ public sealed class ModuleFlowGateway(DbConnectionFactory connections) : IModule
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(
-            "SELECT TOP 1 KEY_VALUE_DESC, LAST_UPDATE_BY FROM dbo.WF_APPROVE WITH (NOLOCK) WHERE M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;",
+            "SELECT TOP 1 KEY_VALUE_DESC, MODIFIED_BY FROM dbo.WF_APPROVE WITH (NOLOCK) WHERE M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;",
             connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         command.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
@@ -155,10 +155,10 @@ public sealed class ModuleFlowGateway(DbConnectionFactory connections) : IModule
 
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var hasConfirm = await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "CONFIRM_TAG", token);
-        var hasFinished = await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "FINISHED_TAG", token);
-        var selectList = string.Join(",", new[] { hasConfirm ? "ISNULL(CONFIRM_TAG,0)" : "CAST(0 AS bit)",
-            hasFinished ? "ISNULL(FINISHED_TAG,0)" : "CAST(0 AS bit)" });
+        var hasConfirm = await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "APPROVED", token);
+        var hasFinished = await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "FINISHED", token);
+        var selectList = string.Join(",", new[] { hasConfirm ? "ISNULL(APPROVED,0)" : "CAST(0 AS bit)",
+            hasFinished ? "ISNULL(FINISHED,0)" : "CAST(0 AS bit)" });
         var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@P{index}"));
         await using var command = new SqlCommand(
             $"SELECT {selectList} FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {where};", connection);

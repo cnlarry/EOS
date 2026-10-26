@@ -73,7 +73,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH, UNIT_ID)
                 VALUES (@pro, N'ZZ 归位用例料号', 0, N'ZZRELUN');
             -- 归位的目标必须是启用中的库位：本库只有哨兵位，故自造一个 ZZ 库位，用完删除。
-            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,CONFIRM_TAG)
+            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,APPROVED)
                 VALUES (@depot,N'-',N'STAGE',N'BULK',N'A',1),
                        (@depot,@loc,N'STAGE',N'BULK',N'A',1);
             """,
@@ -82,7 +82,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         // 自造哨兵行：货记在『未指定位置』上（库存表里 '-' 就是"没记位置"）。
         await ExecAsync(connection,
             $"""
-            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+            INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATED_BY,CREATED_TIME,APPROVED)
             VALUES (@pro,@depot,N'-',N'',@qty,N'DbUp',SYSDATETIME(),0);
             """,
             ("@pro", TestProduct), ("@depot", Depot), ("@qty", StartQty));

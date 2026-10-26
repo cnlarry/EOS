@@ -281,7 +281,7 @@ public sealed class MixingRuleLiveTests
             -- 库别行整行覆盖部署级默认：默认是"允许混放"，用例只把要考的那一维打开限制。
             INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH)
                 VALUES (@Depot, 0, N'FIXED', 0, 0, @MixProduct, @MixBatch);
-            INSERT INTO dbo.INV_OCCUR_IN_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, LAST_UPDATE_BY)
+            INSERT INTO dbo.INV_OCCUR_IN_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, MODIFIED_BY)
                 VALUES (@Type, @No, '2026-09-01', N'ADR14MX');
             """,
             ("@Depot", Depot), ("@Bin", Bin), ("@Bin2", Bin2), ("@ProA", ProA), ("@ProB", ProB),

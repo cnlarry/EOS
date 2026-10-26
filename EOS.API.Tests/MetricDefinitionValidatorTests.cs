@@ -36,7 +36,7 @@ public sealed class MetricDefinitionValidatorTests
         StringComparer.OrdinalIgnoreCase)
     {
         ["COP_ORDER_D"] = Columns("ORDER_NO", "ORDER_TYPE", "SERIAL_NO", "AMOUNT_TAX", "AMOUNT", "QTY", "REBATE", "PRO_NO"),
-        ["COP_ORDER_M"] = Columns("ORDER_NO", "ORDER_TYPE", "CONFIRM_TAG", "ORDER_DATE", "CLIENT_ID", "OWNER"),
+        ["COP_ORDER_M"] = Columns("ORDER_NO", "ORDER_TYPE", "APPROVED", "ORDER_DATE", "CLIENT_ID", "OWNER"),
         ["INV_PRO_DEPOT"] = Columns("DEPOT_ID", "PRO_NO", "QTY", "IN_QTY", "OUT_QTY", "AMOUNT"),
     });
 
@@ -98,7 +98,7 @@ public sealed class MetricDefinitionValidatorTests
         var validator = new MetricDefinitionValidator(Probe());
         var result = await validator.ValidateAsync(
             Input("SUM(AMOUNT_TAX)", dims: "ORDER_DATE,CLIENT_ID,PRO_NO",
-                masterTable: "COP_ORDER_M", masterColumns: Columns("ORDER_DATE", "CLIENT_ID", "CONFIRM_TAG"),
+                masterTable: "COP_ORDER_M", masterColumns: Columns("ORDER_DATE", "CLIENT_ID", "APPROVED"),
                 allowedColumns: Columns("AMOUNT_TAX")), CancellationToken.None);
         Assert.True(result.Ok, result.Error);
     }
@@ -121,9 +121,9 @@ public sealed class MetricDefinitionValidatorTests
         var validator = new MetricDefinitionValidator(Probe());
         var result = await validator.ValidateAsync(
             Input("SUM(AMOUNT_TAX)", rowFilter:
-                """{"table":"COP_ORDER_M","on":["ORDER_TYPE","ORDER_NO"],"conditions":[{"column":"CONFIRM_TAG","op":"=","value":true}]}""",
+                """{"table":"COP_ORDER_M","on":["ORDER_TYPE","ORDER_NO"],"conditions":[{"column":"APPROVED","op":"=","value":true}]}""",
                 masterTable: "COP_ORDER_M",
-                masterColumns: Columns("ORDER_DATE", "CLIENT_ID", "CONFIRM_TAG", "ORDER_NO", "ORDER_TYPE"),
+                masterColumns: Columns("ORDER_DATE", "CLIENT_ID", "APPROVED", "ORDER_NO", "ORDER_TYPE"),
                 allowedColumns: Columns("AMOUNT_TAX")), CancellationToken.None);
         Assert.True(result.Ok, result.Error);
         Assert.NotNull(result.RowFilter);
@@ -134,12 +134,12 @@ public sealed class MetricDefinitionValidatorTests
     }
 
     [Theory]
-    [InlineData("""{"table":"COP_ORDER_M","on":["ORDER_NO"],"conditions":[{"column":"CONFIRM_TAG","op":"LIKE","value":1}]}""", "运算符")]
+    [InlineData("""{"table":"COP_ORDER_M","on":["ORDER_NO"],"conditions":[{"column":"APPROVED","op":"LIKE","value":1}]}""", "运算符")]
     [InlineData("""{"table":"COP_ORDER_M","on":["ORDER_NO"],"conditions":[{"column":"GHOST","op":"=","value":1}]}""", "不存在")]
-    [InlineData("""{"table":"COP_ORDER_M","on":["GHOST"],"conditions":[{"column":"CONFIRM_TAG","op":"=","value":1}]}""", "关联列")]
-    [InlineData("""{"table":"COP_ORDER_M","on":["ORDER_NO"],"conditions":[{"column":"CONFIRM_TAG","op":"=","value":{"a":1}}]}""", "标量")]
+    [InlineData("""{"table":"COP_ORDER_M","on":["GHOST"],"conditions":[{"column":"APPROVED","op":"=","value":1}]}""", "关联列")]
+    [InlineData("""{"table":"COP_ORDER_M","on":["ORDER_NO"],"conditions":[{"column":"APPROVED","op":"=","value":{"a":1}}]}""", "标量")]
     [InlineData("""{"table":"COP_OTHER","on":["ORDER_NO"],"conditions":[{"column":"X","op":"=","value":1}]}""", "既不是")]
-    [InlineData("""{"table":"COP_ORDER_M","conditions":[{"column":"CONFIRM_TAG","op":"=","value":1}]}""", "关联列")]
+    [InlineData("""{"table":"COP_ORDER_M","conditions":[{"column":"APPROVED","op":"=","value":1}]}""", "关联列")]
     [InlineData("""{"table":"COP_ORDER_M","on":["ORDER_NO"],"conditions":[]}""", "缺少条件")]
     [InlineData("""{"unknown":1}""", "条件")]
     public async Task Validate_Rejects_Malformed_Row_Filters(string rowFilter, string expectedFragment)
@@ -148,7 +148,7 @@ public sealed class MetricDefinitionValidatorTests
         var result = await validator.ValidateAsync(
             Input("SUM(AMOUNT_TAX)", rowFilter: rowFilter,
                 masterTable: "COP_ORDER_M",
-                masterColumns: Columns("ORDER_DATE", "CLIENT_ID", "CONFIRM_TAG", "ORDER_NO", "ORDER_TYPE"),
+                masterColumns: Columns("ORDER_DATE", "CLIENT_ID", "APPROVED", "ORDER_NO", "ORDER_TYPE"),
                 allowedColumns: Columns("AMOUNT_TAX")), CancellationToken.None);
         Assert.False(result.Ok);
         Assert.Contains(expectedFragment, result.Error);

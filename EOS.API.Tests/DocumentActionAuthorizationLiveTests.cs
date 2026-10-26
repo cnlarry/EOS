@@ -61,7 +61,7 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using (var group = new SqlCommand(
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_GROUP WHERE G_IDX=@Id)
-                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG)
+                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,CREATED_BY,CREATED_TIME,APPROVED)
                 VALUES (@Id,N'按钮授权用例组',N'DbUp',SYSDATETIME(),0);
             """, connection))
         {
@@ -84,7 +84,7 @@ public sealed class DocumentActionAuthorizationLiveTests
                            WHERE M_IDX=@ModuleId AND EVENT_CODE=N'MANUAL' AND EFFECT_KEY=@Key)
                 INSERT INTO dbo.MODULE_BUSINESS_ACTION
                     (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,LABEL,CONFIRM_TAG,
-                     CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                     CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@ModuleId,N'MANUAL',98,@Key,N'管线探针（用例）',1,N'BLOCK',N'管线探针（用例）',0,
                         N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """, connection))
@@ -123,7 +123,7 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using var command = new SqlCommand(
             """
             DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
-            INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES (@User,@ModuleId,@Key,@Allow,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """, connection);
         command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;
@@ -139,7 +139,7 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using var command = new SqlCommand(
             """
             DELETE FROM dbo.SYS_GROUP_BUTTON_PERMISSION WHERE G_IDX=@Group AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
-            INSERT INTO dbo.SYS_GROUP_BUTTON_PERMISSION (G_IDX,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.SYS_GROUP_BUTTON_PERMISSION (G_IDX,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES (@Group,@ModuleId,@Key,@Allow,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """, connection);
         command.Parameters.Add("@Group", SqlDbType.NVarChar, 20).Value = GroupId;

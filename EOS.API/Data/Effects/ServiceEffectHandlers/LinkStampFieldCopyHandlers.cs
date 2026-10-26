@@ -9,7 +9,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// Shape A {targetTable, field|fields, mode}: same-named master columns copied onto the
 /// target rows, joined on same-named master key columns.
 /// Shape B {targets:[{table, ref:[cols]}], fields, finish}: ref names the target-side
-/// columns tying back to the master key; finish=true additionally sets FINISHED_TAG=1
+/// columns tying back to the master key; finish=true additionally sets FINISHED=1
 /// on the target (standard lifecycle column; revisited if evidence contradicts).
 /// Shape C {targets:[{table, refs:[target cols], fromDetail:true, sourceRefs:[detail cols]}],
 /// fields}: a detail-to-detail link — the target rows are located by the reference
@@ -67,9 +67,9 @@ public sealed class LinkStampHandler : IEffectServiceHandler
             var assignments = ClearAssignments(target).ToList();
             if (unfinish)
             {
-                assignments.Add("T.[FINISHED_TAG] = 0");
-                assignments.Add("T.[FINISHED_PERSON] = 'SYSTEM'");
-                assignments.Add("T.[FINISHED_DATE] = SYSDATETIME()");
+                assignments.Add("T.[FINISHED] = 0");
+                assignments.Add("T.[FINISHED_BY] = 'SYSTEM'");
+                assignments.Add("T.[FINISHED_TIME] = SYSDATETIME()");
             }
             var sql = BuildUpdate(
                 context.Plan, target, context.MasterKeyValues, assignments, parameters);
@@ -78,7 +78,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
         return affected;
     }
 
-    /// <summary>T.&lt;column&gt; = &lt;source&gt;.&lt;column&gt;, plus FINISHED_TAG=1 when finish is set.</summary>
+    /// <summary>T.&lt;column&gt; = &lt;source&gt;.&lt;column&gt;, plus FINISHED=1 when finish is set.</summary>
     internal static IReadOnlyList<string> StampAssignments(LinkStampTarget target)
     {
         var alias = target.FromDetail ? "D" : "M";
@@ -87,9 +87,9 @@ public sealed class LinkStampHandler : IEffectServiceHandler
             .ToList();
         if (target.Finish)
         {
-            assignments.Add("T.[FINISHED_TAG] = 1");
-            assignments.Add("T.[FINISHED_PERSON] = 'SYSTEM'");
-            assignments.Add("T.[FINISHED_DATE] = SYSDATETIME()");
+            assignments.Add("T.[FINISHED] = 1");
+            assignments.Add("T.[FINISHED_BY] = 'SYSTEM'");
+            assignments.Add("T.[FINISHED_TIME] = SYSDATETIME()");
         }
         return assignments;
     }
@@ -279,8 +279,8 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
                 throw new EffectConfigException($"link-stamp 来源列不存在：{sourceTable}.{field.Source}。");
             fields.Add(field);
         }
-        if (finish && !columns.Contains(table + ".FINISHED_TAG"))
-            throw new EffectConfigException($"link-stamp finish=true 但目标表 {table} 无 FINISHED_TAG 列。");
+        if (finish && !columns.Contains(table + ".FINISHED"))
+            throw new EffectConfigException($"link-stamp finish=true 但目标表 {table} 无 FINISHED 列。");
         return new LinkStampTarget(table, refs, fromDetail, sourceRefs, fields, finish);
     }
 

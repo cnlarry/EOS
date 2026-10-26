@@ -417,9 +417,9 @@ public sealed class BomRepository(DbConnectionFactory connections)
                      ("BOM_STRU_M", "BATCH_QTY"), ("BOM_STRU_M", "ATTENTION"),
                      ("BOM_STRU_M", "PLAN_PERSON"), ("BOM_STRU_M", "REMARK"),
                      ("BOM_STRU_M", "P_LENGTH_OLD"), ("BOM_STRU_M", "P_WIDTH_OLD"),
-                     ("BOM_STRU_M", "CREATE_PERSON"), ("BOM_STRU_M", "CREATE_DATE"),
-                     ("BOM_STRU_M", "LAST_UPDATE_BY"), ("BOM_STRU_M", "LAST_UPDATE_DATE"),
-                     ("BOM_STRU_M", "CONFIRM_TAG"),
+                     ("BOM_STRU_M", "CREATED_BY"), ("BOM_STRU_M", "CREATED_TIME"),
+                     ("BOM_STRU_M", "MODIFIED_BY"), ("BOM_STRU_M", "MODIFIED_TIME"),
+                     ("BOM_STRU_M", "APPROVED"),
                      ("BOM_STRU_D", "PRO_NO"), ("BOM_STRU_D", "EDITION"), ("BOM_STRU_D", "SERIAL_NO"),
                      ("BOM_STRU_D", "ELEMENT_PRO_NO"), ("BOM_STRU_D", "ELEMENT_EDITION"),
                      ("BOM_STRU_D", "ELEMENT_QTY"),
@@ -457,8 +457,8 @@ public sealed class BomRepository(DbConnectionFactory connections)
     {
         var insertMaster = """
             INSERT INTO dbo.BOM_STRU_M (PRO_NO, EDITION, BATCH_QTY, ATTENTION, PLAN_PERSON, REMARK,
-                                        P_LENGTH_OLD, P_WIDTH_OLD, CREATE_PERSON, CREATE_DATE,
-                                        LAST_UPDATE_BY, LAST_UPDATE_DATE, CONFIRM_TAG)
+                                        P_LENGTH_OLD, P_WIDTH_OLD, CREATED_BY, CREATED_TIME,
+                                        MODIFIED_BY, MODIFIED_TIME, APPROVED)
             SELECT PRO_NO, @newEdition, BATCH_QTY, ATTENTION, PLAN_PERSON, REMARK,
                    P_LENGTH_OLD, P_WIDTH_OLD, @executor, SYSDATETIME(),
                    @executor, SYSDATETIME(), 0

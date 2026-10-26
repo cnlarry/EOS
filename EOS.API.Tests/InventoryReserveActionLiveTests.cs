@@ -71,7 +71,7 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE) VALUES (@pro, N'ZZRSV 预留料件', N'规格', '3');
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, USEABLE_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@pro, @depot, @location, @batch, @qty, @qty, @qty, 3, @qty * 3);
-            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED_TAG)
+            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED)
                 VALUES (N'ZZRSV', N'ZZRSV-MO1', 0);
             INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID, M_IDX, BUTTON_KEY, ALLOW_TAG)
                 VALUES (@user, @module, N'inventory-reserve', 1), (@user, @module, N'inventory-release', 1);
@@ -130,7 +130,7 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
     {
         await RunReserveAsync("20");
         await ExecOnceAsync(
-            "UPDATE dbo.MOC_PRODUCE_M SET FINISHED_TAG = 1 WHERE PRODUCE_TYPE = N'ZZRSV' AND PRODUCE_NO = N'ZZRSV-MO1';");
+            "UPDATE dbo.MOC_PRODUCE_M SET FINISHED = 1 WHERE PRODUCE_TYPE = N'ZZRSV' AND PRODUCE_NO = N'ZZRSV-MO1';");
 
         // 钩子的审计就写在紧接着这一步：基线取在此处，正好只圈住它
         var auditBaseline = await AuditBaselineAsync();

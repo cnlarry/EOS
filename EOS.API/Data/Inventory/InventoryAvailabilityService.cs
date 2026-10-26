@@ -19,7 +19,7 @@ namespace EOS.API.Data.Inventory;
 /// <list type="number">
 /// <item><c>STATUS = 'A'</c> 才计入；<c>'C'</c>（已取消/已释放）不计入。</item>
 /// <item>**来源单据已结案的不计入**：按 <c>SOURCE_TYPE</c> 解析到源表后，源表若带结案列
-/// （`FINISHED_TAG`）且该单据 `FINISHED_TAG = 1`，这笔占用按"已经不该再占"处理。
+/// （`FINISHED`）且该单据 `FINISHED = 1`，这笔占用按"已经不该再占"处理。
 /// 于是"释放钩子没跑到"不会变成**假性缺料**——这正是惰性判定的价值所在。</item>
 /// <item>**判不出来的一律计入**（保守方向）：来源类型解析不到、源表没有结案列、单据查不到、
 /// 脏数据——统统仍然算占用，并把这些情形作为 <see cref="Availability.Notes"/> 报出来。
@@ -324,7 +324,7 @@ public static class InventoryAvailabilityService
 
     /// <summary>
     /// 找出"来源单据已结案"的 (来源类型, 来源单号) 集合。为此需要三件事，缺一不可：
-    /// 来源类型能解析到模块主表、主表有唯一的单号列、主表带结案列（`FINISHED_TAG`）。
+    /// 来源类型能解析到模块主表、主表有唯一的单号列、主表带结案列（`FINISHED`）。
     /// 缺哪一件就把那一类记进 <paramref name="notes"/>（**判不出来就报出来**），返回值里自然不含它。
     /// </summary>
     private static async Task<IReadOnlySet<(string SourceType, string SourceNo)>> ReadClosedSourceKeysAsync(
@@ -378,7 +378,7 @@ public static class InventoryAvailabilityService
 
             await using var command = new SqlCommand(
                 $"SELECT LTRIM(RTRIM([{noColumn}])) FROM dbo.[{table}] "
-                + $"WHERE [{noColumn}] IN ({Placeholders("@n", numbers.Length)}) AND ISNULL(FINISHED_TAG,0) = 1;",
+                + $"WHERE [{noColumn}] IN ({Placeholders("@n", numbers.Length)}) AND ISNULL(FINISHED,0) = 1;",
                 connection, transaction);
             AddParameters(command, "@n", numbers);
             await using var reader = await command.ExecuteReaderAsync(token);
@@ -419,7 +419,7 @@ public static class InventoryAvailabilityService
 
         var hasFinished = false;
         await using (var command = new SqlCommand(
-            "SELECT CASE WHEN COL_LENGTH(N'dbo.' + @table, N'FINISHED_TAG') IS NULL THEN 0 ELSE 1 END;",
+            "SELECT CASE WHEN COL_LENGTH(N'dbo.' + @table, N'FINISHED') IS NULL THEN 0 ELSE 1 END;",
             connection, transaction))
         {
             command.Parameters.AddWithValue("@table", table);

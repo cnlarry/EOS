@@ -79,12 +79,12 @@ public sealed class ChooserFilterCompilerTests
     {
         var filter = new ChooserFilterStruct("AND",
         [
-            new ChooserFilterItem("CONFIRM_TAG", "ISNULL_ZERO"),
+            new ChooserFilterItem("APPROVED", "ISNULL_ZERO"),
         ]);
         var result = ChooserFilterCompiler.Compile(filter, "ORDER_M", Joins, null);
 
         Assert.NotNull(result);
-        Assert.Equal("(ISNULL([ORDER_M].[CONFIRM_TAG],0) = 0)", result!.Predicate);
+        Assert.Equal("(ISNULL([ORDER_M].[APPROVED],0) = 0)", result!.Predicate);
         Assert.Empty(result.Parameters);
     }
 

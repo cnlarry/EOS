@@ -152,8 +152,8 @@ public class DataFilterParserTests
     public void InSubquery_FullChooserFilter_Compiles()
     {
         Assert.True(Try(
-            "PRODUCT.BUSINESS_TAG=0 AND PRODUCT.CONFIRM_TAG = 1 AND PRODUCT.CLIENT_ID='TTA' AND PRODUCT.PRO_NO NOT IN (SELECT PRO_NO FROM MOU_ASSESS_M WHERE MOU_ASSESS_M.ASSESS_NO<>'ZZZ')",
-            "PRODUCT", Fields("BUSINESS_TAG", "CONFIRM_TAG", "CLIENT_ID", "PRO_NO"),
+            "PRODUCT.BUSINESS_TAG=0 AND PRODUCT.APPROVED = 1 AND PRODUCT.CLIENT_ID='TTA' AND PRODUCT.PRO_NO NOT IN (SELECT PRO_NO FROM MOU_ASSESS_M WHERE MOU_ASSESS_M.ASSESS_NO<>'ZZZ')",
+            "PRODUCT", Fields("BUSINESS_TAG", "APPROVED", "CLIENT_ID", "PRO_NO"),
             out var predicate, out _));
         Assert.Contains("NOT IN (SELECT [PRO_NO] FROM dbo.[MOU_ASSESS_M] WHERE [ASSESS_NO] <> @df", predicate);
     }
@@ -183,7 +183,7 @@ public class DataFilterParserTests
         // 存量 CHOOSE_FILTER：Datediff(day,COP_SHIPMENT_M.SHIPMENT_DATE,GETDATE())=0
         Assert.True(Try(
             "Datediff(day,COP_SHIPMENT_M.SHIPMENT_DATE,GETDATE())=0",
-            "COP_SHIPMENT_M", Fields("SHIPMENT_DATE", "CONFIRM_TAG"),
+            "COP_SHIPMENT_M", Fields("SHIPMENT_DATE", "APPROVED"),
             out var predicate, out var parameters));
         Assert.Equal("DATEDIFF(day, [SHIPMENT_DATE], GETDATE()) = @df0", predicate);
         Assert.Equal(["0"], parameters);
@@ -202,10 +202,10 @@ public class DataFilterParserTests
     {
         // 存量组合形态：AND NOT (...)（内层为主表白名单列）
         Assert.True(Try(
-            "COP_ORDER_M.CONFIRM_TAG=1 AND COP_ORDER_M.FINISHED_TAG=0 AND NOT (CONFIRM_TAG=1 OR FINISHED_TAG=1)",
-            "COP_ORDER_M", Fields("CONFIRM_TAG", "FINISHED_TAG"),
+            "COP_ORDER_M.APPROVED=1 AND COP_ORDER_M.FINISHED=0 AND NOT (APPROVED=1 OR FINISHED=1)",
+            "COP_ORDER_M", Fields("APPROVED", "FINISHED"),
             out var predicate, out _));
-        Assert.Contains("AND NOT ([CONFIRM_TAG] = @df2 OR [FINISHED_TAG] = @df3)", predicate);
+        Assert.Contains("AND NOT ([APPROVED] = @df2 OR [FINISHED] = @df3)", predicate);
     }
 
     [Fact]
@@ -226,10 +226,10 @@ public class DataFilterParserTests
     [InlineData("T.QTY>0.1", "[QTY] > @df0")]
     [InlineData("T.STATE<4", "[STATE] < @df0")]
     [InlineData("T.MOU_SORT=2", "[MOU_SORT] = @df0")]
-    [InlineData("FINISHED_TAG=0 AND QTY>10", "[FINISHED_TAG] = @df0 AND [QTY] > @df1")]
+    [InlineData("FINISHED=0 AND QTY>10", "[FINISHED] = @df0 AND [QTY] > @df1")]
     public void ModuleFilter_数值与比较运算符(string filter, string expectedPredicate)
     {
-        Assert.True(Try(filter, "T", Fields("PRO_TYPE", "APPLY_TYPE", "QTY", "STATE", "MOU_SORT", "FINISHED_TAG", "RECEIVE_QTY"), out var predicate, out var parameters));
+        Assert.True(Try(filter, "T", Fields("PRO_TYPE", "APPLY_TYPE", "QTY", "STATE", "MOU_SORT", "FINISHED", "RECEIVE_QTY"), out var predicate, out var parameters));
         Assert.Equal(expectedPredicate, predicate);
         Assert.All(parameters, parameter => Assert.True(parameter is decimal or string));
     }
@@ -289,9 +289,9 @@ public class DataFilterParserTests
     public void ModuleFilter_真实组合_今日需到料()
     {
         Assert.True(Try(
-            "PUR_PURCHASE_D.finished_tag=0 and PUR_PURCHASE_D.PLAN_DELIVERY_DATE<=getdate() and PUR_PURCHASE_D.QTY-PUR_PURCHASE_D.RECEIVE_QTY>0",
-            "PUR_PURCHASE_D", Fields("FINISHED_TAG", "PLAN_DELIVERY_DATE", "QTY", "RECEIVE_QTY"), out var predicate, out var parameters));
-        Assert.Equal("[finished_tag] = @df0 AND [PLAN_DELIVERY_DATE] <= @df1 AND [QTY]-[RECEIVE_QTY] > @df2", predicate);
+            "PUR_PURCHASE_D.finished=0 and PUR_PURCHASE_D.PLAN_DELIVERY_DATE<=getdate() and PUR_PURCHASE_D.QTY-PUR_PURCHASE_D.RECEIVE_QTY>0",
+            "PUR_PURCHASE_D", Fields("FINISHED", "PLAN_DELIVERY_DATE", "QTY", "RECEIVE_QTY"), out var predicate, out var parameters));
+        Assert.Equal("[finished] = @df0 AND [PLAN_DELIVERY_DATE] <= @df1 AND [QTY]-[RECEIVE_QTY] > @df2", predicate);
         Assert.Equal(3, parameters.Count);
         Assert.Equal("0", parameters[0]); // 直接列比较数值字面量 → 字符串参数（避免 char 列隐式转 numeric）
         Assert.IsType<DateTime>(parameters[1]);
@@ -406,7 +406,7 @@ public class DataFilterParserTests
     [Fact]
     public void IsNull_CompilesToParameterizedPredicate()
     {
-        Assert.True(Try("ISNULL(CLIENT.BUSINESS_TAG,0)=0", "CLIENT", Fields("BUSINESS_TAG", "CONFIRM_TAG"), out var predicate, out var parameters));
+        Assert.True(Try("ISNULL(CLIENT.BUSINESS_TAG,0)=0", "CLIENT", Fields("BUSINESS_TAG", "APPROVED"), out var predicate, out var parameters));
         Assert.Equal("ISNULL([BUSINESS_TAG],@df0) = @df1", predicate);
         Assert.Equal(["0", "0"], parameters);
     }
@@ -414,9 +414,9 @@ public class DataFilterParserTests
     [Fact]
     public void IsNull_And_Combo_ChooserFilter()
     {
-        Assert.True(Try("ISNULL(CLIENT.BUSINESS_TAG,0)=0 AND ISNULL(CLIENT.CONFIRM_TAG,0)=1", "CLIENT",
-            Fields("BUSINESS_TAG", "CONFIRM_TAG"), out var predicate, out var parameters));
-        Assert.Equal("ISNULL([BUSINESS_TAG],@df0) = @df1 AND ISNULL([CONFIRM_TAG],@df2) = @df3", predicate);
+        Assert.True(Try("ISNULL(CLIENT.BUSINESS_TAG,0)=0 AND ISNULL(CLIENT.APPROVED,0)=1", "CLIENT",
+            Fields("BUSINESS_TAG", "APPROVED"), out var predicate, out var parameters));
+        Assert.Equal("ISNULL([BUSINESS_TAG],@df0) = @df1 AND ISNULL([APPROVED],@df2) = @df3", predicate);
         Assert.Equal(4, parameters.Count);
     }
 
@@ -432,12 +432,12 @@ public class DataFilterParserTests
     {
         var foreign = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["PRODUCT"] = "PRO_NO" };
         Assert.True(DataFilterParser.TryParseWithJoins(
-            "CLIENT_PRICE_D.CURR_ID='RMB' AND PRODUCT.BUSINESS_TAG=0 AND PRODUCT.CONFIRM_TAG=1",
+            "CLIENT_PRICE_D.CURR_ID='RMB' AND PRODUCT.BUSINESS_TAG=0 AND PRODUCT.APPROVED=1",
             "CLIENT_PRICE_D", Fields("CURR_ID", "PRO_NO", "CLIENT_ID"), foreign, null,
             out var predicate, out var parameters, out var joins, out var foreignColumns));
         Assert.Contains("PRODUCT", joins);
         Assert.Contains(("PRODUCT", "BUSINESS_TAG"), foreignColumns);
-        Assert.Contains(("PRODUCT", "CONFIRM_TAG"), foreignColumns);
+        Assert.Contains(("PRODUCT", "APPROVED"), foreignColumns);
         Assert.Contains("[PRODUCT].[BUSINESS_TAG]", predicate);
         Assert.Equal(3, parameters.Count);
     }
@@ -459,8 +459,8 @@ public class DataFilterParserTests
     {
         var foreign = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["PRODUCT"] = "PRO_NO" };
         Assert.True(DataFilterParser.TryParseWithJoins(
-            "PRODUCT.BUSINESS_TAG=0 AND PRODUCT.CONFIRM_TAG=1 AND PRODUCT.CLIENT_ID='TTA' AND PRODUCT.PRO_NO NOT IN (SELECT PRO_NO FROM MOU_ASSESS_M WHERE MOU_ASSESS_M.ASSESS_NO<>'ZZZ')",
-            "PRODUCT", Fields("BUSINESS_TAG", "CONFIRM_TAG", "CLIENT_ID", "PRO_NO"), foreign, null,
+            "PRODUCT.BUSINESS_TAG=0 AND PRODUCT.APPROVED=1 AND PRODUCT.CLIENT_ID='TTA' AND PRODUCT.PRO_NO NOT IN (SELECT PRO_NO FROM MOU_ASSESS_M WHERE MOU_ASSESS_M.ASSESS_NO<>'ZZZ')",
+            "PRODUCT", Fields("BUSINESS_TAG", "APPROVED", "CLIENT_ID", "PRO_NO"), foreign, null,
             out var predicate, out var parameters, out var joins, out _));
         Assert.Contains("NOT IN (SELECT [PRO_NO] FROM dbo.[MOU_ASSESS_M] WHERE [ASSESS_NO] <> @df", predicate);
     }
@@ -470,11 +470,11 @@ public class DataFilterParserTests
     {
         var types = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["BUSINESS_TAG"] = "bit", ["CONFIRM_TAG"] = "bit", ["CLIENT_ID"] = "nchar",
+            ["BUSINESS_TAG"] = "bit", ["APPROVED"] = "bit", ["CLIENT_ID"] = "nchar",
         };
         Assert.True(DataFilterParser.TryParseWithJoins(
-            "PRODUCT.BUSINESS_TAG=0 AND PRODUCT.CONFIRM_TAG=1 AND PRODUCT.CLIENT_ID='TTA'",
-            "PRODUCT", Fields("BUSINESS_TAG", "CONFIRM_TAG", "CLIENT_ID"), null, types,
+            "PRODUCT.BUSINESS_TAG=0 AND PRODUCT.APPROVED=1 AND PRODUCT.CLIENT_ID='TTA'",
+            "PRODUCT", Fields("BUSINESS_TAG", "APPROVED", "CLIENT_ID"), null, types,
             out var predicate, out var parameters, out _, out _));
         Assert.Equal([0m, 1m, "TTA"], parameters);
     }

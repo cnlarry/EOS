@@ -42,13 +42,13 @@ public sealed class UserAdminRepository(
                        LTRIM(RTRIM(ISNULL(n.CI,''))) CI,
                        CAST(ISNULL(l.ACTIVE_TAG,0) AS bit) ACTIVE_TAG,
                        CAST(CASE WHEN LEN(ISNULL(l.USER_PWD,'')) > 0 THEN 1 ELSE 0 END AS bit) HAS_PASSWORD,
-                       LTRIM(RTRIM(ISNULL(l.LAST_UPDATE_BY,''))) LAST_UPDATE_BY,
-                       l.LAST_UPDATE_DATE
+                       LTRIM(RTRIM(ISNULL(l.MODIFIED_BY,''))) MODIFIED_BY,
+                       l.MODIFIED_TIME
                 FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
                 LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             )
             SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,CI,ACTIVE_TAG,HAS_PASSWORD,
-                   LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   MODIFIED_BY,MODIFIED_TIME,
                    OUTER_APPLY_GROUPS.GROUPS,
                    COUNT(*) OVER() AS Total
             FROM base
@@ -95,7 +95,7 @@ public sealed class UserAdminRepository(
         await connection.OpenAsync(token);
         const string sql = """
             UPDATE dbo.SYS_USER_ACCOUNT
-            SET USER_PWD=@Hash, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
+            SET USER_PWD=@Hash, MODIFIED_BY=@UpdatedBy, MODIFIED_TIME=GETDATE()
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -114,7 +114,7 @@ public sealed class UserAdminRepository(
         await connection.OpenAsync(token);
         const string sql = """
             UPDATE dbo.SYS_USER_ACCOUNT
-            SET ACTIVE_TAG=@Active, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
+            SET ACTIVE_TAG=@Active, MODIFIED_BY=@UpdatedBy, MODIFIED_TIME=GETDATE()
             WHERE LTRIM(RTRIM(USER_ID))=@UserId;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -192,7 +192,7 @@ public sealed class UserAdminRepository(
 
             await using var insert = new SqlCommand(
                 """
-                INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,USER_PWD,ACTIVE_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,USER_PWD,ACTIVE_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@UserId,@Emp,@Hash,1,@By,GETDATE(),@By,GETDATE());
                 """, connection, transaction);
             insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;

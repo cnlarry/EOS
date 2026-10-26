@@ -153,7 +153,7 @@
           "y": 14.3,
           "w": 87.4,
           "h": 4.3,
-          "content": "制单：{{MASTER.CREATE_PERSON}}",
+          "content": "制单：{{MASTER.CREATED_BY}}",
           "style": {
             "fontSize": 8,
             "align": "right"
@@ -230,7 +230,7 @@
           "y": 32.5,
           "w": 62,
           "h": 4.3,
-          "content": "制表：{{MASTER.CREATE_PERSON}}",
+          "content": "制表：{{MASTER.CREATED_BY}}",
           "style": {
             "fontSize": 8
           }
@@ -242,7 +242,7 @@
           "y": 32.5,
           "w": 63,
           "h": 4.3,
-          "content": "审核：{{MASTER.CONFIRM_PERSON}}",
+          "content": "审核：{{MASTER.APPROVED_BY}}",
           "style": {
             "fontSize": 8,
             "align": "center"

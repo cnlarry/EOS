@@ -210,7 +210,7 @@ public sealed class CopSendCatalogLiveTests
                 """, ("@Pro", Pro), ("@InSum", batchStockIn));
         }
         await ExecuteAsync(connection, transaction, token, """
-            INSERT INTO dbo.COP_SEND_M (SEND_TYPE, SEND_NO, SEND_DATE, CREATE_DATE)
+            INSERT INTO dbo.COP_SEND_M (SEND_TYPE, SEND_NO, SEND_DATE, CREATED_TIME)
             VALUES (@Type, @No, DATEADD(day, -@DaysBeforeCreate, '2026-03-01'), '2026-03-01');
             INSERT INTO dbo.COP_SEND_D (SEND_TYPE, SEND_NO, SERIAL_NO, PRO_NO, QTY, BATCH_NO, DEPOT_ID, UNIT_ID, CLIENT_ORDER_NO)
             VALUES (@Type, @No, 1, @Pro, 10, @Batch, @Depot, N'ADR12CSU', N'ADR12CS-O1');

@@ -302,7 +302,7 @@ public static class ReportAggregateRegistry
                 FROM dbo.INV_PRO_MONTH_M m
                 JOIN dbo.INV_PRO_MONTH_D d ON d.MONTH_TYPE = m.MONTH_TYPE AND d.MONTH_NO = m.MONTH_NO
                 WHERE d.DEPOT_ID = pa.DEPOT_ID AND d.PRO_NO = pa.PRO_NO
-                  AND m.MONTH_DATE < @date1 AND m.CONFIRM_TAG = 1
+                  AND m.MONTH_DATE < @date1 AND m.APPROVED = 1
                 ORDER BY m.MONTH_DATE DESC, m.MONTH_NO DESC
             ) lm
             CROSS APPLY (

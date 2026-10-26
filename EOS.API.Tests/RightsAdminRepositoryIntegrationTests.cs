@@ -159,9 +159,9 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
     {
         if (ConnectionString.Value is null || _seeded) return;
         await ExecuteNonQueryAsync($"""
-            INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,ACTIVE_TAG,REMARK,CREATE_PERSON,CREATE_DATE)
+            INSERT INTO dbo.SYS_USER_ACCOUNT (USER_ID,EMP_ID,ACTIVE_TAG,REMARK,CREATED_BY,CREATED_TIME)
             VALUES (N'{_userId}',N'{_userId}',1,N'E2E 权限管理临时用户','IT',GETDATE());
-            INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE)
+            INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,REMARK,CREATED_BY,CREATED_TIME)
             VALUES (N'{_groupId}',N'E2E 权限测试组',N'临时','IT',GETDATE());
             """);
         _seeded = true;

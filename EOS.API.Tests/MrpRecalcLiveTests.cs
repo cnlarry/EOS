@@ -35,19 +35,19 @@ public sealed class MrpRecalcLiveTests
             from (select PRO_NO, sum(QTY) QTY from INV_PRO_DEPOT with(tablockx) where DEPOT_ID in(select DEPOT_ID from DEPOT where MRP=1) group by PRO_NO) d
             where PRODUCT.PRO_NO=d.PRO_NO
         update PRODUCT set NOT_SEND_QTY=ROUND(t.QTY,2)
-            from (select PRO_NO, sum(d.QTY+d.SPARE_QTY-d.FINISHED_SEND_QTY-d.FINISHED_SPARE_QTY) QTY from COP_ORDER_M m with(tablockx), COP_ORDER_D d with(tablockx) where m.ORDER_TYPE=d.ORDER_TYPE and m.ORDER_NO=d.ORDER_NO and m.CONFIRM_TAG=1 and d.FINISHED_TAG=0 and d.QTY+d.SPARE_QTY>d.FINISHED_SEND_QTY+d.FINISHED_SPARE_QTY group by PRO_NO) t
+            from (select PRO_NO, sum(d.QTY+d.SPARE_QTY-d.FINISHED_SEND_QTY-d.FINISHED_SPARE_QTY) QTY from COP_ORDER_M m with(tablockx), COP_ORDER_D d with(tablockx) where m.ORDER_TYPE=d.ORDER_TYPE and m.ORDER_NO=d.ORDER_NO and m.APPROVED=1 and d.FINISHED=0 and d.QTY+d.SPARE_QTY>d.FINISHED_SEND_QTY+d.FINISHED_SPARE_QTY group by PRO_NO) t
             where PRODUCT.PRO_NO=t.PRO_NO
         update PRODUCT set NOT_IN_QTY=ROUND(t.QTY,2)
-            from (select PRO_NO, sum(QTY+SPARE_QTY-FINISHED_QTY-FINISHED_SPARE_QTY) QTY from MOC_PRODUCE_M with(tablockx) where CONFIRM_TAG=1 and FINISHED_TAG=0 and QTY+SPARE_QTY>FINISHED_QTY+FINISHED_SPARE_QTY group by PRO_NO) t
+            from (select PRO_NO, sum(QTY+SPARE_QTY-FINISHED_QTY-FINISHED_SPARE_QTY) QTY from MOC_PRODUCE_M with(tablockx) where APPROVED=1 and FINISHED=0 and QTY+SPARE_QTY>FINISHED_QTY+FINISHED_SPARE_QTY group by PRO_NO) t
             where PRODUCT.PRO_NO=t.PRO_NO
         update PRODUCT set NOT_GET_QTY=ROUND(t.QTY,2)
-            from (select d.PRO_NO, sum(d.NEED_QTY-d.USED_QTY) QTY from MOC_PRODUCE_M m with(tablockx), MOC_PRODUCE_D d with(tablockx) where m.PRODUCE_TYPE=d.PRODUCE_TYPE and m.PRODUCE_NO=d.PRODUCE_NO and m.CONFIRM_TAG=1 and d.FINISHED_TAG=0 and d.NEED_QTY>d.USED_QTY group by d.PRO_NO) t
+            from (select d.PRO_NO, sum(d.NEED_QTY-d.USED_QTY) QTY from MOC_PRODUCE_M m with(tablockx), MOC_PRODUCE_D d with(tablockx) where m.PRODUCE_TYPE=d.PRODUCE_TYPE and m.PRODUCE_NO=d.PRODUCE_NO and m.APPROVED=1 and d.FINISHED=0 and d.NEED_QTY>d.USED_QTY group by d.PRO_NO) t
             where PRODUCT.PRO_NO=t.PRO_NO
         update PRODUCT set IN_BUY_QTY=ROUND(t.QTY,2)
-            from (select d.PRO_NO, sum(d.QTY-d.PURCHASE_QTY) QTY from PUR_APPLY_M m with(tablockx), PUR_APPLY_D d with(tablockx) where m.APPLY_TYPE=d.APPLY_TYPE and m.APPLY_NO=d.APPLY_NO and m.CONFIRM_TAG=1 and d.FINISHED_TAG=0 and d.QTY>d.PURCHASE_QTY group by d.PRO_NO) t
+            from (select d.PRO_NO, sum(d.QTY-d.PURCHASE_QTY) QTY from PUR_APPLY_M m with(tablockx), PUR_APPLY_D d with(tablockx) where m.APPLY_TYPE=d.APPLY_TYPE and m.APPLY_NO=d.APPLY_NO and m.APPROVED=1 and d.FINISHED=0 and d.QTY>d.PURCHASE_QTY group by d.PRO_NO) t
             where PRODUCT.PRO_NO=t.PRO_NO
         update PRODUCT set IN_BUY_QTY=IN_BUY_QTY+ROUND(t.QTY,2)
-            from (select d.PRO_NO, sum(d.QTY+d.SPARE_QTY-d.RECEIVE_QTY-d.RECEIVE_SPARE_QTY) QTY from PUR_PURCHASE_M m with(tablockx), PUR_PURCHASE_D d with(tablockx) where m.PURCHASE_TYPE=d.PURCHASE_TYPE and m.PURCHASE_NO=d.PURCHASE_NO and m.CONFIRM_TAG=1 and d.FINISHED_TAG=0 and d.QTY+d.SPARE_QTY>d.RECEIVE_QTY+d.RECEIVE_SPARE_QTY group by d.PRO_NO) t
+            from (select d.PRO_NO, sum(d.QTY+d.SPARE_QTY-d.RECEIVE_QTY-d.RECEIVE_SPARE_QTY) QTY from PUR_PURCHASE_M m with(tablockx), PUR_PURCHASE_D d with(tablockx) where m.PURCHASE_TYPE=d.PURCHASE_TYPE and m.PURCHASE_NO=d.PURCHASE_NO and m.APPROVED=1 and d.FINISHED=0 and d.QTY+d.SPARE_QTY>d.RECEIVE_QTY+d.RECEIVE_SPARE_QTY group by d.PRO_NO) t
             where PRODUCT.PRO_NO=t.PRO_NO
         update PRODUCT set MRP_QTY=ROUND(QTY-SAFETY_QTY-NOT_SEND_QTY-NOT_GET_QTY+NOT_IN_QTY+IN_BUY_QTY,2)
         commit transaction
@@ -105,7 +105,7 @@ public sealed class MrpRecalcLiveTests
     {
         var sql = MrpRecalcService.ResetSql + "\n" + MrpRecalcService.RecalcSql;
         Assert.Contains("SET NOT_SEND_QTY=0, NOT_IN_QTY=0, NOT_GET_QTY=0, IN_BUY_QTY=0, MRP_QTY=0", sql);
-        Assert.Contains("m.CONFIRM_TAG=1 AND d.FINISHED_TAG=0", sql);
+        Assert.Contains("m.APPROVED=1 AND d.FINISHED=0", sql);
         Assert.Contains("d.QTY+d.SPARE_QTY>d.FINISHED_SEND_QTY+d.FINISHED_SPARE_QTY", sql);
         Assert.Contains("QTY+SPARE_QTY>FINISHED_QTY+FINISHED_SPARE_QTY", sql);
         Assert.Contains("d.NEED_QTY>d.USED_QTY", sql);
@@ -197,20 +197,20 @@ public sealed class MrpRecalcLiveTests
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY) VALUES (N'ADRMRPA', N'ADRMRP1', 100);
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY) VALUES (N'ADRMRPA', N'ADRMRP0', 50);
             -- 订单未送：30+5-10-2 = 23
-            INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, CONFIRM_TAG) VALUES (N'ADRMRP', N'ADRMRPORD', 1);
-            INSERT INTO dbo.COP_ORDER_D (ORDER_TYPE, ORDER_NO, SERIAL_NO, PRO_NO, QTY, SPARE_QTY, FINISHED_SEND_QTY, FINISHED_SPARE_QTY, FINISHED_TAG)
+            INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, APPROVED) VALUES (N'ADRMRP', N'ADRMRPORD', 1);
+            INSERT INTO dbo.COP_ORDER_D (ORDER_TYPE, ORDER_NO, SERIAL_NO, PRO_NO, QTY, SPARE_QTY, FINISHED_SEND_QTY, FINISHED_SPARE_QTY, FINISHED)
                 VALUES (N'ADRMRP', N'ADRMRPORD', 1, N'ADRMRPB', 30, 5, 10, 2, 0);
             -- 制令未入 40+4-10-1 = 33（料号 C）；制令未领 20-5 = 15（料号 D）
-            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, QTY, SPARE_QTY, FINISHED_QTY, FINISHED_SPARE_QTY, CONFIRM_TAG, FINISHED_TAG)
+            INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, QTY, SPARE_QTY, FINISHED_QTY, FINISHED_SPARE_QTY, APPROVED, FINISHED)
                 VALUES (N'ADRMRP', N'ADRMRPPRO', N'ADRMRPC', 40, 4, 10, 1, 1, 0);
-            INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, SERIAL_NO, PRO_NO, NEED_QTY, USED_QTY, FINISHED_TAG)
+            INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, SERIAL_NO, PRO_NO, NEED_QTY, USED_QTY, FINISHED)
                 VALUES (N'ADRMRP', N'ADRMRPPRO', 1, N'ADRMRPD', 20, 5, 0);
             -- 请购未采购 25-5 = 20；采购未收货 10+2-3-1 = 8 ⇒ IN_BUY 合计 28
-            INSERT INTO dbo.PUR_APPLY_M (APPLY_TYPE, APPLY_NO, CONFIRM_TAG) VALUES (N'ADRMRP', N'ADRMRPAPL', 1);
-            INSERT INTO dbo.PUR_APPLY_D (APPLY_TYPE, APPLY_NO, SERIAL_NO, PRO_NO, QTY, PURCHASE_QTY, FINISHED_TAG)
+            INSERT INTO dbo.PUR_APPLY_M (APPLY_TYPE, APPLY_NO, APPROVED) VALUES (N'ADRMRP', N'ADRMRPAPL', 1);
+            INSERT INTO dbo.PUR_APPLY_D (APPLY_TYPE, APPLY_NO, SERIAL_NO, PRO_NO, QTY, PURCHASE_QTY, FINISHED)
                 VALUES (N'ADRMRP', N'ADRMRPAPL', 1, N'ADRMRPE', 25, 5, 0);
-            INSERT INTO dbo.PUR_PURCHASE_M (PURCHASE_TYPE, PURCHASE_NO, CONFIRM_TAG) VALUES (N'ADRMRP', N'ADRMRPPUR', 1);
-            INSERT INTO dbo.PUR_PURCHASE_D (PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO, PRO_NO, QTY, SPARE_QTY, RECEIVE_QTY, RECEIVE_SPARE_QTY, FINISHED_TAG)
+            INSERT INTO dbo.PUR_PURCHASE_M (PURCHASE_TYPE, PURCHASE_NO, APPROVED) VALUES (N'ADRMRP', N'ADRMRPPUR', 1);
+            INSERT INTO dbo.PUR_PURCHASE_D (PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO, PRO_NO, QTY, SPARE_QTY, RECEIVE_QTY, RECEIVE_SPARE_QTY, FINISHED)
                 VALUES (N'ADRMRP', N'ADRMRPPUR', 1, N'ADRMRPE', 10, 2, 3, 1, 0);
             """, connection, transaction);
         await seed.ExecuteNonQueryAsync(token);

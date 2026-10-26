@@ -206,7 +206,7 @@ public sealed class MonthCloseSnapshotService
         SqlConnection connection, SqlTransaction transaction, MonthCloseSnapshotRequest request, CancellationToken token)
     {
         await using var command = new SqlCommand(
-            $"SELECT CONFIRM_TAG FROM dbo.{MasterTable} WITH (UPDLOCK, HOLDLOCK) "
+            $"SELECT APPROVED FROM dbo.{MasterTable} WITH (UPDLOCK, HOLDLOCK) "
             + "WHERE MONTH_TYPE=@type AND MONTH_NO=@no;", connection, transaction);
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = request.MonthType.Trim();
         command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = request.MonthNo.Trim();
@@ -221,7 +221,7 @@ public sealed class MonthCloseSnapshotService
     {
         await using var command = new SqlCommand(
             $"SELECT TOP 1 MONTH_TYPE, MONTH_NO, MONTH_DATE FROM dbo.{MasterTable} "
-            + "WHERE MONTH_DATE < @monthDate AND CONFIRM_TAG = 1 "
+            + "WHERE MONTH_DATE < @monthDate AND APPROVED = 1 "
             + "ORDER BY MONTH_DATE DESC, MONTH_NO DESC;", connection, transaction);
         command.Parameters.Add("@monthDate", SqlDbType.DateTime).Value = request.MonthDate;
         await using var reader = await command.ExecuteReaderAsync(token);

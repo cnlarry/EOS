@@ -181,7 +181,7 @@ public sealed class ModuleGroupAdminRepository(
         int groupId;
         await using (var insert = new SqlCommand(
             """
-            INSERT INTO dbo.MODULE_GROUPS (M_IDX,SORT_IDX,GROUP_DESC,GROUP_EXP,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            INSERT INTO dbo.MODULE_GROUPS (M_IDX,SORT_IDX,GROUP_DESC,GROUP_EXP,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             OUTPUT INSERTED.GROUP_ID
             VALUES (@ModuleId,@SortIdx,@Desc,@Exp,@UpdatedBy,GETDATE(),@UpdatedBy,GETDATE());
             """, connection, transaction))
@@ -216,7 +216,7 @@ public sealed class ModuleGroupAdminRepository(
         await using (var update = new SqlCommand(
             """
             UPDATE dbo.MODULE_GROUPS
-               SET GROUP_DESC=@Desc,GROUP_EXP=@Exp,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+               SET GROUP_DESC=@Desc,GROUP_EXP=@Exp,MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE()
              WHERE GROUP_ID=@GroupId;
             """, connection, transaction))
         {
@@ -287,7 +287,7 @@ public sealed class ModuleGroupAdminRepository(
         for (var position = 0; position < siblings.Count; position++)
         {
             await using var update = new SqlCommand(
-                "UPDATE dbo.MODULE_GROUPS SET SORT_IDX=@SortIdx,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE() WHERE GROUP_ID=@GroupId;",
+                "UPDATE dbo.MODULE_GROUPS SET SORT_IDX=@SortIdx,MODIFIED_BY=@UpdatedBy,MODIFIED_TIME=GETDATE() WHERE GROUP_ID=@GroupId;",
                 connection, transaction);
             update.Parameters.Add("@SortIdx", SqlDbType.Int).Value = (position + 1) * SortStep;
             update.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 100).Value = updatedBy;

@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 ///   ④ **草稿月结单不算关账**（只有已批核的期才拦）——与库存日报期初同一条规矩。
 ///   另断边界值：期末**当天**算在期内，期末**次日**才是开账期。
 ///
-/// 判别性：把 `CONFIRM_TAG = 1` 从查询里去掉 ⇒ ④ 变红（草稿期会被当关账期）；
+/// 判别性：把 `APPROVED = 1` 从查询里去掉 ⇒ ④ 变红（草稿期会被当关账期）；
 /// 去掉"已有流水"那段 ⇒ ② 变红；去掉整条守卫 ⇒ ①③ 变红。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -95,7 +95,7 @@ public sealed class InventoryPeriodServiceLiveTests
             await SeedAsync(connection, transaction);
 
             // 2024-02-10 落在**草稿期**（期末 2024-02-29）之内，但草稿不是关账 ⇒ 放行。
-            // 若查询漏了 CONFIRM_TAG=1，这里会取到草稿期而拒绝，本用例即红。
+            // 若查询漏了 APPROVED=1，这里会取到草稿期而拒绝，本用例即红。
             await InventoryPeriodService.EnsureLedgerWritableAsync(
                 connection, transaction, new DateTime(2024, 2, 10), MonthType, NoLedgerBill, CancellationToken.None);
 
@@ -103,7 +103,7 @@ public sealed class InventoryPeriodServiceLiveTests
             // 夹具里有这张草稿单，只是判据不看它。
             await using (var command = new SqlCommand(
                 "SELECT COUNT(*) FROM dbo.INV_PRO_MONTH_M WHERE MONTH_TYPE = @type AND MONTH_NO = @no "
-                + "AND CONFIRM_TAG = 0 AND MONTH_DATE = '2024-02-29';", connection, transaction))
+                + "AND APPROVED = 0 AND MONTH_DATE = '2024-02-29';", connection, transaction))
             {
                 command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = MonthType;
                 command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = DraftPeriod;
@@ -174,7 +174,7 @@ public sealed class InventoryPeriodServiceLiveTests
             // 再关一期：期末 = 今天 ⇒ 非批核方向写的"当前时间"落在这期之内
             //（这正是"单据在开账期、反向流水却落进已关账期"的形态）
             await ExecuteAsync(connection, transaction, """
-                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+                INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                     VALUES (@Type, N'ADR20C003', @Today, 1, N'ADR20C', GETDATE());
                 """, ("@Type", MonthType), ("@Today", DateTime.Today));
 
@@ -211,7 +211,7 @@ public sealed class InventoryPeriodServiceLiveTests
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE) VALUES (@Pro, N'ADR20C 关账料件', N'规格C', '3');
 
             -- 已批核期（期末 2023-12-31）与草稿期（期末 2024-02-29）
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                 VALUES (@Type, @Closed, '2023-12-31', 1, N'ADR20C', GETDATE()),
                        (@Type, @Draft, '2024-02-29', 0, N'ADR20C', GETDATE());
 

@@ -97,7 +97,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         const string sql = """
             INSERT INTO dbo.REPORT
                 (REPORT_ID,REPORT_NAME,M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,FORMAT_ID,COMPANY_ID,
-                 IS_DEFAULT,REMARK,REPORT_FILTER,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 IS_DEFAULT,REMARK,REPORT_FILTER,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES
                 (@ReportId,@ReportName,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,@FormatId,@CompanyId,
                  @IsDefault,@Remark,@ReportFilter,@User,GETDATE(),@User,GETDATE());
@@ -116,7 +116,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
             SET REPORT_NAME=@ReportName,ISO_NO=@IsoNo,HEADER_ID=@HeaderId,FOOTER_TEXT=@FooterText,TAIL_ID=@TailId,
                 FORMAT_ID=@FormatId,COMPANY_ID=@CompanyId,
                 IS_DEFAULT=@IsDefault,REMARK=@Remark,REPORT_FILTER=@ReportFilter,
-                LAST_UPDATE_BY=@User,LAST_UPDATE_DATE=GETDATE()
+                MODIFIED_BY=@User,MODIFIED_TIME=GETDATE()
             WHERE REPORT_ID=@ReportId;
             """;
         await using var connection = connections.Create();

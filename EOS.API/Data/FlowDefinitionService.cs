@@ -10,7 +10,7 @@ namespace EOS.API.Data;
 /// 安全边界：
 /// - 只允许给"具备批核能力"的工作台模块配置流程（WorkflowStates.HasApproveCapability：
 /// 静态登记批核过程 / MODULES.UPDATE_SP 非空 / 效果引擎接管 / 自动批核 / 已配置流程，
-/// 且主表有 CONFIRM_TAG 物理列）；
+/// 且主表有 APPROVED 物理列）；
 /// - EXEC_PERSON/权限串/必签名单全部按 SYS_USER_ACCOUNT 真实用户校验（禁止写入不存在的审批人）；
 /// - EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION 保存前经 DataFilterParser 按主表
 /// 物理列白名单预解析（不可解析即拒绝保存，与引擎启动时同源护栏，绝不拼接 SQL）；
@@ -94,12 +94,12 @@ public sealed class FlowDefinitionService(
             }
         }
 
-        // 主表必须有 CONFIRM_TAG（流程末步落确认），无该列的表剔除（如日志流水表）
+        // 主表必须有 APPROVED（流程末步落确认），无该列的表剔除（如日志流水表）
         var withConfirm = new List<object>();
         foreach (var candidate in eligible)
         {
             var table = (string)candidate.GetType().GetProperty("MasterTable")!.GetValue(candidate)!;
-            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "CONFIRM_TAG", token))
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "APPROVED", token))
                 continue;
             withConfirm.Add(candidate);
         }
@@ -111,8 +111,8 @@ public sealed class FlowDefinitionService(
                    LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=wf.WF_M_IDX),''))),
                    LTRIM(RTRIM(ISNULL(wf.FLOW_NAME,''))), LTRIM(RTRIM(ISNULL(wf.REMARK,''))),
                    (SELECT COUNT_BIG(1) FROM dbo.WFFORM_FLOW f WITH (NOLOCK) WHERE f.WF_M_IDX=wf.WF_M_IDX),
-                   LTRIM(RTRIM(ISNULL(wf.CONFIRM_PERSON,''))),
-                   CONVERT(varchar(19), wf.CONFIRM_DATE, 120)
+                   LTRIM(RTRIM(ISNULL(wf.APPROVED_BY,''))),
+                   CONVERT(varchar(19), wf.APPROVED_TIME, 120)
             FROM dbo.WFFORM wf WITH (NOLOCK)
             ORDER BY wf.WF_M_IDX;
             """, connection))
@@ -150,8 +150,8 @@ public sealed class FlowDefinitionService(
         await using (var command = new SqlCommand("""
             SELECT LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(wf.FLOW_NAME,''))), LTRIM(RTRIM(ISNULL(wf.REMARK,''))),
-                   LTRIM(RTRIM(ISNULL(wf.CONFIRM_PERSON,''))),
-                   CONVERT(varchar(19), wf.CONFIRM_DATE, 120)
+                   LTRIM(RTRIM(ISNULL(wf.APPROVED_BY,''))),
+                   CONVERT(varchar(19), wf.APPROVED_TIME, 120)
             FROM dbo.WFFORM wf WITH (NOLOCK)
             LEFT JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=wf.WF_M_IDX
             WHERE wf.WF_M_IDX=@ModuleId;
@@ -272,9 +272,9 @@ public sealed class FlowDefinitionService(
         }
         if (string.IsNullOrWhiteSpace(masterTable) || !WorkbenchSql.Identifier.IsMatch(masterTable))
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE", "模块主表无效。");
-        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "CONFIRM_TAG", token))
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MASTER_NO_CONFIRM_TAG",
-                "模块主表缺少 CONFIRM_TAG 列，不能配置流程。");
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "APPROVED", token))
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MASTER_NO_APPROVED",
+                "模块主表缺少 APPROVED 列，不能配置流程。");
 
         // 步骤基础校验：SORT_NO 格式/唯一、描述、审批人
         var normalized = new List<(string SortNo, FlowStepDefinition Step)>();
@@ -370,7 +370,7 @@ public sealed class FlowDefinitionService(
             var remarkValue = remark?.Trim() ?? string.Empty;
             var updated = await new SqlCommand("""
                 UPDATE dbo.WFFORM SET FLOW_NAME=@FlowName, REMARK=@Remark,
-                    CONFIRM_PERSON=@Person, CONFIRM_DATE=GETDATE()
+                    APPROVED_BY=@Person, APPROVED_TIME=GETDATE()
                 WHERE WF_M_IDX=@ModuleId;
                 """, connection, transaction)
                 .Apply(cmd =>
@@ -384,7 +384,7 @@ public sealed class FlowDefinitionService(
             if (updated == 0)
             {
                 await new SqlCommand("""
-                    INSERT INTO dbo.WFFORM (WF_M_IDX, FLOW_NAME, REMARK, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, CONFIRM_PERSON, CONFIRM_DATE)
+                    INSERT INTO dbo.WFFORM (WF_M_IDX, FLOW_NAME, REMARK, CREATED_BY, CREATED_TIME, APPROVED, APPROVED_BY, APPROVED_TIME)
                     VALUES (@ModuleId, @FlowName, @Remark, @Person, GETDATE(), 1, @Person, GETDATE());
                     """, connection, transaction)
                     .Apply(cmd =>

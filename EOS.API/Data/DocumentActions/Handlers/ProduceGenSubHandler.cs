@@ -23,7 +23,7 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 // 只配在 1502（默认制令模块）：子单的单别恒取默认制令单别，家就在 1502；
 // 配到其它制令模块会让人误以为子单会落在那里。
 // 不要求本单已批核：展开的正常时机在批核之前（先展开再逐单送审）。
-// 已完工结案（`FINISHED_TAG = 1`）的制令单拒绝。
+// 已完工结案（`FINISHED = 1`）的制令单拒绝。
 internal sealed class ProduceGenSubHandler(
     IPermissionService permissions,
     WorkbenchDefinitionBuilder definitionBuilder,
@@ -57,7 +57,7 @@ internal sealed class ProduceGenSubHandler(
     private const string PlanEndField = "PLAN_END";
     private const string PreSendField = "PRE_SEND_DATE";
     private const string ProduceDateField = "PRODUCE_DATE";
-    private const string FinishedField = "FINISHED_TAG";
+    private const string FinishedField = "FINISHED";
     private const string SerialField = "SERIAL_NO";
     private const string OrderSerialField = "ORDER_SERIAL_NO";
     private const string ApplyQtyField = "APPLY_QTY";

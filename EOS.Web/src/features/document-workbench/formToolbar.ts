@@ -1,5 +1,6 @@
 import type { ErpCommandItem } from '../../components/common/ErpCommandBar'
 import type { FormDefinition } from './formDefinition'
+import { LIFECYCLE_KEYS } from './lifecycleKeys'
 
 /**
  * 浏览态工具栏单据级动作构建：
@@ -37,20 +38,20 @@ export function buildViewToolbarItems(
   // 批核能力 = 工作流（过程/效果链/流程定义）或无副作用自动批核（与服务端同口径）；
   // 服务端已按"四者取并集"给出 hasApproveCapability，缺字段时回退到旧的两个标志。
   const canWorkflow = form.hasApproveCapability ?? (form.hasWorkflow || form.hasStatelessApprove)
-  // 结案能力 = 主表有 FINISHED_TAG（服务端 hasFinishCapability）；旧契约缺该标志时
-  // 按记录里是否返回了 FINISHED_TAG 回退，避免"没有结案列却显示结案按钮、点了必 404"。
-  const canFinish = form.hasFinishCapability ?? (master?.FINISHED_TAG !== undefined)
+  // 结案能力 = 主表有 FINISHED（服务端 hasFinishCapability）；旧契约缺该标志时
+  // 按记录里是否返回了 FINISHED 回退，避免"没有结案列却显示结案按钮、点了必 404"。
+  const canFinish = form.hasFinishCapability ?? (master?.[LIFECYCLE_KEYS.finished] !== undefined)
   return [
-    ...(canWorkflow && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress && form.canApprove
+    ...(canWorkflow && keyParam && master && master[LIFECYCLE_KEYS.approved] !== true && !flowInProgress && form.canApprove
       ? [{ action: 'approve', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.openApprove } satisfies ErpCommandItem]
       : []),
-    ...(canWorkflow && keyParam && master && master.CONFIRM_TAG === true && form.canDeapprove
+    ...(canWorkflow && keyParam && master && master[LIFECYCLE_KEYS.approved] === true && form.canDeapprove
       ? [{ action: 'deapprove', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.deapprove } satisfies ErpCommandItem]
       : []),
-    ...(canFinish && keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
+    ...(canFinish && keyParam && form.canEndCase && master && master[LIFECYCLE_KEYS.finished] !== true
       ? [{ action: 'endcase', loading: handlers.finishPending, onClick: handlers.endcase } satisfies ErpCommandItem]
       : []),
-    ...(canFinish && keyParam && form.canUnEndCase && master && master.FINISHED_TAG === true
+    ...(canFinish && keyParam && form.canUnEndCase && master && master[LIFECYCLE_KEYS.finished] === true
       ? [{ action: 'unendcase', loading: handlers.finishPending, onClick: handlers.unendcase } satisfies ErpCommandItem]
       : []),
     ...(keyParam ? [{ action: 'print', onClick: handlers.openPrint } satisfies ErpCommandItem] : []),

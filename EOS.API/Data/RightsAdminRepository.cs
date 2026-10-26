@@ -395,7 +395,7 @@ public sealed class RightsAdminRepository(
             {
                 await using var insert = new SqlCommand(
                     $"""
-                    INSERT INTO dbo.{table} ({idColumn},M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                    INSERT INTO dbo.{table} ({idColumn},M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                     VALUES (@Owner,@ModuleId,@Key,1,@By,SYSDATETIME(),@By,SYSDATETIME());
                     """, connection, transaction);
                 insert.Parameters.Add("@Owner", SqlDbType.NVarChar, 20).Value = ownerId.Trim();
@@ -702,7 +702,7 @@ public sealed class RightsAdminRepository(
             }
             await using var insert = new SqlCommand(
                 """
-                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,REMARK,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@Id,@Desc,@Remark,@By,GETDATE(),@By,GETDATE());
                 """, connection, transaction);
             insert.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
@@ -740,7 +740,7 @@ public sealed class RightsAdminRepository(
             await using var update = new SqlCommand(
                 """
                 UPDATE dbo.SYS_USER_GROUP
-                SET G_DESC=@Desc,REMARK=@Remark,LAST_UPDATE_BY=@By,LAST_UPDATE_DATE=GETDATE()
+                SET G_DESC=@Desc,REMARK=@Remark,MODIFIED_BY=@By,MODIFIED_TIME=GETDATE()
                 WHERE LTRIM(RTRIM(G_IDX))=@Id;
                 """, connection, transaction);
             update.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;

@@ -20,7 +20,7 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 // 与保存期 `pur-purchase-sync` 的关系：保存期动作在每次保存时按明细已有单价重算金额；
 // 本操作做的是它前面的那一步——把单价先从厂商计价取回来。两者金额公式同一套，算出来一致。
 // 不要求已批核：取价的正常时机恰恰是批核之前（草稿先取价再送审）。
-// 已完工结案（FINISHED_TAG=1）的单子拒绝——结案后的价格是结算凭据，不能再动。
+// 已完工结案（FINISHED=1）的单子拒绝——结案后的价格是结算凭据，不能再动。
 internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentActionPlacement
 {
     public const string ActionKey = "purchase-reprice";
@@ -31,7 +31,7 @@ internal sealed class PurchaseRepriceHandler : IDocumentUserAction, IDocumentAct
     private const string TypeField = "PURCHASE_TYPE";
     private const string NoField = "PURCHASE_NO";
     private const string SupplierField = "SUPPLIER_ID";
-    private const string FinishedField = "FINISHED_TAG";
+    private const string FinishedField = "FINISHED";
     private const string ProField = "PRO_NO";
     private const string UnitField = "UNIT_ID";
     private const string CurrField = "CURR_ID";

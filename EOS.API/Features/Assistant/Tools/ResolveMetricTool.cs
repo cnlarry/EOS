@@ -79,7 +79,7 @@ public sealed class ResolveMetricTool(
 
         // 同一张来源表可能挂靠多个模块，而"挂得上"不等于"算得出"：只按表名匹配时，命中的常是
         // **以该表为主表**、却不是工作台承载的模块（页面建不出定义）；而口径里的行过滤往往要求
-        // 来源表是**明细表**（主表参与关联与过滤，如 sales_amount 依赖 COP_ORDER_M.CONFIRM_TAG）。
+        // 来源表是**明细表**（主表参与关联与过滤，如 sales_amount 依赖 COP_ORDER_M.APPROVED）。
         // 所以这里逐个候选试到第一个真能算出来的模块：
         // 能浏览 → 定义能建出 → 口径校验（列与行过滤在该模块上都可用）。
         WorkbenchDefinition? definition = null;

@@ -1017,7 +1017,7 @@ public sealed class InventoryMoveSql
             return 0;
 
         var affected = await ExecAsync(
-            "UPDATE b SET b.EFFECT_DATE = t.EFFECT_DATE, b.LAST_UPDATE_BY = @actor, b.LAST_UPDATE_DATE = SYSDATETIME() "
+            "UPDATE b SET b.EFFECT_DATE = t.EFFECT_DATE, b.MODIFIED_BY = @actor, b.MODIFIED_TIME = SYSDATETIME() "
             + $"FROM (SELECT PRO_NO, BATCH_NO, MAX(EFFECT_DATE) AS EFFECT_DATE FROM {Tmp} "
             + "WHERE ISNULL(BATCH_NO,'') <> '' AND EFFECT_DATE IS NOT NULL GROUP BY PRO_NO, BATCH_NO) t "
             + "JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO "

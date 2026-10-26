@@ -250,8 +250,8 @@ public sealed class FormLayoutDesignLiveTests
 
         // 生命周期字段不是"用户可填的必填"，也不再参与版式：它们从画布行/字段池剥离，
         // 只作为固定区字段下发（设计器在画布下方预览）。
-        Assert.DoesNotContain(state.Master.Layout, row => row.Key is "CREATE_PERSON" or "LAST_UPDATE_BY");
-        Assert.Contains(state.SystemFields!, field => field.Key is "CREATE_PERSON" or "LAST_UPDATE_BY");
+        Assert.DoesNotContain(state.Master.Layout, row => row.Key is "CREATED_BY" or "MODIFIED_BY");
+        Assert.Contains(state.SystemFields!, field => field.Key is "CREATED_BY" or "MODIFIED_BY");
     }
 
     [Fact]

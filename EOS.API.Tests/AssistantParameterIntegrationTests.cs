@@ -263,7 +263,7 @@ public sealed class AssistantParameterIntegrationTests
         {
             await using var command = new SqlCommand("""
                 INSERT INTO dbo.ASSISTANT_PARAM_SCOPE
-                    (SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, CREATE_PERSON, CREATE_DATE)
+                    (SCOPE_TYPE, SCOPE_KEY, PARAM_KEY, PARAM_VALUE, CREATED_BY, CREATED_TIME)
                 VALUES (@Type, @Key, @Param, @Value, N'test', GETDATE());
                 """, connection);
             command.Parameters.AddWithValue("@Type", row.ScopeType);

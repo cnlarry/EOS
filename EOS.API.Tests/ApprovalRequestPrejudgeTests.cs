@@ -160,7 +160,7 @@ public sealed class ApprovalRequestPrejudgeTests
         bool writable = true)
     {
         var definition = AssistantSituationDoubles.Definition(
-            ModuleId, "测试单据", ["DOC_NO", "CONFIRM_TAG", "FINISHED_TAG"], pkOrder: ["DOC_NO"]);
+            ModuleId, "测试单据", ["DOC_NO", "APPROVED", "FINISHED"], pkOrder: ["DOC_NO"]);
         var permissions = new AssistantActionTestHarness.FixedPermissions(
             rights ?? AssistantActionTestHarness.Rights(approve: true, deapprove: true, endCase: true, unEndCase: true));
         var policy = AssistantActionTestHarness.Policy(
@@ -182,8 +182,8 @@ public sealed class ApprovalRequestPrejudgeTests
     private static Dictionary<string, object?> Row(string docNo, int confirmed, int finished) => new()
     {
         ["DOC_NO"] = docNo,
-        ["CONFIRM_TAG"] = confirmed,
-        ["FINISHED_TAG"] = finished,
+        ["APPROVED"] = confirmed,
+        ["FINISHED"] = finished,
     };
 
     /// <summary>只提供本用例需要的行为：按主键取行，其余成员给空实现。</summary>

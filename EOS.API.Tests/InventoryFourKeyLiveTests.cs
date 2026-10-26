@@ -137,7 +137,7 @@ public sealed class InventoryFourKeyLiveTests
                 VALUES (@Pro, @Depot, N'-', N'', 10, 10, 10, 5, 75),
                        (@Pro, @Depot, @Bin, N'', 5, 5, 5, 5, 75);
 
-            INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, CREATE_PERSON, CREATE_DATE)
+            INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, CREATED_BY, CREATED_TIME)
                 VALUES (@Type, @No, '2026-09-01', N'ADR14P2', '2026-09-01');
             INSERT INTO dbo.INV_OCCUR_OUT_D (OCCUR_TYPE, OCCUR_NO, SERIAL_NO, PRO_NO, QTY, DEPOT_ID, LOCATION_NO, UNIT_ID)
                 VALUES (@Type, @No, 1, @Pro, 3, @Depot, @Bin, @Unit);

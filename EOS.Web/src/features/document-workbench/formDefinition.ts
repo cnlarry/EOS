@@ -127,7 +127,7 @@ export interface FormDefinition {
    */
   hasApproveCapability?: boolean
   /**
-   * 结案能力（主表有 `FINISHED_TAG` 物理列，与服务端 `RunFinishCoreAsync` 同源）。
+   * 结案能力（主表有 `FINISHED` 物理列，与服务端 `RunFinishCoreAsync` 同源）。
    * 为 false 的模块没有结案流程：工具栏不显示结案动作，状态区只显示批核，底部信息区只有三组。
    */
   hasFinishCapability?: boolean

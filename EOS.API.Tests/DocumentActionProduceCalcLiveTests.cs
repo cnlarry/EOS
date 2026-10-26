@@ -98,7 +98,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             $"""
             IF NOT EXISTS (SELECT 1 FROM dbo.{MasterTable} WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no)
-                INSERT INTO dbo.{MasterTable} (PRODUCE_TYPE,PRODUCE_NO,PRO_NO,QTY,SPARE_QTY,ORDER_TYPE,ORDER_NO,ORDER_SERIAL_NO,FINISHED_TAG)
+                INSERT INTO dbo.{MasterTable} (PRODUCE_TYPE,PRODUCE_NO,PRO_NO,QTY,SPARE_QTY,ORDER_TYPE,ORDER_NO,ORDER_SERIAL_NO,FINISHED)
                 VALUES (@type,@no,@fin,10,0,@otype,@ono,1,0);
             INSERT INTO dbo.{DetailTable}
                 (PRODUCE_TYPE,PRODUCE_NO,SERIAL_NO,PRO_NO,NEED_QTY,USED_QTY,APPLY_QTY,PURCHASE_QTY)
@@ -121,7 +121,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@user AND M_IDX=@module AND BUTTON_KEY=@key)
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@user,@module,@key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
             """,
             ("@user", TestUser), ("@module", ModuleId), ("@key", ProduceCalcMaterialsHandler.ActionKey));
@@ -289,7 +289,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
     {
         await using var connection = await OpenAsync();
         await ExecAsync(connection,
-            $"UPDATE dbo.{MasterTable} SET FINISHED_TAG=1 WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
+            $"UPDATE dbo.{MasterTable} SET FINISHED=1 WHERE PRODUCE_TYPE=@type AND PRODUCE_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
 
         var result = await RunAsync();

@@ -295,7 +295,7 @@ public sealed class ModuleBusinessConfigRepository(
         {
             const string sql = """
                 UPDATE dbo.MODULE_BUSINESS_ACTION
-                   SET ENABLED=0, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
+                   SET ENABLED=0, MODIFIED_BY=@UpdatedBy, MODIFIED_TIME=GETDATE()
                  WHERE M_IDX=@ModuleId AND EVENT_CODE<>N'MANUAL' AND ISNULL(ENABLED,1)=1;
                 """;
             await using (var command = new SqlCommand(sql, connection, transaction))
@@ -755,7 +755,7 @@ public sealed class ModuleBusinessConfigRepository(
                 (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,
                  CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF,
                  LABEL,CONFIRM_TAG,
-                 CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES
                 (@ModuleId,@Event,@Seq,@EffectKey,@EffectName,@Enabled,@FailMode,
                  @Condition,@Params,@Reverse,@Remark,@SourceRef,
@@ -810,7 +810,7 @@ public sealed class ModuleBusinessConfigRepository(
         AddNullable(command, "@SourceField", op.SourceField, 64);
         AddNullable(command, "@SourceAgg", op.SourceAgg, 10);
         // The empty string is a legal clear value for CONSTANT sources (e.g.
-        // FINISHED_PERSON=''), so it must survive storage instead of collapsing to NULL.
+        // FINISHED_BY=''), so it must survive storage instead of collapsing to NULL.
         var constantParameter = command.Parameters.Add("@SourceConstant", SqlDbType.NVarChar, -1);
         constantParameter.Value = op.SourceConstant is null ? DBNull.Value : op.SourceConstant.Trim();
         AddNullable(command, "@SourceTerms", op.SourceTerms, null);
@@ -831,7 +831,7 @@ public sealed class ModuleBusinessConfigRepository(
         const string sql = """
             INSERT INTO dbo.MODULE_VALIDATION_RULE
                 (M_IDX,STAGE,SEQ,VALIDATION_KEY,ENABLED,PARAM_STRUCT,MESSAGE,REMARK,SOURCE_REF,
-                 CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
             VALUES
                 (@ModuleId,@Stage,@Seq,@ValidationKey,@Enabled,@Params,@Message,@Remark,@SourceRef,
                  @UpdatedBy,SYSDATETIME(),@UpdatedBy,SYSDATETIME());

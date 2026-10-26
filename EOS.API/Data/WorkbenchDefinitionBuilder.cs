@@ -460,10 +460,10 @@ public sealed class WorkbenchDefinitionBuilder(
         // 版式设计权：只影响前端是否渲染设计入口，服务端写端点仍独立鉴权
         var canFormDesign = (await FormDesignPermissionResolver.ResolveAsync(
             connection, userId, definition.ModuleId, token)).CanDesign;
-        // 结案能力 = 主表有 `FINISHED_TAG` 物理列，与 `RunFinishCoreAsync` 的「该模块不支持结案操作」
+        // 结案能力 = 主表有 `FINISHED` 物理列，与 `RunFinishCoreAsync` 的「该模块不支持结案操作」
         // 判据同源；不是当前用户的 `ENDCASE_TAG` 权限位（权限只决定按钮显不显示，能力决定状态/分组显不显示）。
         var hasFinishCapability = await WorkbenchSql.ColumnExistsAsync(
-            connection, null, definition.MasterTable, "FINISHED_TAG", token);
+            connection, null, definition.MasterTable, "FINISHED", token);
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,defaultValues,definition.HasWorkflow,

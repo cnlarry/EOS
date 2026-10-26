@@ -13,7 +13,7 @@ namespace EOS.API.Tests;
 public sealed class ResolveMetricToolTests
 {
     private const string SalesAmountRowFilter =
-        """{"table":"COP_ORDER_M","on":["ORDER_TYPE","ORDER_NO"],"conditions":[{"column":"CONFIRM_TAG","op":"=","value":true}]}""";
+        """{"table":"COP_ORDER_M","on":["ORDER_TYPE","ORDER_NO"],"conditions":[{"column":"APPROVED","op":"=","value":true}]}""";
 
     private static ModuleRights Rights(bool canBrowse = true, string dataFilter = "", string execTag = "A") => new(
         CanBrowse: canBrowse, CanViewCost: false, CanViewSecrecy: false, CanSetup: false,
@@ -121,7 +121,7 @@ public sealed class ResolveMetricToolTests
                     ["ORDER_NO", "ORDER_TYPE", "SERIAL_NO", "AMOUNT_TAX", "AMOUNT", "QTY", "REBATE", "PRO_NO"],
                     StringComparer.OrdinalIgnoreCase),
                 "COP_ORDER_M" => new HashSet<string>(
-                    ["ORDER_NO", "ORDER_TYPE", "CONFIRM_TAG", "ORDER_DATE", "CLIENT_ID", "OWNER"],
+                    ["ORDER_NO", "ORDER_TYPE", "APPROVED", "ORDER_DATE", "CLIENT_ID", "OWNER"],
                     StringComparer.OrdinalIgnoreCase),
                 _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             };
@@ -133,7 +133,7 @@ public sealed class ResolveMetricToolTests
 
     private static WorkbenchDefinition Definition() => new(
         1405, "客户订单", "COP_ORDER_M", "COP_ORDER_D",
-        MasterFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("CONFIRM_TAG"), Field("ORDER_DATE"), Field("CLIENT_ID"), Field("OWNER")],
+        MasterFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("APPROVED"), Field("ORDER_DATE"), Field("CLIENT_ID"), Field("OWNER")],
         DetailFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("SERIAL_NO"), Field("AMOUNT_TAX"), Field("AMOUNT"), Field("QTY"), Field("REBATE"), Field("PRO_NO")],
         DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
         MasterPkOrder: ["ORDER_TYPE", "ORDER_NO"], DetailNoFields: string.Empty,
@@ -236,7 +236,7 @@ public sealed class ResolveMetricToolTests
         Assert.Contains("EXISTS (SELECT 1 FROM dbo.[COP_ORDER_M] WITH (NOLOCK)" +
                         " WHERE [ORDER_TYPE]=dbo.[COP_ORDER_D].[ORDER_TYPE] AND [ORDER_NO]=dbo.[COP_ORDER_D].[ORDER_NO]",
             plan.Sql);
-        Assert.Contains("[CONFIRM_TAG]=@rf", plan.Sql);
+        Assert.Contains("[APPROVED]=@rf", plan.Sql);
         Assert.Contains("[CLIENT_ID]=@dim", plan.Sql);
         Assert.Contains("([ORDER_DATE]>=@dim", plan.Sql);
         Assert.DoesNotContain("SELECT AMOUNT", plan.Sql, StringComparison.OrdinalIgnoreCase);
@@ -296,7 +296,7 @@ public sealed class ResolveMetricToolTests
     [Fact]
     public async Task Rejects_When_RowFilter_Column_Hidden_By_Field_Permission()
     {
-        // Master whitelist without CONFIRM_TAG: the row-filter column is not visible
+        // Master whitelist without APPROVED: the row-filter column is not visible
         // to this user, so computation must be refused.
         var definition = new WorkbenchDefinition(
             1405, "客户订单", "COP_ORDER_M", "COP_ORDER_D",

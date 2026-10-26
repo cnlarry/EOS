@@ -99,7 +99,7 @@ public sealed class MetricReconciliationTests
     /// <summary>人工口径 A 参考查询：明细含税金额合计，仅统计已批核主单。</summary>
     private static string ReferenceSql(string? clientEquals, string? dateRangePredicate)
     {
-        var conditions = new List<string> { "m.[CONFIRM_TAG] = 1" };
+        var conditions = new List<string> { "m.[APPROVED] = 1" };
         if (clientEquals is not null)
         {
             conditions.Add($"m.[CLIENT_ID] = '{clientEquals.Replace("'", "''")}'");
@@ -159,7 +159,7 @@ public sealed class MetricReconciliationTests
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             "SELECT TOP 1 m.[CLIENT_ID] FROM dbo.[COP_ORDER_M] m WITH (NOLOCK)" +
-            " WHERE m.[CLIENT_ID] IS NOT NULL AND m.[CONFIRM_TAG] = 1 ORDER BY m.[CLIENT_ID];", connection);
+            " WHERE m.[CLIENT_ID] IS NOT NULL AND m.[APPROVED] = 1 ORDER BY m.[CLIENT_ID];", connection);
         var client = await command.ExecuteScalarAsync() as string
             ?? throw new InvalidOperationException("库内没有已批核订单样本，无法抽样对账。");
 
@@ -181,7 +181,7 @@ public sealed class MetricReconciliationTests
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             "SELECT CONVERT(NCHAR(10), MIN(m.[ORDER_DATE]), 120), CONVERT(NCHAR(10), MAX(m.[ORDER_DATE]), 120)" +
-            " FROM dbo.[COP_ORDER_M] m WITH (NOLOCK) WHERE m.[CONFIRM_TAG] = 1;", connection);
+            " FROM dbo.[COP_ORDER_M] m WITH (NOLOCK) WHERE m.[APPROVED] = 1;", connection);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync() || reader.IsDBNull(0) || reader.IsDBNull(1))
         {
@@ -201,7 +201,7 @@ public sealed class MetricReconciliationTests
         AssertEqual(expected, actual);
     }
     private const string ApprovedJoin =
-        " JOIN dbo.[COP_ORDER_M] m ON m.[ORDER_TYPE]=d.[ORDER_TYPE] AND m.[ORDER_NO]=d.[ORDER_NO] WHERE m.[CONFIRM_TAG] = 1";
+        " JOIN dbo.[COP_ORDER_M] m ON m.[ORDER_TYPE]=d.[ORDER_TYPE] AND m.[ORDER_NO]=d.[ORDER_NO] WHERE m.[APPROVED] = 1";
 
     public static TheoryData<string, string> ConfirmedMetricReferences() => new()
     {
@@ -212,15 +212,15 @@ public sealed class MetricReconciliationTests
         { "account_receivable",
             "SELECT SUM(d.[AMOUNT_TAX]) FROM dbo.[COP_ACCOUNT_D] d" +
             " JOIN dbo.[COP_ACCOUNT_M] m ON m.[ACCOUNT_TYPE]=d.[ACCOUNT_TYPE] AND m.[ACCOUNT_NO]=d.[ACCOUNT_NO]" +
-            " WHERE m.[CONFIRM_TAG] = 1" },
+            " WHERE m.[APPROVED] = 1" },
         { "payment_amount",
             "SELECT SUM(d.[AMOUNT]) FROM dbo.[PUR_PAY_D] d" +
             " JOIN dbo.[PUR_PAY_M] m ON m.[PAY_TYPE]=d.[PAY_TYPE] AND m.[PAY_NO]=d.[PAY_NO]" +
-            " WHERE m.[CONFIRM_TAG] = 1" },
+            " WHERE m.[APPROVED] = 1" },
         { "purchase_amount",
             "SELECT SUM(d.[AMOUNT_TAX]) FROM dbo.[PUR_PURCHASE_D] d" +
             " JOIN dbo.[PUR_PURCHASE_M] m ON m.[PURCHASE_TYPE]=d.[PURCHASE_TYPE] AND m.[PURCHASE_NO]=d.[PURCHASE_NO]" +
-            " WHERE m.[CONFIRM_TAG] = 1" },
+            " WHERE m.[APPROVED] = 1" },
         { "employee_count", "SELECT COUNT(DISTINCT [EMP_ID]) FROM dbo.[HR_EMPLOYEE]" },
         { "inventory_qty", "SELECT SUM([QTY]) FROM dbo.[INV_PRO_DEPOT]" },
     };

@@ -20,11 +20,11 @@ public class ConditionTemplateParserTests
     [Fact]
     public void FixedSelectTemplate_ParsesToType2()
     {
-        var template = """{"logic":"AND","items":[{"field":"MOC_PRODUCE_M.CONFIRM_TAG","op":"EQ","value":"{p.CONFIRM}"}],"options":[{"label":"批核","value":"true"},{"label":"未批核","value":"false"}],"parameterName":"CONFIRM"}""";
+        var template = """{"logic":"AND","items":[{"field":"MOC_PRODUCE_M.APPROVED","op":"EQ","value":"{p.CONFIRM}"}],"options":[{"label":"批核","value":"true"},{"label":"未批核","value":"false"}],"parameterName":"CONFIRM"}""";
         var result = ConditionTemplateParser.TryParse(template, null, null);
         Assert.NotNull(result);
         Assert.Equal(2, result.Type);
-        Assert.Equal("MOC_PRODUCE_M.CONFIRM_TAG", result.Field);
+        Assert.Equal("MOC_PRODUCE_M.APPROVED", result.Field);
         Assert.Equal("CONFIRM", result.ParameterName);
         Assert.Equal(2, result.Options.Count);
         Assert.Equal("true", result.Options[0].Value);

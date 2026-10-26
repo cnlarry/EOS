@@ -212,8 +212,8 @@ public sealed class EffectFormulaExecutor
     /// other text marker to the empty string and a copied value to NULL; clear-refs
     /// resets SERIAL-like columns to 0 and empties the remaining reference columns;
     /// clear-refs-unfinish does the reference clearing and re-states the finish triple
-    /// the approve direction stamps (FINISHED_TAG 0, FINISHED_PERSON 'SYSTEM',
-    /// FINISHED_DATE now). Accumulation rows keep their own reverse (ACCUM/DEACCUM
+    /// the approve direction stamps (FINISHED 0, FINISHED_BY 'SYSTEM',
+    /// FINISHED_TIME now). Accumulation rows keep their own reverse (ACCUM/DEACCUM
     /// swap) because the clear kinds never apply to them.
     /// </summary>
     private static EffectOpPlan? ClearOp(EffectOpPlan op, string kind) =>
@@ -236,9 +236,9 @@ public sealed class EffectFormulaExecutor
         "clear-refs" => IsSerialColumn(op.TargetField) ? "0" : string.Empty,
         "clear-refs-unfinish" => op.TargetField.ToUpperInvariant() switch
         {
-            "FINISHED_TAG" => "0",
-            "FINISHED_PERSON" => "SYSTEM",
-            "FINISHED_DATE" => "SYSDATETIME",
+            "FINISHED" => "0",
+            "FINISHED_BY" => "SYSTEM",
+            "FINISHED_TIME" => "SYSDATETIME",
             _ => IsSerialColumn(op.TargetField) ? "0" : string.Empty,
         },
         _ => ClearFinishValue(op.Source),

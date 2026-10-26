@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { FormDefinition } from './formDefinition'
 import { formatFieldValue } from './fieldFormat'
 import { buildLifecycleGroups, type LifecycleFieldLike, type LifecycleGroup } from './lifecycleGroups'
+import { LIFECYCLE_KEYS, LIFECYCLE_PREFIXES } from './lifecycleKeys'
 
 /**
  * 单据生命周期信息在浏览态的两种呈现：
@@ -27,12 +28,12 @@ export function lifecycleCapabilities(
   const hasApprove = form.hasApproveCapability === false
     ? false
     : (form.hasApproveCapability ?? (form.hasWorkflow || form.hasStatelessApprove))
-      || fields.some(field => field.key.toUpperCase().startsWith('CONFIRM_'))
+      || fields.some(field => field.key.toUpperCase().startsWith(LIFECYCLE_PREFIXES.approved))
   const hasFinish = form.hasFinishCapability === false
     ? false
     : form.hasFinishCapability
-      ?? (fields.some(field => field.key.toUpperCase().startsWith('FINISHED_'))
-        || master?.FINISHED_TAG !== undefined)
+      ?? (fields.some(field => field.key.toUpperCase().startsWith(LIFECYCLE_PREFIXES.finished))
+        || master?.[LIFECYCLE_KEYS.finished] !== undefined)
   return { hasApprove, hasFinish }
 }
 
@@ -69,15 +70,15 @@ function statusTitle(text: string, person: string, date: string): string {
 export function LifecycleStatusBar({ form, master, flowInProgress = false }: LifecycleDisplayProps) {
   if (!master) return null
   const { hasApprove, hasFinish } = lifecycleCapabilities(form, master)
-  const showApprove = hasApprove && master.CONFIRM_TAG !== undefined
-  const showFinish = hasFinish && master.FINISHED_TAG !== undefined
+  const showApprove = hasApprove && master[LIFECYCLE_KEYS.approved] !== undefined
+  const showFinish = hasFinish && master[LIFECYCLE_KEYS.finished] !== undefined
   if (!showApprove && !showFinish) return null
 
   const groups = buildLifecycleGroups(form.lifecycleFields ?? [])
   const approveGroup = groups.find(group => group.key === 'approve')
   const closeGroup = groups.find(group => group.key === 'close')
-  const confirmed = master.CONFIRM_TAG === true
-  const finished = master.FINISHED_TAG === true
+  const confirmed = master[LIFECYCLE_KEYS.approved] === true
+  const finished = master[LIFECYCLE_KEYS.finished] === true
 
   const approveText = flowInProgress ? '审批中' : confirmed ? '已批核' : '未批核'
   const approveClass = flowInProgress

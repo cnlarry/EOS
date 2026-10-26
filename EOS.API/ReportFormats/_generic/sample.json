@@ -34,12 +34,12 @@
       "displayFormat": null
     },
     {
-      "key": "CREATE_PERSON",
+      "key": "CREATED_BY",
       "label": "制单人",
       "displayFormat": null
     },
     {
-      "key": "CONFIRM_PERSON",
+      "key": "APPROVED_BY",
       "label": "批核人",
       "displayFormat": null
     }
@@ -82,8 +82,8 @@
     "CLIENT_ID": "C001",
     "CLIENT_NAME": "深圳测试客户有限公司",
     "AMOUNT_TAX": 1240.0,
-    "CREATE_PERSON": "admin",
-    "CONFIRM_PERSON": "manager"
+    "CREATED_BY": "admin",
+    "APPROVED_BY": "manager"
   },
   "details": [
     {

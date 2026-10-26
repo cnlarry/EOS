@@ -217,11 +217,11 @@ export function BomProductListPage() {
     { id: 'ATTENTION', header: '注意事项', accessorFn: row => cellText(row, 'ATTENTION'), meta: { minWidth: 180 } },
     { id: 'REMARK', header: '备注', accessorFn: row => cellText(row, 'REMARK'), meta: { minWidth: 180 } },
     {
-      id: 'LAST_UPDATE_DATE',
+      id: 'MODIFIED_TIME',
       header: '最后修改',
-      accessorFn: row => cellText(row, 'LAST_UPDATE_DATE'),
+      accessorFn: row => cellText(row, 'MODIFIED_TIME'),
       meta: { minWidth: 170 },
-      cell: ({ row }) => formatDateTime(row.original.LAST_UPDATE_DATE),
+      cell: ({ row }) => formatDateTime(row.original.MODIFIED_TIME),
     },
     {
       // 操作列：右对齐、右侧冻结（横向滚动时不动）、宽度按按钮组自适应。

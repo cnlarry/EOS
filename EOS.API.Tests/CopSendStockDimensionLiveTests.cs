@@ -196,7 +196,7 @@ public sealed class CopSendStockDimensionLiveTests
             INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, SEQ_NO, STATUS)
                 VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A'),
                        (@Depot, @Bin, NULL, N'/A-BIN', N'BIN', N'维度测试货位', 1, N'A');
-            INSERT INTO dbo.COP_SEND_M (SEND_TYPE, SEND_NO, SEND_DATE, CREATE_DATE)
+            INSERT INTO dbo.COP_SEND_M (SEND_TYPE, SEND_NO, SEND_DATE, CREATED_TIME)
                 VALUES (@Type, @No, '2026-03-01', '2026-03-01');
             """, ("@Type", Type), ("@No", No), ("@Pro", Pro), ("@Depot", Depot), ("@Bin", Bin), ("@Unit", Unit));
 
@@ -252,7 +252,7 @@ public sealed class CopSendStockDimensionLiveTests
             ["master"] = new Dictionary<string, object?>
             {
                 ["typeField"] = "SEND_TYPE", ["noField"] = "SEND_NO",
-                ["dateField"] = "SEND_DATE", ["createDateField"] = "CREATE_DATE",
+                ["dateField"] = "SEND_DATE", ["createDateField"] = "CREATED_TIME",
             },
             ["detail"] = detail,
             ["product"] = new Dictionary<string, object?>
@@ -290,7 +290,7 @@ public sealed class CopSendStockDimensionLiveTests
         var columns = new HashSet<string>();
         foreach (var column in new[]
                  {
-                     "SEND_TYPE", "SEND_NO", "SEND_DATE", "CREATE_DATE", "PRO_NO", "QTY", "SPARE_QTY",
+                     "SEND_TYPE", "SEND_NO", "SEND_DATE", "CREATED_TIME", "PRO_NO", "QTY", "SPARE_QTY",
                      "BATCH_NO", "DEPOT_ID", "UNIT_ID", "SERIAL_NO", "LOCATION_NO",
                  })
             columns.Add("COP_SEND_M." + column);

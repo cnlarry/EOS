@@ -500,7 +500,7 @@ if ($newIds.Count -gt 0) {
 
 function Set-UnifiedFormAbility {
     param([string]$IdList, [int]$FormEnabled, [int]$EditEnabled)
-    Invoke-EosSqlNonQuery -Query "SET NOCOUNT ON; UPDATE dbo.MODULES SET UNIFIED_FORM_ENABLED = $FormEnabled, UNIFIED_FORM_EDIT_ENABLED = $EditEnabled, LAST_UPDATE_BY = 'auto-enable-batch', LAST_UPDATE_DATE = SYSDATETIME() WHERE M_IDX IN $IdList;" | Out-Null
+    Invoke-EosSqlNonQuery -Query "SET NOCOUNT ON; UPDATE dbo.MODULES SET UNIFIED_FORM_ENABLED = $FormEnabled, UNIFIED_FORM_EDIT_ENABLED = $EditEnabled, MODIFIED_BY = 'auto-enable-batch', MODIFIED_TIME = SYSDATETIME() WHERE M_IDX IN $IdList;" | Out-Null
 }
 
 function Restore-UnifiedFormAbility {
@@ -508,7 +508,7 @@ function Restore-UnifiedFormAbility {
     foreach ($line in $beforeState) {
         $parts = $line -split '\|'
         if ($parts.Count -lt 3) { continue }
-        Invoke-EosSqlNonQuery -Query "SET NOCOUNT ON; UPDATE dbo.MODULES SET UNIFIED_FORM_ENABLED = $([int]$parts[1]), UNIFIED_FORM_EDIT_ENABLED = $([int]$parts[2]), LAST_UPDATE_BY = 'auto-enable-batch', LAST_UPDATE_DATE = SYSDATETIME() WHERE M_IDX = $([int]$parts[0]);" | Out-Null
+        Invoke-EosSqlNonQuery -Query "SET NOCOUNT ON; UPDATE dbo.MODULES SET UNIFIED_FORM_ENABLED = $([int]$parts[1]), UNIFIED_FORM_EDIT_ENABLED = $([int]$parts[2]), MODIFIED_BY = 'auto-enable-batch', MODIFIED_TIME = SYSDATETIME() WHERE M_IDX = $([int]$parts[0]);" | Out-Null
     }
 }
 

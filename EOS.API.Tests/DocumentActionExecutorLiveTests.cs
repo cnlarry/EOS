@@ -92,7 +92,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             await using var command = new SqlCommand(
                 """
                 DELETE FROM dbo.SYS_USER_BUTTON_PERMISSION WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
-                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                INSERT INTO dbo.SYS_USER_BUTTON_PERMISSION (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATED_BY,CREATED_TIME,MODIFIED_BY,MODIFIED_TIME)
                 VALUES (@User,@ModuleId,@Key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
                 """, connection);
             command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;

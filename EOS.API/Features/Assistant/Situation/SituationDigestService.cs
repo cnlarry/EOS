@@ -145,7 +145,7 @@ public sealed class SituationDigestService(
                 moduleId, userId, execTag, canViewCost, canViewSecrecy, deniedMaster, deniedDetail, token);
             if (definition is null) continue;
             var keys = definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (!keys.Contains("CREATE_DATE") || !keys.Contains("CONFIRM_TAG")) continue;
+            if (!keys.Contains("CREATED_TIME") || !keys.Contains("APPROVED")) continue;
 
             scanned++;
             try
@@ -155,15 +155,15 @@ public sealed class SituationDigestService(
                 // 那类条目既不是"我手上压着什么"，也会把摘要位挤满。
                 var query = new WorkbenchQuery(
                 [
-                    new WorkbenchQueryCondition("CREATE_DATE", "lte", cutoff, null, null),
-                    new WorkbenchQueryCondition("CREATE_DATE", "gte", oldest, null, null),
-                    new WorkbenchQueryCondition("CONFIRM_TAG", "eq", "0", null, null),
+                    new WorkbenchQueryCondition("CREATED_TIME", "lte", cutoff, null, null),
+                    new WorkbenchQueryCondition("CREATED_TIME", "gte", oldest, null, null),
+                    new WorkbenchQueryCondition("APPROVED", "eq", "0", null, null),
                 ]);
                 var remaining = Math.Max(1, limits.DigestMaxItems - items.Count);
                 var data = await gateway.GetRowsAsync(
                     definition, detail: false, new Dictionary<string, string>(), page: 1,
                     pageSize: remaining, token, query: query,
-                    sortField: "CREATE_DATE", sortDirection: "desc",
+                    sortField: "CREATED_TIME", sortDirection: "desc",
                     dataFilter: permission.Rights.DataFilter);
                 foreach (var row in data.Items)
                 {
@@ -178,7 +178,7 @@ public sealed class SituationDigestService(
                         definition.Title,
                         budget.Clip(key, limits.MaxValueLength),
                         $"已录入 {ageDays} 天仍未批核（共 {data.Total} 条同类滞留）",
-                        row.TryGetValue("CREATE_DATE", out var created) ? created?.ToString() : null,
+                        row.TryGetValue("CREATED_TIME", out var created) ? created?.ToString() : null,
                         ageDays));
                 }
             }
@@ -212,7 +212,7 @@ public sealed class SituationDigestService(
                 moduleId, userId, execTag, canViewCost, canViewSecrecy, deniedMaster, deniedDetail, token);
             if (definition is null) continue;
             var keys = definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (!keys.Contains("CREATE_DATE") || !keys.Contains("CONFIRM_TAG")) continue;
+            if (!keys.Contains("CREATED_TIME") || !keys.Contains("APPROVED")) continue;
 
             scanned++;
             IReadOnlyList<DiagnosisBlockedRecord> blocked = [];
@@ -248,7 +248,7 @@ public sealed class SituationDigestService(
 
     private static int AgeDays(IReadOnlyDictionary<string, object?> row)
     {
-        if (!row.TryGetValue("CREATE_DATE", out var value) || value is null) return 0;
+        if (!row.TryGetValue("CREATED_TIME", out var value) || value is null) return 0;
         var text = value.ToString();
         if (!DateTime.TryParse(text, out var created)) return 0;
         var days = (int)(DateTime.UtcNow.Date - created.Date).TotalDays;

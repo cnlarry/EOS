@@ -50,7 +50,7 @@ internal sealed class InventoryReserveHandler : IDocumentUserAction
         await using (var command = new SqlCommand("""
             INSERT INTO dbo.INV_RESERVE
                 (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO, RESERVE_QTY, REASON, STATUS,
-                 CREATE_PERSON, CREATE_DATE)
+                 CREATED_BY, CREATED_TIME)
                 VALUES (@pro, @depot, @location, @batch, @sourceType, @sourceNo, @qty, @reason, N'A', @actor, GETDATE());
             """, context.Connection, context.Transaction))
         {

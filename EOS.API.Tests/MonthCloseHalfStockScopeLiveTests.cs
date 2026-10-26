@@ -56,7 +56,7 @@ public sealed class MonthCloseHalfStockScopeLiveTests : IAsyncLifetime
         await connection.OpenAsync();
         await CleanupAsync(connection);
         await ExecAsync(connection, """
-            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, CONFIRM_TAG, CREATE_PERSON, CREATE_DATE)
+            INSERT INTO dbo.INV_PRO_MONTH_M (MONTH_TYPE, MONTH_NO, MONTH_DATE, APPROVED, CREATED_BY, CREATED_TIME)
                 VALUES (@type, @no, @date, 1, N'ZZHS', GETDATE());
             """, ("@type", MonthType), ("@no", MonthNo), ("@date", ClosedOn));
     }
