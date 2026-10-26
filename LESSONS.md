@@ -1507,3 +1507,17 @@
   另注：`ATTACHMENT.KEY_VALUES nvarchar(4000)` 上的两个索引超出 1700 字节键长，建库时会打印"警告!"但索引仍建成功，
   属既有现象，不要误判成新库缺索引。
 
+
+### L129 appsettings.json 是**严格 JSON**：加注释会让"架构守卫用例"红，而配置加载器自己不会报
+
+- **触发／症状**：给 `EOS.API/appsettings.json` 的新配置段加了两行 `//` 说明（`opencode.jsonc` 那种写法很顺手），
+  `dotnet run` 启动一切正常、配置也读得到，但离线全量测试里
+  `StaticArchitectureGuardTests.统一表单能力只有一处真源` 抛 `JsonException` 失败——
+  它用 `JsonDocument.Parse(File.ReadAllText("appsettings.json"))` **严格解析**，不接受注释与尾逗号。
+- **根因**：两套解析器口径不同。`Microsoft.Extensions.Configuration.Json` 允许注释（`JsonCommentHandling.Skip`），
+  所以运行时毫无征兆；而测试里的 `JsonDocument.Parse` 用默认选项，注释即语法错误。
+  于是"改配置"看起来只影响启动路径，实际还牵着一个架构守卫用例。
+- **处置**：`appsettings.json` 里不写注释——说明写进**绑定用的 Options 类**（XML 注释）与
+  [75-部署与环境配置](./docs/guide/75-部署与环境配置.md) 第三节的配置项清单。
+- **防线**：往 `appsettings.json` 加段之前先想"这段要不要给人看"，要就同时改 75 篇；
+  改完跑一次 `dotnet test --filter "Category!=Integration"`，别只跑 `dotnet run`。

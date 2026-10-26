@@ -323,8 +323,31 @@ builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IAssistantS
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.AssistantRuntimeRegistry>();
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>(sp =>
     sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.AssistantRuntimeRegistry>());
-builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IChatModel,
-    EOS.API.Features.Assistant.ModelAccess.ResolvingChatModel>();
+// 模型接入的**录制装饰器**：部署期诊断开关（appsettings 的 AssistantTranscript 段，默认关）。
+// 关着时这层根本不存在（不是运行期 if），打开时把真实回合录成 JSON，供引擎 parity 使用——
+// 库内会话只能重建问答正文与工具摘要，拿不到流式分片、多轮工具的真实轮次边界与系统提示词快照。
+builder.Services.Configure<EOS.API.Features.Assistant.Recording.AssistantTranscriptSettings>(
+    builder.Configuration.GetSection(EOS.API.Features.Assistant.Recording.AssistantTranscriptSettings.SectionName));
+builder.Services.AddScoped<EOS.API.Features.Assistant.Recording.AssistantTranscriptRecorder>(sp =>
+    new EOS.API.Features.Assistant.Recording.AssistantTranscriptRecorder(
+        sp.GetRequiredService<
+            Microsoft.Extensions.Options.IOptions<EOS.API.Features.Assistant.Recording.AssistantTranscriptSettings>>(),
+        // 内容根在这里取：录制器不依赖 IHostEnvironment，测试里可以直接给一个临时目录。
+        builder.Environment.ContentRootPath,
+        sp.GetRequiredService<ILogger<EOS.API.Features.Assistant.Recording.AssistantTranscriptRecorder>>()));
+builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.ResolvingChatModel>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IChatModel>(sp =>
+{
+    var inner = sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.ResolvingChatModel>();
+    var transcript = sp.GetRequiredService<
+        Microsoft.Extensions.Options.IOptions<EOS.API.Features.Assistant.Recording.AssistantTranscriptSettings>>().Value;
+
+    return transcript.Enabled
+        ? new EOS.API.Features.Assistant.Recording.RecordingChatModel(
+            inner,
+            sp.GetRequiredService<EOS.API.Features.Assistant.Recording.AssistantTranscriptRecorder>())
+        : (EOS.API.Features.Assistant.ModelAccess.IChatModel)inner;
+});
 builder.Services.AddScoped<EOS.API.Data.IAssistantRepository, EOS.API.Data.AssistantRepository>();
 // 管理侧会话仓储（跨用户，菜单组 31 / 3101，见 ADR-030）：与个人侧并存，语义互不影响
 builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantAdminRepository, EOS.API.Data.Assistant.AssistantAdminRepository>();
