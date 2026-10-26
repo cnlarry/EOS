@@ -48,6 +48,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="EOS.API.Tests" />
+    <!-- 影子运行（EOS.Shadow，不进 solution）要用 ChatService.FinalRoundInstruction 这类内部常量，
+         以保证它和产品用的是同一段提示词，而不是抄一份。 -->
+    <InternalsVisibleTo Include="EOS.Shadow" />
   </ItemGroup>
 
   <!-- 产品版本唯一真源：仓库根 version.json（前端 vite 配置、发布标签、CHANGELOG 同源）。

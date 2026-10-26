@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    影子运行（P2 读路径灰度的证据面）：在 EOS 的真实容器里取 31 个真实工具与真实模型，
+    用 Agent Harness 的 MafAgentEngine 跑一轮**只读**对话，打印工具调用序列与耗时。
+
+    依赖形态：Agent Harness 以 **git submodule** 钉在 third_party/agent-harness，
+    版本由 submodule 的 commit 决定（当前 = v0.1.0）。于是：
+      · 克隆后要初始化子模块（见 docs/guide/02 与 06 篇），CI 的 checkout 打开 submodules: recursive；
+      · 升级 Harness 是一次"改 submodule 指针"的提交，可回退、可审计。
+
+    它仍然**不改请求路径**：只是"同一个容器、同一批工具、另一套引擎"的旁路运行，
+    不接管 HTTP 端点，也不写业务表（只读工具内部也只读）。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>EOS.Shadow</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- 需要临时指到另一份 Harness 源码时用 -p:AgentHarnessRoot=<路径> 覆盖。 -->
+    <AgentHarnessRoot Condition="'$(AgentHarnessRoot)' == ''">$(MSBuildThisFileDirectory)..\third_party\agent-harness</AgentHarnessRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EOS.API\EOS.API.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(AgentHarnessRoot)\src\Agent.Harness.Abstractions\Agent.Harness.Abstractions.csproj" />
+    <ProjectReference Include="$(AgentHarnessRoot)\src\Agent.Harness.Core\Agent.Harness.Core.csproj" />
+    <ProjectReference Include="$(AgentHarnessRoot)\src\Agent.Harness.Maf\Agent.Harness.Maf.csproj" />
+  </ItemGroup>
+
+</Project>
