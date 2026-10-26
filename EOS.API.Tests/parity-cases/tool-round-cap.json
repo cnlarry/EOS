@@ -1,0 +1,62 @@
+{
+  "name": "tool-round-cap",
+  "modelName": "parity-model",
+  "systemPrompt": "你是企业管理系统里的助手。",
+  "userInput": "一直查下去，直到查不出来为止",
+  "maxToolRounds": 2,
+  "note": "工具轮上限：两边都是「N 轮工具 + N+1 次模型调用」，最后一轮都不下发工具声明（MAF 的 FunctionInvokingChatClient 同样会撤）。旧引擎在收尾轮额外追加一条 System 说明，MAF 侧由 MafAgentEngineOptions.FinalRoundInstruction 提供同一段文本——本用例把它抄在这里，EOS 侧测试断言与 ChatService.FinalRoundInstruction 逐字相同。",
+  "finalRoundInstruction": "本轮是最后一步：不能再调用任何工具，也不要输出工具调用的标记。请直接用文字给出结论；若现有信息不足以得出结论，就说明你已经查到什么、还缺什么、以及用户下一步可以怎么做（换一种问法、指明时间范围或单据，或去哪个页面自己看）。",
+  "tools": [
+    {
+      "name": "search_records",
+      "description": "[READ] 按关键字检索业务记录",
+      "parametersJson": "{\"type\":\"object\",\"properties\":{\"keyword\":{\"type\":\"string\",\"description\":\"客户名或单号关键字\"}},\"required\":[\"keyword\"]}",
+      "risk": "read",
+      "readOnly": true,
+      "resultContent": "module=1606(客户订单) total=0 shown=0",
+      "ok": true
+    }
+  ],
+  "calls": [
+    {
+      "output": [
+        {
+          "toolCallDeltas": [
+            {
+              "index": 0,
+              "id": "call-a",
+              "name": "search_records",
+              "argumentsFragment": "{\"keyword\":\"DD2608\"}"
+            }
+          ],
+          "finishReason": "tool_calls"
+        }
+      ]
+    },
+    {
+      "output": [
+        {
+          "toolCallDeltas": [
+            {
+              "index": 0,
+              "id": "call-b",
+              "name": "search_records",
+              "argumentsFragment": "{\"keyword\":\"DD2609\"}"
+            }
+          ],
+          "finishReason": "tool_calls"
+        }
+      ]
+    },
+    {
+      "output": [
+        {
+          "contentDelta": "已经查了两轮都没有结果，建议换个单号或指明时间范围。"
+        },
+        {
+          "finishReason": "stop"
+        }
+      ]
+    }
+  ]
+}

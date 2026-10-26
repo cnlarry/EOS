@@ -1,0 +1,53 @@
+{
+  "name": "single-tool-search",
+  "modelName": "parity-model",
+  "systemPrompt": "你是企业管理系统里的助手。",
+  "userInput": "帮我找单号 DD2608 的订单",
+  "maxToolRounds": 4,
+  "note": "单工具：一次 tool_call → 结果回喂 → 最终答复。模型输出按真实供应商的形状脚本化：正文、usage、finishReason 各占一帧（旧引擎遇到带 usage 的帧会 continue，正文与 finishReason 都会被跳过）。",
+  "tools": [
+    {
+      "name": "search_records",
+      "description": "[READ] 按关键字检索业务记录",
+      "parametersJson": "{\"type\":\"object\",\"properties\":{\"keyword\":{\"type\":\"string\",\"description\":\"客户名或单号关键字\"}},\"required\":[\"keyword\"]}",
+      "risk": "read",
+      "readOnly": true,
+      "resultContent": "module=1606(客户订单) total=1 shown=1\n- _keys=[\"DD26080160\"] 单号=DD26080160",
+      "ok": true
+    }
+  ],
+  "calls": [
+    {
+      "output": [
+        {
+          "toolCallDeltas": [
+            {
+              "index": 0,
+              "id": "call-1",
+              "name": "search_records",
+              "argumentsFragment": "{\"keyword\":\"DD2608\"}"
+            }
+          ],
+          "finishReason": "tool_calls"
+        }
+      ]
+    },
+    {
+      "output": [
+        {
+          "contentDelta": "找到客户订单 DD26080160。"
+        },
+        {
+          "usage": {
+            "promptTokens": 50,
+            "completionTokens": 10,
+            "elapsedMs": 200
+          }
+        },
+        {
+          "finishReason": "stop"
+        }
+      ]
+    }
+  ]
+}
