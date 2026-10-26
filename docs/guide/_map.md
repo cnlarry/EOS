@@ -8,6 +8,19 @@
 
 新增文档必须在此登记，否则检测脚本扫不到它。
 
+**怎么读「落后」**：脚本比的是「该篇最后一次提交」与「其映射源码最后一次提交」。所以**落后 ≠ 内容过时**——
+映射里有大目录（`EOS.API/Data`、`EOS.API/Errors`、`db`、`EOS.API/Data/Migrations` 等）时，
+任何一次不改变该篇所述行为的改动都会把它顶成红。判定顺序：
+
+1. 看落后源是什么改动（`git log -1 -- <源码路径>`），是不是**改了这一篇写的口径**；
+2. 改了口径 ⇒ 更新该篇（含示例、字段名、错误码、响应形状）；
+3. 只是内部重构 / 新迁移脚本 / 无关模块 ⇒ **把映射收窄到"真正定义该篇所述行为的文件"**，
+   不要靠重提交文档把红顶绿（那会让下次的红失去意义）；
+4. 收窄不了的（例如 05 篇的映射本就是"迁移目录"）就让它红——它是提醒，不是门禁。
+
+**同族的两个生成索引**（`_index/scripts.md`、`_index/adrs.md`）不吃这套：它们由脚本生成、
+带指纹校验，落后必须重跑生成器，见 [06-测试与质量门禁](./06-测试与质量门禁.md)。
+
 | 文档 | 状态 | 源码路径 |
 |---|---|---|
 | 00-术语表.md | 已完成 | - |
@@ -45,4 +58,4 @@
 | 72-导入与导出.md | 已完成 | EOS.API/Controllers/ImportController.cs, EOS.API/Features/Import, EOS.API/Data/RecordPayloadValidator.cs, EOS.Web/src/features/import |
 | 73-作业与调度.md | 已完成 | EOS.API/Controllers/JobsController.cs, EOS.API/Services/ReportInboxScheduler.cs, EOS.API/Data/ReportInboxRepository.cs, EOS.API/Controllers/ReportInboxController.cs, EOS.Web/src/features/jobs |
 | 74-搜索中心.md | 已完成 | EOS.API/Controllers/SearchCenterController.cs, EOS.API/Data/SearchCenterRepository.cs, EOS.Web/src/features/search-center |
-| 75-部署与环境配置.md | 已完成 | EOS.API/appsettings.json, EOS.API/Program.cs, EOS.API/Health, EOS.API/Data/ErpDatabaseInitializer.cs, EOS.API/Services/ReportInboxScheduler.cs, EOS.API/Security/SameOriginGuardMiddleware.cs, db |
+| 75-部署与环境配置.md | 已完成 | EOS.API/appsettings.json, EOS.API/Program.cs, EOS.API/Health, EOS.API/Data/ErpDatabaseInitializer.cs, EOS.API/Services/ReportInboxScheduler.cs, EOS.API/Security/SameOriginGuardMiddleware.cs, db/README.md |
