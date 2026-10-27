@@ -49,7 +49,8 @@ function settingItem(overrides: Partial<Record<string, unknown>> = {}) {
 /** 分组顺序由服务端给；空分组不渲染（目录按批生长，先占号的域此刻可能还没有参数行）。 */
 const SETTINGS_GROUPS = [{ code: 'GOVERNANCE', label: '成本与熔断', seq: 50 }]
 
-function installFetchMock(options: { items?: unknown[]; problems?: string[]; failKeys?: string[] } = {}) {
+function installFetchMock(
+  options: { items?: unknown[]; groups?: unknown[]; problems?: string[]; failKeys?: string[] } = {}) {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -63,7 +64,7 @@ function installFetchMock(options: { items?: unknown[]; problems?: string[]; fai
     if (url.includes('/admin/assistant/settings')) {
       if (method === 'GET') {
         return jsonResponse({
-          groups: SETTINGS_GROUPS,
+          groups: options.groups ?? SETTINGS_GROUPS,
           items: options.items ?? [
             settingItem(),
             settingItem({
@@ -121,8 +122,10 @@ describe('AssistantSettingsPage', () => {
 
     renderPage()
 
-    expect(await screen.findByText('每人日上限（元）')).toBeInTheDocument()
-    expect(screen.getByText('系统提示词')).toBeInTheDocument()
+    // 右栏顶部那行 sticky 也可能出现同一个名字（滚动后显示"当前读到哪一项"），
+    // 所以按**标题**找设置项那一行，别按文本找
+    expect(await screen.findByRole('heading', { name: '每人日上限（元）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '系统提示词' })).toBeInTheDocument()
     // 改过的项要标出来，否则看不出"哪些不是默认的了"，也就无从判断能不能恢复
     expect(screen.getByText('已改过')).toBeInTheDocument()
     // 3 项里有 1 项被改过，其余两项应当是"默认值"徽标。
@@ -199,15 +202,15 @@ describe('AssistantSettingsPage', () => {
     installFetchMock()
 
     renderPage()
-    await screen.findByText('每人日上限（元）')
+    await screen.findByRole('heading', { name: '每人日上限（元）' })
 
     const body = document.querySelector('.erp-assistant-settings-body') as HTMLElement | null
     expect(body).not.toBeNull()
     // 命令栏（保存/刷新）与页头必须在滚动容器**之外**：否则往下滚就找不着保存按钮了
     expect(body!.querySelector('.erp-list-command-bar')).toBeNull()
     expect(body!.querySelector('.card-header')).toBeNull()
-    expect(within(body!).getByText('系统提示词')).toBeInTheDocument()
-    expect(within(body!).getByText('会话结束自动提炼记忆')).toBeInTheDocument()
+    expect(within(body!).getByRole('heading', { name: '系统提示词' })).toBeInTheDocument()
+    expect(within(body!).getByRole('heading', { name: '会话结束自动提炼记忆' })).toBeInTheDocument()
   })
 
   it('恢复默认走 DELETE（服务端删掉覆盖行，而不是存空串）', async () => {
@@ -255,5 +258,87 @@ describe('AssistantSettingsPage', () => {
 
     expect(await screen.findByText(/项设置没有生效/)).toBeInTheDocument()
     expect(screen.getByText(/不是大于 0 的数字/)).toBeInTheDocument()
+  })
+
+  it('左导航按域列出，当前域高亮；点另一域即切过去，右栏顶部跟着指到该域', async () => {
+    installFetchMock({
+      groups: [
+        { code: 'PROMPT', label: '提示词', seq: 10 },
+        { code: 'GOVERNANCE', label: '成本与熔断', seq: 50 },
+      ],
+      items: [
+        settingItem({
+          key: 'SYSTEM_PROMPT', displayName: '系统提示词', groupCode: 'PROMPT', seqNo: 10,
+          valueType: 'string', unit: null, rangeHint: '', consumers: ['SystemPrompt'],
+          defaultValue: '你是 EOS ERP 的工作助手。',
+        }),
+        settingItem(),
+      ],
+    })
+
+    renderPage()
+
+    const nav = await screen.findByRole('navigation', { name: '设置分组' })
+    // 没滚动过时停在第一节；域清单与顺序都由服务端给
+    expect(within(nav).getByRole('button', { name: /提示词/ })).toHaveAttribute('aria-current', 'true')
+    expect(within(nav).getByRole('button', { name: /成本与熔断/ })).not.toHaveAttribute('aria-current')
+
+    fireEvent.click(within(nav).getByRole('button', { name: /成本与熔断/ }))
+
+    expect(within(nav).getByRole('button', { name: /成本与熔断/ })).toHaveAttribute('aria-current', 'true')
+    expect(within(nav).getByRole('button', { name: /提示词/ })).not.toHaveAttribute('aria-current')
+    // 右栏顶部那行 sticky 是"读到哪一项"的答案，切域后必须跟着变
+    const now = document.querySelector('.erp-assistant-settings-now') as HTMLElement
+    expect(now.textContent).toContain('成本与熔断')
+  })
+
+  it('未保存的改动会在左侧对应域上点一颗点，不用滚遍全页去找', async () => {
+    installFetchMock()
+
+    renderPage()
+    const input = await screen.findByLabelText('每人日上限（元）')
+    const nav = screen.getByRole('navigation', { name: '设置分组' })
+    const governance = within(nav).getByRole('button', { name: /成本与熔断/ })
+    // 改之前：这一域里有一项已改过（提示词），所以点已经在了，但它是"已生效"的那种
+    const before = governance.querySelector('.erp-assistant-settings-nav-dot')
+    expect(before).not.toBeNull()
+    expect(before!.classList.contains('is-saved')).toBe(true)
+
+    fireEvent.change(input, { target: { value: '9' } })
+
+    // 有了没保存的改动，点必须变成"待保存"——这一域现在有活没干完
+    const after = governance.querySelector('.erp-assistant-settings-nav-dot')
+    expect(after).not.toBeNull()
+    expect(after!.classList.contains('is-saved')).toBe(false)
+  })
+
+  it('左导航 + 右配置在同一张卡片体里，滚动只发生在右栏（命令栏与页头不进滚动区）', async () => {
+    installFetchMock()
+
+    renderPage()
+    await screen.findByRole('heading', { name: '每人日上限（元）' })
+
+    const body = document.querySelector('.erp-assistant-settings-body') as HTMLElement | null
+    expect(body).not.toBeNull()
+    expect(body!.querySelector('.erp-assistant-settings-nav')).not.toBeNull()
+
+    const pane = body!.querySelector('.erp-assistant-settings-pane') as HTMLElement | null
+    expect(pane).not.toBeNull()
+    expect(within(pane!).getByRole('heading', { name: '每人日上限（元）' })).toBeInTheDocument()
+    // 保存按钮所在的命令栏与页头都在滚动容器之外：往下滚也不会找不着保存
+    expect(body!.querySelector('.erp-list-command-bar')).toBeNull()
+    expect(body!.querySelector('.card-header')).toBeNull()
+  })
+
+  it('作用域覆盖也在左导航里占一条——它同样是"一块要能跳到"的配置', async () => {
+    installFetchMock()
+
+    renderPage()
+
+    const nav = await screen.findByRole('navigation', { name: '设置分组' })
+    fireEvent.click(within(nav).getByRole('button', { name: /按用户 \/ 按模块覆盖/ }))
+
+    expect(within(nav).getByRole('button', { name: /按用户 \/ 按模块覆盖/ }))
+      .toHaveAttribute('aria-current', 'true')
   })
 })
