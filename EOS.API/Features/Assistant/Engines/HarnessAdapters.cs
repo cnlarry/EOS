@@ -1,7 +1,9 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Agent.Harness.Abstractions;
 using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Tools;
+using Microsoft.Extensions.Logging;
 using EosChatModel = EOS.API.Features.Assistant.ModelAccess.IChatModel;
 using EosCompletedCall = EOS.API.Features.Assistant.ModelAccess.CompletedToolCall;
 using EosDelta = EOS.API.Features.Assistant.ModelAccess.ChatDelta;
@@ -26,8 +28,19 @@ namespace EOS.API.Features.Assistant.Engines;
 /// **授权不在这里**：EOS 的工具实现内部按 <c>userId</c> 重新授权（EXEC_TAG / DATA_FILTER / 字段隐藏
 /// 全在工具内部生效），这正是"<c>IToolPolicy</c> 只是执行前门禁、不是权限依据"的落地方式。
 /// </para>
+///
+/// <para>
+/// 但 EOS 工具依赖的两个**服务端注入**必须在这里补齐：页面处境（当前单据/未保存字段）与
+/// 本次调用身份（会话 + <c>CallId</c>，写入类动作据此推导幂等键）。模型既看不到也无从伪造它们。
+/// </para>
 /// </summary>
-internal sealed class EosToolAdapter(IAssistantTool tool, string userId) : ITool
+internal sealed class EosToolAdapter(
+    IAssistantTool tool,
+    string userId,
+    long sessionId,
+    PageContext? pageContext,
+    int digestLength,
+    ILogger logger) : ITool
 {
     public ToolDescriptor Descriptor { get; } = new(
         Name: tool.Name,
@@ -42,14 +55,61 @@ internal sealed class EosToolAdapter(IAssistantTool tool, string userId) : ITool
         ToolInvocation invocation,
         CancellationToken cancellationToken = default)
     {
-        var result = await tool
-            .ExecuteAsync(userId, invocation.Arguments, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            // 模型给出的参数不是合法 JSON：工具一行都不执行，回喂一句可执行的改正提示。
+            // 摘要用稳定标记，事后能按它检索"模型产出了坏参数"这一类问题。
+            if (invocation.Arguments.ValueKind == JsonValueKind.Object
+                && invocation.Arguments.TryGetProperty(
+                    Agent.Harness.Maf.ChatModelChatClient.InvalidArgumentsKey, out _))
+            {
+                logger.LogWarning(
+                    "助手工具参数非法 session={SessionId} tool={Tool} args={Arguments}",
+                    sessionId, tool.Name, Truncate(invocation.Arguments.GetRawText(), 200));
+                return ToolResult.Deny("工具参数格式错误，请修正后重试。", "error:invalid_arguments");
+            }
 
-        return result.Ok
-            ? ToolResult.Success(result.ContentForModel)
-            : ToolResult.Deny(result.ContentForModel);
+            if (tool is IPageContextTool aware && pageContext is not null && !pageContext.IsEmpty)
+            {
+                aware.UsePageContext(pageContext);
+            }
+
+            if (tool is IToolCallContextTool callAware)
+            {
+                // MAF 的 CallId 是幂等键的唯一服务端来源。为空只可能是引擎接线故障，
+                // 此时用一次性标识兜底：宁可这次写入不能重放，也不能让两次调用共用同一个键。
+                callAware.UseToolCallContext(
+                    sessionId,
+                    string.IsNullOrEmpty(invocation.CallId) ? Guid.NewGuid().ToString("N") : invocation.CallId);
+            }
+
+            var result = await tool
+                .ExecuteAsync(userId, invocation.Arguments, cancellationToken)
+                .ConfigureAwait(false);
+
+            logger.LogInformation(
+                "助手工具执行 session={SessionId} tool={Tool} ok={Ok}", sessionId, tool.Name, result.Ok);
+
+            return new ToolResult(
+                result.Ok, result.ContentForModel, result.Draft, Truncate(result.ContentForModel, digestLength));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "助手工具参数非法 session={SessionId} tool={Tool}", sessionId, tool.Name);
+            return ToolResult.Deny("工具参数格式错误，请修正后重试。", "error:invalid_arguments");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "助手工具异常 session={SessionId} tool={Tool}", sessionId, tool.Name);
+            return ToolResult.Deny("工具执行出现内部错误，请换一种问法或稍后重试。", "error:exception");
+        }
     }
+
+    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 
     private static ToolRisk ToRisk(AssistantToolRisk risk) => risk switch
     {
@@ -70,6 +130,12 @@ internal sealed class EosToolAdapter(IAssistantTool tool, string userId) : ITool
 /// </summary>
 internal sealed class EosChatModelAdapter(EosChatModel inner) : HarnessChatModel
 {
+    /// <summary>
+    /// 各次模型调用的耗时之和。Harness 的用量事件不带耗时（MAF 的 UsageDetails 只有 token），
+    /// 而 EOS 的落库列要它；这里在类型转换时顺手累加，供宿主取用。
+    /// </summary>
+    public int ElapsedMs { get; private set; }
+
     public string ModelName => inner.ModelName;
 
     public bool IsConfigured => inner.IsConfigured;
@@ -88,6 +154,11 @@ internal sealed class EosChatModelAdapter(EosChatModel inner) : HarnessChatModel
             .StreamAsync(eosMessages, eosTools, cancellationToken)
             .ConfigureAwait(false))
         {
+            if (delta.Usage is not null)
+            {
+                ElapsedMs += delta.Usage.ElapsedMs;
+            }
+
             yield return ToHarnessDelta(delta);
         }
     }
@@ -142,9 +213,9 @@ internal static class EosMessageMapper
 /// 引擎执行前的策略门禁：**全放行**。
 ///
 /// <para>
-/// 这不是放松权限：EOS 的授权在工具内部（按当前用户重新判定），
+/// 这不是放松权限：EOS 的授权在工具内部（按当前用户重新判定，写类动作还走统一表单的既有写管线），
 /// <see cref="IToolPolicy"/> 在架构上只是"执行前门禁"，不是权限依据。
-/// 真正的灰度闸门是 <c>ReadOnlyToolsOnly</c>（只暴露只读工具）。
+/// 不可代理的批核族在 EOS 侧根本没有注册项，因此也不存在"这里放行就等于允许"的东西。
 /// </para>
 /// </summary>
 internal sealed class AllowAllToolPolicy : IToolPolicy

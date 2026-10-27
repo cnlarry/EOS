@@ -69,10 +69,12 @@ public sealed class ChatToolOrchestrationTests
         }
     }
 
-    /// <summary>可编程的受控工具：记录收到的参数，返回预设结果。</summary>
-    private sealed class StubTool(string resultContent) : IAssistantTool
+    /// <summary>可编程的受控工具：记录收到的参数与调用身份，返回预设结果。</summary>
+    private sealed class StubTool(string resultContent) : IAssistantTool, IToolCallContextTool
     {
         public List<(string UserId, JsonElement Args)> Calls { get; } = [];
+
+        public List<(long ConversationId, string ToolCallId)> ToolCallContexts { get; } = [];
 
         public string Name => SearchRecordsTool.ToolName;
 
@@ -87,6 +89,9 @@ public sealed class ChatToolOrchestrationTests
             Calls.Add((userId, arguments.Clone()));
             return Task.FromResult(ToolExecutionResult.Success(resultContent));
         }
+
+        public void UseToolCallContext(long conversationId, string toolCallId)
+            => ToolCallContexts.Add((conversationId, toolCallId));
     }
 
     private sealed class FakeRepository : IAssistantRepository
@@ -231,6 +236,23 @@ public sealed class ChatToolOrchestrationTests
         Assert.Empty(tool.Calls); // 非法 JSON 不进入工具执行
         Assert.Equal("error:invalid_arguments", events.OfType<ChatStreamEvent.Completed>().Single().ToolCalls![0].ResultDigest);
         Assert.Single(repo.AssistantSaved);
+    }
+
+    [Fact]
+    public async Task Tool_Call_Identity_Is_Injected_From_Engine_CallId()
+    {
+        var (service, _, _, tool) = Create(
+            new ModelRound(ToolCalls:
+                [new CompletedToolCall("call-abc", SearchRecordsTool.ToolName, """{"keyword":"DD2608"}""")]),
+            new ModelRound(Text: "完成。"));
+
+        await CollectAsync(service.StreamReplyAsync("u1", 7, "写入", null, "corr", CancellationToken.None));
+
+        // 写入类工具的服务端幂等键只从这次调用身份推导（会话 + 引擎给的 CallId）：
+        // 注不进去，工具按设计**拒绝执行**，所以这条注入链断了就等于写路径不可用。
+        var context = Assert.Single(tool.ToolCallContexts);
+        Assert.Equal(7, context.ConversationId);
+        Assert.Equal("call-abc", context.ToolCallId);
     }
 
     [Fact]

@@ -149,8 +149,7 @@ public sealed class ChatService(
     FailureBreaker? breaker = null,
     AssistantSituationService? situation = null,
     IAssistantEffectiveParameters? effectiveParameters = null,
-    // 灰度开关（AssistantEngine:Kind）与引擎日志工厂：都是**部署期**的东西，不是业务配置。
-    IConfiguration? configuration = null,
+    // 引擎内部的日志工厂（模型调用、工具执行）；只在部署期给定，不是业务配置。
     ILoggerFactory? loggerFactory = null)
 {
     // 用量账与记忆提炼是**准备段与循环段共用**的副作用，单独成类后只有一个入口：
@@ -343,266 +342,19 @@ public sealed class ChatService(
             yield break;
         }
 
-        var toolLog = new List<ToolCallSummary>();
-        var drafts = new List<object>();
-        var totalPromptTokens = 0;
-        var totalCompletionTokens = 0;
-        var totalElapsedMs = 0;
-        var anyEstimated = false;
-
         var scope = new TurnScope(
             userId, sessionId, correlationId, settings, snapshot.Policy, chat,
             trimmedHistory, dayStart, reserveMicro);
 
-        // 读路径灰度：**每请求读一次**配置，改配置即回滚，不需要重启（对齐 EffectEngine:Enabled 的口径）。
-        if (IsMafEngineEnabled())
+        // 引擎只负责"模型 + 工具循环"；准备段（上下文、预算）与收尾段（落库、结算、记忆）都在本类，
+        // 换引擎不换账本。
+        await foreach (var evt in StreamViaMafAsync(scope, messages, pageContext, token))
         {
-            await foreach (var evt in StreamViaMafAsync(scope, messages, token))
-            {
-                yield return evt;
-            }
-
-            yield break;
-        }
-
-        for (int round = 0; round <= chat.MaxToolRounds; round++)
-        {
-            var isFinalRound = round == chat.MaxToolRounds; // 上限轮强制纯文本收尾
-
-            var textBuilder = new StringBuilder();
-            // 还没下发给客户端的正文尾部：见下面"可能是工具调用标记"的按住处理
-            var heldTail = new StringBuilder();
-            var callMap = new SortedDictionary<int, ToolCallAccumulator>();
-            ModelAccess.ChatUsage? usage = null;
-            string? finishReason = null;
-            Exception? streamError = null;
-
-            // 收尾轮不再下发工具：不把这句话说在前面，模型会把"还想再查一次"写成正文里的调用标记
-            // （见 FinalRoundInstruction），这一轮就白跑了。
-            if (isFinalRound)
-            {
-                messages.Add(new ChatMessage(ChatRole.System, FinalRoundInstruction));
-            }
-
-            var enumerator = model.StreamAsync(
-                messages,
-                isFinalRound ? null : toolRegistry.Definitions,
-                token).GetAsyncEnumerator(token);
-            while (true)
-            {
-                ChatDelta? delta = null;
-                try
-                {
-                    if (!await enumerator.MoveNextAsync()) break;
-                    delta = enumerator.Current;
-                }
-                catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                {
-                    // 调用方没取消，而这里被取消：只有模型层的超时 CTS 会这么做（两者的 token 是链接的）。
-                    // 把它并入"用户主动停止"是错的——那会静默丢掉一次本该说出口的超时。
-                    streamError = new AssistantModelException(
-                        AssistantModelErrorKind.Timeout, "模型服务响应超时。");
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    // 客户端断开/主动停止：半截回复不落库；已预留额度按 0 释放（取消不计失败）。
-                    await _ledger.SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    streamError = ex;
-                    break;
-                }
-
-                if (delta is null) break;
-
-                if (delta.Usage is not null)
-                {
-                    usage = delta.Usage;
-                    continue;
-                }
-
-                // 推理内容只透传展示，不落库也不回喂（见 ChatStreamEvent.Reasoning 的说明）
-                if (!string.IsNullOrEmpty(delta.ReasoningDelta))
-                {
-                    yield return new ChatStreamEvent.Reasoning(delta.ReasoningDelta!);
-                }
-
-                if (!string.IsNullOrEmpty(delta.ContentDelta))
-                {
-                    textBuilder.Append(delta.ContentDelta);
-                    heldTail.Append(delta.ContentDelta);
-                    // 工具调用只该走结构化通道，模型偶尔会把它写进正文（见 ToolCallTextGuard）。
-                    // 标记不是回答：从"可能是标记开头"的那个 '<' 起按住，确认不是标记的部分才下发。
-                    var tail = heldTail.ToString();
-                    var holdFrom = ToolCallTextGuard.PossibleMarkupStart(tail, 0);
-                    if (holdFrom > 0)
-                    {
-                        yield return new ChatStreamEvent.Delta(tail[..holdFrom]);
-                        heldTail.Remove(0, holdFrom);
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(delta.FinishReason))
-                {
-                    finishReason = delta.FinishReason;
-                }
-
-                if (delta.ToolCallDeltas is not null)
-                {
-                    foreach (var fragment in delta.ToolCallDeltas)
-                    {
-                        if (!callMap.TryGetValue(fragment.Index, out var acc))
-                        {
-                            acc = new ToolCallAccumulator();
-                            callMap[fragment.Index] = acc;
-                        }
-
-                        acc.Id ??= fragment.Id;
-                        acc.Name ??= fragment.Name;
-                        acc.Arguments.Append(fragment.ArgumentsFragment ?? string.Empty);
-                    }
-                }
-            }
-
-            if (streamError is not null)
-            {
-                var failure = AssistantModelException.From(streamError);
-                logger.LogWarning(streamError,
-                    "助手模型调用失败（session={SessionId} round={Round} kind={Kind}）",
-                    sessionId, round, failure.Kind);
-                // 只有"需等待"类计入熔断：密钥、余额、上下文这类问题重试多少次都不会好，
-                // 把它们算成技术性抖动，只会在冷却期里把账号挡住，而问题一个字都没变。
-                if (!failure.SelfServiceable) breaker?.RecordFailure(userId);
-                await _ledger.SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
-                yield return new ChatStreamEvent.Failed(failure.Code, failure.UserMessage);
-                yield break;
-            }
-
-            // 这一轮模型产出的原始正文。剥掉工具调用标记的那份在下面按需生成：
-            // 用量估算仍按原始长度算（标记也是模型真的产出并计费的 token）。
-            var rawText = textBuilder.ToString();
-            var calls = callMap
-                .Where(kv => !string.IsNullOrEmpty(kv.Value.Name))
-                .Select(kv => new CompletedToolCall(
-                    kv.Value.Id ?? $"call_{kv.Key}",
-                    kv.Value.Name!,
-                    Truncate(kv.Value.Arguments.ToString(), chat.MaxToolArgumentsLength)))
-                .ToList();
-
-            // 每轮模型调用都是独立计费请求：实际 usage 缺失时按该轮输入/输出字符保守估算
-            // （1 字 = 1 token，只多不少）并打估算标记；中间工具轮同样计入请求总额。
-            void AccumulateRoundUsage()
-            {
-                if (usage is not null)
-                {
-                    totalPromptTokens += usage.PromptTokens;
-                    totalCompletionTokens += usage.CompletionTokens;
-                    totalElapsedMs += usage.ElapsedMs;
-                }
-                else
-                {
-                    anyEstimated = true;
-                    var (prompt, completion) = EstimateUsage(EstimatePromptTokens(messages), rawText);
-                    totalPromptTokens += prompt;
-                    totalCompletionTokens += completion;
-                }
-            }
-
-            if (calls.Count > 0 && !isFinalRound)
-            {
-                AccumulateRoundUsage();
-                // 工具轮：assistant-with-tool-calls 与 tool 结果只存在于本轮内存上下文，
-                // 不落库；摘要随最终回复行落库供审计与前端展示。
-                messages.Add(new ChatMessage(ChatRole.Assistant, rawText, calls));
-                var outcomes = new ToolOutcome[calls.Count];
-                // 这里用 try/finally 而不是 try/catch：finally 里要结算预留额度，而**迭代器不允许
-                // 在带 catch 的 try 里 yield**。工具轮被取消时预留必须释放，否则当日额度会被锁死。
-                var roundFinished = false;
-                try
-                {
-                    if (CanRunInParallel(calls))
-                    {
-                        // 只读且互不重名：并行执行。串行只是把延迟相加，而这些调用之间没有依赖。
-                        var pending = new List<Task<ToolOutcome>>(calls.Count);
-                        for (var index = 0; index < calls.Count; index++)
-                        {
-                            yield return new ChatStreamEvent.ToolStarted(calls[index].Name);
-                            pending.Add(ExecuteToolSafelyAsync(
-                                userId, calls[index], index, pageContext, sessionId, chat, token));
-                        }
-
-                        while (pending.Count > 0)
-                        {
-                            var finished = await Task.WhenAny(pending);
-                            pending.Remove(finished);
-                            var outcome = await finished;
-                            outcomes[outcome.Index] = outcome;
-                            yield return new ChatStreamEvent.ToolFinished(outcome.Name, outcome.Digest, outcome.Result.Ok);
-                        }
-                    }
-                    else
-                    {
-                        // 含写类动作或同一工具被调用多次：按模型给出的顺序逐个执行。
-                        // 写类需要顺序；重名工具则是因为实例在请求内承载"这次调用是谁"的上下文。
-                        for (var index = 0; index < calls.Count; index++)
-                        {
-                            yield return new ChatStreamEvent.ToolStarted(calls[index].Name);
-                            outcomes[index] = await ExecuteToolSafelyAsync(
-                                userId, calls[index], index, pageContext, sessionId, chat, token);
-                            yield return new ChatStreamEvent.ToolFinished(
-                                outcomes[index].Name, outcomes[index].Digest, outcomes[index].Result.Ok);
-                        }
-                    }
-
-                    roundFinished = true;
-                }
-                finally
-                {
-                    if (!roundFinished)
-                    {
-                        await _ledger.SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
-                    }
-                }
-
-                for (var index = 0; index < outcomes.Length; index++)
-                {
-                    var outcome = outcomes[index];
-                    toolLog.Add(new ToolCallSummary(outcome.Name, outcome.ArgumentsJson, outcome.Digest));
-                    if (outcome.Result.Draft is not null)
-                    {
-                        drafts.Add(outcome.Result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
-                    }
-
-                    messages.Add(new ChatMessage(ChatRole.Tool, outcome.Result.ContentForModel, ToolCallId: outcome.CallId));
-                }
-
-                continue; // 进入下一轮：模型消费工具结果并生成面向用户的回答（该轮流式给用户）
-            }
-
-            if (calls.Count > 0)
-            {
-                logger.LogWarning("助手工具轮次达到上限（session={SessionId}），强制纯文本收尾", sessionId);
-            }
-
-            // 收尾（剥离标记、判空、落库、结算、记忆提炼）由两套引擎共用同一段实现：
-            // 换引擎不该让"钱怎么算、库怎么写、失败怎么回"跟着变。
-            AccumulateRoundUsage();
-            var turnTail = new TurnTail(
-                round, rawText, heldTail.ToString(), [.. toolLog], [.. drafts],
-                totalPromptTokens, totalCompletionTokens, totalElapsedMs, anyEstimated, finishReason);
-            foreach (var evt in await FinalizeTurnAsync(scope, turnTail, token))
-            {
-                yield return evt;
-            }
-
-            yield break;
+            yield return evt;
         }
     }
 
-    /// <summary>一次回合进入"循环 + 收尾"阶段时的固定上下文（准备段产出，两套引擎共用）。</summary>
+    /// <summary>一次回合进入"循环 + 收尾"阶段时的固定上下文（准备段产出）。</summary>
     private sealed record TurnScope(
         string UserId,
         long SessionId,
@@ -628,18 +380,10 @@ public sealed class ChatService(
         string? FinishReason);
 
     /// <summary>
-    /// 读路径灰度开关。<c>AssistantEngine:Kind=maf</c> 时走 Agent Harness 的 <c>MafAgentEngine</c>，
-    /// 其余一律走本类内的旧循环（默认值就是旧循环：灰度是"选择加入"，不是"选择退出"）。
-    /// </summary>
-    private bool IsMafEngineEnabled() =>
-        string.Equals(configuration?["AssistantEngine:Kind"], "maf", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
     /// 收尾：剥离正文里的调用标记 → 判空 → 落库 → 按当前模型单价结算 → 回填工具摘要 → done → 记忆提炼。
     ///
     /// <para>
-    /// 两套引擎共用这一段。换引擎时"钱怎么算、库怎么写、失败怎么回"必须一字不变——
-    /// 那才是灰度的意义：只换"模型 + 工具循环"，不换账本。
+    /// 这一段与引擎无关。引擎只负责"模型 + 工具循环"，"钱怎么算、库怎么写、失败怎么回"必须只有一份。
     /// </para>
     /// </summary>
     private async Task<IReadOnlyList<ChatStreamEvent>> FinalizeTurnAsync(
@@ -746,38 +490,57 @@ public sealed class ChatService(
     }
 
     /// <summary>
-    /// 灰度路径：用 Agent Harness 的 <see cref="MafAgentEngine"/> 跑模型 + 工具循环，
+    /// 用 Agent Harness 的 <see cref="MafAgentEngine"/> 跑模型 + 工具循环，
     /// 事件翻译成 EOS 的 <see cref="ChatStreamEvent"/>，收尾仍交给 <see cref="FinalizeTurnAsync"/>。
     ///
     /// <para>
-    /// **只读**：<c>ReadOnlyToolsOnly=true</c> 让写类工具既不进声明、也不接受调用。
-    /// 授权仍在工具内部按当前用户重新判定，这里的策略门禁全放行（它不是权限依据）。
+    /// 引擎只拿"模型 + 工具"，其余全留在这里：身份（会话 + <c>CallId</c>）、页面处境、授权、
+    /// 额度、落库。工具声明与旧循环同源（<see cref="AssistantToolRegistry.Definitions"/>），
+    /// 授权仍在工具内部按当前用户重新判定——<see cref="AllowAllToolPolicy"/> 不是权限依据。
+    /// </para>
+    ///
+    /// <para>
+    /// 两处口径刻意与引擎默认不同：
+    /// ① 正文按**轮**分开——工具轮里的"我查一下"流给用户看，但不进会话历史，最终回复只取最后一轮；
+    ///    引擎的 <c>Result.Text</c> 是各轮拼接，不能直接落库。
+    /// ② 工具一律按顺序执行：MAF 只有"全部并发 / 全部串行"一个开关，没有"只读并发"，
+    ///    而写类动作并发不可接受。
     /// </para>
     /// </summary>
     private async IAsyncEnumerable<ChatStreamEvent> StreamViaMafAsync(
         TurnScope scope,
         IReadOnlyList<ChatMessage> messages,
+        PageContext? pageContext,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
     {
+        var chat = scope.Chat;
+        var toolLogger = loggerFactory?.CreateLogger("EOS.Assistant.Tool") ?? (ILogger)logger;
+
         var tools = new List<Agent.Harness.Abstractions.ITool>();
         foreach (var definition in toolRegistry.Definitions)
         {
             if (toolRegistry.TryGet(definition.Name, out var tool))
             {
-                tools.Add(new EosToolAdapter(tool, scope.UserId));
+                tools.Add(new EosToolAdapter(
+                    tool, scope.UserId, scope.SessionId, pageContext, chat.ToolDigestLength, toolLogger));
             }
         }
 
+        var chatModel = new EosChatModelAdapter(model);
         var engine = new MafEngine(
-            new EosChatModelAdapter(model),
+            chatModel,
             new HarnessToolRegistry(tools),
             new AllowAllToolPolicy(),
             loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
             new MafEngineOptions
             {
-                ReadOnlyToolsOnly = true,
+                // 读、草稿、写都走同一套受控工具；能不能做仍在工具内部按当前用户判定。
+                ReadOnlyToolsOnly = false,
                 AllowConcurrentToolInvocation = false,
                 MaxEmptyResponseRetries = 1,
+                // 模型点了不存在的工具时，回喂一条"工具不存在"再继续：与本引擎原先的行为一致，
+                // 一次幻觉不值得把整轮回答作废。
+                TerminateOnUnknownCalls = false,
                 FinalRoundInstruction = FinalRoundInstruction,
             });
 
@@ -790,30 +553,61 @@ public sealed class ChatService(
             History: [.. messages.Select(EosMessageMapper.ToHarness)],
             SystemPrompt: string.Empty,
             CorrelationId: scope.CorrelationId,
-            MaxToolRounds: scope.Chat.MaxToolRounds);
+            MaxToolRounds: chat.MaxToolRounds);
 
-        var rawText = new StringBuilder();
+        var roundText = new StringBuilder();
         var heldTail = new StringBuilder();
         var toolLog = new List<ToolCallSummary>();
         var drafts = new List<object>();
         var promptTokens = 0;
         var completionTokens = 0;
-        var elapsedMs = 0;
+        var usageEstimated = false;
+        var toolRound = 0;
+        var toolRoundOpen = false;
         string? finishReason = null;
-        ChatStreamEvent.Failed? failure = null;
+        AssistantModelException? failure = null;
 
-        await foreach (var evt in engine.StreamAsync(request, token))
+        // 迭代器里不能在带 catch 的 try 中 yield，所以自己走枚举器：异常在这里归一，
+        // 事件处理（含 yield）留在 catch 之外。
+        await using var enumerator = engine.StreamAsync(request, token).GetAsyncEnumerator(token);
+        while (true)
         {
-            switch (evt)
+            AgentEvent current;
+            try
+            {
+                if (!await enumerator.MoveNextAsync()) break;
+                current = enumerator.Current;
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                // 调用方没取消而这里被取消：模型层的超时 CTS 触发了（两者的 token 是链接的）。
+                // 把它并入"用户主动停止"是错的——那会静默丢掉一次本该说出口的超时。
+                failure = new AssistantModelException(AssistantModelErrorKind.Timeout, "模型服务响应超时。");
+                break;
+            }
+            catch (OperationCanceledException)
+            {
+                // 客户端断开/主动停止：半截回复不落库；已预留额度按 0 释放（取消不计失败）。
+                await _ledger.SettleAsync(scope.UserId, scope.DayStart, scope.ReserveMicro, 0, completed: false);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                failure = AssistantModelException.From(ex);
+                break;
+            }
+
+            switch (current)
             {
                 case AgentEvent.TextDelta delta:
-                    rawText.Append(delta.Text);
+                    roundText.Append(delta.Text);
                     var releasable = ToolCallTextGuard.TakeReleasable(heldTail, delta.Text);
                     if (releasable.Length > 0)
                     {
                         yield return new ChatStreamEvent.Delta(releasable);
                     }
 
+                    toolRoundOpen = false; // 重新有正文 = 进入新一轮
                     break;
 
                 case AgentEvent.ReasoningDelta reasoning:
@@ -821,44 +615,70 @@ public sealed class ChatService(
                     break;
 
                 case AgentEvent.ToolStarted started:
+                    if (!toolRoundOpen)
+                    {
+                        toolRound++;
+                        toolRoundOpen = true;
+                    }
+
                     yield return new ChatStreamEvent.ToolStarted(started.Name);
                     break;
 
                 case AgentEvent.ToolFinished finished:
-                    yield return new ChatStreamEvent.ToolFinished(finished.Name, finished.Digest, finished.Ok);
+                    // 工具结果回来了：这一轮的正文到此为止，下一段正文属于新一轮。
+                    roundText.Clear();
+                    heldTail.Clear();
+                    var outcome = NormalizeToolOutcome(finished.Name, finished.Digest, finished.Ok, chat);
+                    yield return new ChatStreamEvent.ToolFinished(finished.Name, outcome.Digest, outcome.Ok);
                     break;
 
                 case AgentEvent.Completed completed:
                     finishReason = completed.Result.FinishReason;
                     promptTokens = completed.Result.Usage.PromptTokens;
                     completionTokens = completed.Result.Usage.CompletionTokens;
-                    elapsedMs = completed.Result.Usage.ElapsedMs;
-                    toolLog.AddRange(completed.Result.ToolCalls
-                        .Select(call => new ToolCallSummary(call.Name, call.ArgumentsJson, call.ResultDigest)));
+                    toolLog.AddRange(completed.Result.ToolCalls.Select(call =>
+                    {
+                        var normalized = NormalizeToolOutcome(call.Name, call.ResultDigest, ok: true, chat);
+                        return new ToolCallSummary(
+                            call.Name,
+                            Truncate(call.ArgumentsJson, chat.MaxToolArgumentsLength),
+                            normalized.Digest);
+                    }));
                     drafts.AddRange(completed.Result.Drafts);
+                    // 供应商不回 usage 时引擎记 0：按输入/输出字符保守估算，并如实标成估算值。
+                    if (promptTokens == 0 && completionTokens == 0)
+                    {
+                        (promptTokens, completionTokens) = EstimateUsage(
+                            EstimatePromptTokens(messages), completed.Result.Text);
+                        usageEstimated = true;
+                    }
+
                     break;
 
                 case AgentEvent.Failed failed:
-                    failure = new ChatStreamEvent.Failed(failed.Code, failed.Message);
+                    // 当前引擎不产出它（异常直接抛），保留映射以防引擎改回"用事件报错"。
+                    failure = new AssistantModelException(AssistantModelErrorKind.Unknown, failed.Message);
                     break;
             }
         }
 
         if (failure is not null)
         {
-            breaker?.RecordFailure(scope.UserId);
+            logger.LogWarning(
+                "助手模型调用失败（session={SessionId} round={Round} kind={Kind}）",
+                scope.SessionId, toolRound, failure.Kind);
+            // 只有"需等待"类计入熔断：密钥、余额、上下文这类问题重试多少次都不会好，
+            // 把它们算成技术性抖动，只会在冷却期里把账号挡住，而问题一个字都没变。
+            if (!failure.SelfServiceable) breaker?.RecordFailure(scope.UserId);
             await _ledger.SettleAsync(scope.UserId, scope.DayStart, scope.ReserveMicro, scope.ReserveMicro,
                 completed: false);
-            yield return failure;
+            yield return new ChatStreamEvent.Failed(failure.Code, failure.UserMessage);
             yield break;
         }
 
         var tail = new TurnTail(
-            0, rawText.ToString(), heldTail.ToString(), toolLog, drafts,
-            promptTokens, completionTokens, elapsedMs,
-            // 引擎不区分"实际用量"与"估算"：拿不到 usage 时它记 0，这里按 0 落库并如实标注。
-            UsageEstimated: promptTokens == 0 && completionTokens == 0,
-            finishReason);
+            toolRound, roundText.ToString(), heldTail.ToString(), toolLog, drafts,
+            promptTokens, completionTokens, chatModel.ElapsedMs, usageEstimated, finishReason);
 
         foreach (var evt in await FinalizeTurnAsync(scope, tail, token))
         {
@@ -866,106 +686,21 @@ public sealed class ChatService(
         }
     }
 
-    private sealed class ToolCallAccumulator
-    {
-        public string? Id { get; set; }
-        public string? Name { get; set; }
-        public StringBuilder Arguments { get; } = new();
-    }
-
     /// <summary>
-    /// 一次工具调用的结果。**调用序号与调用标识一起带走**：并行执行时完成顺序与调用顺序无关，
-    /// 而回喂给模型的 tool 消息必须与它发出的调用一一对上（顺序错位会让模型把结果安到别的调用上）。
+    /// 工具摘要的稳定口径。引擎对**未声明的调用**只能回一条自己的错误文本，
+    /// 而"被管理员关掉"与"模型跑偏"对用户是两件事：按注册表还原，摘要用可检索的标记。
     /// </summary>
-    private sealed record ToolOutcome(
-        int Index,
-        string Name,
-        string CallId,
-        string ArgumentsJson,
-        ToolExecutionResult Result,
-        string Digest);
-
-    /// <summary>
-    /// 本轮工具调用能否并行：**全部只读，且没有重名**。
-    ///
-    /// <para>
-    /// 只读工具之间没有依赖也没有副作用，串行执行只是把延迟逐次相加——模型一次给出三四个查询时，
-    /// 用户要等的就是三四次之和。写类动作必须按模型给出的顺序逐个执行。
-    /// </para>
-    ///
-    /// <para>
-    /// 重名的一律退回串行：工具实例是按请求作用域的（<c>Scoped</c>），但它承载"这一次调用是谁"的
-    /// 上下文（<see cref="IToolCallContextTool"/>）。同一实例被并发调用两次，两次身份会互相覆盖，
-    /// 幂等键就可能串到另一次调用上——这是唯一不能靠"只读"放行的情形。
-    /// </para>
-    /// </summary>
-    private bool CanRunInParallel(IReadOnlyList<CompletedToolCall> calls)
+    private (string Digest, bool Ok) NormalizeToolOutcome(
+        string name, string digest, bool ok, AssistantChatLimitsOptions chat)
     {
-        if (calls.Count < 2) return false;
-        if (calls.Select(call => call.Name).Distinct(StringComparer.Ordinal).Count() != calls.Count) return false;
-        return calls.All(call => toolRegistry.TryGet(call.Name, out var tool) && tool.Risk == AssistantToolRisk.Read);
-    }
-
-    /// <summary>执行一次工具调用。参数非法/未知工具/被关掉/内部异常都在这里转成回喂模型的拒绝，不抛给对话流。</summary>
-    private async Task<ToolOutcome> ExecuteToolSafelyAsync(
-        string userId, CompletedToolCall call, int index, PageContext? pageContext,
-        long sessionId, AssistantChatLimitsOptions chat, CancellationToken token)
-    {
-        ToolOutcome Denied(ToolExecutionResult result, string digest, string argumentsJson) =>
-            new(index, call.Name, call.Id, argumentsJson, result, digest);
-
-        try
+        if (toolRegistry.TryGet(name, out _))
         {
-            using var doc = JsonDocument.Parse(
-                string.IsNullOrWhiteSpace(call.ArgumentsJson) ? "{}" : call.ArgumentsJson); // 模型输出必须过解析器校验
-            var args = doc.RootElement.Clone();
-
-            if (!toolRegistry.TryGet(call.Name, out var tool))
-            {
-                // "被管理员关掉"与"不认识这个名字"必须分开说：前者是配置，后者是模型跑偏。
-                // 混成一句"未知工具"会让前一种情况看起来像系统故障。
-                if (toolRegistry.IsDisabledByParameter(call.Name))
-                {
-                    return Denied(ToolExecutionResult.Deny(
-                            $"「{call.Name}」这个能力已被管理员关闭，无法调用；请改用其它方式或在管理界面上确认。"),
-                        "rejected:disabled_by_admin", call.ArgumentsJson);
-                }
-
-                return Denied(
-                    ToolExecutionResult.Deny($"未知工具 {call.Name}，请只使用函数列表中的工具。"),
-                    "rejected:unknown_tool", call.ArgumentsJson);
-            }
-
-            // 页面处境由服务端注入（不经模型转述）：用户不必把"当前这张单"再报一遍主键。
-            // 它只作定位，不作权限依据——工具内部仍按当前用户重新授权与取数。
-            if (tool is IPageContextTool aware && pageContext is not null && !pageContext.IsEmpty)
-            {
-                aware.UsePageContext(pageContext);
-            }
-
-            // 本次工具调用的服务端身份由 ChatService 注入（不经模型转述）：
-            // 写入类动作据此推导幂等键——模型既不生成键，也无从伪造键。
-            if (tool is IToolCallContextTool callAware)
-            {
-                callAware.UseToolCallContext(sessionId, call.Id);
-            }
-
-            var result = await tool.ExecuteAsync(userId, args, token);
-            logger.LogInformation("助手工具执行 session={SessionId} tool={Tool} ok={Ok}", sessionId, call.Name, result.Ok);
-            return Denied(result, Truncate(result.ContentForModel, chat.ToolDigestLength), call.ArgumentsJson);
+            return (Truncate(digest, chat.ToolDigestLength), ok);
         }
-        catch (JsonException ex)
-        {
-            logger.LogWarning(ex, "助手工具参数非法 session={SessionId} tool={Tool}", sessionId, call.Name);
-            return Denied(ToolExecutionResult.Deny("工具参数格式错误，请修正后重试。"),
-                "error:invalid_arguments", Truncate(call.ArgumentsJson, chat.AuditArgumentLength));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "助手工具异常 session={SessionId} tool={Tool}", sessionId, call.Name);
-            return Denied(ToolExecutionResult.Deny("工具执行出现内部错误，请换一种问法或稍后重试。"),
-                "error:exception", call.ArgumentsJson);
-        }
+
+        return toolRegistry.IsDisabledByParameter(name)
+            ? ("rejected:disabled_by_admin", false)
+            : ("rejected:unknown_tool", false);
     }
 
     /// <summary>

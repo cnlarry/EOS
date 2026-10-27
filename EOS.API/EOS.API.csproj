@@ -51,7 +51,7 @@
   </ItemGroup>
 
   <!-- Agent Harness：以 git submodule 钉在 third_party/agent-harness，版本由 submodule 指针决定。
-       读路径灰度（AssistantEngine:Kind=maf）时由 ChatService 调用它的 MafAgentEngine；
+       ChatService 用它跑"模型 + 工具循环"；
        引擎本身不碰权限、落库、预算与审计——那些仍在 EOS 这一侧。
        需要临时指到另一份源码时用 -p:AgentHarnessRoot=<路径> 覆盖。 -->
   <PropertyGroup>
