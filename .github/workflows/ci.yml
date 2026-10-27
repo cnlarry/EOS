@@ -52,8 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # EOS.Shadow 引用 third_party/agent-harness 里的 Agent Harness 源码（submodule，
-          # 版本由 submodule 指针钉住）。不取子模块时 solution 里这个工程会因缺类型而编译失败。
+          # EOS.API 引用 third_party/agent-harness 里的 Agent Harness 源码（submodule，
+          # 版本由 submodule 指针钉住，用于助手引擎的读路径灰度）。不取子模块时 solution 会因缺类型而编译失败。
           submodules: recursive
       - uses: actions/setup-dotnet@v6
         with:

@@ -1,5 +1,4 @@
 <Solution>
   <Project Path="EOS.API.Tests/EOS.API.Tests.csproj" />
   <Project Path="EOS.API/EOS.API.csproj" />
-  <Project Path="EOS.Shadow/EOS.Shadow.csproj" />
 </Solution>

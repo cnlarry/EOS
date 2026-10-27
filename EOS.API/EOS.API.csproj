@@ -48,18 +48,20 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="EOS.API.Tests" />
-    <!-- 影子运行（EOS.Shadow，不进 solution）要用 ChatService.FinalRoundInstruction 这类内部常量，
-         以保证它和产品用的是同一段提示词，而不是抄一份。 -->
-    <InternalsVisibleTo Include="EOS.Shadow" />
   </ItemGroup>
 
   <!-- Agent Harness：以 git submodule 钉在 third_party/agent-harness，版本由 submodule 指针决定。
        读路径灰度（AssistantEngine:Kind=maf）时由 ChatService 调用它的 MafAgentEngine；
-       引擎本身不碰权限、落库、预算与审计——那些仍在 EOS 这一侧。 -->
+       引擎本身不碰权限、落库、预算与审计——那些仍在 EOS 这一侧。
+       需要临时指到另一份源码时用 -p:AgentHarnessRoot=<路径> 覆盖。 -->
+  <PropertyGroup>
+    <AgentHarnessRoot Condition="'$(AgentHarnessRoot)' == ''">$(MSBuildThisFileDirectory)..\third_party\agent-harness</AgentHarnessRoot>
+  </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\third_party\agent-harness\src\Agent.Harness.Abstractions\Agent.Harness.Abstractions.csproj" />
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\third_party\agent-harness\src\Agent.Harness.Core\Agent.Harness.Core.csproj" />
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\third_party\agent-harness\src\Agent.Harness.Maf\Agent.Harness.Maf.csproj" />
+    <ProjectReference Include="$(AgentHarnessRoot)\src\Agent.Harness.Abstractions\Agent.Harness.Abstractions.csproj" />
+    <ProjectReference Include="$(AgentHarnessRoot)\src\Agent.Harness.Core\Agent.Harness.Core.csproj" />
+    <ProjectReference Include="$(AgentHarnessRoot)\src\Agent.Harness.Maf\Agent.Harness.Maf.csproj" />
   </ItemGroup>
 
   <!-- 产品版本唯一真源：仓库根 version.json（前端 vite 配置、发布标签、CHANGELOG 同源）。
