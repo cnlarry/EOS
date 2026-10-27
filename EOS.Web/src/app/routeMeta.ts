@@ -29,6 +29,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/settings/profile': { section: '系统设置', title: '个人设置' },
   '/assistant': { section: '工作助手', title: '工作助手' },
   '/assistant/sessions': { section: '工作助手', title: '我的会话' },
+  '/assistant/usage': { section: '工作助手', title: '我的用量' },
   // 工作助手管理（菜单组 31，见 ADR-030）：跨用户视角，与上面的个人会话管理是两件事
   '/admin/assistant/sessions': { section: '工作助手管理', title: '会话管理' },
   '/admin/assistant/mechanism': { section: '工作助手管理', title: '机制与工具总览' },

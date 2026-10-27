@@ -411,6 +411,49 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
         Assert.Contains(trend, item => item.Day.Date == DateTime.UtcNow.Date && item.Usage.Requests >= 1);
     }
 
+    /// <summary>
+    /// 个人侧的聚合必须**只算本人**：同一段时间里另有别人的回复时，用户作用域的结果不能把它算进来。
+    ///
+    /// <para>
+    /// 这条断言就是「我的用量」页的全部安全性所在——把 <c>s.USER_ID = @UserId</c> 写漏（或写成
+    /// "查不到条件就当全体"），页面照常渲染、数字也不报错，只是悄悄把别人的调用算到了你头上。
+    /// 同时反证全体档仍能看见两个人：两档共用一条 SQL，只差那一个条件。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task User_Scoped_Usage_Excludes_Other_Users()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+        const string mineUser = "eosdev-assistant-test-a";
+        const string otherUser = "eosdev-assistant-test-b";
+        const string mineModel = "eosdev-scope-mine";
+        const string otherModel = "eosdev-scope-other";
+
+        var mineSession = await _sessions.CreateSessionAsync(mineUser, token);
+        _sessionIds.Add(mineSession.Id);
+        await _sessions.AddAssistantMessageAsync(
+            mineUser, mineSession.Id, "甲：本人的用量。", mineModel, 100, 10, 500, "c-scope-mine", token);
+
+        var otherSession = await _sessions.CreateSessionAsync(otherUser, token);
+        _sessionIds.Add(otherSession.Id);
+        await _sessions.AddAssistantMessageAsync(
+            otherUser, otherSession.Id, "乙：别人的用量。", otherModel, 900, 90, 5000, "c-scope-other", token);
+
+        var since = new DateTimeOffset(DateTime.UtcNow.AddDays(-1).Date, TimeSpan.Zero);
+
+        var mineRows = await _usage.GetUserPerModelUsageAsync(mineUser, since, token);
+        Assert.Contains(mineRows, row => row.ModelName == mineModel);
+        Assert.DoesNotContain(mineRows, row => row.ModelName == otherModel);
+        Assert.Contains(await _usage.GetUserDailyTrendAsync(mineUser, since, token),
+            row => row.Day.Date == DateTime.UtcNow.Date);
+
+        // 全体档两个模型都在：两种范围走的是同一条 SQL，只差 @UserId 那一个条件
+        var allRows = await _usage.GetPerModelUsageAsync(since, token);
+        Assert.Contains(allRows, row => row.ModelName == mineModel);
+        Assert.Contains(allRows, row => row.ModelName == otherModel);
+    }
+
     public void Dispose()
     {
         var connectionString = ConnectionString.Value;

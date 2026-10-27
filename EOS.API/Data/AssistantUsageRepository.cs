@@ -49,6 +49,22 @@ public interface IAssistantUsageRepository
 
     /// <summary>按 UTC 自然日聚合（趋势），只含有回复的日期。</summary>
     Task<IReadOnlyList<DayUsage>> GetDailyTrendAsync(DateTimeOffset sinceUtc, CancellationToken token);
+
+    /// <summary>
+    /// 与 <see cref="GetPerModelUsageAsync"/> 同一条聚合，但只算**某一个用户**的（个人侧「我的用量」）。
+    ///
+    /// <para>
+    /// 另立方法而不是给上面那个加可选参数：服务端强制的作用域要**在签名上看得见**——
+    /// 一个可空的 <c>userId</c> 让"忘了传就是全库"变成默认行为，而这两件事的可见性完全不同。
+    /// 两者共用同一段 SQL 与同一套映射（见实现里的私有核心），所以口径不可能分叉。
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<ModelUsage>> GetUserPerModelUsageAsync(
+        string userId, DateTimeOffset sinceUtc, CancellationToken token);
+
+    /// <summary>与 <see cref="GetDailyTrendAsync"/> 同一条聚合，限定**某一个用户**。</summary>
+    Task<IReadOnlyList<DayUsage>> GetUserDailyTrendAsync(
+        string userId, DateTimeOffset sinceUtc, CancellationToken token);
 }
 
 /// <summary> 用量聚合：复用 ASSISTANT_MESSAGE 已记录的 token/耗时，按 UTC 自然日聚合。</summary>
@@ -127,9 +143,30 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
         return result;
     }
 
-    public async Task<IReadOnlyList<ModelUsage>> GetPerModelUsageAsync(DateTimeOffset sinceUtc, CancellationToken token)
+    public Task<IReadOnlyList<ModelUsage>> GetPerModelUsageAsync(DateTimeOffset sinceUtc, CancellationToken token) =>
+        QueryPerModelAsync(sinceUtc, null, token);
+
+    public Task<IReadOnlyList<ModelUsage>> GetUserPerModelUsageAsync(
+        string userId, DateTimeOffset sinceUtc, CancellationToken token) =>
+        QueryPerModelAsync(sinceUtc, userId, token);
+
+    /// <summary>
+    /// 按模型聚合的**唯一**实现：<paramref name="userId"/> 为 null 是全体（管理面），
+    /// 非空是该用户（个人面）。
+    ///
+    /// <para>
+    /// 两个范围共用一条 SQL 而不是各写一篇：口径分叉的表现是"我的页面说 3 块、管理页说 5 块"，
+    /// 而两边都"看起来是对的"。合并的条件是 <c>@UserId IS NULL OR s.USER_ID = @UserId</c>——
+    /// 每条消息都归属一个会话，所以 INNER JOIN 在全库范围下不会丢行。
+    /// </para>
+    ///
+    /// <para>
+    /// 没记模型名的历史消息归成一档：宁可显示"(未记录)"，也不要让它们从看板上凭空消失。
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<ModelUsage>> QueryPerModelAsync(
+        DateTimeOffset sinceUtc, string? userId, CancellationToken token)
     {
-        // 没记模型名的历史消息归成一档：宁可显示"(未记录)"，也不要让它们从看板上凭空消失
         const string sql = """
             SELECT ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)') AS MODEL_NAME,
                    COUNT_BIG(1),
@@ -137,7 +174,9 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
                    ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0),
                    ISNULL(MAX(m.CREATED_TIME), SYSUTCDATETIME())
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
+            INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
             WHERE m.ROLE = 2 AND m.CREATED_TIME >= @Since
+              AND (@UserId IS NULL OR s.USER_ID = @UserId)
             GROUP BY ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)')
             ORDER BY ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0)
                      + ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0) DESC;
@@ -146,6 +185,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Since", SqlDbType.DateTime2).Value = sinceUtc.UtcDateTime;
+        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = (object?)userId ?? DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<ModelUsage>();
         while (await reader.ReadAsync(token))
@@ -160,7 +200,16 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
         return result;
     }
 
-    public async Task<IReadOnlyList<DayUsage>> GetDailyTrendAsync(DateTimeOffset sinceUtc, CancellationToken token)
+    public Task<IReadOnlyList<DayUsage>> GetDailyTrendAsync(DateTimeOffset sinceUtc, CancellationToken token) =>
+        QueryDailyTrendAsync(sinceUtc, null, token);
+
+    public Task<IReadOnlyList<DayUsage>> GetUserDailyTrendAsync(
+        string userId, DateTimeOffset sinceUtc, CancellationToken token) =>
+        QueryDailyTrendAsync(sinceUtc, userId, token);
+
+    /// <summary>按 UTC 自然日聚合的唯一实现，范围判定同 <see cref="QueryPerModelAsync"/>。</summary>
+    private async Task<IReadOnlyList<DayUsage>> QueryDailyTrendAsync(
+        DateTimeOffset sinceUtc, string? userId, CancellationToken token)
     {
         // 按 UTC 自然日切分，与其它用量口径一致（别在这里悄悄换成服务器本地时区）
         const string sql = """
@@ -169,7 +218,9 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
                    ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0),
                    ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0)
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
+            INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
             WHERE m.ROLE = 2 AND m.CREATED_TIME >= @Since
+              AND (@UserId IS NULL OR s.USER_ID = @UserId)
             GROUP BY CAST(m.CREATED_TIME AS date)
             ORDER BY USAGE_DAY;
             """;
@@ -177,6 +228,7 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Since", SqlDbType.DateTime2).Value = sinceUtc.UtcDateTime;
+        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = (object?)userId ?? DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<DayUsage>();
         while (await reader.ReadAsync(token))

@@ -1,12 +1,14 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Data.Assistant;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Admin;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Security;
 using EOS.API.Telemetry;
@@ -32,6 +34,8 @@ public sealed class AssistantController(
     ModuleRightsRepository rightsRepository,
     ChangeSetService changeSets,
     IAssistantUsageRepository usageRepository,
+    IAssistantModelCatalog modelCatalog,
+    IAssistantEffectiveParameters effectiveParameters,
     SituationContextSanitizer situationSanitizer,
     AssistantSituationService situationService,
     SituationDigestService situationDigest,
@@ -487,22 +491,61 @@ public sealed class AssistantController(
         });
     }
 
+    /// <summary>
+    /// 我的用量（个人侧，登录即可看**自己**的）：近 N 天按模型与按天的聚合 + 当日总览 + 两级上限。
+    ///
+    /// <para>
+    /// 与管理面 3102 的用量看板**同一形状、同一套折算**（见 <see cref="AssistantUsageView"/>），
+    /// 差别只有一个：这里按 <c>s.USER_ID = 当前用户</c> 限定，而且**没有**任何"传用户号看别人"的参数——
+    /// "只能看自己的"是这条边的全部语义，表达不出别人的身份才不会有越权面。
+    /// </para>
+    ///
+    /// <para>
+    /// 口径：UTC 自然日；成本按**各模型单价**估算（找不回退全局兜底价），与台账里实际扣掉的钱同源——
+    /// 否则"我还剩多少额度"与"系统到底扣了多少"会给出两个答案。
+    /// </para>
+    /// </summary>
     [HttpGet("usage")]
-    public async Task<IActionResult> MyUsage(CancellationToken token)
+    public async Task<IActionResult> MyUsage([FromQuery] int days = 30, CancellationToken token = default)
     {
+        var window = Math.Clamp(days, 1, 180);
+        var userId = userContext.UserId;
+        // 估价用**全局**成本参数：台账结算（SettleAsync）扣的就是这一份，两边必须同源。
         var cost = runtime.Current.Settings.Cost;
-        var usage = await usageRepository.GetUserDailyUsageAsync(
-            userContext.UserId, DateTimeOffset.UtcNow.Date, token);
+        // 显示的两级上限用**生效值**：每人上限可以按用户覆盖（USER_DAILY_CAP_YUAN 是唯一
+        // 允许按用户放宽的参数），给一个被单独调过额度的人显示全局默认值，等于告诉他一个错的上限。
+        var effectiveCost = (await effectiveParameters.ForAsync(userId, moduleId: null, token)).Cost;
+        // 起点必须是**显式的 UTC 零点**：`DateTimeOffset.UtcNow.Date` 会转成"本地零点"，
+        // 在 UTC+8 上等于把窗口往前挪了 8 小时，把昨天的尾巴算进"今日"。
+        var todayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
+        var since = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-(window - 1)), TimeSpan.Zero);
+
+        var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
+            row => row.ModelCode, StringComparer.OrdinalIgnoreCase);
+
+        var models = await usageRepository.GetUserPerModelUsageAsync(userId, since, token);
+        var trend = await usageRepository.GetUserDailyTrendAsync(userId, since, token);
+        var today = await usageRepository.GetUserDailyUsageAsync(userId, todayStart, token);
+
         return Ok(new
         {
-            day = DateTimeOffset.UtcNow.Date,
-            requests = usage.Requests,
-            promptTokens = usage.PromptTokens,
-            completionTokens = usage.CompletionTokens,
-            estimatedCostYuan = Math.Round(AssistantCost.Calculate(
-                usage.PromptTokens, usage.CompletionTokens, cost), 4),
-            userDailyCapYuan = cost.UserDailyCapYuan,
-            globalDailyCapYuan = cost.GlobalDailyCapYuan,
+            days = window,
+            since,
+            today = new
+            {
+                requests = today.Requests,
+                promptTokens = today.PromptTokens,
+                completionTokens = today.CompletionTokens,
+                estimatedCostYuan = Math.Round(
+                    AssistantCost.Calculate(today.PromptTokens, today.CompletionTokens, cost), 4),
+            },
+            models = AssistantUsageView.ByModel(models, priceByCode, cost),
+            trend = AssistantUsageView.ByDay(trend, cost),
+            caps = new
+            {
+                userDailyCapYuan = effectiveCost.UserDailyCapYuan,
+                globalDailyCapYuan = effectiveCost.GlobalDailyCapYuan,
+            },
         });
     }
 

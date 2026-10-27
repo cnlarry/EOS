@@ -17,27 +17,18 @@ import {
   activateModel, clearActiveModel, deleteModel, deleteProvider, getModelUsage, listProviders,
 } from './api'
 import type {
-  AssistantModelItem, AssistantModelKind, AssistantModelUsage, AssistantModelUsageRow,
-  AssistantProviderItem, AssistantUsageTrendRow,
+  AssistantModelItem, AssistantModelKind, AssistantModelUsage,
+  AssistantProviderItem,
 } from './api'
+import {
+  usageModelColumns as USAGE_COLUMNS, usageTrendColumns as TREND_COLUMNS,
+} from '../assistant/usageColumns'
 import {
   AddModelsDialog, ModelEditorDialog, PresetPickerDialog, ProviderEditorDialog, ProviderKeyDialog,
 } from './ModelAdminDialogs'
 
 /** 数字可空时显示"默认"，避免把"没配"看成"配成了 0"。 */
 const orDash = (value: number | null | undefined) => (value == null ? '默认' : String(value))
-
-/**
- * 用量趋势的"天"：它是一个**日期标签**，不是时刻。
- *
- * <p>
- * 服务端按 UTC 自然日切分（`CAST(CREATED_TIME AS date)`），序列化出来是 `2026-10-01T00:00:00`。
- * 这里取前 10 位，而**不是** `new Date(…)` 再格式化——后者会按本地时区重新解释这个值，
- * 西半球时区把日期挪到前一天（`T00:00:00` 在西五区是前一天 19:00），于是"10 月 1 日的用量"
- * 出现在 9 月 30 日那一行。日期标签没有时区可挪，也就不该被时区挪。
- * </p>
- */
-const dayLabel = (value: string) => value.slice(0, 10)
 
 /**
  * 两个用途的中文名（区块标题 / 通知文案共用一份，免得同一个词在两处各写一遍）。
@@ -60,60 +51,8 @@ const PAGE_TABS: TabbedPanelTab<'models' | 'usage'>[] = [
   { key: 'usage', label: '用量' },
 ]
 
-/** 用量：按模型聚合的列（表结构固定，放模块级，免得每次渲染重建）。 */
-const USAGE_COLUMNS: ColumnDef<AssistantModelUsageRow, unknown>[] = [
-  { accessorKey: 'modelName', header: '模型', cell: (info) => <span className="font-monospace">{String(info.getValue())}</span> },
-  {
-    accessorKey: 'requests', header: '回复数',
-    meta: { className: 'text-end text-nowrap', minWidth: 84 },
-    cell: (info) => <span className="text-secondary">{Number(info.getValue() ?? 0)}</span>,
-  },
-  {
-    accessorKey: 'promptTokens', header: '输入 tokens',
-    meta: { className: 'text-end text-nowrap', minWidth: 110 },
-    cell: (info) => <span className="text-secondary">{Number(info.getValue() ?? 0).toLocaleString('zh-CN')}</span>,
-  },
-  {
-    accessorKey: 'completionTokens', header: '输出 tokens',
-    meta: { className: 'text-end text-nowrap', minWidth: 110 },
-    cell: (info) => <span className="text-secondary">{Number(info.getValue() ?? 0).toLocaleString('zh-CN')}</span>,
-  },
-  {
-    accessorKey: 'estimatedCostYuan', header: '估算成本',
-    meta: { className: 'text-end text-nowrap', minWidth: 100 },
-    cell: (info) => <span className="text-secondary">¥{Number(info.getValue() ?? 0).toFixed(4)}</span>,
-  },
-]
+/** 用量两张表的列定义与个人面共用（`features/assistant/usageColumns`）：呈现口径只此一份。 */
 
-/** 用量：按天聚合的列。 */
-const TREND_COLUMNS: ColumnDef<AssistantUsageTrendRow, unknown>[] = [
-  {
-    accessorKey: 'day', header: '日期',
-    meta: { className: 'text-nowrap', minWidth: 110 },
-    // 显示 yyyy-MM-dd，排序仍用原始值（ISO 串按字典序排 = 按时间排，不会因为显示改了而排错）
-    cell: (info) => <span className="text-secondary">{dayLabel(String(info.getValue() ?? ''))}</span>,
-  },
-  {
-    accessorKey: 'requests', header: '回复数',
-    meta: { className: 'text-end text-nowrap', minWidth: 84 },
-    cell: (info) => <span className="text-secondary">{Number(info.getValue() ?? 0)}</span>,
-  },
-  {
-    accessorKey: 'promptTokens', header: '输入 tokens',
-    meta: { className: 'text-end text-nowrap', minWidth: 110 },
-    cell: (info) => <span className="text-secondary">{Number(info.getValue() ?? 0).toLocaleString('zh-CN')}</span>,
-  },
-  {
-    accessorKey: 'completionTokens', header: '输出 tokens',
-    meta: { className: 'text-end text-nowrap', minWidth: 110 },
-    cell: (info) => <span className="text-secondary">{Number(info.getValue() ?? 0).toLocaleString('zh-CN')}</span>,
-  },
-  {
-    accessorKey: 'estimatedCostYuan', header: '估算成本',
-    meta: { className: 'text-end text-nowrap', minWidth: 100 },
-    cell: (info) => <span className="text-secondary">¥{Number(info.getValue() ?? 0).toFixed(4)}</span>,
-  },
-]
 
 /**
  * 工作助手管理 → **模型与用量**（菜单组 31 / 模块 3102，路由 `/admin/assistant/models`）。

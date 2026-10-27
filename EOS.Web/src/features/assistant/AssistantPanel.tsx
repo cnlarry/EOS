@@ -2,6 +2,7 @@ import {
   IconArchive,
   IconArrowUp,
   IconBookmark,
+  IconChartHistogram,
   IconDots,
   IconDownload,
   IconLayoutSidebarRightExpand,
@@ -20,7 +21,7 @@ import { useLocation } from 'react-router-dom'
 import { archiveSession, listMessages, renameSession } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
-import { SESSION_ADMIN_PATH, useAssistant, type Bubble } from './assistantContext'
+import { MY_USAGE_PATH, SESSION_ADMIN_PATH, useAssistant, type Bubble } from './assistantContext'
 import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { describePending, describeWhere, digestKindLabel } from './assistantText'
 import { buildSessionMarkdown, downloadText } from './sessionExport'
@@ -260,6 +261,10 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
               <button className="dropdown-item" type="button"
                 onClick={() => { setMenuOpen(false); a.setOpen(false); openTab(SESSION_ADMIN_PATH) }}>
                 <IconListDetails size={14} className="me-1" />会话管理
+              </button>
+              <button className="dropdown-item" type="button"
+                onClick={() => { setMenuOpen(false); a.setOpen(false); openTab(MY_USAGE_PATH) }}>
+                <IconChartHistogram size={14} className="me-1" />我的用量
               </button>
               <button className="dropdown-item" type="button"
                 onClick={() => { a.setShowArchived(value => !value); setMenuOpen(false) }}>

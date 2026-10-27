@@ -311,31 +311,14 @@ export interface AssistantProviderWriteInput {
   models?: AssistantModelWriteInput[]
 }
 
-export interface AssistantModelUsageRow {
-  modelName: string
-  requests: number
-  promptTokens: number
-  completionTokens: number
-  estimatedCostYuan: number
-  lastUsedAt: string
-}
-
-export interface AssistantUsageTrendRow {
-  day: string
-  requests: number
-  promptTokens: number
-  completionTokens: number
-  estimatedCostYuan: number
-}
-
-export interface AssistantModelUsage {
-  days: number
-  since: string
-  today: { requests: number; promptTokens: number; completionTokens: number; estimatedCostYuan: number }
-  models: AssistantModelUsageRow[]
-  trend: AssistantUsageTrendRow[]
-  caps: { userDailyCapYuan: number; globalDailyCapYuan: number }
-}
+// 用量的三段形状由个人面那一侧定义（管理面与个人面同构，见 features/assistant/types）：
+// 这里沿用既有名字导出，管理页与它的用例因此不用改名。
+import type { AssistantUsageSummary } from '../assistant/types'
+export type {
+  AssistantUsageModelRow as AssistantModelUsageRow,
+  AssistantUsageSummary as AssistantModelUsage,
+  AssistantUsageTrendRow,
+} from '../assistant/types'
 
 /** 预设目录（代码内置，不进数据库）：界面"选供应商 → 自动罗列可用模型"靠它。 */
 export function listPresets() {
@@ -436,7 +419,7 @@ export function deleteModel(modelId: number) {
 
 /** 近 N 天用量：按模型、按天，以及当日总览。 */
 export function getModelUsage(days = 30) {
-  return apiClient.get<AssistantModelUsage>('/admin/assistant/usage', { query: { days } })
+  return apiClient.get<AssistantUsageSummary>('/admin/assistant/usage', { query: { days } })
 }
 
 // ---------------------------------------------------------------------------

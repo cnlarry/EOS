@@ -14,6 +14,7 @@ import type {
   AssistantRecordActionResult,
   AssistantSession,
   AssistantSessionPage,
+  AssistantUsageSummary,
   KbDocument,
   SituationSnapshot,
 } from './types'
@@ -199,4 +200,14 @@ export function applyConfigChange(request: unknown, items: string[], confirmKey:
 /** 可编辑字段元数据：就地编辑面由它驱动（列/字段清单不写死在前端）。 */
 export function getFormDefinition(moduleId: number, mode: 'new' | 'edit') {
   return apiClient.get<FormDefinition>(`/document-workbench/${moduleId}/form-definition`, { query: { mode } })
+}
+
+/**
+ * 我的用量（个人侧）：近 N 天按模型与按天的聚合 + 当日总览 + 两级日上限。
+ *
+ * 与管理面 3102 的用量看板**同一形状**（`AssistantUsageSummary`），差别只有取数范围：
+ * 服务端按当前用户强制过滤，这里没有任何"看别人"的参数可传。
+ */
+export function getMyUsage(days: number) {
+  return apiClient.get<AssistantUsageSummary>('/assistant/usage', { query: { days } })
 }

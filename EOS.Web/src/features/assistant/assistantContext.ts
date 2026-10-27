@@ -9,6 +9,8 @@ export const ASSISTANT_OPEN_KEY = 'erp-assistant-open'
 export const ASSISTANT_PATH = '/assistant'
 /** 会话管理页的路由：同样是普通工作区标签页，与助手全屏页可并存、可深链。 */
 export const SESSION_ADMIN_PATH = '/assistant/sessions'
+/** 我的用量页的路由：本人视角，登录即可看，不需要任何模块权限。 */
+export const MY_USAGE_PATH = '/assistant/usage'
 
 /** 一条已渲染的消息。drafts / tools 由服务端或流式事件带上，不在前端派生。 */
 export interface Bubble {

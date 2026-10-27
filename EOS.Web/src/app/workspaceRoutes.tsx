@@ -52,6 +52,7 @@ import {
 } from './lazyRoutes'
 import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportIdentityRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
 import { AssistantPage } from '../features/assistant/AssistantPage'
+import { MyUsagePage } from '../features/assistant/MyUsagePage'
 import { SessionAdminPage } from '../features/assistant/SessionAdminPage'
 import { withSuspense } from './suspense'
 
@@ -154,6 +155,9 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'assistant', element: <AssistantPage /> },
   // 会话管理：同样是普通工作区标签页（历史会话一览 / 重命名 / 归档 / 已归档删除）
   { path: 'assistant/sessions', element: <SessionAdminPage /> },
+  // 我的用量：本人视角（花了自己的多少额度），登录即可看，不加模块权限门——
+  // 它与 3102 的跨用户用量看板是两个视角，入口不同、数据范围不同
+  { path: 'assistant/usage', element: <MyUsagePage /> },
   // 工作助手管理（菜单组 31，见 ADR-030）：跨用户会话管理，走模块 3101 的读权限。
   // 与上面的个人侧是两件事——那一侧登录即可用、只看自己的会话。
   { element: <RequirePermission permission={moduleReadPermission(3101)} />, children: [

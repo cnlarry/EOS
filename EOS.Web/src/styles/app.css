@@ -547,6 +547,14 @@ button, input, select { font: inherit; }
   min-height: 320px;
   overflow: hidden;
 }
+/* 助手「我的用量」：上下两块（按模型 / 按天）**等分**，各自内部滚动。
+   两块都是等长的聚合表，谁也不该吃掉谁的高度——这与统一工作台"主表按内容、明细占满"
+   的节奏不同，故单独声明，而不复用那一处。 */
+.erp-base-page.erp-my-usage-page > .erp-list-card,
+.erp-base-page.erp-my-usage-page > .card {
+  flex: 1 1 0;
+  min-height: 0;
+}
 /* 流程设计 / 流程监控：列表卡 + 左侧固定宽度卡片的两栏布局。
    原先这层的 display / gap / flex / min-height 分散在 JSX 上（Bootstrap 的 gap-2 带 !important，
    再加一条内联 minHeight），现在一处定义。两栏间距 8px 是本域档位，不是区块间距 */

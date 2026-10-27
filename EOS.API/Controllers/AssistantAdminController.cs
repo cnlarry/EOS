@@ -936,31 +936,8 @@ public sealed class AssistantAdminController(
                 completionTokens = today.CompletionTokens,
                 estimatedCostYuan = Math.Round(AssistantCost.Calculate(today.PromptTokens, today.CompletionTokens, cost), 4),
             },
-            models = models.Select(entry =>
-            {
-                // 落库的 MODEL_NAME 就是模型标识，所以能按它找回那一行的单价；
-                // 找不回（模型已被删/换过名）就用全局兜底价，不能让成本显示成 0。
-                priceByCode.TryGetValue(entry.ModelName, out var price);
-                return new
-                {
-                    modelName = entry.ModelName,
-                    requests = entry.Usage.Requests,
-                    promptTokens = entry.Usage.PromptTokens,
-                    completionTokens = entry.Usage.CompletionTokens,
-                    estimatedCostYuan = Math.Round(AssistantCost.Calculate(
-                        entry.Usage.PromptTokens, entry.Usage.CompletionTokens, cost,
-                        price?.InputPerMillionYuan, price?.OutputPerMillionYuan), 4),
-                    lastUsedAt = entry.LastUsedAt,
-                };
-            }),
-            trend = trend.Select(entry => new
-            {
-                day = entry.Day,
-                requests = entry.Usage.Requests,
-                promptTokens = entry.Usage.PromptTokens,
-                completionTokens = entry.Usage.CompletionTokens,
-                estimatedCostYuan = Math.Round(AssistantCost.Calculate(entry.Usage.PromptTokens, entry.Usage.CompletionTokens, cost), 4),
-            }),
+            models = AssistantUsageView.ByModel(models, priceByCode, cost),
+            trend = AssistantUsageView.ByDay(trend, cost),
             caps = new
             {
                 userDailyCapYuan = cost.UserDailyCapYuan,

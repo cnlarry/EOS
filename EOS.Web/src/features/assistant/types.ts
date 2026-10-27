@@ -320,3 +320,35 @@ export interface AssistantMessage {
   /** 完成原因：`length` = 被输出上限截断。落库后刷新会话仍能看到这条提示。 */
   finishReason?: string | null
 }
+
+// ===== 用量（管理面 3102 与个人面「我的用量」共用同一形状）=====
+// 两个端点返回同一份结构，前端也只共用这一个类型。分叉的代价不在类型本身——是界面上会变成
+// "我的页面显示 3 块、管理页显示 5 块"，而两边看上去都对，于是没人说得清该信哪个。
+
+export interface AssistantUsageModelRow {
+  modelName: string
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  estimatedCostYuan: number
+  lastUsedAt: string
+}
+
+export interface AssistantUsageTrendRow {
+  day: string
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  estimatedCostYuan: number
+}
+
+export interface AssistantUsageSummary {
+  /** 统计区间（天）：调用方给，服务端按 1..180 夹紧后回传实际值 */
+  days: number
+  since: string
+  /** 当日总览：多个模型合计，因此成本按全局兜底单价估（一天里可能跑过好几个模型） */
+  today: { requests: number; promptTokens: number; completionTokens: number; estimatedCostYuan: number }
+  models: AssistantUsageModelRow[]
+  trend: AssistantUsageTrendRow[]
+  caps: { userDailyCapYuan: number; globalDailyCapYuan: number }
+}
