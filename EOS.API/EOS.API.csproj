@@ -53,6 +53,15 @@
     <InternalsVisibleTo Include="EOS.Shadow" />
   </ItemGroup>
 
+  <!-- Agent Harness：以 git submodule 钉在 third_party/agent-harness，版本由 submodule 指针决定。
+       读路径灰度（AssistantEngine:Kind=maf）时由 ChatService 调用它的 MafAgentEngine；
+       引擎本身不碰权限、落库、预算与审计——那些仍在 EOS 这一侧。 -->
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\third_party\agent-harness\src\Agent.Harness.Abstractions\Agent.Harness.Abstractions.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\third_party\agent-harness\src\Agent.Harness.Core\Agent.Harness.Core.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\third_party\agent-harness\src\Agent.Harness.Maf\Agent.Harness.Maf.csproj" />
+  </ItemGroup>
+
   <!-- 产品版本唯一真源：仓库根 version.json（前端 vite 配置、发布标签、CHANGELOG 同源）。
        在读取程序集属性前写入 Version/VersionPrefix，使 InformationalVersion 成为产品版本
        （SDK 仍会追加 +<sha>）。无 version.json 时保持 SDK 默认值，端点如实报告默认版本。

@@ -3,6 +3,7 @@ using Agent.Harness.Abstractions;
 using Agent.Harness.Core;
 using Agent.Harness.Maf;
 using EOS.API.Features.Assistant;
+using EOS.API.Features.Assistant.Engines;
 using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -77,7 +78,7 @@ internal static class ShadowRunner
         var engine = new MafAgentEngine(
             new EosChatModelAdapter(model),
             new ToolRegistry(tools),
-            new AllowAllPolicy(),
+            new AllowAllToolPolicy(),
             NullLoggerFactory.Instance,
             new MafAgentEngineOptions
             {

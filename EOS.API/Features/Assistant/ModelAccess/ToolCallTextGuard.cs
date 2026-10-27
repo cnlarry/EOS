@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace EOS.API.Features.Assistant.ModelAccess;
 
 /// <summary>
@@ -76,6 +78,30 @@ internal static class ToolCallTextGuard
         }
 
         return end;
+    }
+
+    /// <summary>
+    /// 把一段正文增量并入 <paramref name="held"/>，返回**此刻可以安全下发的前缀**，
+    /// 可能成为标记开头的尾部继续留在 <paramref name="held"/> 里。
+    ///
+    /// <para>
+    /// 编排层每收到一个正文分片就调一次：能下发的立刻下发，按住的不下发。
+    /// 本轮结束时若按住的那段扛过了 <see cref="Strip"/>，再由调用方补发。
+    /// </para>
+    /// </summary>
+    public static string TakeReleasable(StringBuilder held, string chunk)
+    {
+        held.Append(chunk);
+        var tail = held.ToString();
+        var holdFrom = PossibleMarkupStart(tail, 0);
+        if (holdFrom <= 0)
+        {
+            return string.Empty;
+        }
+
+        var releasable = tail[..holdFrom];
+        held.Remove(0, holdFrom);
+        return releasable;
     }
 
     /// <summary>

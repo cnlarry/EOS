@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Agent.Harness.Abstractions;
+using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Tools;
 using EosChatModel = EOS.API.Features.Assistant.ModelAccess.IChatModel;
 using EosCompletedCall = EOS.API.Features.Assistant.ModelAccess.CompletedToolCall;
@@ -16,7 +17,7 @@ using HarnessMessage = Agent.Harness.Abstractions.ChatMessage;
 using HarnessToolDefinition = Agent.Harness.Abstractions.ToolDefinition;
 using HarnessUsage = Agent.Harness.Abstractions.ChatUsage;
 
-namespace EOS.Shadow;
+namespace EOS.API.Features.Assistant.Engines;
 
 /// <summary>
 /// 把 EOS 的受控工具包成 Harness 的 <see cref="ITool"/>。
@@ -24,7 +25,6 @@ namespace EOS.Shadow;
 /// <para>
 /// **授权不在这里**：EOS 的工具实现内部按 <c>userId</c> 重新授权（EXEC_TAG / DATA_FILTER / 字段隐藏
 /// 全在工具内部生效），这正是"<c>IToolPolicy</c> 只是执行前门禁、不是权限依据"的落地方式。
-/// 影子运行给的是一个真实存在的账号，越权与否由工具自己判。
 /// </para>
 /// </summary>
 internal sealed class EosToolAdapter(IAssistantTool tool, string userId) : ITool
@@ -64,8 +64,8 @@ internal sealed class EosToolAdapter(IAssistantTool tool, string userId) : ITool
 /// 把 EOS 的 <see cref="EosChatModel"/> 包成 Harness 的同名契约。
 ///
 /// <para>
-/// 两个契约**逐字段相同**（Harness 的契约就是从 EOS 抄的），所以这层只是类型转换，
-/// 不含任何行为——一旦它开始做别的事（重试、改写、补提示词），就说明有人把引擎语义塞进了适配层。
+/// 两个契约**逐字段相同**（Harness 的契约就是从 EOS 抄的），所以这层只是类型转换，不含任何行为——
+/// 一旦它开始做别的事（重试、改写、补提示词），就说明有人把引擎语义塞进了适配层。
 /// </para>
 /// </summary>
 internal sealed class EosChatModelAdapter(EosChatModel inner) : HarnessChatModel
@@ -119,8 +119,35 @@ internal sealed class EosChatModelAdapter(EosChatModel inner) : HarnessChatModel
         ReasoningDelta: delta.ReasoningDelta);
 }
 
-/// <summary>影子运行不测策略层（那由宿主实现），这里全放行；真正的授权在工具内部。</summary>
-internal sealed class AllowAllPolicy : IToolPolicy
+/// <summary>把 EOS 的一条消息转成 Harness 的回合消息（灰度路径复用已组装好的上下文，不重新拼提示词）。</summary>
+internal static class EosMessageMapper
+{
+    public static AgentMessage ToHarness(EosMessage message) => new(
+        Role: message.Role switch
+        {
+            EosRole.System => AgentRole.System,
+            EosRole.Assistant => AgentRole.Assistant,
+            EosRole.Tool => AgentRole.Tool,
+            _ => AgentRole.User,
+        },
+        Content: message.Content,
+        ToolCalls: message.ToolCalls is null
+            ? null
+            : [.. message.ToolCalls.Select(call =>
+                new Agent.Harness.Abstractions.CompletedToolCall(call.Id, call.Name, call.ArgumentsJson))],
+        ToolCallId: message.ToolCallId);
+}
+
+/// <summary>
+/// 引擎执行前的策略门禁：**全放行**。
+///
+/// <para>
+/// 这不是放松权限：EOS 的授权在工具内部（按当前用户重新判定），
+/// <see cref="IToolPolicy"/> 在架构上只是"执行前门禁"，不是权限依据。
+/// 真正的灰度闸门是 <c>ReadOnlyToolsOnly</c>（只暴露只读工具）。
+/// </para>
+/// </summary>
+internal sealed class AllowAllToolPolicy : IToolPolicy
 {
     public ValueTask<ToolDecision> EvaluateAsync(
         ToolDescriptor tool,

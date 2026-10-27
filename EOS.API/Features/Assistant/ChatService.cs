@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Features.Assistant.Engines;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
@@ -8,6 +9,14 @@ using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Options;
+
+// Harness 的契约与 EOS 的契约同名（ChatMessage / ChatRole / ChatDelta …），
+// 逐个 import 会让本文件里所有 ChatMessage 变成二义。只给真正用到的几个起别名。
+using AgentEvent = Agent.Harness.Abstractions.AgentEvent;
+using AgentTurnRequest = Agent.Harness.Abstractions.AgentTurnRequest;
+using HarnessToolRegistry = Agent.Harness.Core.ToolRegistry;
+using MafEngine = Agent.Harness.Maf.MafAgentEngine;
+using MafEngineOptions = Agent.Harness.Maf.MafAgentEngineOptions;
 
 namespace EOS.API.Features.Assistant;
 
@@ -139,8 +148,17 @@ public sealed class ChatService(
     IAssistantUsageRepository? usageRepository = null,
     FailureBreaker? breaker = null,
     AssistantSituationService? situation = null,
-    IAssistantEffectiveParameters? effectiveParameters = null)
+    IAssistantEffectiveParameters? effectiveParameters = null,
+    // 灰度开关（AssistantEngine:Kind）与引擎日志工厂：都是**部署期**的东西，不是业务配置。
+    IConfiguration? configuration = null,
+    ILoggerFactory? loggerFactory = null)
 {
+    // 用量账与记忆提炼是**准备段与循环段共用**的副作用，单独成类后只有一个入口：
+    // 换引擎时这两段会落到不同实现，账若各写一份，"预算不可绕过"就会因为搬家而悄悄松动。
+    private readonly AssistantUsageLedger _ledger = new(usageRepository, effectiveParameters, logger);
+    private SessionDistiller? _distiller;
+    private SessionDistiller Distiller => _distiller ??= new SessionDistiller(memoryStore, model, _ledger, logger);
+
     // 单轮从库里取回的**历史条数上限**（含双方消息）也搬进了参数目录（CHAT_MAX_HISTORY_MESSAGES）：
     // 它只是"取多少条"的兜底，真正决定带多少上下文的是模型的上下文窗口（见 TrimToContextWindow）。
     // 此前这条约束写死在代码里（先是 40、后是 60），而条数相同、长度可以差几十倍——
@@ -317,18 +335,12 @@ public sealed class ChatService(
         // 预留按轮数上限放大，避免进行中请求真实成本超出 SPENT+RESERVED 判定。
         var dayStart = DateTimeOffset.UtcNow.Date;
         var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest * (chat.MaxToolRounds + 1);
-        if (usageRepository is not null)
+        // 用户日上限按**当事人**取：快照给的是全库统一值，作用域表可能给某个人单独放宽过
+        var userCapYuan = await _ledger.UserDailyCapYuanAsync(userId, pageContext?.ModuleId, settings, token);
+        if (!await _ledger.TryReserveAsync(userId, dayStart, reserveMicro, userCapYuan, settings, token))
         {
-            // 用户日上限按**当事人**取：快照给的是全库统一值，作用域表可能给某个人单独放宽过
-            var userCapYuan = await UserDailyCapYuanAsync(userId, pageContext?.ModuleId, settings, token);
-            var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(userCapYuan),
-                ToMicroYuan(settings.Cost.GlobalDailyCapYuan), token);
-            if (!reserved)
-            {
-                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日用量已达上限，请明日再试。");
-                yield break;
-            }
+            yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日用量已达上限，请明日再试。");
+            yield break;
         }
 
         var toolLog = new List<ToolCallSummary>();
@@ -337,6 +349,21 @@ public sealed class ChatService(
         var totalCompletionTokens = 0;
         var totalElapsedMs = 0;
         var anyEstimated = false;
+
+        var scope = new TurnScope(
+            userId, sessionId, correlationId, settings, snapshot.Policy, chat,
+            trimmedHistory, dayStart, reserveMicro);
+
+        // 读路径灰度：**每请求读一次**配置，改配置即回滚，不需要重启（对齐 EffectEngine:Enabled 的口径）。
+        if (IsMafEngineEnabled())
+        {
+            await foreach (var evt in StreamViaMafAsync(scope, messages, token))
+            {
+                yield return evt;
+            }
+
+            yield break;
+        }
 
         for (int round = 0; round <= chat.MaxToolRounds; round++)
         {
@@ -380,7 +407,7 @@ public sealed class ChatService(
                 catch (OperationCanceledException)
                 {
                     // 客户端断开/主动停止：半截回复不落库；已预留额度按 0 释放（取消不计失败）。
-                    await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
+                    await _ledger.SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
                     throw;
                 }
                 catch (Exception ex)
@@ -449,7 +476,7 @@ public sealed class ChatService(
                 // 只有"需等待"类计入熔断：密钥、余额、上下文这类问题重试多少次都不会好，
                 // 把它们算成技术性抖动，只会在冷却期里把账号挡住，而问题一个字都没变。
                 if (!failure.SelfServiceable) breaker?.RecordFailure(userId);
-                await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
+                await _ledger.SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
                 yield return new ChatStreamEvent.Failed(failure.Code, failure.UserMessage);
                 yield break;
             }
@@ -536,7 +563,7 @@ public sealed class ChatService(
                 {
                     if (!roundFinished)
                     {
-                        await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
+                        await _ledger.SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
                     }
                 }
 
@@ -560,97 +587,282 @@ public sealed class ChatService(
                 logger.LogWarning("助手工具轮次达到上限（session={SessionId}），强制纯文本收尾", sessionId);
             }
 
-            // 工具调用只该走结构化通道，模型偶尔会把它写进正文（见 ToolCallTextGuard）：
-            // 标记不是回答，既不能当成回答落库（会长期留在会话里），也不能当成回答下发。
-            var text = ToolCallTextGuard.Strip(rawText);
-            var held = heldTail.ToString();
-            if (held.Length > 0 && text.EndsWith(held, StringComparison.Ordinal))
-            {
-                // 按住的那段扛过了剥离（末尾那半个 '<' 之类，本来就不是标记）：补发，别让界面缺一段
-                yield return new ChatStreamEvent.Delta(held);
-            }
-
-            if (text.Length == 0 && rawText.Length > 0)
-            {
-                // 日志把"这一轮调过哪些工具 + 标记片段"一并留下：否则事后既看不到模型干了什么，
-                // 也看不到它吐的是哪种标记，同类问题无从排查（丢弃的正文不进库、也没有别的落点）。
-                logger.LogWarning(
-                    "助手正文只有工具调用标记、没有回答（session={SessionId} round={Round}），已丢弃 {Length} 字符；"
-                    + "本轮工具：{Tools}；标记片段：{Snippet}",
-                    sessionId, round, rawText.Length,
-                    toolLog.Count == 0 ? "（无）" : string.Join('、', toolLog.Select(call => call.Name).Distinct()),
-                    rawText.Length <= 300 ? rawText : rawText[..300]);
-                breaker?.RecordFailure(userId);
-                await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
-                yield return new ChatStreamEvent.Failed("AI_MODEL_UNPARSED_TOOL_CALL",
-                    "助手这次没有给出回答（模型返回了无效的工具调用格式），请重试。");
-                yield break;
-            }
-
-            if (text.Length != rawText.Length)
-            {
-                // 正文里混着调用标记：正文留着、标记剥掉，记一笔便于事后核对模型到底吐了什么
-                logger.LogWarning(
-                    "助手把工具调用写进了正文（session={SessionId} round={Round}），已剥掉 {Length} 字符后落库",
-                    sessionId, round, rawText.Length - text.Length);
-            }
-
-            if (string.IsNullOrEmpty(text))
-            {
-                breaker?.RecordFailure(userId);
-                await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
-                yield return new ChatStreamEvent.Failed("AI_MODEL_EMPTY_REPLY", "模型没有返回内容，请重试。");
-                yield break;
-            }
-
+            // 收尾（剥离标记、判空、落库、结算、记忆提炼）由两套引擎共用同一段实现：
+            // 换引擎不该让"钱怎么算、库怎么写、失败怎么回"跟着变。
             AccumulateRoundUsage();
-            var saved = await repository.AddAssistantMessageAsync(
-                userId, sessionId, text, model.ModelName,
-                totalPromptTokens, totalCompletionTokens, totalElapsedMs, correlationId, token,
-                anyEstimated, finishReason);
-            // 按**当前模型的单价**结算：写进台账的就是钱，而限额熔断判定的也是钱。
-            // 用一套全局单价去算所有模型，等于把日上限变成一个与实际花费无关的数字。
-            await SettleAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(AssistantCost.Calculate(
-                    totalPromptTokens, totalCompletionTokens, settings.Cost,
-                    settings.InputPerMillionYuan, settings.OutputPerMillionYuan)),
-                completed: true);
-            if (toolLog.Count > 0)
+            var turnTail = new TurnTail(
+                round, rawText, heldTail.ToString(), [.. toolLog], [.. drafts],
+                totalPromptTokens, totalCompletionTokens, totalElapsedMs, anyEstimated, finishReason);
+            foreach (var evt in await FinalizeTurnAsync(scope, turnTail, token))
             {
-                // 工具摘要是**展示性**数据：回填失败只降级（前端工具芯片不显示），
-                // 不能把整轮回答与 done 事件一起带走——曾因该列缺迁移而在 done 之前断流。
-                try
-                {
-                    await repository.UpdateToolCallsJsonAsync(
-                        userId, saved.Id, JsonSerializer.Serialize(toolLog), token);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    logger.LogWarning(ex,
-                        "工具摘要回填失败（仅影响前端工具芯片）session={SessionId} message={MessageId}",
-                        sessionId, saved.Id);
-                }
+                yield return evt;
             }
 
-            breaker?.RecordSuccess(userId);
-            if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
-            {
-                // 被输出上限截断：不告诉用户的话，他看到的是一段"突然结束"的回答，
-                // 而真相是回答还没写完（这个字段本来就在流里，不用白不用）。
-                logger.LogWarning(
-                    "助手回复被输出上限截断（session={SessionId} message={MessageId}）", sessionId, saved.Id);
-            }
-
-            yield return new ChatStreamEvent.Completed(
-                saved,
-                toolLog.Count > 0 ? [.. toolLog] : null,
-                drafts.Count > 0 ? [.. drafts] : null,
-                finishReason);
-            // : done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
-            // 提炼自己也是一次模型调用，同样受窗口约束，所以喂裁剪后的历史（它要的本来就是最近几轮）
-            await DistillSessionBestEffortAsync(
-                userId, saved.Id, trimmedHistory, text, dayStart, settings, snapshot.Policy.Memory, token);
             yield break;
+        }
+    }
+
+    /// <summary>一次回合进入"循环 + 收尾"阶段时的固定上下文（准备段产出，两套引擎共用）。</summary>
+    private sealed record TurnScope(
+        string UserId,
+        long SessionId,
+        string CorrelationId,
+        AssistantSettings Settings,
+        AssistantPolicyValues Policy,
+        AssistantChatLimitsOptions Chat,
+        IReadOnlyList<(int Role, string Content)> TrimmedHistory,
+        DateTimeOffset DayStart,
+        long ReserveMicro);
+
+    /// <summary>循环跑完后交给收尾的产物。</summary>
+    private sealed record TurnTail(
+        int Round,
+        string RawText,
+        string HeldTail,
+        IReadOnlyList<ToolCallSummary> ToolLog,
+        IReadOnlyList<object> Drafts,
+        int PromptTokens,
+        int CompletionTokens,
+        int ElapsedMs,
+        bool UsageEstimated,
+        string? FinishReason);
+
+    /// <summary>
+    /// 读路径灰度开关。<c>AssistantEngine:Kind=maf</c> 时走 Agent Harness 的 <c>MafAgentEngine</c>，
+    /// 其余一律走本类内的旧循环（默认值就是旧循环：灰度是"选择加入"，不是"选择退出"）。
+    /// </summary>
+    private bool IsMafEngineEnabled() =>
+        string.Equals(configuration?["AssistantEngine:Kind"], "maf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 收尾：剥离正文里的调用标记 → 判空 → 落库 → 按当前模型单价结算 → 回填工具摘要 → done → 记忆提炼。
+    ///
+    /// <para>
+    /// 两套引擎共用这一段。换引擎时"钱怎么算、库怎么写、失败怎么回"必须一字不变——
+    /// 那才是灰度的意义：只换"模型 + 工具循环"，不换账本。
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<ChatStreamEvent>> FinalizeTurnAsync(
+        TurnScope scope, TurnTail tail, CancellationToken token)
+    {
+        var events = new List<ChatStreamEvent>();
+
+        // 工具调用只该走结构化通道，模型偶尔会把它写进正文（见 ToolCallTextGuard）：
+        // 标记不是回答，既不能当成回答落库（会长期留在会话里），也不能当成回答下发。
+        var text = ToolCallTextGuard.Strip(tail.RawText);
+        if (tail.HeldTail.Length > 0 && text.EndsWith(tail.HeldTail, StringComparison.Ordinal))
+        {
+            // 按住的那段扛过了剥离（末尾那半个 '<' 之类，本来就不是标记）：补发，别让界面缺一段
+            events.Add(new ChatStreamEvent.Delta(tail.HeldTail));
+        }
+
+        if (text.Length == 0 && tail.RawText.Length > 0)
+        {
+            // 日志把"这一轮调过哪些工具 + 标记片段"一并留下：否则事后既看不到模型干了什么，
+            // 也看不到它吐的是哪种标记，同类问题无从排查（丢弃的正文不进库、也没有别的落点）。
+            logger.LogWarning(
+                "助手正文只有工具调用标记、没有回答（session={SessionId} round={Round}），已丢弃 {Length} 字符；"
+                + "本轮工具：{Tools}；标记片段：{Snippet}",
+                scope.SessionId, tail.Round, tail.RawText.Length,
+                tail.ToolLog.Count == 0 ? "（无）" : string.Join('、', tail.ToolLog.Select(call => call.Name).Distinct()),
+                tail.RawText.Length <= 300 ? tail.RawText : tail.RawText[..300]);
+            breaker?.RecordFailure(scope.UserId);
+            await _ledger.SettleAsync(scope.UserId, scope.DayStart, scope.ReserveMicro, scope.ReserveMicro,
+                completed: false);
+            events.Add(new ChatStreamEvent.Failed("AI_MODEL_UNPARSED_TOOL_CALL",
+                "助手这次没有给出回答（模型返回了无效的工具调用格式），请重试。"));
+            return events;
+        }
+
+        if (text.Length != tail.RawText.Length)
+        {
+            // 正文里混着调用标记：正文留着、标记剥掉，记一笔便于事后核对模型到底吐了什么
+            logger.LogWarning(
+                "助手把工具调用写进了正文（session={SessionId} round={Round}），已剥掉 {Length} 字符后落库",
+                scope.SessionId, tail.Round, tail.RawText.Length - text.Length);
+        }
+
+        if (string.IsNullOrEmpty(text))
+        {
+            breaker?.RecordFailure(scope.UserId);
+            await _ledger.SettleAsync(scope.UserId, scope.DayStart, scope.ReserveMicro, scope.ReserveMicro,
+                completed: false);
+            events.Add(new ChatStreamEvent.Failed("AI_MODEL_EMPTY_REPLY", "模型没有返回内容，请重试。"));
+            return events;
+        }
+
+        var saved = await repository.AddAssistantMessageAsync(
+            scope.UserId, scope.SessionId, text, model.ModelName,
+            tail.PromptTokens, tail.CompletionTokens, tail.ElapsedMs, scope.CorrelationId, token,
+            tail.UsageEstimated, tail.FinishReason);
+
+        // 按**当前模型的单价**结算：写进台账的就是钱，而限额熔断判定的也是钱。
+        // 用一套全局单价去算所有模型，等于把日上限变成一个与实际花费无关的数字。
+        await _ledger.SettleAsync(scope.UserId, scope.DayStart, scope.ReserveMicro,
+            ToMicroYuan(AssistantCost.Calculate(
+                tail.PromptTokens, tail.CompletionTokens, scope.Settings.Cost,
+                scope.Settings.InputPerMillionYuan, scope.Settings.OutputPerMillionYuan)),
+            completed: true);
+
+        if (tail.ToolLog.Count > 0)
+        {
+            // 工具摘要是**展示性**数据：回填失败只降级（前端工具芯片不显示），
+            // 不能把整轮回答与 done 事件一起带走——曾因该列缺迁移而在 done 之前断流。
+            try
+            {
+                await repository.UpdateToolCallsJsonAsync(
+                    scope.UserId, saved.Id, JsonSerializer.Serialize(tail.ToolLog), token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex,
+                    "工具摘要回填失败（仅影响前端工具芯片）session={SessionId} message={MessageId}",
+                    scope.SessionId, saved.Id);
+            }
+        }
+
+        breaker?.RecordSuccess(scope.UserId);
+        if (string.Equals(tail.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
+        {
+            // 被输出上限截断：不告诉用户的话，他看到的是一段"突然结束"的回答，
+            // 而真相是回答还没写完（这个字段本来就在流里，不用白不用）。
+            logger.LogWarning(
+                "助手回复被输出上限截断（session={SessionId} message={MessageId}）", scope.SessionId, saved.Id);
+        }
+
+        events.Add(new ChatStreamEvent.Completed(
+            saved,
+            tail.ToolLog.Count > 0 ? [.. tail.ToolLog] : null,
+            tail.Drafts.Count > 0 ? [.. tail.Drafts] : null,
+            tail.FinishReason));
+
+        // done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
+        // 提炼自己也是一次模型调用，同样受窗口约束，所以喂裁剪后的历史（它要的本来就是最近几轮）。
+        await Distiller.DistillAsync(
+            scope.UserId, saved.Id, scope.TrimmedHistory, text, scope.DayStart, scope.Settings,
+            scope.Policy.Memory, token);
+
+        return events;
+    }
+
+    /// <summary>
+    /// 灰度路径：用 Agent Harness 的 <see cref="MafAgentEngine"/> 跑模型 + 工具循环，
+    /// 事件翻译成 EOS 的 <see cref="ChatStreamEvent"/>，收尾仍交给 <see cref="FinalizeTurnAsync"/>。
+    ///
+    /// <para>
+    /// **只读**：<c>ReadOnlyToolsOnly=true</c> 让写类工具既不进声明、也不接受调用。
+    /// 授权仍在工具内部按当前用户重新判定，这里的策略门禁全放行（它不是权限依据）。
+    /// </para>
+    /// </summary>
+    private async IAsyncEnumerable<ChatStreamEvent> StreamViaMafAsync(
+        TurnScope scope,
+        IReadOnlyList<ChatMessage> messages,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
+    {
+        var tools = new List<Agent.Harness.Abstractions.ITool>();
+        foreach (var definition in toolRegistry.Definitions)
+        {
+            if (toolRegistry.TryGet(definition.Name, out var tool))
+            {
+                tools.Add(new EosToolAdapter(tool, scope.UserId));
+            }
+        }
+
+        var engine = new MafEngine(
+            new EosChatModelAdapter(model),
+            new HarnessToolRegistry(tools),
+            new AllowAllToolPolicy(),
+            loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
+            new MafEngineOptions
+            {
+                ReadOnlyToolsOnly = true,
+                AllowConcurrentToolInvocation = false,
+                MaxEmptyResponseRetries = 1,
+                FinalRoundInstruction = FinalRoundInstruction,
+            });
+
+        // 上下文已经由准备段组装好（含 system 与历史），这里整段交给引擎，不重新拼提示词。
+        var request = new AgentTurnRequest(
+            TenantId: "eos",
+            UserId: scope.UserId,
+            ConversationId: $"eos-{scope.SessionId}",
+            Input: string.Empty,
+            History: [.. messages.Select(EosMessageMapper.ToHarness)],
+            SystemPrompt: string.Empty,
+            CorrelationId: scope.CorrelationId,
+            MaxToolRounds: scope.Chat.MaxToolRounds);
+
+        var rawText = new StringBuilder();
+        var heldTail = new StringBuilder();
+        var toolLog = new List<ToolCallSummary>();
+        var drafts = new List<object>();
+        var promptTokens = 0;
+        var completionTokens = 0;
+        var elapsedMs = 0;
+        string? finishReason = null;
+        ChatStreamEvent.Failed? failure = null;
+
+        await foreach (var evt in engine.StreamAsync(request, token))
+        {
+            switch (evt)
+            {
+                case AgentEvent.TextDelta delta:
+                    rawText.Append(delta.Text);
+                    var releasable = ToolCallTextGuard.TakeReleasable(heldTail, delta.Text);
+                    if (releasable.Length > 0)
+                    {
+                        yield return new ChatStreamEvent.Delta(releasable);
+                    }
+
+                    break;
+
+                case AgentEvent.ReasoningDelta reasoning:
+                    yield return new ChatStreamEvent.Reasoning(reasoning.Text);
+                    break;
+
+                case AgentEvent.ToolStarted started:
+                    yield return new ChatStreamEvent.ToolStarted(started.Name);
+                    break;
+
+                case AgentEvent.ToolFinished finished:
+                    yield return new ChatStreamEvent.ToolFinished(finished.Name, finished.Digest, finished.Ok);
+                    break;
+
+                case AgentEvent.Completed completed:
+                    finishReason = completed.Result.FinishReason;
+                    promptTokens = completed.Result.Usage.PromptTokens;
+                    completionTokens = completed.Result.Usage.CompletionTokens;
+                    elapsedMs = completed.Result.Usage.ElapsedMs;
+                    toolLog.AddRange(completed.Result.ToolCalls
+                        .Select(call => new ToolCallSummary(call.Name, call.ArgumentsJson, call.ResultDigest)));
+                    drafts.AddRange(completed.Result.Drafts);
+                    break;
+
+                case AgentEvent.Failed failed:
+                    failure = new ChatStreamEvent.Failed(failed.Code, failed.Message);
+                    break;
+            }
+        }
+
+        if (failure is not null)
+        {
+            breaker?.RecordFailure(scope.UserId);
+            await _ledger.SettleAsync(scope.UserId, scope.DayStart, scope.ReserveMicro, scope.ReserveMicro,
+                completed: false);
+            yield return failure;
+            yield break;
+        }
+
+        var tail = new TurnTail(
+            0, rawText.ToString(), heldTail.ToString(), toolLog, drafts,
+            promptTokens, completionTokens, elapsedMs,
+            // 引擎不区分"实际用量"与"估算"：拿不到 usage 时它记 0，这里按 0 落库并如实标注。
+            UsageEstimated: promptTokens == 0 && completionTokens == 0,
+            finishReason);
+
+        foreach (var evt in await FinalizeTurnAsync(scope, tail, token))
+        {
+            yield return evt;
         }
     }
 
@@ -893,108 +1105,8 @@ public sealed class ChatService(
         return messages;
     }
 
-    private async Task DistillSessionBestEffortAsync(
-        string userId, long messageId, IReadOnlyList<(int Role, string Content)> history,
-        string finalText, DateTimeOffset dayStart, AssistantSettings settings,
-        AssistantMemoryLimitsOptions memory, CancellationToken token)
-    {
-        if (memoryStore is null || !settings.EnableAutoDistill) return;
-        var exchanges = history
-            .Where(item => item.Role is 1 or 2 && !string.IsNullOrWhiteSpace(item.Content))
-            .Select(item => (Role: item.Role == 1 ? "user" : "assistant", item.Content))
-            .ToList();
-        if (!string.IsNullOrWhiteSpace(finalText))
-        {
-            exchanges.Add(("assistant", finalText));
-        }
 
-        if (exchanges.Count == 0) return;
-
-        // 提炼也是一次独立模型调用，纳入成本限额：先按单轮额度预留，超限时静默跳过
-        // （记忆提炼是后台增强，不做也不影响已完成的对话），成功后按实际用量结算。
-        var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest;
-        // 提炼是后台行为，与当前页面无关，所以只看用户级覆盖（moduleId 传 null）
-        var distillUserCapYuan = await UserDailyCapYuanAsync(userId, null, settings, token);
-        var reserved = usageRepository is null
-            || await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(distillUserCapYuan),
-                ToMicroYuan(settings.Cost.GlobalDailyCapYuan), token);
-        if (!reserved)
-        {
-            logger.LogDebug("助手记忆提炼跳过（当日用量不足，session={SessionId}）", messageId);
-            return;
-        }
-
-        try
-        {
-            var prompt = Memory.MemoryDistiller.BuildDistillPrompt(exchanges, memory);
-            var output = new StringBuilder();
-            ModelAccess.ChatUsage? usage = null;
-            await foreach (var delta in model.StreamAsync(
-                [new ChatMessage(ChatRole.User, prompt)], null, token))
-            {
-                if (delta.Usage is not null) usage = delta.Usage;
-                output.Append(delta.ContentDelta);
-            }
-
-            var estimated = usage is null;
-            var promptTokens = usage?.PromptTokens ?? Math.Max(1, prompt.Length);
-            var completionTokens = usage?.CompletionTokens ?? Math.Max(1, output.Length);
-            await SettleAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(AssistantCost.Calculate(
-                    promptTokens, completionTokens, settings.Cost,
-                    settings.InputPerMillionYuan, settings.OutputPerMillionYuan)),
-                completed: false);
-            if (estimated)
-            {
-                logger.LogInformation(
-                    "助手记忆提炼用量为估算（session={SessionId} prompt={Prompt} completion={Completion}）",
-                    messageId, promptTokens, completionTokens);
-            }
-
-            foreach (var candidate in Memory.MemoryDistiller.Parse(output.ToString(), memory))
-            {
-                var pending = await memoryStore.AddPendingAsync(userId, candidate.Type, candidate.Key,
-                    candidate.Value, messageId, candidate.Confidence, token);
-                // 用户已拍板（2026-09-05）：达到建议门槛的候选**自动转正**（覆盖同名），以下维持待确认。
-                // 门槛来自参数目录（MEM_SUGGEST_THRESHOLD）——这是一条真会影响"记忆自动生效"的配置，
-                // 不是提示文案上的一个数字。
-                if (candidate.Confidence >= memory.SuggestThreshold)
-                {
-                    await memoryStore.ResolvePendingAsync(userId, pending.Id, confirm: true, token);
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // 取消：提炼不产生可用结果，释放预留（不计费），与对话取消口径一致。
-            await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
-            throw;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // 失败按预留额计入（与对话失败口径一致）；提炼失败不影响对话。
-            await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
-            logger.LogDebug(ex, "助手记忆提炼失败（已忽略，不影响对话）");
-        }
-    }
-
-    /// <summary>
-    /// 本轮的**用户日上限**：快照里是全库统一值，作用域表可能给某个人单独放宽过（ADR-030 §6.2）。
-    ///
-    /// <para>
-    /// 没注入生效参数服务时（单测里直接构造 <c>ChatService</c>）退回快照值——
-    /// 作用域是"在这基础上再加一层"，不是"没有它就取不到值"。
-    /// </para>
-    /// </summary>
-    private async Task<double> UserDailyCapYuanAsync(
-        string userId, int? moduleId, AssistantSettings settings, CancellationToken token) =>
-        effectiveParameters is null
-            ? settings.Cost.UserDailyCapYuan
-            : (await effectiveParameters.ForAsync(userId, moduleId, token)).Cost.UserDailyCapYuan;
-
-    internal static long ToMicroYuan(double yuan) =>
-        (long)Math.Ceiling(yuan * (double)AssistantCost.MicroYuanPerYuan);
+    internal static long ToMicroYuan(double yuan) => AssistantUsageLedger.ToMicroYuan(yuan);
 
     /// <summary>保守估算单轮输入：消息文本、工具参数与调用标识都按字符类别折算。</summary>
     private static int EstimatePromptTokens(IReadOnlyList<ChatMessage> messages) =>
@@ -1046,21 +1158,6 @@ public sealed class ChatService(
         || (ch >= 0xFE30 && ch <= 0xFE6F) // 中日韩兼容形式
         || (ch >= 0xFF00 && ch <= 0xFF60) // 全角形式
         || (ch >= 0xFFE0 && ch <= 0xFFE6);
-
-    private async Task SettleAsync(
-        string userId, DateTimeOffset day, long reserveMicro, long actualMicro, bool completed)
-    {
-        if (usageRepository is null || reserveMicro <= 0) return;
-        try
-        {
-            // 独立 token：即使请求已取消，结算也必须落库（否则预留泄漏锁死当日额度）。
-            await usageRepository.SettleAsync(userId, day, reserveMicro, actualMicro, completed, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "助手用量结算失败（已忽略）");
-        }
-    }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }
