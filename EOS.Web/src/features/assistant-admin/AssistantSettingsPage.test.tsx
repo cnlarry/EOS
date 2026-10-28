@@ -204,7 +204,7 @@ describe('AssistantSettingsPage', () => {
     renderPage()
     await screen.findByRole('heading', { name: '每人日上限（元）' })
 
-    const body = document.querySelector('.erp-assistant-settings-body') as HTMLElement | null
+    const body = document.querySelector('.erp-settings-split') as HTMLElement | null
     expect(body).not.toBeNull()
     // 命令栏（保存/刷新）与页头必须在滚动容器**之外**：否则往下滚就找不着保存按钮了
     expect(body!.querySelector('.erp-list-command-bar')).toBeNull()
@@ -278,7 +278,7 @@ describe('AssistantSettingsPage', () => {
 
     renderPage()
 
-    const nav = await screen.findByRole('navigation', { name: '设置分组' })
+    const nav = await screen.findByRole('complementary', { name: '设置分组' })
     // 没滚动过时停在第一节；域清单与顺序都由服务端给
     expect(within(nav).getByRole('button', { name: /提示词/ })).toHaveAttribute('aria-current', 'true')
     expect(within(nav).getByRole('button', { name: /成本与熔断/ })).not.toHaveAttribute('aria-current')
@@ -288,8 +288,19 @@ describe('AssistantSettingsPage', () => {
     expect(within(nav).getByRole('button', { name: /成本与熔断/ })).toHaveAttribute('aria-current', 'true')
     expect(within(nav).getByRole('button', { name: /提示词/ })).not.toHaveAttribute('aria-current')
     // 右栏顶部那行 sticky 是"读到哪一项"的答案，切域后必须跟着变
-    const now = document.querySelector('.erp-assistant-settings-now') as HTMLElement
+    const now = document.querySelector('.erp-settings-split-now') as HTMLElement
     expect(now.textContent).toContain('成本与熔断')
+
+    // 点回第一组：**点击的一瞬**就选中，不等滚动动画
+    fireEvent.click(within(nav).getByRole('button', { name: /提示词/ }))
+    expect(within(nav).getByRole('button', { name: /提示词/ })).toHaveAttribute('aria-current', 'true')
+
+    // 动画期间的滚动事件不能把选中项抢走（判定线此刻还压在旧位置；
+    // 不冻结的话会回算成"最后那一组"，表现就是"点了没选中、滚完才选上"）
+    fireEvent.scroll(document.querySelector('.erp-settings-split-pane') as HTMLElement)
+    await waitFor(() => {
+      expect(within(nav).getByRole('button', { name: /提示词/ })).toHaveAttribute('aria-current', 'true')
+    })
   })
 
   it('未保存的改动会在左侧对应域上点一颗点，不用滚遍全页去找', async () => {
@@ -297,17 +308,17 @@ describe('AssistantSettingsPage', () => {
 
     renderPage()
     const input = await screen.findByLabelText('每人日上限（元）')
-    const nav = screen.getByRole('navigation', { name: '设置分组' })
+    const nav = screen.getByRole('complementary', { name: '设置分组' })
     const governance = within(nav).getByRole('button', { name: /成本与熔断/ })
     // 改之前：这一域里有一项已改过（提示词），所以点已经在了，但它是"已生效"的那种
-    const before = governance.querySelector('.erp-assistant-settings-nav-dot')
+    const before = governance.querySelector('.erp-settings-rail-dot')
     expect(before).not.toBeNull()
     expect(before!.classList.contains('is-saved')).toBe(true)
 
     fireEvent.change(input, { target: { value: '9' } })
 
     // 有了没保存的改动，点必须变成"待保存"——这一域现在有活没干完
-    const after = governance.querySelector('.erp-assistant-settings-nav-dot')
+    const after = governance.querySelector('.erp-settings-rail-dot')
     expect(after).not.toBeNull()
     expect(after!.classList.contains('is-saved')).toBe(false)
   })
@@ -318,11 +329,12 @@ describe('AssistantSettingsPage', () => {
     renderPage()
     await screen.findByRole('heading', { name: '每人日上限（元）' })
 
-    const body = document.querySelector('.erp-assistant-settings-body') as HTMLElement | null
+    const body = document.querySelector('.erp-settings-split') as HTMLElement | null
     expect(body).not.toBeNull()
-    expect(body!.querySelector('.erp-assistant-settings-nav')).not.toBeNull()
+    // 左栏用通用选择清单（选中态由 ErpSelectionList 提供），不是页面自己拼的按钮列表
+    expect(body!.querySelector('.erp-selection-list.erp-settings-rail')).not.toBeNull()
 
-    const pane = body!.querySelector('.erp-assistant-settings-pane') as HTMLElement | null
+    const pane = body!.querySelector('.erp-settings-split-pane') as HTMLElement | null
     expect(pane).not.toBeNull()
     expect(within(pane!).getByRole('heading', { name: '每人日上限（元）' })).toBeInTheDocument()
     // 保存按钮所在的命令栏与页头都在滚动容器之外：往下滚也不会找不着保存
@@ -335,7 +347,7 @@ describe('AssistantSettingsPage', () => {
 
     renderPage()
 
-    const nav = await screen.findByRole('navigation', { name: '设置分组' })
+    const nav = await screen.findByRole('complementary', { name: '设置分组' })
     fireEvent.click(within(nav).getByRole('button', { name: /按用户 \/ 按模块覆盖/ }))
 
     expect(within(nav).getByRole('button', { name: /按用户 \/ 按模块覆盖/ }))

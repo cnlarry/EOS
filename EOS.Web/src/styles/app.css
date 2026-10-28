@@ -1079,12 +1079,12 @@ button, input, select { font: inherit; }
 .erp-import-badge-bad { display: inline-block; padding: 0 6px; border-radius: var(--erp-radius-pill); background: var(--tblr-danger-lt); color: var(--tblr-danger); font-size: var(--erp-font-xs); font-weight: 600; }
 .erp-import-cell-bad { color: var(--tblr-danger); font-weight: 600; text-decoration: underline dotted; text-underline-offset: 2px; }
 .erp-import-row-bad > td { background: color-mix(in srgb, var(--tblr-danger) 7%, transparent); }
-/* 助手设置（3105）：左导航 + 右配置的两栏页。
-   与行为动作（230104，.erp-config-workbench）同一套骨架——卡片体直接作 grid（行轨道
+/* 「左导航 + 右配置」两栏设置页——助手设置（3105）与系统参数（110111/180213/180662）共用。
+   与行为动作（230104，.erp-config-workbench）同一套骨架：卡片体直接作 grid（行轨道
    minmax(0,1fr) 给出确定高度），左右两栏各自内部滚动，页面级不出滚动条，因此也不必写死
-   72vh 那种魔数。左栏只列"域"（参数目录的 9 个域 + 作用域覆盖）：一百多项参数做成一百多条
-   导航，等于让导航自己变成需要导航的东西；当前读到哪一项由右栏顶部那行 sticky 承担。 */
-.erp-assistant-settings-page > .erp-list-card > .card-body.erp-assistant-settings-body {
+   72vh 那种魔数。左栏只列"分组"：上百项参数做成上百条导航，等于让导航自己变成需要导航的东西；
+   当前读到哪一项由右栏顶部那行 sticky 承担（滚动联动的实现在 common/useSectionScrollSpy）。 */
+.erp-list-card > .card-body.erp-settings-split {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
@@ -1095,7 +1095,7 @@ button, input, select { font: inherit; }
 }
 /* 命令栏左侧的标题 + 统计：一行读下来是"这页是什么 + 一共几项、几项改过"，
    与右侧的保存按钮同属"现在要不要保存"这一件事。窄屏换行交给命令栏自己的 flex-wrap。 */
-.erp-assistant-settings-title {
+.erp-settings-split-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1103,57 +1103,23 @@ button, input, select { font: inherit; }
   min-width: 0;
   margin-right: 6px;
 }
-.erp-assistant-settings-nav {
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border-right: 1px solid var(--tblr-border-color);
-  padding: 8px 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.erp-assistant-settings-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: var(--erp-radius-sm);
-  background: transparent;
-  color: inherit;
-  font-size: var(--erp-font-md);
-  text-align: left;
-}
-.erp-assistant-settings-nav-item:hover { background: var(--tblr-bg-surface-secondary); }
-.erp-assistant-settings-nav-item.is-active {
-  background: color-mix(in srgb, var(--tblr-primary) 12%, transparent);
-  color: var(--tblr-primary);
-  font-weight: 600;
-}
-.erp-assistant-settings-nav-label { min-width: 0; overflow-wrap: anywhere; }
-.erp-assistant-settings-nav-count {
-  margin-left: auto;
-  color: var(--tblr-secondary);
-  font-size: var(--erp-font-xs);
-  font-weight: 400;
-}
-/* 域上那颗点：黄＝有改动没保存，蓝＝已改过且已生效。只为回答"哪个域里还有东西"，
-   不承担计数——总数在页面头上。 */
-.erp-assistant-settings-nav-dot {
+/* 左栏就是通用「选择清单」（ErpSelectionList）：选中态（底色 + 左缘 2px 色条）、悬停、
+   滚动与空态都由它定义一次，这里只补分隔线——不要再复写 .erp-selection-item 的选中样式。 */
+.erp-settings-rail { border-right: 1px solid var(--tblr-border-color); }
+/* 分组右侧的两类标记：黄点＝这个分组有改动没保存，蓝点＝有非默认值（已生效） */
+.erp-settings-rail-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--tblr-warning);
   flex: 0 0 auto;
 }
-.erp-assistant-settings-nav-dot.is-saved { background: var(--tblr-primary); opacity: .55; }
-.erp-assistant-settings-pane { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-/* 右栏顶部"当前读到哪"：sticky 在本滚动容器内，滚动时始终压在最上面——一百多项的页面里，
+.erp-settings-rail-dot.is-saved { background: var(--tblr-primary); opacity: .55; }
+.erp-settings-split-pane { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* 右栏顶部"当前读到哪"：sticky 在本滚动容器内，滚动时始终压在最上面——上百项的页面里，
    "我在哪一组的哪一项"不能靠回头去找。它同时是滚动联动的分界：JS 取这一行的**实际下沿**
    作判定线与跳转落点，所以这里的高度可以随便调，不必去改代码里的常量。 */
-.erp-assistant-settings-now {
+.erp-settings-split-now {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -1165,9 +1131,10 @@ button, input, select { font: inherit; }
   background: var(--tblr-bg-surface);
   font-size: var(--erp-font-sm);
 }
-.erp-assistant-settings-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
-.erp-assistant-settings-section-head { display: flex; align-items: center; gap: 8px; }
-.erp-assistant-settings-item {
+.erp-settings-split-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.erp-settings-split-section-head { display: flex; align-items: center; gap: 8px; }
+/* 单项卡片外框（助手设置每个参数一张卡）。系统参数走的是三列编辑网格，不用这一层。 */
+.erp-settings-split-item {
   padding: 12px;
   border: 1px solid var(--tblr-border-color);
   border-radius: var(--erp-radius-md);
@@ -2826,16 +2793,22 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   border-radius: var(--erp-radius-xs);
 }
 
-/* 三列分区行：长标签优先，输入控件收窄，标签放不下时换行而非截断 */
-.erp-settings-form .erp-form-row-3 .erp-form-field {
+/* 设置页的三列/两列行：长标签优先，输入控件收窄，标签放不下时换行而非截断。
+   不加行类限定——同一套口径要覆盖 1/2/3 列，按行类写只会漏掉另一种。 */
+.erp-settings-form .erp-form-field {
   grid-template-columns: minmax(0, 1fr) minmax(84px, 132px);
 }
 
-.erp-settings-form .erp-form-row-3 .erp-form-label {
+/* 标签**必须完整换行**：`.erp-form-label` 本身是两行钳制（`-webkit-line-clamp: 2`），
+   而设置项的标签是"说明 + 键 + 徽标（需重启 / 当前无引用方）"三段，钳到两行会把徽标整段
+   吞掉；只把 overflow 改成 visible 更糟——盒子仍按两行高算，第三行会**视觉溢出到下一行**，
+   看上去像两行叠在一起。这一页因此显式解除钳制。 */
+.erp-settings-form .erp-form-label {
+  display: block;
+  -webkit-line-clamp: unset;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
-  line-height: 1.35;
 }
 
 /* 统一表单附件对话框：附件列表项（文件名/大小/上传人/时间/备注，操作按钮右侧排列） */

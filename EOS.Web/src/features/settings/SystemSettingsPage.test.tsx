@@ -1,6 +1,6 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SystemSettingsPage } from './SystemSettingsPage'
@@ -101,7 +101,7 @@ function renderPage(path = '/settings/system') {
   )
 }
 
-describe('SystemSettingsPage（系统参数分组选项卡）', () => {
+describe('SystemSettingsPage（左导航 + 右配置两栏）', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (url: string) =>
       url.includes('hr-setup') ? hrPayload : payload,
@@ -114,36 +114,43 @@ describe('SystemSettingsPage（系统参数分组选项卡）', () => {
     vi.restoreAllMocks()
   })
 
-  it('按分组渲染选项卡，并可切换到其它分组', async () => {
-    const { container } = renderPage()
-    expect(await screen.findByRole('tab', { name: '往来与账期' })).toBeInTheDocument()
-    // 页签沿用系统级页签面板（与菜单管理右侧面板、统一表单同一套设计语言）
-    expect(container.querySelector('.erp-tabbed-panel-tabs')).not.toBeNull()
-    expect(container.querySelector('.erp-tabbed-panel-body')).not.toBeNull()
-    expect(screen.getByRole('tab', { name: '单据联动开关' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '界面与查询' })).toBeInTheDocument()
-    // 默认展示第一个分组
-    expect(screen.getByLabelText('客户未交易天数')).toBeInTheDocument()
-    expect(screen.queryByLabelText('送货单扣库存')).not.toBeInTheDocument()
+  it('左导航按分组列出；默认高亮第一组，点另一组即切过去', async () => {
+    renderPage()
+    const nav = await screen.findByRole('complementary', { name: '参数分组' })
 
-    fireEvent.click(screen.getByRole('tab', { name: '单据联动开关' }))
+    expect(within(nav).getByRole('button', { name: /往来与账期/ })).toHaveAttribute('aria-current', 'true')
+    expect(within(nav).getByRole('button', { name: /单据联动开关/ })).not.toHaveAttribute('aria-current')
+
+    fireEvent.click(within(nav).getByRole('button', { name: /单据联动开关/ }))
+
+    expect(within(nav).getByRole('button', { name: /单据联动开关/ })).toHaveAttribute('aria-current', 'true')
+    // 右栏顶部那行 sticky 是"读到哪一组"的答案，切组后必须跟着变
+    const now = document.querySelector('.erp-settings-split-now') as HTMLElement
+    expect(now.textContent).toContain('单据联动开关')
+  })
+
+  it('所有分组一次铺开——不再"切走就看不见"，因为核对相关开关要同时看到', async () => {
+    renderPage()
+
+    // 三组同时在页面上：这正是从"每组一个页签"改成两栏的收益
+    expect(await screen.findByLabelText('客户未交易天数')).toBeInTheDocument()
     expect(screen.getByLabelText('送货单扣库存')).toBeInTheDocument()
-    expect(screen.queryByLabelText('客户未交易天数')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('用 F12 键登录系统')).toBeInTheDocument()
+    // 联动锚点齐备：每组一个 group 锚点，每项一条 item 锚点
+    expect(document.querySelectorAll('[data-settings-anchor="group"]')).toHaveLength(3)
+    expect(document.querySelectorAll('[data-settings-anchor="item"]')).toHaveLength(4)
   })
 
   it('按参数类型渲染控件：开关→复选框、整数→数字输入', async () => {
     renderPage()
     expect(await screen.findByLabelText('客户未交易天数')).toHaveAttribute('type', 'number')
-
-    fireEvent.click(screen.getByRole('tab', { name: '单据联动开关' }))
     expect(screen.getByLabelText('送货单扣库存')).toHaveAttribute('type', 'checkbox')
     expect(screen.getByLabelText('送货单扣库存')).toBeChecked()
   })
 
   it('文本参数渲染为文本框并按生效值回填', async () => {
     renderPage('/settings/hr-setup')
-    fireEvent.click(await screen.findByRole('tab', { name: '工资字段映射' }))
-    expect(screen.getByLabelText('工资超额字段')).toHaveValue('WAGE_TOTAL')
+    expect(await screen.findByLabelText('工资超额字段')).toHaveValue('WAGE_TOTAL')
   })
 
   it('当前无引用方的参数带标记，有引用方的不带', async () => {
@@ -157,10 +164,23 @@ describe('SystemSettingsPage（系统参数分组选项卡）', () => {
 
   it('需重启生效的参数带标注', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: '界面与查询' }))
-    expect(screen.getByText('需重启')).toBeInTheDocument()
+    expect(await screen.findByText('需重启')).toBeInTheDocument()
     // 参数键随说明一并展示，便于与配置/日志对照
     expect(screen.getByText('LOGIN_F12')).toBeInTheDocument()
+  })
+
+  it('改一项就在左侧对应分组点一颗"未保存"的点', async () => {
+    renderPage()
+    const input = await screen.findByLabelText('客户未交易天数')
+    const nav = screen.getByRole('complementary', { name: '参数分组' })
+    const partner = within(nav).getByRole('button', { name: /往来与账期/ })
+    // 改之前：这一组没有"已不是默认值"的参数（fixture 里两条都带值但 usesDefault=false 之外无标记）
+    fireEvent.change(input, { target: { value: '45' } })
+
+    const dot = partner.querySelector('.erp-settings-rail-dot')
+    expect(dot).not.toBeNull()
+    // 黄色（非 is-saved）= 有改动没保存
+    expect(dot!.classList.contains('is-saved')).toBe(false)
   })
 
   it('保存提交全部参数并按范围段寻址', async () => {

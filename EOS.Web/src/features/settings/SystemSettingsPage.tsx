@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { apiClient } from '../../services/api'
-import { SystemSettingsTabs } from './SystemSettingsTabs'
+import { SystemSettingsPanel } from './SystemSettingsPanel'
 import {
   initialSettingsForm,
   normalizeScope,
@@ -12,15 +12,19 @@ import {
 } from './settingsTypes'
 
 /**
- * 系统参数设置页 / 考勤数据设置页：路由段决定设置范围
- * （system 110111 / hr-setup 180213 / hrm-setup 180662，菜单 URL 不变），
- * 参数按分组以选项卡呈现，控件由参数类型决定。
+ * 系统参数设置页 / 考勤数据设置页 / 薪资考勤设置页：路由段决定设置范围
+ * （system 110111 / hr-setup 180213 / hrm-setup 180662，菜单 URL 不变）。
+ *
+ * <p>
+ * 页面根只负责"整页占满 + 命令栏 + 两栏内容"的骨架，两栏本体在
+ * `SystemSettingsPanel`；保存是**整页一个动作**（提交 form 里全部参数），
+ * 所以编辑态只在这里持有。
+ * </p>
  */
 export function SystemSettingsPage() {
   const { table } = useParams<{ table: string }>()
   const scope = normalizeScope(table)
   const [form, setForm] = useState<SettingsForm>({})
-  const [activeGroupCode, setActiveGroupCode] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -57,16 +61,17 @@ export function SystemSettingsPage() {
 
   const groups = settings.data?.groups ?? []
   return (
-    <SystemSettingsTabs
-      groups={groups}
-      form={form}
-      activeGroupCode={activeGroupCode || groups[0]?.groupCode || ''}
-      onSelectGroup={setActiveGroupCode}
-      onChange={change}
-      onSave={() => void save()}
-      saving={saving}
-      saved={saved}
-      saveError={saveError}
-    />
+    <div className="erp-base-page erp-page-fill">
+      {/* 保存结果固定在两栏之上，不随内容滚走：改完滚到最底下才看见"到底存没存进去"是最糟的顺序 */}
+      {saved && <div role="alert" className="alert alert-success py-2 mb-0">设置成功！</div>}
+      {saveError && <div role="alert" className="alert alert-danger py-2 mb-0">{saveError}</div>}
+      <SystemSettingsPanel
+        groups={groups}
+        form={form}
+        onChange={change}
+        onSave={() => void save()}
+        saving={saving}
+      />
+    </div>
   )
 }
