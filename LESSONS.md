@@ -17,9 +17,9 @@
 | 五、测试写法（L40–L47、L88、L91、L97） | 怎么写出会失败的断言、验收脚本的夹具取值、谁去构造畸形入参 | 写测试 / 跑测试 / 写验收脚本 |
 | 六、发布与版本（L48–L50） | 打标签、CHANGELOG、gh 凭据 | 发布 |
 | 七、并发协作与文档（L51–L55） | 共享文件、暂存范围、文档同步 | 多会话并行 / 提交 / 改手册 |
-| 八、构建、工具链与环境（L56–L62、L68、L86、L119、L126） | dotnet、sqlcmd、长驻进程、Playwright、测试输出目录 | 构建失败 / 脚本卡住 / 工具起不来 / 一批测试离奇全红 |
+| 八、构建、工具链与环境（L56–L62、L68、L86、L119、L126、L131） | dotnet、sqlcmd、长驻进程、Playwright、测试输出目录、submodule 内的 testhost | 构建失败 / 脚本卡住 / 工具起不来 / 一批测试离奇全红 / 子模块里跑不起单测 |
 | 九、前端界面（L63、L76、L89、L96、L116、L117） | 表格列与输入控件、焦点、样式库升级与主题开关、页面布局抖动、列表读不到数据、吸顶表头底色、虚拟化滚动 | 改前端表格 / 加可编辑列 / 换样式库 / 页面高度随内容变 / 新列表页空数据 / 加 sticky 表头 / 大列表滚动白块 |
-| 十、模型接入与助手编排（L64） | 模型输出通道、回答净化 | 接模型 / 改助手对话编排 |
+| 十、模型接入与助手编排（L64、L130） | 模型输出通道、回答净化、评估样本的来源锚定 | 接模型 / 改助手对话编排 / 动被样本锚定的成员 |
 | 十一、指标与口径（L65） | 口径来源模块、行过滤归属 | 加口径 / 改指标取数 |
 
 ## 一、真库用例与双路对拍
@@ -1521,3 +1521,39 @@
   [75-部署与环境配置](./docs/guide/75-部署与环境配置.md) 第三节的配置项清单。
 - **防线**：往 `appsettings.json` 加段之前先想"这段要不要给人看"，要就同时改 75 篇；
   改完跑一次 `dotnet test --filter "Category!=Integration"`，别只跑 `dotnet run`。
+
+### L130 评估样本用代码符号当依据锚点：删掉/改名的成员会让离线全量红在"样本"上
+
+- **触发／症状**：删除自研工具循环那批代码后跑离线全量，
+  `AssistantEvalLayersTests.检索与回答层的样本来源锚定到代码或仓库` 报
+  `[代码符号] … -> ChatService.XXX`——"EOS.API 里找不到该类型或成员"。样本文件一行没改，
+  失败信息却指向已经被删掉的成员，看起来像"用例写错了"，实际是依据失效。
+- **根因**：`EOS.API.Tests/AssistantEval/**/seed-*.jsonl` 的 `sources[]` 是"这条依据在仓库哪里"的声明，
+  其中 `Type` / `Type.Member` 形态按程序集反射逐条核对。它是评估集"依据可核对"这一半的自动断言，
+  但**只校验锚点存在，不校验它是否仍然支撑该条回答**；重构把成员搬走或改名后，
+  锚点失效而样本读起来仍然合情合理，直到有人把它当依据引用。
+- **处置**：把该条锚点改到仍然成立的地点（与结论同类、且今天仍在的成员），
+  其余样本按同一判据逐条核对：模块映射走 `ModuleBusinessMap[<模块号>]`、工具名走工具注册源码的字面量、
+  文件走仓库路径、库对象/错误码走全大写标识符、代码符号走程序集。
+- **防线**：动助手编排里**被样本锚定**的公开成员时，同一提交里扫一遍种子文件：
+  `rg -n "sources" EOS.API.Tests/AssistantEval --glob '*.jsonl'`。该用例是离线用例，
+  默认 `dotnet test` 与 `--filter "Category!=Integration"` 都会跑到它，别只看编译结果就收工；
+  锚点要选**语义稳定**的位置（收尾归一化、权限判定这类），不要锚在即将搬家的私有实现细节上。
+
+### L131 submodule 目录里跑 Harness 单测，testhost 在 `EnableRaisingEvents` 处被拒
+
+- **触发／症状**：在 `third_party/agent-harness` 里执行
+  `dotnet test tests/Agent.Harness.Tests/Agent.Harness.Tests.csproj`，编译 0 警告 0 错误，
+  但一条用例都没跑就中止：`Unhandled exception. System.ComponentModel.Win32Exception (5): 拒绝访问`，
+  栈为 `System.Diagnostics.Process.set_EnableRaisingEvents` ←
+  `DefaultEngineInvoker.SetParentProcessExitCallback` ← `TestHost.Program.Main`，输出里只有"测试运行已中止"。
+  Release/Debug、`dotnet vstest`、`/Platform:x64` 换着试都一样；同一 shell 里 EOS 自己的用例正常。
+- **根因**：testhost 启用"父进程退出即中止"的回调要打开父进程句柄；本机沙箱/WDAC 对这种句柄操作拒绝，
+  且只在子模块这棵树下复现（把产物复制到别的目录就正常）。与测试代码、xunit 版本、平台位数无关——
+  两个 testhost 二进制哈希一致，diag 里也都是 X64。别按"测试太慢/依赖坏了"的方向查。
+- **处置**：把 `tests/Agent.Harness.Tests/bin/Release/net10.0` 整目录复制到 `%TEMP%\harness-bin`，
+  在那里 `dotnet vstest Agent.Harness.Tests.dll` 即可跑完（本次 106/106）；判据以这份结果为准，
+  不要因为"原地跑不起来"就跳过验证或改成"未验证"。
+- **防线**：验收子模块里的用例时直接按上述方式跑；看到 `Win32Exception (5)` +
+  `SetParentProcessExitCallback` 就先怀疑路径，而不是先去改测试或升包。
+  改 Harness 代码后两手都要过：`dotnet build Agent.Harness.slnx` 与（复制后）`dotnet vstest`。
