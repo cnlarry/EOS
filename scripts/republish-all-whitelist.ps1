@@ -110,6 +110,7 @@ $drift = @()
 $published = 0
 $reused = 0
 $failed = 0
+$skipped = 0
 $noDrift = 0
 
 # 逐模块：发布（默认）或 dry-run 重建（-SkipPublish）后回读并对比
@@ -133,6 +134,13 @@ foreach ($id in $ids) {
         $results = @($resp.Content | ConvertFrom-Json)
         $result = $results[0]
         if ($resp.StatusCode -ne 200 -or -not $result.passed) {
+            # 定制页与目录节点没有快照可发布（发布服务按节点类型拒绝），这不是失败：
+            # 它们的定义每请求实时装配，也不需要与快照对拍。
+            if ($result.error -and $result.error -match '不是统一工作台模块') {
+                $skipped++
+                Write-Output "  SKIP  module=$id 定制页/目录节点，不走发布流程"
+                continue
+            }
             $failed++
             Write-Output "  FAIL  module=$id 发布被校验拦截"
             continue
@@ -192,6 +200,7 @@ $summary = @"
 - 复用当前版本（内容未变，不递增版本）：$reused
 - 漂移（快照与元数据不一致）：$($drift.Count)
 - 无漂移：$noDrift
+- 跳过（定制页/目录节点，没有快照可发布）：$skipped
 - 失败/未发布：$failed
 
 ## 漂移模块
@@ -210,5 +219,5 @@ $((($drift | ForEach-Object { "- module=$($_.ModuleId)：$((($_.DiffFields | For
 $summary | Set-Content -Encoding utf8 $summaryPath
 Write-Output "差异清单：$diffPathReal"
 Write-Output "汇总：$summaryPath"
-Write-Output "漂移模块数：$($drift.Count) / 无漂移：$noDrift / 新版本：$published / 复用版本：$reused / 失败：$failed"
+Write-Output "漂移模块数：$($drift.Count) / 无漂移：$noDrift / 新版本：$published / 复用版本：$reused / 跳过：$skipped / 失败：$failed"
 exit 0
