@@ -549,50 +549,6 @@ public sealed class AssistantController(
         });
     }
 
-    /// <summary>用量看板（角色③治理可见，2306 CanSetup 门）：全局 + 分用户聚合。</summary>
-    [HttpGet("metrics")]
-    public async Task<IActionResult> Metrics(CancellationToken token)
-    {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2306, token)).CanSetup) return Forbid();
-        var cost = runtime.Current.Settings.Cost;
-        var dayStart = DateTimeOffset.UtcNow.Date;
-        var global = await usageRepository.GetGlobalDailyUsageAsync(dayStart, token);
-        var perUser = await usageRepository.GetPerUserDailyUsageAsync(dayStart, 20, token);
-        var latency = await usageRepository.GetGlobalLatencyAsync(dayStart, token);
-        return Ok(new
-        {
-            day = dayStart,
-            global = new
-            {
-                requests = global.Requests,
-                promptTokens = global.PromptTokens,
-                completionTokens = global.CompletionTokens,
-                estimatedCostYuan = Math.Round(AssistantCost.Calculate(
-                    global.PromptTokens, global.CompletionTokens, cost), 4),
-            },
-            latency = new
-            {
-                samples = latency.Samples,
-                avgMs = Math.Round(latency.AvgMs, 0),
-                p95Ms = Math.Round(latency.P95Ms, 0),
-            },
-            users = perUser.Select(entry => new
-            {
-                userId = entry.UserId,
-                requests = entry.Usage.Requests,
-                estimatedCostYuan = Math.Round(AssistantCost.Calculate(
-                    entry.Usage.PromptTokens, entry.Usage.CompletionTokens, cost), 4),
-            }),
-            caps = new
-            {
-                userDailyCapYuan = cost.UserDailyCapYuan,
-                globalDailyCapYuan = cost.GlobalDailyCapYuan,
-                maxConsecutiveFailures = cost.MaxConsecutiveFailures,
-                cooldownSeconds = cost.CooldownSeconds,
-            },
-        });
-    }
-
     private static async Task WriteEventAsync(StreamWriter writer, string eventName, object payload, CancellationToken token)
     {
         await writer.WriteAsync(new StringBuilder()

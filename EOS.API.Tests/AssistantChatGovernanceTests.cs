@@ -79,13 +79,6 @@ public sealed class AssistantChatGovernanceTests
         public Task<DailyUsage> GetGlobalDailyUsageAsync(DateTimeOffset dayStartUtc, CancellationToken token) =>
             Task.FromResult(new DailyUsage(0, 0, 0));
 
-        public Task<LatencySummary> GetGlobalLatencyAsync(DateTimeOffset dayStartUtc, CancellationToken token) =>
-            Task.FromResult(new LatencySummary(0, 0, 0));
-
-        public Task<IReadOnlyList<(string UserId, DailyUsage Usage)>> GetPerUserDailyUsageAsync(
-            DateTimeOffset dayStartUtc, int top, CancellationToken token) =>
-            Task.FromResult<IReadOnlyList<(string UserId, DailyUsage Usage)>>([]);
-
         // 治理测试不关心看板聚合：模型/趋势两个新方法给空结果即可
         public Task<IReadOnlyList<ModelUsage>> GetPerModelUsageAsync(DateTimeOffset sinceUtc, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<ModelUsage>>([]);

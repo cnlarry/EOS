@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 832d179866950439 -->
+<!-- code-map-fingerprint: bbfd130ba42d0839 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 41 个、方法级路由属性 292 处、解析出 292 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 41 个、方法级路由属性 291 处、解析出 291 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -158,7 +158,6 @@
 | POST | `api/v1/assistant/memory/pending/{memoryId:long}/resolve` | ResolvePendingMemory | `AssistantController.cs` |
 | PUT | `api/v1/assistant/memory/preferences` | SavePreferences | `AssistantController.cs` |
 | PUT | `api/v1/assistant/messages/{messageId:long}/feedback` | SetMessageFeedback | `AssistantController.cs` |
-| GET | `api/v1/assistant/metrics` | Metrics | `AssistantController.cs` |
 | POST | `api/v1/assistant/record-actions/apply` | Apply | `AssistantRecordActionController.cs` |
 | POST | `api/v1/assistant/record-actions/preview` | Preview | `AssistantRecordActionController.cs` |
 | GET | `api/v1/assistant/sessions` | ListSessions | `AssistantController.cs` |
