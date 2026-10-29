@@ -65,6 +65,11 @@ $warningPatterns = [ordered]@{
 }
 
 # ---- 取待检查的消息 ----
+# 读 git 输出前固定解码方式：提交信息是中文，而 git 输出的是 UTF-8 字节、
+# PowerShell 在中文 Windows 上默认按 GBK(936) 解码。不固定时整条信息被解成乱码，
+# 本脚本的中文关键字规则一条也命中不了——门禁恒绿。
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+
 function Get-CheckTargets {
     <#
       返回 @{ Label; Text } 列表。Label 用于输出定位（提交短哈希或文件名）。

@@ -44,9 +44,19 @@ function Get-GitText {
       git 无输出时命令结果是 $null，而 `([string]$null).Trim()` 在「内联转换再调方法」的写法下
       仍会抛「不能对值为 Null 的表达式调用方法」——门禁会自己崩掉。统一用 Out-String：
       它永远产出字符串（无输入时为空串）。
+
+      git 输出是 UTF-8 字节，PowerShell 按 [Console]::OutputEncoding 解码；中文 Windows 上
+      该值默认是 GBK(936)，含中文的路径会被解成乱码名、与磁盘对不上（时间戳一律取不到）。
     #>
     param([string[]] $Arguments)
-    return ((& git -C $root @Arguments 2>$null | Out-String).Trim())
+    $previous = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [Text.Encoding]::UTF8
+        return ((& git -C $root @Arguments 2>$null | Out-String).Trim())
+    }
+    finally {
+        [Console]::OutputEncoding = $previous
+    }
 }
 
 function Get-LastCommitSeconds {

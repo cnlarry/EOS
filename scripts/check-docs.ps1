@@ -19,6 +19,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# 读 git 输出前固定解码方式：git 输出的是 UTF-8 字节，PowerShell 按 [Console]::OutputEncoding
+# 解码，而中文 Windows 上该值默认是 GBK(936)。不固定时含中文的路径会被解成乱码名，
+# 入库清单与文档里的链接永远对不上，整批链接被误报"未入库"。
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $errors = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
@@ -223,6 +227,18 @@ if (-not (Test-Path $lessonsPath)) {
 # 本机绿、流水线红——门禁不能依赖个人 git 配置。
 $trackedFiles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($p in (git -C $root -c core.quotePath=false ls-files)) { if ($p) { [void]$trackedFiles.Add(($p -replace '\\', '/')) } }
+
+# 解码自检：含中文的入库路径必须能在磁盘上落到同名文件。git 输出若被按本地代码页解码，
+# 中文名会变成"看着也是中文"的乱码名——链接检查整批误报，而脚本自己不报任何异常。
+$undecodablePaths = @(
+    $trackedFiles | Where-Object { $_ -match '[^\x00-\x7F]' } |
+        Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) }
+)
+if ($undecodablePaths.Count -gt 0) {
+    $errors.Add(("git 路径解码失败：{0} 个含中文的入库路径在磁盘上找不到同名文件（例：{1}）——读取 git 输出时未固定 UTF-8" -f
+            $undecodablePaths.Count, $undecodablePaths[0]))
+}
+
 $brokenLinks = 0
 foreach ($rel in @(git -C $root -c core.quotePath=false ls-files '*.md')) {
     if ([string]::IsNullOrWhiteSpace($rel)) { continue }
