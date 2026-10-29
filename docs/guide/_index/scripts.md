@@ -46,10 +46,10 @@
 
 | 脚本 | 作用 | 依赖 | 引用 |
 |---|---|---|---|
-| `check-agent-skills.ps1` | Agent 技能门禁：frontmatter 名与目录名一致、引用资产存在、引用资产未陈旧。 | git | 5 |
+| `check-agent-skills.ps1` | Agent 技能门禁：frontmatter 名与目录名一致、引用资产存在、引用资产未陈旧。 | git | 6 |
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 6 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 6 |
-| `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 8 |
+| `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 9 |
 | `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 4 |
 | `check-controller-sql-boundary.ps1` | 静态门禁：控制器不得持有数据访问（ADR-036 §5 断言 A）。 | 仅静态 | 3 |
 | `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 7 |
