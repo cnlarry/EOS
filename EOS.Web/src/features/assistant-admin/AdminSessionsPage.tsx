@@ -349,9 +349,6 @@ export function AdminSessionsPage() {
                 onClick={batchDelete}>批量删除</Button>
             </span>
           )}
-          <span className="ms-auto text-secondary small">
-            跨用户查看会话元数据；不含对话正文，归档＝可恢复，删除只对已归档开放；金额按各模型单价估算
-          </span>
         </div>}
         footer={!sessions.isPending && !sessions.isError
           ? <ErpPagination total={total} page={page} pageSize={pageSize}
