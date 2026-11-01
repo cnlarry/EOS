@@ -1965,7 +1965,7 @@ LEFT JOIN MODULES WITH (NOLOCK) ON WFFORM.WF_M_IDX=MODULES.M_IDX', N'EOS-DOC-GEN
 GO
 
 ------------------------------------------------------------------------------
--- FIELDS（总 11189 行，剔除 0）
+-- FIELDS（总 11203 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[FIELDS];
 INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
@@ -2027,6 +2027,30 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'ACCOUNT_TYPE', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-04T21:27:10.630', NULL, NULL),
     (N'ACCOUNT_TYPE', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-04T21:27:10.630', NULL, NULL),
     (N'ACCOUNT_TYPE', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 53, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-04T21:27:10.630', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'APPROVED', N'批核状态', N'bit', NULL, NULL, NULL, NULL, NULL, 0, NULL, 79, NULL, N'center', N'center', 0, 11, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'APPROVED_BY', N'批核人', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 12, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'APPROVED_TIME', N'批核时间', N'datetime', NULL, NULL, NULL, NULL, NULL, 0, NULL, 130, NULL, N'center', N'left', 0, 13, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'CASE_ID', N'用例编号', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 140, NULL, N'left', N'left', 1, 0, 1, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'CASE_VERSION', N'版本', N'int', NULL, NULL, NULL, NULL, NULL, 0, NULL, 60, NULL, N'center', N'right', 0, 8, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'CREATED_BY', N'建立人', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 17, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'CREATED_TIME', N'建立时间', N'datetime', NULL, NULL, NULL, NULL, NULL, 0, NULL, 130, NULL, N'center', N'left', 0, 18, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'EXPECT_TOOLS', N'期望工具', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 180, NULL, N'left', N'left', 0, 4, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'EXPECTED', N'期望结果', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 300, NULL, N'left', N'left', 0, 3, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'FINISHED', N'结案状态', N'bit', NULL, NULL, NULL, NULL, NULL, 0, NULL, 78, NULL, N'center', N'center', 0, 14, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'FINISHED_BY', N'结案人', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 15, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'FINISHED_TIME', N'结案时间', N'datetime', NULL, NULL, NULL, NULL, NULL, 0, NULL, 130, NULL, N'center', N'left', 0, 16, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'FIX_AT', N'改哪里', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 21, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'460', '2026-10-31T19:50:13.980', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'FIX_PERMISSION', N'所需权限', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 23, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'460', '2026-10-31T19:50:13.980', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'FIX_SUGGESTION', N'改进建议', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 300, NULL, N'left', N'left', 0, 22, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'460', '2026-10-31T19:50:13.980', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'LAYER', N'层次', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 110, NULL, N'left', N'left', 1, 1, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'MODIFIED_BY', N'修改人', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 19, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'MODIFIED_TIME', N'修改时间', N'datetime', NULL, NULL, NULL, NULL, NULL, 0, NULL, 130, NULL, N'center', N'left', 0, 20, 0, 1, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'ORIGIN', N'来源', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 7, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'PAGE_TYPE', N'页面类型', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'left', 0, 5, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'PAYLOAD_JSON', N'载荷', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 300, NULL, N'left', N'left', 0, 9, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'QUESTION', N'问句', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 300, NULL, N'left', N'left', 0, 2, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'REMARK', N'说明', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 240, NULL, N'left', N'left', 0, 10, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 0, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
+    (N'ASSISTANT_EVAL_CASE', N'REVIEW_STATUS', N'审阅状态', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'center', 1, 6, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, 1, 1, NULL, NULL, N'458', '2026-10-31T13:39:50.930', NULL, NULL),
     (N'AUDIT_EVENT', N'ACTION', N'动作', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 160, NULL, N'center', N'left', 0, 6, 0, 1, 1, 0, 0, 1, 0, 0, NULL, NULL, 1, NULL, N'动作码（如 UPDATE / APPROVE / LOG_QUERY）', N'migration-354', '2026-10-16T20:54:24.180', NULL, NULL),
     (N'AUDIT_EVENT', N'ACTOR_DISPLAY_NAME', N'操作人姓名', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', N'left', 0, 3, 0, 1, 1, 0, 0, 1, 0, 0, NULL, NULL, 1, NULL, N'写入时的姓名快照；早期记录与系统/测试账号为空，此时看操作人账号', N'migration-354', '2026-10-16T20:54:24.180', NULL, NULL),
     (N'AUDIT_EVENT', N'ACTOR_TYPE', N'操作者类型', N'tinyint', NULL, NULL, NULL, NULL, NULL, 0, NULL, 90, NULL, N'center', N'right', 0, 15, 0, 1, 1, 0, 0, 0, 0, 0, NULL, NULL, 0, NULL, N'区分人、系统任务与代办的助手', N'migration-354', '2026-10-16T20:54:24.180', NULL, NULL),
@@ -2144,7 +2168,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'BOM_INSTRUCT_D', N'COLOR_NAME', N'颜色', N'nvarchar', N'COLOR.COLOR_NAME', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'BOM_INSTRUCT_D', N'ITEM_NO', N'项次', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'BOM_INSTRUCT_D', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'BOM_INSTRUCT_D', N'PRO_NO', N'料号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 1, N'', 1, N'', 150, N'', N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'A', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'BOM_INSTRUCT_D', N'PRO_NO', N'料号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 1, N'', 1, N'', 150, N'', N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'A', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'BOM_INSTRUCT_D', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'A', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'BOM_INSTRUCT_D', N'QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'BOM_INSTRUCT_D', N'REMARK_1', N'描述一', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -2168,9 +2194,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'BOM_INSTRUCT_M', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL),
     (N'BOM_INSTRUCT_M', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 1, N'', 1, N'', 150, N'', N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
     (N'BOM_INSTRUCT_M', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'BOM_INSTRUCT_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'BOM_INSTRUCT_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'BOM_REDEPLOY_D', N'CLIENT_PRO_NO', N'客户品号', N'nvarchar', N'PRODUCT.CLIENT_PRO_NO', N'', 0, 0, N'', 0, N'', 150, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2012-06-19T18:31:39.000', NULL, NULL),
     (N'BOM_REDEPLOY_D', N'PRO_ID', N'商品编号', N'nvarchar', N'', N'', 0, 1, N'', 1, N'', 120, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2012-06-19T18:19:13.000', NULL, NULL),
     (N'BOM_REDEPLOY_D', N'PRO_ID_OLD', N'旧商品编号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2012-06-19T18:07:22.000', NULL, NULL),
@@ -2346,7 +2370,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CAR_FEE_M', N'CREATED_BY', N'建立人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-12-26T17:22:25.000', NULL, NULL),
     (N'CAR_FEE_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CAR_FEE_M', N'DEPT_ID', N'部门', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2011-12-26T21:45:20.000', NULL, NULL),
-    (N'CAR_FEE_M', N'DEPT_NAME', N'部门名', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2011-12-26T21:45:47.000', NULL, NULL),
+    (N'CAR_FEE_M', N'DEPT_NAME', N'部门名', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2011-12-26T21:45:47.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CAR_FEE_M', N'EMP_ID', N'工号', N'nvarchar', N'', N'', 0, 0, NULL, 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2011-12-28T15:41:39.000', NULL, NULL),
     (N'CAR_FEE_M', N'EMP_NAME', N'员工姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2011-12-28T15:21:36.000', NULL, NULL),
     (N'CAR_FEE_M', N'FEE_DATE', N'加油日期', N'date', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
@@ -2370,9 +2396,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CAR_FILLOIL_M', N'FILLOIL_DATE', N'加油日期', N'date', N'', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 1, 2, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'CAR_FILLOIL_M', N'FILLOIL_NO', N'加油单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'CAR_FILLOIL_M', N'FILLOIL_TYPE', N'加油单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={FILLOIL_TYPE}', 2304, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'a', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'CAR_FILLOIL_M', N'LAST_MILEAGE', N'上次车公里数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2012-01-13T18:33:44.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CAR_FILLOIL_M', N'LAST_MILEAGE', N'上次车公里数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2012-01-13T18:33:44.000', NULL, N'QTY'),
     (N'CAR_FILLOIL_M', N'LAST_OIL', N'上次车余油数(升)', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'上次车余油数', N'EOS-DOC-GEN', '2026-08-09T12:04:10.293', NULL, N'QTY'),
     (N'CAR_FILLOIL_M', N'LAST_OIL_AMOUNT', N'上次油卡结余金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2012-01-13T18:36:42.000', NULL, N'AMOUNT'),
     (N'CAR_FILLOIL_M', N'LAST_OIL_MILEAGE', N'上次车可跑公里数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2012-01-13T18:33:56.000', NULL, N'QTY'),
@@ -2548,7 +2572,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CLIENT', N'LAST_TRADE_DATE', N'最近交易日', N'date', N'', N'', 0, 0, N'', 0, N'', 92, N'yyyy-MM-dd', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'CLIENT', N'LICENSE', N'营业执照', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-25T14:42:54.790', NULL, NULL),
     (N'CLIENT', N'LINKMAN', N'ATTN', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 61, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'联系人姓名', N'管理员', '2026-09-25T14:42:54.790', NULL, NULL),
-    (N'CLIENT', N'MIN_ORDER_AMOUNT', N'最小订单额', N'int', N'', N'', 0, 0, N'', 0, N'', 92, N'#.##', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'最小订单金额', N'管理员', '2026-09-25T14:42:54.790', NULL, NULL),
+    (N'CLIENT', N'MIN_ORDER_AMOUNT', N'最小订单额', N'int', N'', N'', 0, 0, N'', 0, N'', 92, N'#.##', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'最小订单金额', N'管理员', '2026-09-25T14:42:54.790', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CLIENT', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-09-25T14:42:54.787', NULL, NULL),
     (N'CLIENT', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CLIENT', N'PAY_CONDITION', N'付款条件', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:16:10.027', NULL, NULL),
@@ -2572,9 +2598,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CLIENT', N'TAX_RATE', N'税率', N'float', N'TAX.TAX_RATE', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-09-25T14:42:54.810', NULL, NULL),
     (N'CLIENT', N'TAX_TYPE', N'含税方式', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'含税方式代码', N'管理员', '2026-10-12T09:16:10.027', N'O=O、外含税;I=I、内含税;N=N、不含税', NULL),
     (N'CLIENT', N'TEL', N'TEL', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 284, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'电话', N'管理员', '2026-10-12T09:16:10.027', NULL, NULL),
-    (N'CLIENT', N'TURNOVER_SUM', N'年营业额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-25T14:42:54.817', NULL, N'AMOUNT')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CLIENT', N'TURNOVER_SUM', N'年营业额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-25T14:42:54.817', NULL, N'AMOUNT'),
     (N'CLIENT', N'TYPE', N'客户类型', N'nchar', N'', N'', 0, 0, N'', 0, N'', 78, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-25T14:42:54.817', N'1=1、询价打样;2=2、正式客户;3=3、其它类型', NULL),
     (N'CLIENT_LINKMAN', N'CLIENT_ID', N'客户', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 53, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'客戶代号', N'管理员', '2026-10-12T09:16:10.037', NULL, NULL),
     (N'CLIENT_LINKMAN', N'DEPT_ID', N'部门', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 53, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'所属部门', N'管理员', '2026-10-12T09:16:10.030', NULL, NULL),
@@ -2750,7 +2774,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_ACCOUNT_DD_M', N'ACCOUNT_DATE', N'对帐日期', N'date', N'', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 1, 2, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'单据日期', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'COP_ACCOUNT_DD_M', N'ACCOUNT_NO', N'对帐单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_ACCOUNT_DD_M', N'ACCOUNT_TYPE', N'对帐单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={ACCOUNT_TYPE}', 2304, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
-    (N'COP_ACCOUNT_DD_M', N'AMOUNT', N'对帐金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-24T16:27:00.000', NULL, N'AMOUNT'),
+    (N'COP_ACCOUNT_DD_M', N'AMOUNT', N'对帐金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-24T16:27:00.000', NULL, N'AMOUNT')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_ACCOUNT_DD_M', N'AMOUNT_TAX', N'总金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'含税总金额', N'EOS-DOC-GEN', '2026-08-09T12:04:10.313', NULL, N'AMOUNT'),
     (N'COP_ACCOUNT_DD_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.313', NULL, NULL),
     (N'COP_ACCOUNT_DD_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.313', NULL, NULL),
@@ -2774,9 +2800,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_ACCOUNT_DD_M', N'INVOICE_SUM', N'发票金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'COP_ACCOUNT_DD_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_ACCOUNT_DD_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'COP_ACCOUNT_DD_M', N'NOT_RECEIVE_AMOUNT', N'未收款金额', N'float', N'COP_ACCOUNT_DD_M.SUM_AMOUNT-COP_ACCOUNT_DD_M.RECEIVE_AMOUNT', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T12:18:19.503', NULL, N'AMOUNT')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_ACCOUNT_DD_M', N'NOT_RECEIVE_AMOUNT', N'未收款金额', N'float', N'COP_ACCOUNT_DD_M.SUM_AMOUNT-COP_ACCOUNT_DD_M.RECEIVE_AMOUNT', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T12:18:19.503', NULL, N'AMOUNT'),
     (N'COP_ACCOUNT_DD_M', N'OTHER_PRICE', N'其它应收额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'其它应收金额', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'PRICE'),
     (N'COP_ACCOUNT_DD_M', N'PRE_RECEIVE_DATE', N'预收款日', N'date', N'', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 1, 2, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'预计收款日期', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'COP_ACCOUNT_DD_M', N'RECEIVE_AMOUNT', N'已收款金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
@@ -2952,7 +2976,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_CALLBACK_M', N'TAX_TYPE', N'含税方式', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'王练练', '2013-07-02T09:55:59.000', N'O=O、外含税;I=I、内含税;N=N、不含税', NULL),
     (N'COP_CHAFFER_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'COP_CHAFFER_D', N'AMOUNT_TAX', N'总金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'含税总金额', N'EOS-DOC-GEN', '2026-08-09T12:04:10.320', NULL, N'AMOUNT'),
-    (N'COP_CHAFFER_D', N'CHAFFER_DATE', N'日期', N'date', N'COP_CHAFFER_M.CHAFFER_DATE', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
+    (N'COP_CHAFFER_D', N'CHAFFER_DATE', N'日期', N'date', N'COP_CHAFFER_M.CHAFFER_DATE', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_CHAFFER_D', N'CHAFFER_NO', N'询价单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_CHAFFER_D', N'CHAFFER_TYPE', N'询价单别', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_CHAFFER_D', N'CLIENT_ID', N'客户', N'nvarchar', N'COP_CHAFFER_M.CLIENT_ID', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 70, N'', N'center', N'left', 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -2976,9 +3002,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_CHAFFER_D', N'PRINTING_SUM', N'印刷费', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'COP_CHAFFER_D', N'PRO_COLOR', N'颜色', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_CHAFFER_D', N'PRO_HEIGHT', N'厚', N'decimal', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'高', N'EOS-DOC-GEN', '2026-08-09T12:04:10.320', NULL, N'QTY'),
-    (N'COP_CHAFFER_D', N'PRO_LENGTH', N'长', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_CHAFFER_D', N'PRO_LENGTH', N'长', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'COP_CHAFFER_D', N'PRO_NAME', N'品名', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 101, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2010-03-08T16:51:30.000', NULL, NULL),
     (N'COP_CHAFFER_D', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 0, N'', 1, N'', 150, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'吴爽', '2010-04-26T15:22:24.000', NULL, NULL),
     (N'COP_CHAFFER_D', N'PRO_SIZE', N'型号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -3157,7 +3181,9 @@ COP_FITOUT_D.QTY-COP_FITOUT_D.RETURN_QTY-COP_FITOUT_D.FINISHED_QTY', N'EOS-MIG',
     (N'COP_FITOUT_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'COP_FITOUT_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_FITOUT_M', N'BOARD_QTY', N'货物板数', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'板数', N'EOS-DOC-GEN', '2026-08-09T12:04:10.327', NULL, NULL),
-    (N'COP_FITOUT_M', N'CLIENT_ID', N'客户', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'COP_FITOUT_M', N'CLIENT_ID', N'客户', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_FITOUT_M', N'CLIENT_NAME', N'客户名', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'客户全名', N'EOS-DOC-GEN', '2026-08-09T12:04:10.327', NULL, NULL),
     (N'COP_FITOUT_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_FITOUT_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
@@ -3181,9 +3207,7 @@ COP_FITOUT_D.QTY-COP_FITOUT_D.RETURN_QTY-COP_FITOUT_D.FINISHED_QTY', N'EOS-MIG',
     (N'COP_FITOUT_M', N'TAX_RATE', N'税率', N'decimal', N'', N'', 0, 0, N'', 0, N'', 35, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PERCENT'),
     (N'COP_FITOUT_M', N'TAX_SUM', N'税额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'COP_FITOUT_M', N'TAX_TYPE', N'含税方式', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', N'O=O、外含税;I=I、内含税;N=N、不含税', NULL),
-    (N'COP_MONTH_D', N'CLIENT_ID', N'客户', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-16T08:34:14.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_MONTH_D', N'CLIENT_ID', N'客户', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-16T08:34:14.000', NULL, NULL),
     (N'COP_MONTH_D', N'CLIENT_NAME', N'客户名称', N'nvarchar', N'CLIENT.CLIENT_NAME', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-18T17:53:36.000', NULL, NULL),
     (N'COP_MONTH_D', N'CURR_ID', N'币别', N'nvarchar', N'', N'~/Admin/MagCurr.aspx?IDX=CURR_ID={CURR_ID}', 110103, 1, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-16T08:34:59.000', NULL, NULL),
     (N'COP_MONTH_D', N'CURR_RATE', N'汇率', N'float', N'CURR.CURR_RATE', N'', 0, 0, N'', 0, N'^\d+|^$', 80, N'#,##0.0000', N'center', N'right', 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, NULL),
@@ -3361,7 +3385,9 @@ d.PERIOD_AMOUNT-d.CURRENT_PREPAY+d.CURRENT_ACCOUNT+d.CURRENT_BALANCE-d.CURRENT_R
     (N'COP_ORDER_D', N'FINISHED_FITOUT_QTY', N'已备货数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 92, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-12T09:53:41.080', NULL, N'QTY'),
     (N'COP_ORDER_D', N'FINISHED_FITOUT_SPARE_QTY', N'已备货备品', N'decimal', N'', N'', 0, 0, N'', 0, N'', 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'已备货备品数量', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'COP_ORDER_D', N'FINISHED_PLAN_QTY', N'已下生产数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 104, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'下生产单数量', N'管理员', '2026-10-12T09:53:41.080', NULL, N'QTY'),
-    (N'COP_ORDER_D', N'FINISHED_PLAN_SPARE_QTY', N'下生产备品', N'decimal', N'', N'', 0, 0, N'', 0, N'', 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'下生产备品数量', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
+    (N'COP_ORDER_D', N'FINISHED_PLAN_SPARE_QTY', N'下生产备品', N'decimal', N'', N'', 0, 0, N'', 0, N'', 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'下生产备品数量', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_ORDER_D', N'FINISHED_PRODUCE_QTY', N'生产完工数量', N'decimal', N'', NULL, 0, 0, NULL, 0, NULL, 104, NULL, N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, N'', NULL, N'管理员', '2026-10-12T09:53:41.080', NULL, N'QTY'),
     (N'COP_ORDER_D', N'FINISHED_PRODUCE_SPARE_QTY', N'已完工备品', N'decimal', N'', N'', 0, 0, N'', 0, N'', 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'已完工备品数', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'COP_ORDER_D', N'FINISHED_RECEIPT_AMOUNT', N'已对帐金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 92, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, N'', 0, 1, N'', N'已收金额', N'管理员', '2026-10-12T09:53:41.083', NULL, N'AMOUNT'),
@@ -3385,9 +3411,7 @@ d.PERIOD_AMOUNT-d.CURRENT_PREPAY+d.CURRENT_ACCOUNT+d.CURRENT_BALANCE-d.CURRENT_R
     (N'COP_ORDER_D', N'ORDER_NO', N'订单号', N'nvarchar', N'', N'~/COP/Order.aspx?IDX=ORDER_TYPE={ORDER_TYPE}^ORDER_NO={ORDER_NO}', 1405, 0, NULL, 0, NULL, 85, NULL, N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-10-12T09:53:41.087', NULL, NULL),
     (N'COP_ORDER_D', N'ORDER_SERIAL_NO', N'订单项次', N'int', N'COP_ORDER_D.SERIAL_NO', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'center', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:53:41.087', NULL, NULL),
     (N'COP_ORDER_D', N'ORDER_TYPE', N'订单别', N'nvarchar', N'', NULL, 0, 1, NULL, 0, NULL, 66, NULL, N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, NULL, 1, 0, N'', NULL, N'管理员', '2026-09-19T15:33:46.193', NULL, NULL),
-    (N'COP_ORDER_D', N'P_LENGTH', N'每版长度', N'nvarchar', N'PRODUCT.P_LENGTH', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-12T09:53:41.090', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_ORDER_D', N'P_LENGTH', N'每版长度', N'nvarchar', N'PRODUCT.P_LENGTH', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-12T09:53:41.090', NULL, NULL),
     (N'COP_ORDER_D', N'P_WIDTH', N'排版个数', N'nvarchar', N'PRODUCT.P_WIDTH', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-12T09:53:41.090', NULL, NULL),
     (N'COP_ORDER_D', N'PLAN_QTY', N'计划生产数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 104, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:53:41.090', NULL, N'QTY'),
     (N'COP_ORDER_D', N'PLAN_SPARE_QTY', N'计划备品', N'decimal', N'', N'', 0, 0, N'', 0, N'', 79, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'计划备品数量', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
@@ -3566,7 +3590,9 @@ case when PRODUCT.MRP_QTY<0 AND -PRODUCT.MRP_QTY<=COP_ORDER_MORE.NEED_QTY-COP_OR
     (N'COP_PREPAY_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 54, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.460', NULL, N'AMOUNT'),
     (N'COP_PREPAY_D', N'AT_TERM_DATE', N'到期日', N'date', N'', N'', 0, 0, N'', 0, N'', 67, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'COP_PREPAY_D', N'BILL_NO', N'票据号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.460', NULL, NULL),
-    (N'COP_PREPAY_D', N'CLIENT_ID', N'客户代号', N'nvarchar', N'COP_PREPAY_M.CLIENT_ID', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 79, N'', N'center', N'left', 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.463', NULL, NULL),
+    (N'COP_PREPAY_D', N'CLIENT_ID', N'客户代号', N'nvarchar', N'COP_PREPAY_M.CLIENT_ID', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 79, N'', N'center', N'left', 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.463', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_PREPAY_D', N'CLIENT_NAME', N'客户名称', N'nvarchar', N'CLIENT.CLIENT_NAME', N'', 0, 0, N'', 0, N'', 92, N'', N'center', N'left', 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.467', NULL, NULL),
     (N'COP_PREPAY_D', N'CURR_ID', N'币别', N'nvarchar', N'', N'~/Admin/MagCurr.aspx?IDX=CURR_ID={CURR_ID}', 110103, 1, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'货币', N'管理员', '2026-08-14T11:25:00.460', NULL, NULL),
     (N'COP_PREPAY_D', N'CURR_RATE', N'汇率', N'decimal', N'', N'', 0, 0, N'', 0, N'', 54, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'币别', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'RATE'),
@@ -3590,9 +3616,7 @@ case when PRODUCT.MRP_QTY<0 AND -PRODUCT.MRP_QTY<=COP_ORDER_MORE.NEED_QTY-COP_OR
     (N'COP_PREPAY_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'管理员', '2026-08-14T11:25:00.453', NULL, NULL),
     (N'COP_PREPAY_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'COP_PREPAY_M', N'BANK_ID', N'银行帐号', N'nvarchar', N'', N'~/Admin/MagBank.aspx?IDX=BANK_ID={BANK_ID}', 110105, 1, N'', 0, N'', 79, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'收款帐号', N'管理员', '2026-08-14T11:25:00.450', NULL, NULL),
-    (N'COP_PREPAY_M', N'BANK_NAME', N'开户名', N'nvarchar', N'BANK.BANK_NAME_CN', N'', 0, 1, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.453', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_PREPAY_M', N'BANK_NAME', N'开户名', N'nvarchar', N'BANK.BANK_NAME_CN', N'', 0, 1, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.453', NULL, NULL),
     (N'COP_PREPAY_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-08-14T11:25:00.453', NULL, NULL),
     (N'COP_PREPAY_M', N'CLIENT_ID', N'客户代号', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 60, N'', N'center', N'left', 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'客户', N'EOS-DOC-GEN', '2026-08-09T12:04:10.337', NULL, NULL),
     (N'COP_PREPAY_M', N'CLIENT_NAME', N'客户名称', N'nvarchar', N'CLIENT.CLIENT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'刘一', '2009-08-14T09:29:10.000', NULL, NULL),
@@ -3768,7 +3792,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_RECEIPT_M', N'CLIENT_ID', N'客户代号', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'客户', N'EOS-DOC-GEN', '2026-08-09T12:04:10.340', NULL, NULL),
     (N'COP_RECEIPT_M', N'CLIENT_NAME', N'客户名称', N'nvarchar', N'CLIENT.CLIENT_NAME', N'', 0, 0, N'', 0, N'', 95, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, N'', 0, 1, N'', N'', N'管理员', '2026-08-14T11:26:40.400', NULL, NULL),
     (N'COP_RECEIPT_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:26:40.400', NULL, NULL),
-    (N'COP_RECEIPT_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
+    (N'COP_RECEIPT_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_RECEIPT_M', N'CURR_ID', N'币别', N'nvarchar', N'', N'~/Admin/MagCurr.aspx?IDX=CURR_ID={CURR_ID}', 110103, 1, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'货币', N'管理员', '2026-08-14T11:26:40.400', NULL, NULL),
     (N'COP_RECEIPT_M', N'CURR_RATE', N'币别', N'decimal', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:26:40.400', NULL, N'PERCENT'),
     (N'COP_RECEIPT_M', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-14T11:26:40.403', NULL, NULL),
@@ -3792,9 +3818,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_RECEIPT_M', N'TAX_ID', N'税别', N'nvarchar', N'', N'~/Admin/MagTax.aspx?IDX=TAX_ID={TAX_ID}', 110106, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'蒋春', '2011-03-10T11:06:01.000', NULL, NULL),
     (N'COP_RECEIPT_M', N'TAX_NAME', N'税别', N'nvarchar', N'TAX.TAX_NAME', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_RECEIPT_M', N'TAX_RATE', N'税率', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:14.000', NULL, N'PERCENT'),
-    (N'COP_RECEIPT_M', N'TAX_SUM', N'税额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:14.000', NULL, N'AMOUNT')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_RECEIPT_M', N'TAX_SUM', N'税额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:14.000', NULL, N'AMOUNT'),
     (N'COP_RECEIPT_M', N'TAX_TYPE', N'含税方式', N'char', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-08-15T22:59:52.807', N'O=O、外含税;I=I、内含税;N=N、不含税', NULL),
     (N'COP_RECEIPT_OTHER', N'ACCOUNT_TYPE_ID', N'收款类型', N'nvarchar', N'', N'~/Admin/MagAccountType.aspx?IDX=ACCOUNT_TYPE_ID={ACCOUNT_TYPE_ID}', 110110, 0, N'', 0, N'', 40, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'COP_RECEIPT_OTHER', N'ACCOUNT_TYPE_NAME', N'帐款类别', N'nvarchar', N'ACCOUNT_TYPE.ACCOUNT_TYPE_NAME', N'~/Admin/MagAccountType.aspx?IDX=ACCOUNT_TYPE_ID={ACCOUNT_TYPE_ID}', 110110, 0, N'', 0, N'', 40, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-25T15:48:44.000', NULL, NULL),
@@ -3970,7 +3994,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_SEND_D', N'LINE_ID', N'生产线号', N'nvarchar', N'PRODUCT.LINE_ID', N'', 0, 1, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'A1F', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.893', NULL, NULL),
     (N'COP_SEND_D', N'LOCATION_NO', N'库位', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 53, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, 1, NULL, N'由 P1 库位维度迁移新增', N'管理员', '2026-10-08T15:11:14.907', NULL, NULL),
     (N'COP_SEND_D', N'MO_NO', N'MO#', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.893', NULL, NULL),
-    (N'COP_SEND_D', N'ORDER_NO', N'订单号', N'nvarchar', N'', N'~/COP/Order.aspx?IDX=ORDER_TYPE={ORDER_TYPE}^ORDER_NO={ORDER_NO}', 1405, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.893', NULL, NULL),
+    (N'COP_SEND_D', N'ORDER_NO', N'订单号', N'nvarchar', N'', N'~/COP/Order.aspx?IDX=ORDER_TYPE={ORDER_TYPE}^ORDER_NO={ORDER_NO}', 1405, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.893', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_SEND_D', N'ORDER_SERIAL_NO', N'订单项次', N'int', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'订单序号', N'管理员', '2026-10-08T15:11:14.897', NULL, NULL),
     (N'COP_SEND_D', N'ORDER_TYPE', N'订单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'left', 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'王炼', '2014-02-27T14:06:17.000', NULL, NULL),
     (N'COP_SEND_D', N'PCS_COUNT', N'件数', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.897', NULL, NULL),
@@ -3994,9 +4020,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_SEND_D', N'SEND_DATE', N'送货日期', N'date', N'COP_SEND_M.SEND_DATE', N'', 0, 1, N'', 0, N'', 79, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.907', NULL, NULL),
     (N'COP_SEND_D', N'SEND_NO', N'送货单号', N'nvarchar', N'', N'~/COP/Send.aspx?IDX=SEND_TYPE={SEND_TYPE}^SEND_NO={SEND_NO}', 1406, 0, N'', 0, N'', 83, N'', N'', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.903', NULL, NULL),
     (N'COP_SEND_D', N'SEND_TYPE', N'送货单别', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 79, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'管理员', '2026-09-20T21:30:06.570', NULL, NULL),
-    (N'COP_SEND_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'送货单序号', N'管理员', '2026-10-08T15:11:14.903', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_SEND_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'送货单序号', N'管理员', '2026-10-08T15:11:14.903', NULL, NULL),
     (N'COP_SEND_D', N'SHIPMENT_NO', N'通知单号', N'nvarchar', N'', N'~/COP/Shipment.aspx?IDX=SHIPMENT_TYPE={SHIPMENT_TYPE}^SHIPMENT_NO={SHIPMENT_NO}', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.903', NULL, NULL),
     (N'COP_SEND_D', N'SHIPMENT_SERIAL_NO', N'通知单序号', N'smallint', N'', N'', 0, 0, N'', 0, N'', 92, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.903', NULL, NULL),
     (N'COP_SEND_D', N'SHIPMENT_TYPE', N'通知单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-08T15:11:14.903', NULL, NULL),
@@ -4172,7 +4196,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_TRANSBACK_M', N'MODIFIED_TIME', N'修改时间', N'datetime', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, N'yyyy-MM-dd HH:mm:ss', N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'修改日期', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'COP_TRANSBACK_M', N'REMARK', N'备注', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'备注', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSBACK_M', N'SALES_ID', N'业务员', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'业务员', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
-    (N'COP_TRANSBACK_M', N'SEND_ADDRESS', N'送货地址', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'送货地址', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
+    (N'COP_TRANSBACK_M', N'SEND_ADDRESS', N'送货地址', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'送货地址', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'COP_TRANSBACK_M', N'TAX_ID', N'税别', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'税别', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSBACK_M', N'TAX_RATE', N'税率', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'税率', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, N'PERCENT'),
     (N'COP_TRANSBACK_M', N'TAX_SUM', N'税额', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'税额', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, N'AMOUNT'),
@@ -4196,9 +4222,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'COP_TRANSFER_D', N'FITOUT_TYPE', N'备货单别', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'备货单别', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSFER_D', N'IN_DEPOT_ID', N'入库别', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'入库别', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSFER_D', N'ORDER_NO', N'订单号', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'订单号', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
-    (N'COP_TRANSFER_D', N'ORDER_SERIAL_NO', N'订单序号', N'smallint', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'订单序号', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'COP_TRANSFER_D', N'ORDER_SERIAL_NO', N'订单序号', N'smallint', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'订单序号', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSFER_D', N'ORDER_TYPE', N'订单别', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'订单别', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSFER_D', N'PCS_COUNT', N'件数', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'件数', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'COP_TRANSFER_D', N'PRICE', N'单价', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'单价', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, N'PRICE'),
@@ -4374,7 +4398,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_CANCEL_M', N'MODIFIED_BY', N'修改人', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'修改人', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'CUS_CANCEL_M', N'MODIFIED_TIME', N'修改时间', N'datetime', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, N'yyyy-MM-dd HH:mm:ss', N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'修改日期', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CUS_CANCEL_M', N'PRO_SERIAL_NO', N'成品序号', N'int', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'成品序号', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
-    (N'CUS_CANCEL_M', N'REMARK', N'备注', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'备注', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
+    (N'CUS_CANCEL_M', N'REMARK', N'备注', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'备注', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CUS_CANCEL_M', N'SJCKJE', N'实际出口金额', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'实际出口金额', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, N'AMOUNT'),
     (N'CUS_CANCEL_M', N'SJCKZL', N'实际出口重量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'实际出口重量', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, N'QTY'),
     (N'CUS_CANCEL_M', N'SJJKJE', N'实际进口金额', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'实际进口金额', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, N'AMOUNT'),
@@ -4398,9 +4424,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_CUSTOMS', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:12.500', NULL, NULL),
     (N'CUS_CUSTOMS', N'APPROVED_BY', N'批核人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:12.500', NULL, NULL),
     (N'CUS_CUSTOMS', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'CUS_CUSTOMS', N'CREATED_BY', N'建立人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:12.500', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CUS_CUSTOMS', N'CREATED_BY', N'建立人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:12.500', NULL, NULL),
     (N'CUS_CUSTOMS', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CUS_CUSTOMS', N'CUSTOMS_ID', N'海关代号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:12.500', NULL, NULL),
     (N'CUS_CUSTOMS', N'CUSTOMS_NAME', N'海关名称', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:12.500', NULL, NULL),
@@ -4576,7 +4600,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_IMPORT_D', N'COUNTRY_ID', N'贸易国别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
     (N'CUS_IMPORT_D', N'CURR_ID', N'交易货币', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2012-04-24T09:02:03.000', NULL, NULL),
     (N'CUS_IMPORT_D', N'CUS_QTY', N'法定数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, N'QTY'),
-    (N'CUS_IMPORT_D', N'IMPORT_NO', N'报关单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
+    (N'CUS_IMPORT_D', N'IMPORT_NO', N'报关单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CUS_IMPORT_D', N'IMPORT_TYPE', N'单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
     (N'CUS_IMPORT_D', N'IMPOSE_ID', N'征免性质', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
     (N'CUS_IMPORT_D', N'MANUAL_NO', N'手册号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
@@ -4600,9 +4626,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_IMPORT_D', N'UNIT_RATE', N'换算率', N'nvarchar', N'CUS_PRODUCT.UNIT_RATE', N'', 0, 0, N'', 0, N'', 30, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-01-19T11:05:12.000', NULL, NULL),
     (N'CUS_IMPORT_M', N'ADDTION_BILLS', N'随附单据', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
     (N'CUS_IMPORT_M', N'AGREE_NO', N'合同协议号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
-    (N'CUS_IMPORT_M', N'APPROVE_NO', N'批准文号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CUS_IMPORT_M', N'APPROVE_NO', N'批准文号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
     (N'CUS_IMPORT_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:08.000', NULL, NULL),
     (N'CUS_IMPORT_M', N'APPROVED_BY', N'批核人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'SYSTEM', '2010-01-15T08:58:06.000', NULL, NULL),
     (N'CUS_IMPORT_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
@@ -4778,7 +4802,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_MANUAL_PRO', N'ZR_QTY', N'转入数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:24.770', NULL, N'QTY'),
     (N'CUS_MANUAL_PRO', N'ZR_SERIAL_NO', N'转入手册序号', N'int', N'', N'', 0, 0, N'', 0, N'', 103, N'', N'', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:24.770', NULL, NULL),
     (N'CUS_MATERIN_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-04-19T17:10:10.000', NULL, N'AMOUNT'),
-    (N'CUS_MATERIN_D', N'BATCH_NO', N'批号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-27T10:07:03.000', NULL, NULL),
+    (N'CUS_MATERIN_D', N'BATCH_NO', N'批号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-27T10:07:03.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CUS_MATERIN_D', N'BILL_NO', N'编号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-09-18T11:11:03.000', NULL, NULL),
     (N'CUS_MATERIN_D', N'BILL_TYPE', N'单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-09-18T11:11:03.000', NULL, NULL),
     (N'CUS_MATERIN_D', N'CUS_QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:14.000', NULL, N'QTY'),
@@ -4802,9 +4828,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_MATERIN_D', N'QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'CUS_MATERIN_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 120, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-09-18T11:29:49.000', NULL, NULL),
     (N'CUS_MATERIN_D', N'SERIAL_NO', N'序号', N'smallint', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'migration-405', '2026-10-17T19:31:00.327', NULL, NULL),
-    (N'CUS_MATERIN_D', N'UNIT_ID', N'法定单位', N'nvarchar', N'CUS_PRODUCT.UNIT_ID', N'~/INV/UNIT.aspx?IDX=UNIT_ID={UNIT_ID}', 110303, 0, N'', 0, N'', 30, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'KG', 1, 1, N'', N'', N'黄小豹', '2009-12-30T16:15:08.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CUS_MATERIN_D', N'UNIT_ID', N'法定单位', N'nvarchar', N'CUS_PRODUCT.UNIT_ID', N'~/INV/UNIT.aspx?IDX=UNIT_ID={UNIT_ID}', 110303, 0, N'', 0, N'', 30, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'KG', 1, 1, N'', N'', N'黄小豹', '2009-12-30T16:15:08.000', NULL, NULL),
     (N'CUS_MATERIN_D', N'UNIT_RATE', N'单位换算率', N'nvarchar', N'CUS_PRODUCT.UNIT_RATE', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'KG', 1, 1, N'', N'', N'黄小豹', '2010-01-19T15:01:10.000', NULL, NULL),
     (N'CUS_MATERIN_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-09-18T11:11:03.000', NULL, NULL),
     (N'CUS_MATERIN_M', N'APPROVED_BY', N'批核人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-09-18T11:11:03.000', NULL, NULL),
@@ -4980,7 +5004,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_PRODUCT', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CUS_PRODUCT', N'CREATED_BY', N'建立人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:18.163', NULL, NULL),
     (N'CUS_PRODUCT', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'CUS_PRODUCT', N'CURR_ID', N'币别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'USD', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:18.163', NULL, NULL),
+    (N'CUS_PRODUCT', N'CURR_ID', N'币别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'USD', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:18.163', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CUS_PRODUCT', N'DEPOT_ID', N'仓库', N'nvarchar', N'', N'~/CUS/Depot.aspx?IDX=DEPOT_ID={DEPOT_ID}', 300005, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:18.163', NULL, NULL),
     (N'CUS_PRODUCT', N'DEPOT_NAME', N'仓库', N'nvarchar', N'CUS_DEPOT.DEPOT_NAME', N'', 0, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:18.163', NULL, NULL),
     (N'CUS_PRODUCT', N'IMPOSE_ID', N'征免方式', N'nvarchar', N'', N'~/CUS/Impose.aspx?IDX=IMPOSE_ID={IMPOSE_ID}', 300003, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:32:18.163', NULL, NULL),
@@ -5004,9 +5030,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_PROIN_D', N'BATCH_NO', N'批号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-27T10:07:03.000', NULL, NULL),
     (N'CUS_PROIN_D', N'BILL_NO', N'编号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-09-18T11:11:03.000', NULL, NULL),
     (N'CUS_PROIN_D', N'BILL_TYPE', N'单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-09-18T11:11:03.000', NULL, NULL),
-    (N'CUS_PROIN_D', N'CUS_QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:14.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CUS_PROIN_D', N'CUS_QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:14.000', NULL, N'QTY'),
     (N'CUS_PROIN_D', N'DEPOT_ID', N'仓库', N'nvarchar', N'', N'~/CUS/Depot.aspx?IDX=DEPOT_ID={DEPOT_ID}', 300005, 1, N'', 0, N'', 60, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-12-31T14:48:01.000', NULL, NULL),
     (N'CUS_PROIN_D', N'EXPORT_NO', N'报关单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-05-22T14:26:59.000', NULL, NULL),
     (N'CUS_PROIN_D', N'EXPORT_SERIAL_NO', N'报关单序号', N'smallint', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-05-22T14:26:59.000', NULL, NULL),
@@ -5182,7 +5206,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_SEAL_M', N'TRADE_TYPE', N'贸易方式', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2012-03-23T16:23:21.000', NULL, NULL),
     (N'CUS_TAX', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:56.830', NULL, NULL),
     (N'CUS_TAX', N'APPROVED_BY', N'批核人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:56.830', NULL, NULL),
-    (N'CUS_TAX', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
+    (N'CUS_TAX', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'CUS_TAX', N'CREATED_BY', N'建立人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:56.830', NULL, NULL),
     (N'CUS_TAX', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CUS_TAX', N'MODIFIED_BY', N'修改人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-24T23:31:56.830', NULL, NULL),
@@ -5206,9 +5232,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'CUS_TRANSFER_D', N'ZC_SERIAL_NO', N'转出手册序号', N'int', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-05-22T17:48:42.000', NULL, NULL),
     (N'CUS_TRANSFER_D', N'ZR_MANUAL_NO', N'转入手册编号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-05-22T17:48:42.000', NULL, NULL),
     (N'CUS_TRANSFER_D', N'ZR_SERIAL_NO', N'转入手册序号', N'int', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-05-22T17:48:42.000', NULL, NULL),
-    (N'CUS_TRANSFER_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-05-22T17:48:42.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'CUS_TRANSFER_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-05-22T17:48:42.000', NULL, NULL),
     (N'CUS_TRANSFER_M', N'APPROVED_BY', N'批核人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-05-22T17:48:42.000', NULL, NULL),
     (N'CUS_TRANSFER_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'CUS_TRANSFER_M', N'BILL_NAME', N'单名', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T13:14:02.210', NULL, NULL),
@@ -5384,7 +5408,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HALF_PRO', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.367', NULL, NULL),
     (N'HALF_PRO', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HALF_PRO', N'COLOR_ID', N'颜色', N'nvarchar', N'', N'~/INV/Color.aspx?IDX=COLOR_ID={COLOR_ID}', 110302, 1, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HALF_PRO', N'COLOR_NAME', N'颜色', N'nvarchar', N'COLOR.COLOR_NAME', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'HALF_PRO', N'COLOR_NAME', N'颜色', N'nvarchar', N'COLOR.COLOR_NAME', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HALF_PRO', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HALF_PRO', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HALF_PRO', N'DEPOT_ID', N'主要库别', N'nvarchar', N'', N'~/INV/Depot.aspx?IDX=DEPOT_ID={DEPOT_ID}', 110306, 0, N'', 0, N'', 50, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -5408,9 +5434,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HALF_PRO', N'WIDTH', N'宽', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'HALF_PRO_DEPOT', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.367', NULL, NULL),
     (N'HALF_PRO_DEPOT', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.367', NULL, NULL),
-    (N'HALF_PRO_DEPOT', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HALF_PRO_DEPOT', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HALF_PRO_DEPOT', N'COST_AMOUNT', N'库存加权金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'HALF_PRO_DEPOT', N'COST_PRICE', N'库存加权单价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PRICE'),
     (N'HALF_PRO_DEPOT', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -5586,7 +5610,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_APPLY_D', N'DEPT_ID', N'部门', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_APPLY_D', N'DEPT_NAME', N'部    门', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_APPLY_D', N'EMP_ID', N'工号', N'nvarchar', N'', N'~/HR/EMPLOYEE.aspx?IDX=EMP_ID={EMP_ID}', 180102, 1, NULL, 1, N'', 60, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HR_APPLY_D', N'EMP_NAME', N'姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'HR_APPLY_D', N'EMP_NAME', N'姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_APPLY_D', N'EMP_NO', N'员工工号', N'nvarchar', N'HR_EMPLOYEE.EMP_NO', N'~/HR/EMPLOYEE.aspx?IDX=EMP_ID={EMP_ID}', 180102, 1, NULL, 1, N'', 60, N'', N'', N'', 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-08-18T19:07:07.983', NULL, NULL),
     (N'HR_APPLY_D', N'EMP_STATE', N'员工状态', N'nvarchar', N'HR_EMPLOYEE.STATE', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2009-06-26T18:09:16.000', NULL, NULL),
     (N'HR_APPLY_D', N'HOLIDAY_OVERTIME', N'节日加班', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
@@ -5610,9 +5636,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_APPLY_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.377', NULL, NULL),
     (N'HR_APPLY_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_APPLY_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 80, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HR_APPLY_M', N'COUNT_DATE', N'计算日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'加班申请日期', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_APPLY_M', N'COUNT_DATE', N'计算日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'加班申请日期', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HR_APPLY_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_APPLY_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_APPLY_M', N'DEPT_ID', N'部门', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'部门代号', N'EOS-MIG', '2026-08-16T09:25:16.870', NULL, NULL),
@@ -5788,7 +5812,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_DIARY', N'ABSENT_TIME', N'旷工时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'HR_DIARY', N'BE_LATE_FOR', N'迟到分钟', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'迟到总分钟数', N'EOS-DOC-GEN', '2026-08-09T12:04:10.383', NULL, N'QTY'),
     (N'HR_DIARY', N'BE_LATE_FOR1', N'迟到分钟1', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
-    (N'HR_DIARY', N'BE_LATE_FOR2', N'迟到分钟2', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'迟到总分钟数2', N'EOS-DOC-GEN', '2026-08-09T12:04:10.383', NULL, N'QTY'),
+    (N'HR_DIARY', N'BE_LATE_FOR2', N'迟到分钟2', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'迟到总分钟数2', N'EOS-DOC-GEN', '2026-08-09T12:04:10.383', NULL, N'QTY')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_DIARY', N'BE_LATE_FOR3', N'迟到分钟3', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'迟到总分钟数3', N'EOS-DOC-GEN', '2026-08-09T12:04:10.383', NULL, N'QTY'),
     (N'HR_DIARY', N'BE_LATE_FOR4', N'迟到分钟4', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'迟到总分钟数4', N'EOS-DOC-GEN', '2026-08-09T12:04:10.383', NULL, N'QTY'),
     (N'HR_DIARY', N'COUNT_DATE', N'考勤日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
@@ -5812,9 +5838,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_DIARY', N'ON1', N'上班一', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_DIARY', N'ON2', N'上班二', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_DIARY', N'ON3', N'上班三', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HR_DIARY', N'ON4', N'上班四', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_DIARY', N'ON4', N'上班四', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_DIARY', N'OUT1', N'下班一', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_DIARY', N'OUT2', N'下班二', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_DIARY', N'OUT3', N'下班三', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -5990,7 +6014,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_EMPLOYEE', N'TEL', N'电话', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_EMPLOYEE', N'TITLE_ID', N'职称', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'职称代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.390', NULL, NULL),
     (N'HR_EMPLOYEE', N'TITLE_NAME', N'职称', N'nvarchar', N'HR_TITLE.TITLE_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HR_EMPLOYEE', N'WEDLOCK', N'婚否', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'HR_EMPLOYEE', N'WEDLOCK', N'婚否', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_EMPLOYEE', N'WORK_STORY', N'工作经历', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_EMPLOYEE', N'WORKTYPE_ID', N'工种', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工种代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.390', NULL, NULL),
     (N'HR_EMPLOYEE', N'WORKTYPE_NAME', N'工种', N'nvarchar', N'HR_WORKTYPE.WORKTYPE_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -6014,9 +6040,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_EMPLOYEE_D', N'CUE_DATE', N'每年提醒日期（如04-01）', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 173, N'yyyy-MM-dd', N'center', N'left', 1, 2, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-08-26T19:19:38.000', NULL, NULL),
     (N'HR_EMPLOYEE_D', N'EMAIL', N'E-Mail', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 72, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-26T19:19:37.993', NULL, NULL),
     (N'HR_EMPLOYEE_D', N'EMP_ID', N'工号', N'nvarchar', N'', N'', 0, 1, N'', 1, N'', 63, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'电脑工号', N'管理员', '2026-08-26T19:19:37.993', NULL, NULL),
-    (N'HR_EMPLOYEE_D', N'END_DATE', N'到期日期', N'date', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_EMPLOYEE_D', N'END_DATE', N'到期日期', N'date', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HR_EMPLOYEE_D', N'IF_CUE', N'是保险项', N'bit', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'是否需提示', N'管理员', '2026-08-26T19:19:37.993', NULL, NULL),
     (N'HR_EMPLOYEE_D', N'LINKMAN', N'联系人姓名', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 92, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-26T19:19:37.997', NULL, NULL),
     (N'HR_EMPLOYEE_D', N'MOBILE', N'手机', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 54, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-26T19:19:37.997', NULL, NULL),
@@ -6192,7 +6216,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_HOLIDAY', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.403', NULL, NULL),
     (N'HR_HOLIDAY', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.403', NULL, NULL),
     (N'HR_HOLIDAY', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'HR_HOLIDAY', N'COUNT_MULTIPLE', N'计算倍数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
+    (N'HR_HOLIDAY', N'COUNT_MULTIPLE', N'计算倍数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_HOLIDAY', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_HOLIDAY', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_HOLIDAY', N'END_DATE', N'结束日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
@@ -6216,9 +6242,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_LANGUAGE', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_LEAVE', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.407', NULL, NULL),
     (N'HR_LEAVE', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.407', NULL, NULL),
-    (N'HR_LEAVE', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_LEAVE', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_LEAVE', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_LEAVE', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_LEAVE', N'LEAVE_ID', N'请假', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'请假代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.403', NULL, NULL),
@@ -6394,7 +6418,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_RECESS_D', N'EMP_NAME', N'姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_RECESS_D', N'EMP_NO', N'员工工号', N'nvarchar', N'HR_EMPLOYEE.EMP_NO', N'~/HR/EMPLOYEE.aspx?IDX=EMP_ID={EMP_ID}', 180102, 1, NULL, 1, N'', 60, N'', N'', N'', 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_RECESS_D', N'EMP_STATE', N'员工状态', N'nvarchar', N'HR_EMPLOYEE.STATE', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2009-06-26T18:07:17.000', NULL, NULL),
-    (N'HR_RECESS_D', N'END_DATE', N'结束日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
+    (N'HR_RECESS_D', N'END_DATE', N'结束日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_RECESS_D', N'END_TIME', N'结束时间', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_RECESS_D', N'RECESS_DAYS', N'放假天数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'HR_RECESS_D', N'RECESS_NO', N'放假单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -6418,9 +6444,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_RECESS_M', N'RECESS_DAYS', N'放假天数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'HR_RECESS_M', N'RECESS_NO', N'放假单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_RECESS_M', N'RECESS_TYPE', N'放假单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={RECESS_TYPE}', 2304, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
-    (N'HR_RECESS_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_RECESS_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_RECESS_M', N'START_DATE', N'起始日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HR_RECESS_M', N'START_TIME', N'起始时间', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_RECESS_M', N'TYPE', N'人员选择', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -6596,7 +6620,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_SIGN_D', N'ON3', N'上班三', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:31:04.000', NULL, NULL),
     (N'HR_SIGN_D', N'ON4', N'上班四', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:31:12.000', NULL, NULL),
     (N'HR_SIGN_D', N'OUT1', N'下班一', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:30:48.000', NULL, NULL),
-    (N'HR_SIGN_D', N'OUT2', N'下班二', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:31:32.000', NULL, NULL),
+    (N'HR_SIGN_D', N'OUT2', N'下班二', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:31:32.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_SIGN_D', N'OUT3', N'下班三', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:31:38.000', NULL, NULL),
     (N'HR_SIGN_D', N'OUT4', N'下班四', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-09-04T10:31:18.000', NULL, NULL),
     (N'HR_SIGN_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -6620,9 +6646,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_SIGN_M', N'SIGN_TYPE', N'签卡单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={SIGN_TYPE}', 2304, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
     (N'HR_SUBTRACT_D', N'COUNT_DATE', N'计算日期', N'date', N'HR_SUBTRACT_M.COUNT_DATE', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HR_SUBTRACT_D', N'DEPT_ID', N'部门', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HR_SUBTRACT_D', N'DEPT_NAME', N'部    门', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_SUBTRACT_D', N'DEPT_NAME', N'部    门', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_SUBTRACT_D', N'DIMISSION_DATE', N'离职日期', N'date', N'HR_EMPLOYEE.DIMISSION_DATE', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HR_SUBTRACT_D', N'EMP_ID', N'工号', N'nvarchar', N'', N'~/HR/EMPLOYEE.aspx?IDX=EMP_ID={EMP_ID}', 180102, 1, NULL, 1, N'', 60, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_SUBTRACT_D', N'EMP_NAME', N'姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -6798,7 +6822,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_WAGE', N'WAGE_NAME', N'工资', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 120, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资项目名称', N'EOS-DOC-GEN', '2026-08-09T12:04:10.433', NULL, NULL),
     (N'HR_WAGE_D', N'ADD_REMARK', N'其它加公式', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-10T11:13:49.000', NULL, NULL),
     (N'HR_WAGE_D', N'COUNT_MONTH', N'工资表月份', N'nvarchar', N'HR_WAGE_M.COUNT_MONTH', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-08-15T11:58:01.000', NULL, NULL),
-    (N'HR_WAGE_D', N'DEPT_ID', N'部门', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'HR_WAGE_D', N'DEPT_ID', N'部门', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_WAGE_D', N'DEPT_NAME', N'部    门', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_WAGE_D', N'DIMISSION_DATE', N'离职日期', N'date', N'HR_EMPLOYEE.DIMISSION_DATE', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HR_WAGE_D', N'DIMISSION_NO', N'离职单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -6822,9 +6848,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_WAGE_D', N'WAGE_ITEM06', N'平时加班工资', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.437', NULL, N'AMOUNT'),
     (N'HR_WAGE_D', N'WAGE_ITEM07', N'休息加班小时', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'日薪：工时录入的休息日加班小时    时薪：休息日天数*总工时/班天数', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'HR_WAGE_D', N'WAGE_ITEM08', N'休息加班工资', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.437', NULL, N'AMOUNT'),
-    (N'HR_WAGE_D', N'WAGE_ITEM09', N'节假日加班小时', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'日薪：工时录入的节假日加班小时     时薪：节假日天数*(总工时/应上班天数)', N'', '1900-01-01T00:00:00.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HR_WAGE_D', N'WAGE_ITEM09', N'节假日加班小时', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'日薪：工时录入的节假日加班小时     时薪：节假日天数*(总工时/应上班天数)', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'HR_WAGE_D', N'WAGE_ITEM10', N'节假日加班工资', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.437', NULL, N'AMOUNT'),
     (N'HR_WAGE_D', N'WAGE_ITEM11', N'社保', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.437', NULL, N'AMOUNT'),
     (N'HR_WAGE_D', N'WAGE_ITEM12', N'个人所得税', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.437', NULL, N'AMOUNT'),
@@ -7000,7 +7024,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HR_WORKTIME_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_WORKTIME_M', N'DEPT_ID', N'部门', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'部门代号', N'EOS-MIG', '2026-08-16T09:25:16.880', NULL, NULL),
     (N'HR_WORKTIME_M', N'DEPT_NAME', N'部门名称', N'nvarchar', N'DEPT_M.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2009-06-22T16:44:43.000', NULL, NULL),
-    (N'HR_WORKTIME_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'HR_WORKTIME_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HR_WORKTIME_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'HR_WORKTIME_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HR_WORKTIME_M', N'WORKTIME_DATE', N'出勤日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
@@ -7024,9 +7050,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_ADJUST_D', N'ADJUST_NO', N'调整单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_ADJUST_D', N'ADJUST_TYPE', N'调整单别', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_ADJUST_D', N'COUNT_DATE', N'调整日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
-    (N'HRM_ADJUST_D', N'DEPT_ID', N'部门代号', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HRM_ADJUST_D', N'DEPT_ID', N'部门代号', N'nvarchar', N'HR_EMPLOYEE.DEPT_ID', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_ADJUST_D', N'DEPT_NAME', N'部门名称', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_ADJUST_D', N'EMP_ID', N'工号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_ADJUST_D', N'EMP_NAME', N'姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -7202,7 +7226,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_EXCHANGE_M', N'EXCHANGE_TYPE', N'调休单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={EXCHANGE_TYPE}', 2304, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
     (N'HRM_EXCHANGE_M', N'FIRST_DAY', N'调换前日期', N'date', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HRM_EXCHANGE_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HRM_EXCHANGE_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
+    (N'HRM_EXCHANGE_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HRM_EXCHANGE_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_EXCHANGE_M', N'TYPE', N'调休类别', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'人员选择', N'EOS-DOC-GEN', '2026-08-09T12:04:10.473', NULL, NULL),
     (N'HRM_HOLIDAY', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.477', NULL, NULL),
@@ -7226,9 +7252,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_LEAVE_D', N'EMP_NAME', N'姓名', N'nvarchar', N'HR_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_LEAVE_D', N'EMP_NO', N'员工工号', N'nvarchar', N'HR_EMPLOYEE.EMP_NO', N'~/HR/EMPLOYEE.aspx?IDX=EMP_ID={EMP_ID}', 180102, 1, NULL, 1, N'', 60, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_LEAVE_D', N'EMP_STATE', N'员工状态', N'nvarchar', N'HR_EMPLOYEE.STATE', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2009-06-26T18:08:24.000', NULL, NULL),
-    (N'HRM_LEAVE_D', N'END_DATE', N'结束日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HRM_LEAVE_D', N'END_DATE', N'结束日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HRM_LEAVE_D', N'END_TIME', N'结束时间', N'char', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_LEAVE_D', N'LEAVE_DAYS', N'请假天数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'HRM_LEAVE_D', N'LEAVE_ID', N'请假', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'请假代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.480', NULL, NULL),
@@ -7404,7 +7428,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_SIGN_D', N'OUT3', N'下班三', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-08-29T16:35:43.000', NULL, NULL),
     (N'HRM_SIGN_D', N'OUT4', N'下班四', N'nvarchar', N'', N'', 0, 0, N'', 0, N'((2[0-3]|1\d|0\d)[:]?[0-5]\d)|^$', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-07-04T14:50:20.000', NULL, NULL),
     (N'HRM_SIGN_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'HRM_SIGN_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'0.##', N'center', N'right', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.487', NULL, NULL),
+    (N'HRM_SIGN_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'0.##', N'center', N'right', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.487', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HRM_SIGN_D', N'SIGN_DATE', N'签卡日期', N'date', N'HRM_SIGN_M.SIGN_DATE', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'HRM_SIGN_D', N'SIGN_NO', N'签卡单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'HRM_SIGN_D', N'SIGN_TYPE', N'签卡单别', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -7428,9 +7454,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_TIMETYPE', N'ADD_HOURS1', N'时段加班时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'HRM_TIMETYPE', N'ADD_HOURS2', N'时段加班时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'HRM_TIMETYPE', N'ADD_HOURS3', N'时段加班时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
-    (N'HRM_TIMETYPE', N'ADD_HOURS4', N'时段加班时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HRM_TIMETYPE', N'ADD_HOURS4', N'时段加班时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'HRM_TIMETYPE', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.490', NULL, NULL),
     (N'HRM_TIMETYPE', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.487', NULL, NULL),
     (N'HRM_TIMETYPE', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
@@ -7606,7 +7630,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_WAGE_D', N'WAGE_ITEM64', N'遲到早退費', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM65', N'違紀罰款', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM66', N'生活困難補助', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
-    (N'HRM_WAGE_D', N'WAGE_ITEM67', N'電話交通補助', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
+    (N'HRM_WAGE_D', N'WAGE_ITEM67', N'電話交通補助', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'HRM_WAGE_D', N'WAGE_ITEM68', N'轉班補助', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM69', N'其它奖', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM70', N'伙食补助', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.500', NULL, N'AMOUNT'),
@@ -7630,9 +7656,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'HRM_WAGE_D', N'WAGE_ITEM88', N'SUBTRACT_SUM08', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM89', N'SUBTRACT_SUM09', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM90', N'SUBTRACT_SUM10', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
-    (N'HRM_WAGE_D', N'WAGE_ITEM91', N'SUBTRACT_SUM11', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'HRM_WAGE_D', N'WAGE_ITEM91', N'SUBTRACT_SUM11', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM92', N'SUBTRACT_SUM12', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM93', N'SUBTRACT_SUM13', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
     (N'HRM_WAGE_D', N'WAGE_ITEM94', N'SUBTRACT_SUM14', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工资表项目', N'EOS-DOC-GEN', '2026-08-09T12:04:10.503', NULL, N'AMOUNT'),
@@ -7808,7 +7832,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'INV_LOAN_D', N'LOAN_NO', N'借出单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_LOAN_D', N'LOAN_TYPE', N'借出单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_LOAN_D', N'LOCATION_NO', N'库位', N'nvarchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 94, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, 1, NULL, N'由 P1 库位维度迁移新增', N'DbUp', '2026-09-19T15:41:07.603', NULL, NULL),
-    (N'INV_LOAN_D', N'NOT_RETURN_QTY', N'未还数量', N'float', N'INV_LOAN_D.QTY-INV_LOAN_D.RETURN_QTY', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'INV_LOAN_D', N'NOT_RETURN_QTY', N'未还数量', N'float', N'INV_LOAN_D.QTY-INV_LOAN_D.RETURN_QTY', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'INV_LOAN_D', N'PRICE', N'单价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PRICE'),
     (N'INV_LOAN_D', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_LOAN_D', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 0, N'', 0, N'', 150, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2010-08-27T10:59:17.000', NULL, NULL),
@@ -7832,9 +7858,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'INV_LOAN_M', N'LOAN_DATE', N'借出日期', N'date', N'', NULL, 0, 0, NULL, 0, NULL, 78, N'yyyy-MM-dd', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 0, 1, N'', NULL, N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'INV_LOAN_M', N'LOAN_NO', N'借出单号', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 111, NULL, N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-09T09:00:18.550', NULL, NULL),
     (N'INV_LOAN_M', N'LOAN_TYPE', N'借出单别', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 78, NULL, N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, NULL, 1, 1, N'', NULL, N'EOS-MIG', '2026-08-16T09:25:16.797', NULL, NULL),
-    (N'INV_LOAN_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 66, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, NULL, 0, 1, N'', NULL, N'管理员', '2026-08-09T08:59:58.640', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'INV_LOAN_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 66, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, NULL, 0, 1, N'', NULL, N'管理员', '2026-08-09T08:59:58.640', NULL, NULL),
     (N'INV_LOAN_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', NULL, 0, 0, NULL, 0, NULL, 78, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 0, 1, N'', NULL, N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'INV_LOAN_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_OCCUR_ADJUST_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 128, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-23T19:38:28.167', NULL, N'AMOUNT'),
@@ -8010,7 +8034,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'INV_OCCUR_SCRAP_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'INV_OCCUR_SCRAP_M', N'DEPT_ID', N'部门', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'部门代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.520', NULL, NULL),
     (N'INV_OCCUR_SCRAP_M', N'DEPT_NAME', N'部    门', N'nvarchar', N'DEPT.DEPT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'INV_OCCUR_SCRAP_M', N'EMP_ID', N'员工工号', N'nvarchar', N'', N'', 0, 0, NULL, 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'INV_OCCUR_SCRAP_M', N'EMP_ID', N'员工工号', N'nvarchar', N'', N'', 0, 0, NULL, 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'INV_OCCUR_SCRAP_M', N'EMP_NAME', N'员工姓名', N'nvarchar', N'SYS_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_OCCUR_SCRAP_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_OCCUR_SCRAP_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
@@ -8034,9 +8060,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'INV_OCCUR_TRANSFER_D', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'INV_OCCUR_TRANSFER_D', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1210, 1, N'', 1, N'', 150, N'', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'王炼', '2015-05-26T10:31:33.000', NULL, NULL),
     (N'INV_OCCUR_TRANSFER_D', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'INV_OCCUR_TRANSFER_D', N'PRODUCE_NO', N'制令号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-04-20T21:19:36.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'INV_OCCUR_TRANSFER_D', N'PRODUCE_NO', N'制令号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-04-20T21:19:36.000', NULL, NULL),
     (N'INV_OCCUR_TRANSFER_D', N'PRODUCE_TYPE', N'制令别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-04-20T21:19:36.000', NULL, NULL),
     (N'INV_OCCUR_TRANSFER_D', N'QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'INV_OCCUR_TRANSFER_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -8214,7 +8238,9 @@ YEAR(BACK_DATE)*100+MONTH(BACK_DATE)', N'何群笑', '2012-06-21T11:09:27.000', 
     (N'MOC_BACK_M', N'BACK_NO', N'退料单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 120, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'领料退回单号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.540', NULL, NULL),
     (N'MOC_BACK_M', N'BACK_TYPE', N'退料单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={BACK_TYPE}', 2304, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'领料退回单别', N'EOS-DOC-GEN', '2026-08-09T12:04:10.540', NULL, NULL),
     (N'MOC_BACK_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'MOC_BACK_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
+    (N'MOC_BACK_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOC_BACK_M', N'CUS_STATE', N'内外销', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'1', 1, 0, N'', N'', N'EOS-MIG', '2026-08-16T09:40:46.293', N'0=0.内;1=1.外;2=2.转', NULL),
     (N'MOC_BACK_M', N'EMP_NAME', N'负责人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-08-16T09:25:16.690', NULL, NULL),
     (N'MOC_BACK_M', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2012-03-09T17:04:15.000', NULL, NULL),
@@ -8238,9 +8264,7 @@ YEAR(BACK_DATE)*100+MONTH(BACK_DATE)', N'何群笑', '2012-06-21T11:09:27.000', 
     (N'MOC_BOM_STRU_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_BOM_STRU_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.540', NULL, NULL),
     (N'MOC_BOM_STRU_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'MOC_BOM_STRU_M', N'ATTENTION', N'注意事项', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOC_BOM_STRU_M', N'ATTENTION', N'注意事项', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_BOM_STRU_M', N'BATCH_QTY', N'标准批量', N'int', N'', N'', 0, 0, N'', 0, N'', 60, N'0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_BOM_STRU_M', N'COLOR_NAME', N'颜色', N'nvarchar', N'COLOR_M.COLOR_NAME', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL),
     (N'MOC_BOM_STRU_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -8416,7 +8440,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_OUT_PRODUCT_OUT_D', N'PRODUCE_NO', N'生产单号', N'nvarchar', N'', N'', 1508, 0, N'', 0, N'', 100, N'', N'', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'制令号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.550', NULL, NULL),
     (N'MOC_OUT_PRODUCT_OUT_D', N'PRODUCE_TYPE', N'制令别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_OUT_PRODUCT_OUT_D', N'QTY', N'退货数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
-    (N'MOC_OUT_PRODUCT_OUT_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'MOC_OUT_PRODUCT_OUT_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOC_OUT_PRODUCT_OUT_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'left', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.550', NULL, NULL),
     (N'MOC_OUT_PRODUCT_OUT_D', N'UNIT_ID', N'单位', N'nvarchar', N'', N'~/INV/UNIT.aspx?IDX=UNIT_ID={UNIT_ID}', 110303, 1, N'', 0, N'', 50, N'', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_OUT_PRODUCT_OUT_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.550', NULL, NULL),
@@ -8440,9 +8466,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_OUT_PRODUCT_OUT_M', N'SUPPLIER_NAME', N'厂    商', N'nvarchar', N'SUPPLIER.SUPPLIER_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PLAN_D', N'COLOR_NAME', N'颜    色', N'nvarchar', N'COLOR.COLOR_NAME', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'刘一', '2009-08-15T10:50:36.000', NULL, NULL),
     (N'MOC_PLAN_D', N'DEPOT_QTY', N'当前库存', N'float', N'PRODUCT.QTY', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2010-07-21T08:44:46.000', NULL, NULL),
-    (N'MOC_PLAN_D', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2010-07-01T10:21:57.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOC_PLAN_D', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2010-07-01T10:21:57.000', NULL, NULL),
     (N'MOC_PLAN_D', N'MRP_QTY', N'可用库存', N'float', N'PRODUCT.MRP_QTY', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'(当前库存+预计入库+采购在途)-(安全库存+预计送货+预计领料)
 (PRODUCT.DEPOT_QTY + PRODUCT.NOT_IN_QTY+PRODUCT.IN_BUY_QTY)-(PRODUCT.SAFETY_QTY+PRODUCT.NOT_SEND_QTY+PRODUCT.NOT_GET_QTY)', N'刘一', '2010-07-21T17:29:27.000', NULL, NULL),
     (N'MOC_PLAN_D', N'NOT_PLAN_QTY', N'未下生产单数量', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 80, N'#,##0.##', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
@@ -8619,7 +8643,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_PRODUCE_D', N'PRICE', N'最近进价', N'float', N'MOC_PRODUCE_M.PROCESS_PRICE', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, N'', 0, 1, N'', N'', N'管理员', '2014-03-26T17:30:47.000', NULL, NULL),
     (N'MOC_PRODUCE_D', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_D', N'PRO_NO', N'材料料号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 0, 1, N'', 1, N'', 150, N'', N'center', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'材料品号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.557', NULL, NULL),
-    (N'MOC_PRODUCE_D', N'PRO_QTY', N'生产数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'产品数量', N'EOS-DOC-GEN', '2026-08-09T12:04:10.560', NULL, N'QTY'),
+    (N'MOC_PRODUCE_D', N'PRO_QTY', N'生产数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'产品数量', N'EOS-DOC-GEN', '2026-08-09T12:04:10.560', NULL, N'QTY')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOC_PRODUCE_D', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_D', N'PRO_TYPE', N'产品性质', N'nvarchar', N'PRODUCT.PRO_TYPE', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'center', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'张小虎', '2009-04-21T11:46:38.000', NULL, NULL),
     (N'MOC_PRODUCE_D', N'PRODUCE_NO', N'生产单号', N'nvarchar', N'', N'', 1508, 0, N'', 0, N'', 100, N'', N'', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'制令号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.557', NULL, NULL),
@@ -8643,9 +8669,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_PRODUCE_INSTRUCT_D', N'REMARK_3', N'描述3', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_INSTRUCT_D', N'REMARK_4', N'描述4', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_INSTRUCT_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'left', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.560', NULL, NULL),
-    (N'MOC_PRODUCE_INSTRUCT_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.560', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOC_PRODUCE_INSTRUCT_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.560', NULL, NULL),
     (N'MOC_PRODUCE_INSTRUCT_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.560', NULL, NULL),
     (N'MOC_PRODUCE_INSTRUCT_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'MOC_PRODUCE_INSTRUCT_M', N'ATTENTION', N'注意事项', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -8821,7 +8845,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_PRODUCE_PROCESS_D', N'PS_SPEC', N'纸板描述', N'nchar', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, NULL, N'center', NULL, 0, NULL, 0, 0, 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, N'纸板描述', N'EOS-FIELD-LABEL', '2026-09-21T16:17:02.273', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_D', N'PS_WIDTH', N'纸板规格宽1', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-11-15T11:26:32.000', NULL, N'QTY'),
     (N'MOC_PRODUCE_PROCESS_D', N'RECOUP_AMOUNT', N'损坏扣款累计', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
-    (N'MOC_PRODUCE_PROCESS_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'', 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'制程序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.567', NULL, NULL),
+    (N'MOC_PRODUCE_PROCESS_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'', 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'制程序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.567', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOC_PRODUCE_PROCESS_D', N'SET_QTY', N'配套数', N'smallint', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-11-15T11:26:32.000', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_D', N'SIZE_UNIT_ID', N'长宽高单位', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_D', N'STANDARD_MACHINE_TIME', N'标准机时', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
@@ -8845,9 +8871,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_PRODUCE_PROCESS_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_M', N'PLAN_QTY', N'数量', N'float', N'MOC_PRODUCE_M.QTY', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'MOC_PRODUCE_PROCESS_M', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOC_PRODUCE_PROCESS_M', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_M', N'PRO_NO', N'品号', N'nvarchar', N'MOC_PRODUCE_M.PRO_NO', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 1, N'', 1, N'', 150, N'', N'center', N'left', 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_M', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_PRODUCE_PROCESS_M', N'PRODUCE_DATE', N'制令日期', N'date', N'MOC_PRODUCE_M.PRODUCE_DATE', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'left', 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
@@ -9023,7 +9047,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_WORK_IN_D', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 0, N'', 0, N'', 150, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_WORK_IN_D', N'PRO_SPEC', N'规格', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 105, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_WORK_IN_D', N'PROCEDURE_TYPE_ID', N'工序类别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工序类别代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.580', NULL, NULL),
-    (N'MOC_WORK_IN_D', N'PRODUCE_NO', N'生产单号', N'nvarchar', N'', N'', 1508, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'制令号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.577', NULL, NULL),
+    (N'MOC_WORK_IN_D', N'PRODUCE_NO', N'生产单号', N'nvarchar', N'', N'', 1508, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'制令号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.577', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOC_WORK_IN_D', N'PRODUCE_SERIAL_NO', N'制令项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'制令序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.577', NULL, NULL),
     (N'MOC_WORK_IN_D', N'PRODUCE_TYPE', N'制令别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_WORK_IN_D', N'QTY', N'入库数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'工序数量', N'EOS-DOC-GEN', '2026-08-09T12:04:10.580', NULL, N'QTY'),
@@ -9047,9 +9073,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOC_WORK_IN_M', N'LINE_NAME', N'生产线', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'名称', N'EOS-DOC-GEN', '2026-08-09T12:04:10.580', NULL, NULL),
     (N'MOC_WORK_IN_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_WORK_IN_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'MOC_WORK_IN_M', N'PROCEDURE_TYPE_ID', N'工序类别', N'nvarchar', N'', N'~/SFC/ProcessType.aspx?IDX=PROCEDURE_TYPE_ID={PROCEDURE_TYPE_ID}', 2701, 0, N'', 0, N'', 40, N'', N'center', N'', 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工序类别代号', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOC_WORK_IN_M', N'PROCEDURE_TYPE_ID', N'工序类别', N'nvarchar', N'', N'~/SFC/ProcessType.aspx?IDX=PROCEDURE_TYPE_ID={PROCEDURE_TYPE_ID}', 2701, 0, N'', 0, N'', 40, N'', N'center', N'', 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'工序类别代号', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
     (N'MOC_WORK_IN_M', N'PROCEDURE_TYPE_NAME', N'工序类别', N'nvarchar', N'SFC_PROCEDURE_TYPE.PROCEDURE_TYPE_NAME', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL),
     (N'MOC_WORK_IN_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOC_WORK_IN_M', N'WORK_IN_DATE', N'工序完工日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
@@ -9225,7 +9249,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_ACCEPT_M', N'SUTTLE', N'单个净重', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-02-28T15:16:41.000', NULL, N'QTY'),
     (N'MOU_ACCEPT_M', N'TYPE_NAME', N'类型', N'nvarchar', N'MOU_TYPE.TYPE_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_ACCEPT_M', N'YLKD', N'用料宽度', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-06-12T15:31:52.000', NULL, NULL),
-    (N'MOU_ACCEPTDELE_D', N'ACCEPT_NO', N'承认单号', N'nvarchar', N'', N'~/MOU/Accept.aspx?IDX=ACCEPT_TYPE={ACCEPT_TYPE}^ACCEPT_NO={ACCEPT_NO}', 2904, 1, N'', 1, N'', 100, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'何群笑', '2011-02-21T10:49:46.000', NULL, NULL),
+    (N'MOU_ACCEPTDELE_D', N'ACCEPT_NO', N'承认单号', N'nvarchar', N'', N'~/MOU/Accept.aspx?IDX=ACCEPT_TYPE={ACCEPT_TYPE}^ACCEPT_NO={ACCEPT_NO}', 2904, 1, N'', 1, N'', 100, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'何群笑', '2011-02-21T10:49:46.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOU_ACCEPTDELE_D', N'ACCEPT_TYPE', N'承认单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-02-20T15:41:39.000', NULL, NULL),
     (N'MOU_ACCEPTDELE_D', N'ACCEPTDELE_NO', N'承认报废单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-02-20T15:41:39.000', NULL, NULL),
     (N'MOU_ACCEPTDELE_D', N'ACCEPTDELE_TYPE', N'承认报废单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-02-20T15:41:39.000', NULL, NULL),
@@ -9249,9 +9275,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_ACCEPTDELE_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-02-20T15:41:39.000', NULL, NULL),
     (N'MOU_APPLY_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'MOU_APPLY_D', N'APPLY_NO', N'开模单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'MOU_APPLY_D', N'APPLY_TYPE', N'开模单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOU_APPLY_D', N'APPLY_TYPE', N'开模单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_APPLY_D', N'HEIGHT', N'厚', N'float', N'PRODUCT.HEIGHT', N'', 0, 0, N'', 0, N'^\d+|^$', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_APPLY_D', N'LENGTH', N'长度', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'MOU_APPLY_D', N'PRICE', N'单价', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PRICE'),
@@ -9427,7 +9451,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_ASSESS_M', N'PINGGU', N'评估', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-18T16:33:22.000', NULL, NULL),
     (N'MOU_ASSESS_M', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1210, 0, N'', 0, N'', 150, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'何群笑', '2009-12-07T17:51:49.000', NULL, NULL),
     (N'MOU_ASSESS_M', N'PRO_SIZE', N'产品尺寸', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-18T16:33:22.000', NULL, NULL),
-    (N'MOU_ASSESS_M', N'REMARK', N'注意事项', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2009-12-05T11:49:09.000', NULL, NULL),
+    (N'MOU_ASSESS_M', N'REMARK', N'注意事项', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2009-12-05T11:49:09.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOU_ASSESS_M', N'SJJGSJ', N'上机加工时间', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-18T16:33:22.000', NULL, NULL),
     (N'MOU_ASSESS_M', N'SMSJ', N'省模时间', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-18T16:33:22.000', NULL, NULL),
     (N'MOU_ASSESS_M', N'TGZL1', N'吸塑3D图', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-18T16:33:22.000', NULL, NULL),
@@ -9451,9 +9477,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_BATCH_D', N'BATCH_NO', N'承认单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_BATCH_D', N'BATCH_TYPE', N'承认单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_BATCH_D', N'HEIGHT', N'厚', N'float', N'PRODUCT.HEIGHT', N'', 0, 0, N'', 0, N'^\d+|^$', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'MOU_BATCH_D', N'LENGTH', N'长度', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOU_BATCH_D', N'LENGTH', N'长度', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'MOU_BATCH_D', N'PRICE', N'单价', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PRICE'),
     (N'MOU_BATCH_D', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_BATCH_D', N'PRO_NO', N'用料料号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1210, 0, N'', 0, N'', 150, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -9629,7 +9653,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_BATCHTOP_M', N'SCRAP_SERIAL_NO', N'报废项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'报废序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.610', NULL, NULL),
     (N'MOU_BATCHTOP_M', N'SCRAP_TYPE', N'报废单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_BATCHTOP_M', N'SEND_DATE', N'交样日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
-    (N'MOU_BATCHTOP_M', N'SUPPLIER_AMOUNT', N'代工费用', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
+    (N'MOU_BATCHTOP_M', N'SUPPLIER_AMOUNT', N'代工费用', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOU_BATCHTOP_M', N'SUPPLIER_DATE', N'签收日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'MOU_BATCHTOP_M', N'SUPPLIER_ID', N'厂商代号', N'nvarchar', N'', N'~/PUR/SUPPLIER.aspx?IDX=SUPPLIER_ID={SUPPLIER_ID}', 1601, 1, N'', 0, N'', 70, N'', N'center', N'left', 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_BATCHTOP_M', N'SUPPLIER_NAME', N'厂商名', N'nvarchar', N'SUPPLIER.SUPPLIER_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -9653,9 +9679,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_GET_D', N'PRO_NO', N'料号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 0, N'', 0, N'', 150, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'品号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.613', NULL, NULL),
     (N'MOU_GET_D', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_GET_D', N'QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
-    (N'MOU_GET_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOU_GET_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_GET_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.613', NULL, NULL),
     (N'MOU_GET_D', N'UNIT_ID', N'单位', N'nvarchar', N'', N'~/INV/UNIT.aspx?IDX=UNIT_ID={UNIT_ID}', 110303, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_GET_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.613', NULL, NULL),
@@ -9831,7 +9855,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_PRO_D', N'DEPOT_QTY', N'模具库存', N'nvarchar', N'MOU_MOULD.QTY', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2010-06-03T17:03:25.000', NULL, NULL),
     (N'MOU_PRO_D', N'EDITION', N'版次', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_PRO_D', N'MOU_QTY', N'模具在用数', N'nvarchar', N'MOU_MOULD.MOU_QTY', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2010-06-03T17:01:20.000', NULL, NULL),
-    (N'MOU_PRO_D', N'MOU_SORT', N'模具性质', N'nvarchar', N'MOU_MOULD.MOU_SORT', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'MOU_PRO_D', N'MOU_SORT', N'模具性质', N'nvarchar', N'MOU_MOULD.MOU_SORT', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'MOU_PRO_D', N'MOULD_ID', N'模具', N'nvarchar', N'', N'~/MOU/Mould.aspx?IDX=MOULD_ID={MOULD_ID}', 2905, 1, N'', 0, N'', 100, N'', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'模具代号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.623', NULL, NULL),
     (N'MOU_PRO_D', N'MOULD_NAME', N'模具品名', N'nvarchar', N'MOU_MOULD.MOULD_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_PRO_D', N'PLACE2', N'置放号', N'nvarchar', N'MOU_MOULD.PLACE2', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2010-08-09T17:44:40.000', NULL, NULL),
@@ -9855,9 +9881,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'MOU_PRO_M', N'MOULD_IDS', N'所用模具', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'所用模具汇总', N'EOS-DOC-GEN', '2026-08-09T12:04:10.623', NULL, NULL),
     (N'MOU_PRO_M', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL),
     (N'MOU_PRO_M', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 1, N'', 1, N'', 150, N'', N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.880', NULL, NULL),
-    (N'MOU_PRO_M', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'MOU_PRO_M', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 105, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_PRO_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'MOU_SCRAP_D', N'ADD_QTY', N'补产数量', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'补生产数量', N'EOS-DOC-GEN', '2026-08-09T12:04:10.627', NULL, N'QTY'),
     (N'MOU_SCRAP_D', N'BATCH_STATE', N'是否已补产', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2011-07-26T14:33:29.000', NULL, NULL),
@@ -10033,7 +10057,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PRICE', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRICE', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'PRICE', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'PRICE', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
+    (N'PRICE', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PRICE', N'PRICE_ID', N'价格条件编号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRICE', N'PRICE_NAME', N'价格条件', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'价格条件名称', N'EOS-DOC-GEN', '2026-08-09T12:04:10.637', NULL, NULL),
     (N'PRICE', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -10057,9 +10083,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PRO_WAVE', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'PRO_WAVE', N'MODIFIED_BY', N'修改人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'SYSTEM', '2009-07-11T09:31:14.000', NULL, NULL),
     (N'PRO_WAVE', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'PRO_WAVE', N'PAPER_THICK', N'纸板厚度', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-07-11T09:31:14.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PRO_WAVE', N'PAPER_THICK', N'纸板厚度', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-07-11T09:31:14.000', NULL, N'QTY'),
     (N'PRO_WAVE', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-07-11T09:31:14.000', NULL, NULL),
     (N'PRO_WAVE', N'WAVE_ID', N'坑浪代号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-07-11T09:31:14.000', NULL, NULL),
     (N'PRO_WAVE', N'WAVE_NAME', N'坑浪名称', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-07-11T09:31:14.000', NULL, NULL),
@@ -10235,7 +10259,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PRODUCT', N'STICKINESS', N'胶粘', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT', N'STOP_TAG', N'停止使用', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-07-16T09:27:51.000', NULL, NULL),
     (N'PRODUCT', N'STUFF_COST', N'材料成本', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
-    (N'PRODUCT', N'STUFF_ID', N'材质', N'nvarchar', N'', N'~/INV/Stuff.aspx?IDX=STUFF_ID={STUFF_ID}', 110304, 1, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2011-02-23T16:04:36.000', NULL, NULL),
+    (N'PRODUCT', N'STUFF_ID', N'材质', N'nvarchar', N'', N'~/INV/Stuff.aspx?IDX=STUFF_ID={STUFF_ID}', 110304, 1, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2011-02-23T16:04:36.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PRODUCT', N'STUFF_NAME', N'材质', N'nvarchar', N'STUFF.STUFF_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT', N'STUFF_WEIGHT', N'材质单重(g)', N'nvarchar', N'STUFF.WEIGHT', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT', N'SUPPLIER_ID', N'主要厂商', N'nvarchar', N'', N'~/PUR/SUPPLIER.aspx?IDX=SUPPLIER_ID={SUPPLIER_ID}', 1601, 1, N'', 0, N'', 120, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'张建平', '2016-05-11T17:08:02.000', NULL, NULL),
@@ -10259,9 +10285,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PRODUCT', N'UNIT_PCS', N'个数/箱', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'PRODUCT', N'UNIT_PRICE_EXP', N'单价公式', N'nvarchar', N'TYPE_FORMULA.UNIT_PRICE_EXP', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 0, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT', N'UNIT_RATE_1', N'米/公斤', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'换算单位一换算率', N'EOS-DOC-GEN', '2026-08-09T12:04:10.640', NULL, N'QTY'),
-    (N'PRODUCT', N'UNIT_RATE_2', N'换算率2', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'换算单位二换算率', N'EOS-DOC-GEN', '2026-08-09T12:04:10.640', NULL, N'RATE')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PRODUCT', N'UNIT_RATE_2', N'换算率2', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'换算单位二换算率', N'EOS-DOC-GEN', '2026-08-09T12:04:10.640', NULL, N'RATE'),
     (N'PRODUCT', N'UNIT_RATE_3', N'换算率3', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'换算单位三换算率', N'EOS-DOC-GEN', '2026-08-09T12:04:10.640', NULL, N'RATE'),
     (N'PRODUCT', N'UNIT_RATE_4', N'换算率4', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'换算单位四换算率', N'EOS-DOC-GEN', '2026-08-09T12:04:10.640', NULL, N'RATE'),
     (N'PRODUCT', N'WATER_RATE', N'含水率%', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'含水率', N'EOS-DOC-GEN', '2026-08-09T12:04:10.647', NULL, NULL),
@@ -10437,7 +10461,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PRODUCT_EDITION', N'UNIT_ID_2', N'换算单位二', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT_EDITION', N'UNIT_ID_3', N'换算单位三', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT_EDITION', N'UNIT_ID_4', N'换算单位四', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'PRODUCT_EDITION', N'UNIT_NARRATE_1', N'换算单位一公式说明', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'PRODUCT_EDITION', N'UNIT_NARRATE_1', N'换算单位一公式说明', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PRODUCT_EDITION', N'UNIT_NARRATE_2', N'换算单位二公式说明', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT_EDITION', N'UNIT_NARRATE_3', N'换算单位三公式说明', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PRODUCT_EDITION', N'UNIT_NARRATE_4', N'换算单位四公式说明', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -10461,9 +10487,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PRODUCT_EDITION', N'ZH_INTENSITY', N'粘合强度', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_APPLY_D', N'ADVISEVT_QTY', N'建议数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'#,##', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'PUR_APPLY_D', N'AMOUNT', N'采购金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
-    (N'PUR_APPLY_D', N'APPLY_DATE', N'请购日期', N'date', N'PUR_APPLY_M.APPLY_DATE', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PUR_APPLY_D', N'APPLY_DATE', N'请购日期', N'date', N'PUR_APPLY_M.APPLY_DATE', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 2, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'PUR_APPLY_D', N'APPLY_NO', N'请购单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_APPLY_D', N'APPLY_TYPE', N'请购单别', N'nvarchar', N'', N'', 0, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_APPLY_D', N'CLIENT_ID', N'客户代号', N'nvarchar', N'', N'~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}', 1401, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'客户', N'EOS-DOC-GEN', '2026-08-09T12:04:10.653', NULL, NULL),
@@ -10639,7 +10663,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_CANCEL_D', N'RECEIVE_NO', N'收料单号', N'nvarchar', N'', N'~/PUR/Receive.aspx?IDX=RECEIVE_TYPE={RECEIVE_TYPE}^RECEIVE_NO={RECEIVE_NO}', 1607, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_CANCEL_D', N'RECEIVE_SERIAL_NO', N'收料项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'收料单序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.660', NULL, NULL),
     (N'PUR_CANCEL_D', N'RECEIVE_TYPE', N'收料单别', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'PUR_CANCEL_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'PUR_CANCEL_D', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PUR_CANCEL_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'left', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.657', NULL, NULL),
     (N'PUR_CANCEL_D', N'SPARE_QTY', N'退备品', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'退备品数', N'EOS-DOC-GEN', '2026-08-09T12:04:10.660', NULL, N'QTY'),
     (N'PUR_CANCEL_D', N'SUPPLIER_ID', N'厂商代号', N'nvarchar', N'PUR_CANCEL_M.SUPPLIER_ID', N'~/PUR/SUPPLIER.aspx?IDX=SUPPLIER_ID={SUPPLIER_ID}', 1601, 1, N'', 0, N'', 70, N'', N'center', N'left', 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'刘一', '2009-08-14T14:56:21.000', NULL, NULL),
@@ -10663,9 +10689,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_CANCEL_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_CANCEL_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'PUR_CANCEL_M', N'CURR_ID', N'币别', N'nvarchar', N'', N'~/Admin/MagCurr.aspx?IDX=CURR_ID={CURR_ID}', 110103, 1, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'PUR_CANCEL_M', N'CURR_RATE', N'汇率', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'RATE')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PUR_CANCEL_M', N'CURR_RATE', N'汇率', N'decimal', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'RATE'),
     (N'PUR_CANCEL_M', N'DEPOT_ID', N'库别', N'nvarchar', N'', N'~/INV/Depot.aspx?IDX=DEPOT_ID={DEPOT_ID}', 110306, 1, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'仓库', N'EOS-DOC-GEN', '2026-08-09T12:04:10.660', NULL, NULL),
     (N'PUR_CANCEL_M', N'DEPOT_NAME', N'仓库名称', N'nvarchar', N'DEPOT_M.DEPOT_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'黄小豹', '2009-06-22T16:06:59.000', NULL, NULL),
     (N'PUR_CANCEL_M', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -10841,7 +10865,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_MONTH_D', N'CURRENT_REBATE', N'本期折扣', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-01-12T10:11:15.000', NULL, N'PERCENT'),
     (N'PUR_MONTH_D', N'END_AMOUNT', N'期末结余', N'float', N'PUR_MONTH_D.PERIOD_AMOUNT-PUR_MONTH_D.CURRENT_PREPAY+PUR_MONTH_D.CURRENT_ACCOUNT+PUR_MONTH_D.CURRENT_BALANCE-PUR_MONTH_D.CURRENT_PAY-PUR_MONTH_D.CURRENT_REBATE', N'', 0, 0, N'', 0, N'', 80, N'', N'', N'', 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'PUR_MONTH_D.PERIOD_AMOUNT-PUR_MONTH_D.CURRENT_PREPAY+PUR_MONTH_D.CURRENT_ACCOUNT+PUR_MONTH_D.CURRENT_BALANCE-PUR_MONTH_D.CURRENT_PAY-PUR_MONTH_D.CURRENT_REBATE', N'EOS-MIG', '2026-10-21T12:18:19.417', NULL, N'AMOUNT'),
     (N'PUR_MONTH_D', N'END_AMOUNT_RMB', N'期末结余RMB', N'float', N'PUR_MONTH_D.CURRENT_ACCOUNT*CURR.CURR_RATE', N'', 0, 0, N'', 0, N'^\d+|^$', 80, N'', N'', N'', 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'PUR_MONTH_D.PERIOD_AMOUNT-PUR_MONTH_D.CURRENT_PREPAY+PUR_MONTH_D.CURRENT_ACCOUNT+PUR_MONTH_D.CURRENT_BALANCE-PUR_MONTH_D.CURRENT_PAY-PUR_MONTH_D.CURRENT_REBATE', N'EOS-MIG', '2026-10-21T12:18:19.417', NULL, N'AMOUNT'),
-    (N'PUR_MONTH_D', N'MONTH_NO', N'单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-12-17T17:58:59.000', NULL, NULL),
+    (N'PUR_MONTH_D', N'MONTH_NO', N'单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-12-17T17:58:59.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PUR_MONTH_D', N'MONTH_TYPE', N'单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-12-17T17:58:59.000', NULL, NULL),
     (N'PUR_MONTH_D', N'PERIOD_AMOUNT', N'上期结余', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-12-17T17:58:59.000', NULL, N'AMOUNT'),
     (N'PUR_MONTH_D', N'REMARK', N'摘要', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-12-17T17:58:59.000', NULL, NULL),
@@ -10865,9 +10891,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_PACK_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 100, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'PUR_PACK_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T12:28:26.980', NULL, NULL),
     (N'PUR_PACK_M', N'BOX_AMOUNT', N'纸箱金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-10T11:14:10.000', NULL, N'AMOUNT'),
-    (N'PUR_PACK_M', N'BOX_PRICE', N'纸箱单价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-10T11:14:10.000', NULL, N'PRICE')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PUR_PACK_M', N'BOX_PRICE', N'纸箱单价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-10T11:14:10.000', NULL, N'PRICE'),
     (N'PUR_PACK_M', N'BOX_PRO_NO', N'纸箱品号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2014-04-09T12:39:05.000', NULL, NULL),
     (N'PUR_PACK_M', N'BOX_QTY', N'纸箱数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-06-19T15:26:52.000', NULL, N'QTY'),
     (N'PUR_PACK_M', N'BOX_SPEC', N'纸箱规格', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-06-19T15:26:52.000', NULL, NULL),
@@ -11043,7 +11067,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_PAY_OTHER', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'PUR_PAY_OTHER', N'PAY_DATE', N'凭证日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'PUR_PAY_OTHER', N'PAY_DESC', N'系付描述', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 282, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T00:16:56.913', NULL, NULL),
-    (N'PUR_PAY_OTHER', N'PAY_NO', N'付款单号', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 78, NULL, N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T00:10:19.330', NULL, NULL),
+    (N'PUR_PAY_OTHER', N'PAY_NO', N'付款单号', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 78, NULL, N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T00:10:19.330', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PUR_PAY_OTHER', N'PAY_TYPE', N'付款单别', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 78, NULL, N'center', N'left', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T00:10:16.113', NULL, NULL),
     (N'PUR_PAY_OTHER', N'PAYOUT_ACCOUNT_ID', N'付款会计科目', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 103, NULL, N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T00:17:00.120', NULL, NULL),
     (N'PUR_PAY_OTHER', N'PAYOUT_ACCOUNT_NAME', N'付款会计科目名称', N'nvarchar', N'ACC1.ACCOUNT_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2012-04-11T15:40:16.000', NULL, NULL),
@@ -11067,9 +11093,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_PAY_OTHER_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-05-13T08:40:32.000', NULL, N'AMOUNT'),
     (N'PUR_PAY_OTHER_D', N'PAY_NO', N'付款单号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-05-13T08:40:32.000', NULL, NULL),
     (N'PUR_PAY_OTHER_D', N'PAY_TYPE', N'付款单别', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-05-13T08:40:32.000', NULL, NULL),
-    (N'PUR_PAY_OTHER_D', N'PRICE', N'单价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-05-13T08:50:49.000', NULL, N'PRICE')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PUR_PAY_OTHER_D', N'PRICE', N'单价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-05-13T08:50:49.000', NULL, N'PRICE'),
     (N'PUR_PAY_OTHER_D', N'QTY', N'数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-05-13T08:50:43.000', NULL, N'QTY'),
     (N'PUR_PAY_OTHER_D', N'REMARK', N'备注', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 250, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T00:10:27.880', NULL, NULL),
     (N'PUR_PAY_OTHER_D', N'SERIAL_NO', N'序号', N'smallint', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'migration-405', '2026-10-17T19:31:00.327', NULL, NULL),
@@ -11245,7 +11269,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_PURCHASE_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'管理员', '2026-10-05T14:39:08.347', NULL, NULL),
     (N'PUR_PURCHASE_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', NULL, 0, 0, NULL, 0, NULL, 119, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, NULL, 0, 1, N'', N'批核时间', N'管理员', '2026-10-05T14:39:08.347', NULL, NULL),
     (N'PUR_PURCHASE_M', N'BILL_ADDRESS', N'发票地址', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-19T00:19:51.590', NULL, NULL),
-    (N'PUR_PURCHASE_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-09-19T00:19:51.590', NULL, NULL),
+    (N'PUR_PURCHASE_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-09-19T00:19:51.590', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PUR_PURCHASE_M', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-10-05T14:39:08.347', NULL, NULL),
     (N'PUR_PURCHASE_M', N'CREATED_TIME', N'建立时间', N'datetime', N'', NULL, 0, 0, NULL, 0, NULL, 119, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, NULL, 0, 1, N'', NULL, N'管理员', '2026-10-05T14:39:08.347', NULL, NULL),
     (N'PUR_PURCHASE_M', N'CURR_ID', N'币别', N'nvarchar', N'', N'~/Admin/MagCurr.aspx?IDX=CURR_ID={CURR_ID}', 110103, 1, N'', 0, N'', 54, N'', N'center', N'left', 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-05T14:39:08.343', NULL, NULL),
@@ -11269,9 +11295,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_PURCHASE_M', N'PURCHASE_TYPE', N'采购单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={PURCHASE_TYPE}', 2304, 1, N'', 0, N'', 79, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-19T00:19:51.590', NULL, NULL),
     (N'PUR_PURCHASE_M', N'REBATE', N'折扣', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'100', 1, 1, N'', N'', N'SYSTEM', '2009-11-04T09:10:32.000', NULL, N'PERCENT'),
     (N'PUR_PURCHASE_M', N'RECKONING_ADDRESS', N'帐单地址', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'PUR_PURCHASE_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'PUR_PURCHASE_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_PURCHASE_M', N'SUPPLIER_ID', N'厂商', N'nvarchar', N'', N'~/PUR/SUPPLIER.aspx?IDX=SUPPLIER_ID={SUPPLIER_ID}', 1601, 1, NULL, 0, NULL, 130, NULL, N'center', N'left', 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', N'供应商', N'管理员', '2026-10-05T14:39:19.543', NULL, NULL),
     (N'PUR_PURCHASE_M', N'SUPPLIER_NAME', N'厂商简称', N'nvarchar', N'SUPPLIER.SUPPLIER_NAME', NULL, 0, 0, NULL, 0, NULL, 203, NULL, N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, NULL, 0, 1, N'', NULL, N'管理员', '2026-10-05T14:39:34.160', NULL, NULL),
     (N'PUR_PURCHASE_M', N'TAX_ID', N'税别', N'nvarchar', N'', N'~/Admin/MagTax.aspx?IDX=TAX_ID={TAX_ID}', 110106, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'王炼', '2014-12-24T16:31:58.000', NULL, NULL),
@@ -11447,7 +11471,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'PUR_RECEIVE_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_RECEIVE_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'PUR_RECEIVE_M', N'PURCHASE_ID', N'采购员', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={PURCHASE_ID}', 0, 1, NULL, 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'PUR_RECEIVE_M', N'PURCHASE_NAME', N'员工姓名', N'nvarchar', N'SYS_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'PUR_RECEIVE_M', N'PURCHASE_NAME', N'员工姓名', N'nvarchar', N'SYS_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'PUR_RECEIVE_M', N'RECEIVE_DATE', N'收料日期', N'date', N'', N'', 0, 1, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 1, 2, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'PUR_RECEIVE_M', N'RECEIVE_NO', N'收料单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'PUR_RECEIVE_M', N'RECEIVE_TYPE', N'收料单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={RECEIVE_TYPE}', 2304, 1, N'', 0, N'', 40, N'', N'center', N'left', 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -11471,9 +11497,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'QC_ANALYSIS_D', N'GOOD_QTY', N'良品数', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.133', NULL, N'QTY'),
     (N'QC_ANALYSIS_D', N'PRO_NAME', N'品名', N'nvarchar', N'PRODUCT.PRO_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 0, N'', N'', N'刘一', '2011-02-23T23:08:10.000', NULL, NULL),
     (N'QC_ANALYSIS_D', N'PRO_NO', N'品号', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1206, 1, N'', 0, N'', 54, N'', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.133', NULL, NULL),
-    (N'QC_ANALYSIS_D', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.133', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'QC_ANALYSIS_D', N'PRO_SPEC', N'规格', N'nvarchar', N'PRODUCT.PRO_SPEC', N'', 0, 0, N'', 0, N'', 54, N'', N'center', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.133', NULL, NULL),
     (N'QC_ANALYSIS_D', N'PRODUCE_NO', N'生产单号', N'nvarchar', N'', N'', 1508, 0, N'', 1, N'', 79, N'', N'', N'center', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.133', NULL, NULL),
     (N'QC_ANALYSIS_D', N'PRODUCE_QTY', N'生产数量', N'decimal', N'', N'', 0, 0, N'', 0, N'^\d+|^$', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.133', NULL, N'QTY'),
     (N'QC_ANALYSIS_D', N'PRODUCE_TYPE', N'生产单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={AMERCE_TYPE}', 2304, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-09-22T15:49:20.137', NULL, NULL),
@@ -11649,7 +11673,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'QC_EXCEPTION_M', N'EXCEPTION_DATE', N'异常日期', N'date', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.667', NULL, NULL),
     (N'QC_EXCEPTION_M', N'EXCEPTION_NO', N'异常单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 111, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.667', NULL, NULL),
     (N'QC_EXCEPTION_M', N'EXCEPTION_TYPE', N'异常单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={AMERCE_TYPE}', 2304, 1, N'', 0, N'', 79, N'', N'', N'', 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.677', NULL, NULL),
-    (N'QC_EXCEPTION_M', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.670', NULL, NULL),
+    (N'QC_EXCEPTION_M', N'FINISHED', N'结案状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.670', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'QC_EXCEPTION_M', N'FINISHED_BY', N'结案人', N'nchar', N'', N'', 0, 0, N'', 0, N'', 67, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.670', NULL, NULL),
     (N'QC_EXCEPTION_M', N'FINISHED_TIME', N'结案时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.667', NULL, NULL),
     (N'QC_EXCEPTION_M', N'GS_REMARK', N'改善措施', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.670', NULL, NULL),
@@ -11673,9 +11699,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'QC_EXCEPTION_M', N'SUPPLIER_ID', N'厂商', N'nvarchar', N'', N'~/PUR/SUPPLIER.aspx?IDX=SUPPLIER_ID={SUPPLIER_ID}', 1601, 1, N'', 0, N'', 53, N'', N'center', N'left', 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-10-12T09:57:10.677', NULL, NULL),
     (N'QC_LOSS_D', N'ANALYSIS_NO', N'分析日报单号', N'nvarchar', N'', N'', 0, 0, N'', 1, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'分析单号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.693', NULL, NULL),
     (N'QC_LOSS_D', N'ANALYSIS_TYPE', N'分析单别', N'nvarchar', N'', N'~/Admin/MagBillKind.aspx?IDX=BILL_CODE={AMERCE_TYPE}', 2304, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-09T23:21:15.000', NULL, NULL),
-    (N'QC_LOSS_D', N'BAD_QTY', N'不良数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-09T23:21:15.000', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'QC_LOSS_D', N'BAD_QTY', N'不良数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-09T23:21:15.000', NULL, N'QTY'),
     (N'QC_LOSS_D', N'BAD_RATE', N'不良率', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-09T23:21:15.000', NULL, N'PERCENT'),
     (N'QC_LOSS_D', N'CLIENT_ID', N'客户', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-03-09T23:21:15.000', NULL, NULL),
     (N'QC_LOSS_D', N'ELEMENT_PRO_NO', N'材料', N'nvarchar', N'', N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1210, 0, N'', 0, N'', 150, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'蒋春', '2011-03-10T15:01:42.000', NULL, NULL),
@@ -11827,12 +11851,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'REPORT', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'REPORT', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'A', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
-    (N'REPORT', N'DEFAULT_PAPER', N'默认纸张', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'REPORT', N'DEFAULT_PRINTER', N'默认列印机', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 152, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T09:51:47.913', NULL, NULL),
     (N'REPORT', N'FOOTER_TEXT', N'页尾内容', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 205, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', NULL, N'管理员', '2026-08-10T09:51:44.413', NULL, NULL),
     (N'REPORT', N'HEADER_ID', N'页头ID', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'A', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'HEADER_NAME', N'页头', N'nvarchar', N'REPORT_LAYOUT.LAYOUT_DESC', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'center', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'ghost-virtual-fix', '2026-09-09T12:56:02.447', NULL, NULL),
-    (N'REPORT', N'IMAGE_ID', N'图片ID', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'IS_DEFAULT', N'默认报表', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'ISO_NO', N'ISO号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'M_DESC', N'模块', N'nvarchar', N'MODULES.M_DESC', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -11842,7 +11863,6 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'REPORT', N'REPORT_FILTER', N'筛选条件', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', NULL, NULL, NULL),
     (N'REPORT', N'REPORT_ID', N'报表ID', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 150, N'', N'', N'', 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'REPORT_NAME', N'报表', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 220, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'报表名称', N'EOS-DOC-GEN', '2026-08-09T12:04:10.697', NULL, NULL),
-    (N'REPORT', N'REPORT_PATH', N'报表路径', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 220, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'何群笑', '2011-09-14T16:30:46.000', NULL, NULL),
     (N'REPORT', N'TAIL_ID', N'表尾ID', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'A', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT', N'TAIL_NAME', N'表尾', N'nvarchar', N'RL_TAIL.LAYOUT_DESC', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'center', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'ghost-virtual-fix', '2026-09-09T12:56:02.447', NULL, NULL),
     (N'REPORT_LAYOUT', N'IS_DEFAULT', N'Default tag', N'bit', NULL, NULL, NULL, NULL, NULL, 0, NULL, 40, NULL, N'center', NULL, 0, 4, 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL),
@@ -11855,7 +11875,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'REPORT_SORT', N'REPORT_ID', N'报表ID', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT_SORT', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'left', 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.703', NULL, NULL),
     (N'REPORT_SORT', N'SORT_DESC', N'排序字段描述', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 200, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'REPORT_SORT', N'SORT_FIELDS', N'排序字段', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 200, N'', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'REPORT_SORT', N'SORT_FIELDS', N'排序字段', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 200, N'', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'REPORT_SORT', N'SORT_NAME', N'排序说明', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 120, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT_USER_STATE', N'M_IDX', N'归属模块', N'int', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'REPORT_USER_STATE', N'OPER_DETAIL_TABLE', N'副表', N'nvarchar', N'MODULES.DETAIL_TABLE', N'', 0, 0, N'', 0, N'', 120, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -11875,9 +11897,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SAM_APPLY_D', N'SAM_QTY', N'样品数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'SAM_APPLY_D', N'SERIAL_NO', N'项次', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'报价单序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.707', NULL, NULL),
     (N'SAM_APPLY_D', N'UNIT_ID', N'单位', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'SAM_APPLY_M', N'ADDRESS', N'送样地址', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'SAM_APPLY_M', N'ADDRESS', N'送样地址', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SAM_APPLY_M', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'SAM_APPLY_M', N'APPLY_DATE', N'打样日期', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'SAM_APPLY_M', N'APPLY_NO', N'打样单号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -12057,7 +12077,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SAMPLE_PRO', N'LAST_CHECK_DATE', N'最近盘点日', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'SAMPLE_PRO', N'LAST_IN_DATE', N'最近入库日', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'SAMPLE_PRO', N'LAST_OUT_DATE', N'最近出库日', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
-    (N'SAMPLE_PRO', N'LAST_PURCHASE_PRICE', N'最近进价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PRICE'),
+    (N'SAMPLE_PRO', N'LAST_PURCHASE_PRICE', N'最近进价', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'PRICE')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'SAMPLE_PRO', N'LENGTH', N'长X宽X高', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'长', N'EOS-DOC-GEN', '2026-08-09T12:04:10.717', NULL, N'QTY'),
     (N'SAMPLE_PRO', N'LENGTH_EXP', N'长公式', N'nvarchar', N'TYPE_FORMULA.LENGTH_EXP', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SAMPLE_PRO', N'LIMB_HEIGHT_EXP1', N'翼高一公式', N'nvarchar', N'TYPE_FORMULA.LIMB_HEIGHT_EXP1', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -12077,9 +12099,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SAMPLE_PRO', N'NAIL_ORA', N'钉口', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SAMPLE_PRO', N'NP_INTENSITY', N'耐破强度', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SAMPLE_PRO', N'NY_INTENSITY', N'耐压强度', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'SAMPLE_PRO', N'OM_LENGTH', N'开法1', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'开法长1', N'EOS-DOC-GEN', '2026-08-09T12:04:10.717', NULL, N'QTY')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'SAMPLE_PRO', N'OM_LENGTH', N'开法1', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'开法长1', N'EOS-DOC-GEN', '2026-08-09T12:04:10.717', NULL, N'QTY'),
     (N'SAMPLE_PRO', N'OM_LENGTH1', N'开法2', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'开法长2', N'EOS-DOC-GEN', '2026-08-09T12:04:10.720', NULL, N'QTY'),
     (N'SAMPLE_PRO', N'OM_LENGTH2', N'开法3', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'开法长3', N'EOS-DOC-GEN', '2026-08-09T12:04:10.720', NULL, N'QTY'),
     (N'SAMPLE_PRO', N'OM_LENGTH3', N'开法4', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'长开法', N'EOS-DOC-GEN', '2026-08-09T12:04:10.720', NULL, N'QTY'),
@@ -12259,7 +12279,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SFC_DAILY_M', N'FINISHED_TIME', N'结案时间', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'SFC_DAILY_M', N'LINE_ID', N'生产线', N'nvarchar', N'', N'~/MOC/Line.aspx?IDX=LINE_ID={LINE_ID}', 1501, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SFC_DAILY_M', N'LINE_NAME', N'生产线', N'nvarchar', N'LINE.LINE_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'SFC_DAILY_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
+    (N'SFC_DAILY_M', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'SFC_DAILY_M', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SFC_DAILY_M', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SFC_PAY_D', N'AMOUNT', N'合计金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
@@ -12279,9 +12301,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SFC_PAY_D', N'UNIT_ID', N'单位', N'nvarchar', N'', N'~/INV/UNIT.aspx?IDX=UNIT_ID={UNIT_ID}', 110303, 1, N'', 0, N'', 50, N'', N'center', N'left', 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SFC_PAY_D', N'USED_HOURS', N'计薪小时数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
     (N'SFC_PAY_D', N'WORK_HOURS', N'工作小时数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'QTY'),
-    (N'SFC_PAY_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.730', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'SFC_PAY_M', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.730', NULL, NULL),
     (N'SFC_PAY_M', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.727', NULL, NULL),
     (N'SFC_PAY_M', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SFC_PAY_M', N'BILL_NAME', N'单别', N'nvarchar', N'BILLKIND.BILL_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'MIGRATION', '2026-08-31T13:14:02.213', NULL, NULL),
@@ -12461,7 +12481,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SFC_PROCESS_D', N'LINE_NAME', N'生产线', N'nvarchar', N'LINE.LINE_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SFC_PROCESS_D', N'MACHINE_COST_UNIT', N'标准机器费率/件', N'decimal', N'', N'', 0, 0, N'', 0, N'', 120, N'', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'b', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
     (N'SFC_PROCESS_D', N'MACHINE_HOUR_UNIT', N'机时/件', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'RATE'),
-    (N'SFC_PROCESS_D', N'MACHINE_UNIT_HOUR', N'件/机时', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'RATE'),
+    (N'SFC_PROCESS_D', N'MACHINE_UNIT_HOUR', N'件/机时', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'RATE')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'SFC_PROCESS_D', N'PERSON_COST_UNIT', N'标准人工费率/件', N'decimal', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, N'', 1, 0, N'', N'', N'何群笑', '2011-10-13T13:54:04.000', NULL, N'AMOUNT'),
     (N'SFC_PROCESS_D', N'PERSON_HOUR_UNIT', N'工时/件', N'decimal', N'', N'', 0, 0, N'', 0, N'', 80, N'#,##0.000000', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'SFC_PROCESS_D', N'PERSON_QTY', N'所需人数', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2011-11-22T11:51:52.000', NULL, N'QTY'),
@@ -12481,9 +12503,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SFC_PROCESS_D', N'SERIAL_NO', N'序号', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'0.##', N'center', N'right', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'系統管理員', '2009-07-02T16:22:45.000', NULL, NULL),
     (N'SFC_PROCESS_D', N'STANDARD_TIME', N'固定时间', N'decimal', N'', N'', 0, 0, N'', 0, N'', 50, N'#,##0.0000', N'', N'right', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'标准固定计划时间/件', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'SFC_PROCESS_D', N'STANDARD_TIME_TAG', N'是否使用固定时间', N'bit', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'是否使用标准固定计划时间', N'EOS-DOC-GEN', '2026-08-09T12:04:10.740', NULL, NULL),
-    (N'SFC_PROCESS_IN_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-03-20T16:14:18.000', NULL, N'AMOUNT')
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'SFC_PROCESS_IN_D', N'AMOUNT', N'金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-03-20T16:14:18.000', NULL, N'AMOUNT'),
     (N'SFC_PROCESS_IN_D', N'BAD_QTY', N'损坏数量', N'decimal', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:21.000', NULL, N'QTY'),
     (N'SFC_PROCESS_IN_D', N'EMP_DAYS', N'员工加成天数', N'nvarchar', N'SFC_PROCEDURE.EMP_DAYS', N'', 0, 1, N'', 0, N'', 60, N'', N'center', N'left', 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2010-03-20T16:08:50.000', NULL, NULL),
     (N'SFC_PROCESS_IN_D', N'EMP_ID', N'员工代号', N'nchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2010-03-17T10:27:21.000', NULL, NULL),
@@ -12663,7 +12683,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SUPPLIER', N'COMPANT_SELL_TYPE', N'营业性质', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'公司营业性质', N'管理员', '2026-08-11T20:16:28.700', NULL, NULL),
     (N'SUPPLIER', N'CONPANY_NO_CN', N'统一编号', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'大陆公司统一编号', N'管理员', '2026-08-11T20:16:28.703', NULL, NULL),
     (N'SUPPLIER', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 67, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'管理员', '2026-08-11T20:16:28.707', NULL, NULL),
-    (N'SUPPLIER', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
+    (N'SUPPLIER', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 79, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'SUPPLIER', N'CREDIT_GRADE_TAG', N'信用评等', N'char', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'管理员', '2026-08-11T20:16:28.707', NULL, NULL),
     (N'SUPPLIER', N'CREDIT_LIMIT_NUM', N'信用余额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 79, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'100000000', 1, 1, N'', N'', N'管理员', '2026-08-11T20:16:28.707', NULL, N'AMOUNT'),
     (N'SUPPLIER', N'CREDIT_LIMIT_QTY', N'信用额度', N'decimal', N'', N'', 0, 0, N'', 0, N'', 79, N'#,##0.##', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, N'100000000', 1, 1, N'', N'', N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
@@ -12683,9 +12705,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SUPPLIER', N'HEADER_NAME', N'表头', N'nvarchar', N'REPORT_LAYOUT.LAYOUT_DESC', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'ghost-virtual-fix', '2026-09-09T12:56:02.447', NULL, NULL),
     (N'SUPPLIER', N'INV_ADDR_CN', N'发票地址(中文)', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SUPPLIER', N'INV_ADDR_EN', N'发票地址(英文)', N'varchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'SUPPLIER', N'LAST_TRADE_DATE', N'最后交易日', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'最近交易日', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'SUPPLIER', N'LAST_TRADE_DATE', N'最后交易日', N'date', N'', N'', 0, 0, N'', 0, N'', 80, N'yyyy-MM-dd', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'最近交易日', N'DbUp', '2026-10-03T14:26:42.117', NULL, NULL),
     (N'SUPPLIER', N'LICENSE', N'营业执照', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SUPPLIER', N'LINKMAN', N'联系人姓名', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SUPPLIER', N'MIN_BUY_AMOUNT', N'最小采购金额', N'decimal', N'', N'', 0, 0, N'', 0, N'', 60, N'#,##0.00', N'center', N'right', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, N'AMOUNT'),
@@ -12865,7 +12885,9 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SYS_REPORT_PARAMETER', N'F_NAME', N'类型名称', N'nvarchar', N'SYS_USER_REPORT_PRINT_TYPE.F_NAME', N'', 0, 0, N'', 0, N'', 80, N'', N'', N'', 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-11-09T11:12:55.000', NULL, NULL),
     (N'SYS_REPORT_PARAMETER', N'F_TYPE', N'条件类型', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 40, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'1', 1, 1, N'', N'', N'何群笑', '2010-12-16T17:44:47.000', NULL, NULL),
     (N'SYS_REPORT_PARAMETER', N'F_VALUE', N'默认查询值', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-07T09:04:10.000', NULL, NULL),
-    (N'SYS_REPORT_PARAMETER', N'M_IDX', N'模块ID', N'int', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-07T09:04:10.000', NULL, NULL),
+    (N'SYS_REPORT_PARAMETER', N'M_IDX', N'模块ID', N'int', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-07T09:04:10.000', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'SYS_REPORT_PARAMETER', N'PARA_NAME', N'参数名称', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-12-01T10:10:46.000', NULL, NULL),
     (N'SYS_REPORT_PARAMETER', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'SYSTEM', '2009-11-07T10:22:56.000', NULL, NULL),
     (N'SYS_REPORT_PARAMETER', N'SERIAL_NO', N'序号', N'int', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-11-07T14:07:13.000', NULL, NULL),
@@ -12873,9 +12895,6 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SYS_REPORT_PARAMETER_TYPE', N'F_TYPE', N'条件类型', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'黄小豹', '2009-11-07T10:32:27.000', NULL, NULL),
     (N'SYS_REPORT_PARAMETER_TYPE', N'REMARK', N'备 注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 180, N'', N'', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'NULL', N'EOS-DOC-GEN', '2026-08-09T12:04:10.777', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'ACTIVE_TAG', N'是否启用', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', N'True=启用;False=禁用', NULL),
-    (N'SYS_USER_ACCOUNT', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.770', NULL, NULL),
-    (N'SYS_USER_ACCOUNT', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.770', NULL, NULL),
-    (N'SYS_USER_ACCOUNT', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'CREATED_TIME', N'建立时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'DEPT_ID', N'部门', N'nvarchar', N'SYS_EMPLOYEE.DEPT_ID', N'', 0, 0, N'', 0, N'', 70, N'', N'center', N'center', 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
@@ -12885,9 +12904,7 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SYS_USER_ACCOUNT', N'MODIFIED_BY', N'修改人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={MODIFIED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'MODIFIED_TIME', N'修改时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'REMARK', N'备注', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-DOC-GEN', '2026-08-09T12:04:10.273', NULL, NULL),
-    (N'SYS_USER_ACCOUNT', N'SIR_ID', N'上级', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'上级用户ID', N'EOS-DOC-GEN', '2026-08-09T12:04:10.770', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'SYS_USER_ACCOUNT', N'SIR_ID', N'上级', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'上级用户ID', N'EOS-DOC-GEN', '2026-08-09T12:04:10.770', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'SIR_NAME', N'上级姓名', N'nvarchar', N'V_SYS_USER_ACCOUNT_SYS_EMPLOYEE.EMP_NAME', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'left', 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'USER_ID', N'用户ID', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_ACCOUNT', N'USER_PWD', N'密码', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-DOC-GEN', '2026-08-09T12:04:10.273', NULL, NULL),
@@ -12901,9 +12918,6 @@ INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_
     (N'SYS_USER_COLUMN', N'T_ID', N'表名', N'varchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_COLUMN', N'T_ID_R', N'字段所属表', N'varchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_COLUMN', N'USER_ID', N'用户ID', N'varchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
-    (N'SYS_USER_GROUP', N'APPROVED', N'批核状态', N'bit', N'', N'', 0, 0, N'', 0, N'', 30, N'', N'center', N'center', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核状态', N'EOS-DOC-GEN', '2026-08-09T12:04:10.767', NULL, NULL),
-    (N'SYS_USER_GROUP', N'APPROVED_BY', N'批核人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={APPROVED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核人', N'EOS-DOC-GEN', '2026-08-09T12:04:10.767', NULL, NULL),
-    (N'SYS_USER_GROUP', N'APPROVED_TIME', N'批核时间', N'datetime', N'', N'', 0, 0, N'', 0, N'', 120, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'批核时间', N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SYS_USER_GROUP', N'CREATED_BY', N'建立人', N'nvarchar', N'', N'~/Admin/MagEmployee.aspx?IDX=EMP_ID={CREATED_BY}', 0, 0, N'', 0, N'', 50, N'', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, N'', 0, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'SYS_USER_GROUP', N'CREATED_TIME', N'建立时间', N'datetime', N'', NULL, 0, 0, NULL, 0, NULL, 107, N'yyyy-MM-dd HH:mm:ss', N'center', N'left', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, NULL, 0, 1, N'', NULL, N'DbUp', '2026-10-03T14:26:42.160', NULL, NULL),
     (N'SYS_USER_GROUP', N'G_DESC', N'用户组描述', N'nvarchar', N'', NULL, 0, 0, NULL, 0, NULL, 94, NULL, N'center', N'left', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, NULL, 1, 1, N'', N'用户角色组描述', N'管理员', '2026-08-11T08:33:27.333', NULL, NULL),
@@ -13079,7 +13093,9 @@ SELECT ''V'', ''视图''', N'migration-265', '2026-09-27T12:11:45.977', NULL, NU
     (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_PLAN_QTY', N'已下生产数量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 104, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.433', NULL, N'QTY'),
     (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_PLAN_SPARE_QTY', N'下生产备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
     (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_PRODUCE_QTY', N'生产完工数量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 104, NULL, N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.433', NULL, N'QTY'),
-    (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_PRODUCE_SPARE_QTY', N'已完工备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY'),
+    (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_PRODUCE_SPARE_QTY', N'已完工备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 92, N'#,##', N'center', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, N'QTY')
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_RECEIPT_AMOUNT', N'已对帐金额', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 92, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.503', NULL, N'AMOUNT'),
     (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_SEND_QTY', N'已交数量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 79, N'', N'center', N'right', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.433', NULL, N'QTY'),
     (N'V_COP_ORDER_D_UNDELIVERED', N'FINISHED_SPARE_QTY', N'已送备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 79, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.433', NULL, N'QTY'),
@@ -13093,9 +13109,7 @@ SELECT ''V'', ''视图''', N'migration-265', '2026-09-27T12:11:45.977', NULL, NU
     (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_DO_PLAN_SPARE_QTY', N'未计划备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 80, N'#,##', N'center', N'right', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 1, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, NULL),
     (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_FINISHED_AMOUNT', N'未预收金额', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 80, N'#,##0.00', N'center', N'right', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.513', NULL, N'AMOUNT'),
     (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_FINISHED_WORK_QTY', N'工单库存', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 100, N'', N'', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.150', NULL, NULL),
-    (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_FITOUT_QTY', N'未备货数量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 70, N'', N'', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.150', NULL, NULL)
-;
-INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
+    (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_FITOUT_QTY', N'未备货数量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 70, N'', N'', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.150', NULL, NULL),
     (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_FITOUT_SPARE_QTY', N'未备货备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 60, N'#,##', N'center', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, NULL),
     (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_SEND_QTY', N'未送数量', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 70, N'', N'center', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T12:18:19.150', NULL, NULL),
     (N'V_COP_ORDER_D_UNDELIVERED', N'NOT_SEND_SPARE_QTY', N'未送备品', N'decimal', NULL, NULL, NULL, NULL, NULL, 0, NULL, 60, N'#,##', N'center', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, NULL, 0, 1, NULL, NULL, N'EOS-MIG', '2026-10-21T13:41:52.007', NULL, NULL),
@@ -13283,7 +13297,9 @@ E-已结束', N'it_mic', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'WFFORM_FLOW', N'PERSON_CONDITION', N'执行人条件', N'nvarchar', N'', N'', 0, 0, N'', 0, N'', 50, N'', N'center', N'', 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, N'', 1, 0, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'WFFORM_FLOW', N'PERSON_FORWARD_POWER', N'可解批人员', N'nvarchar', N'', N'WF_Design_Person.aspx?obj={MASTER_TABLE}', 0, 0, N'', 0, N'', 50, N'', N'', N'', 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'', '1900-01-01T00:00:00.000', NULL, NULL),
     (N'WFFORM_FLOW', N'PRE_MUST_UNDER', N'上一步必须是我的下属', N'bit', N'', N'', 0, 0, N'', 0, N'', 120, N'', N'center', N'center', 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'上一步必须是我的下一级', N'EOS-DOC-GEN', '2026-08-09T12:04:10.797', NULL, NULL),
-    (N'WFFORM_FLOW', N'REMARK', N'备注', N'varchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-DOC-GEN', '2026-08-09T12:04:10.280', NULL, NULL),
+    (N'WFFORM_FLOW', N'REMARK', N'备注', N'varchar', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'', N'EOS-DOC-GEN', '2026-08-09T12:04:10.280', NULL, NULL)
+;
+INSERT dbo.[FIELDS] ([T_ID], [F_ID], [F_DESC], [F_TYPE], [VIRTUAL_EXP], [BROWSE_URL], [BROWSE_M_IDX], [ONLY_CHOOSE], [CHOOSE_PAGE], [CHOOSE_MULTI], [REGEX], [DISPLAY_LENGTH], [DISPLAY_FORMAT], [HEADER_ALIGN], [ITEM_ALIGN], [IS_VERIFY], [VERIFY_INDEX], [IS_PK], [IS_READONLY], [IS_VISIBLE], [IS_VIRTUAL], [IS_AUTOINC], [IS_QUERY], [IS_COST], [IS_SECRECY], [DFT_VALUE], [CAN_COPY], [IS_DEFAULT_FIELDS], [CONVERT_FUNCTION], [F_REMARK], [MODIFIED_BY], [MODIFIED_TIME], [FORM_OPTIONS], [NUMERIC_ROLE]) VALUES
     (N'WFFORM_FLOW', N'SORT_NO', N'流程项次', N'nvarchar', N'', N'~/WorkFlow/WF_Design.aspx?IDX=WF_M_IDX={WF_M_IDX}', 2101, 0, N'', 0, N'', 60, N'', N'center', N'left', 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'流程序号', N'EOS-DOC-GEN', '2026-08-09T12:04:10.793', NULL, NULL),
     (N'WFFORM_FLOW', N'SUBFLOW_DESC', N'流  程', N'nvarchar', N'', N'~/WorkFlow/WF_Design.aspx?IDX=WF_M_IDX={WF_M_IDX}', 2101, 0, N'', 0, N'', 100, N'', N'center', N'', 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, N'', 1, 1, N'', N'流程说明', N'EOS-DOC-GEN', '2026-08-09T12:04:10.793', NULL, NULL),
     (N'WFFORM_FLOW', N'WF_M_IDX', N'表单ID', N'int', N'', N'', 0, 0, N'', 0, N'', 100, N'', N'center', N'', 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, N'', 1, 1, N'', N'', N'EOS-DOC-GEN', '2026-08-09T12:04:10.280', NULL, NULL)
@@ -14930,7 +14946,7 @@ SET IDENTITY_INSERT dbo.[FIELD_DATASOURCE] OFF;
 GO
 
 ------------------------------------------------------------------------------
--- MODULE_FORM_LAYOUT（总 8756 行，剔除 0）
+-- MODULE_FORM_LAYOUT（总 8770 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[MODULE_FORM_LAYOUT];
 INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
@@ -20283,6 +20299,20 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (3015, N'COP_MONTH_M', N'MONTH_NO', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3015, N'COP_MONTH_M', N'MONTH_TYPE', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3015, N'COP_MONTH_M', N'REMARK', 1, 15, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:33.998'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'CASE_ID', 1, 1, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'CASE_VERSION', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'EXPECT_TOOLS', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'EXPECTED', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'FIX_AT', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'FIX_PERMISSION', 1, 14, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'FIX_SUGGESTION', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'LAYER', 1, 2, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'ORIGIN', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'PAGE_TYPE', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'PAYLOAD_JSON', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'QUESTION', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'REMARK', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
+    (3106, N'ASSISTANT_EVAL_CASE', N'REVIEW_STATUS', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'462', '2026-10-31T11:57:23.799'),
     (3201, N'ACC_ACCOUNT', N'ACCOUNT_ID', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3201, N'ACC_ACCOUNT', N'ACCOUNT_NAME', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3201, N'ACC_ACCOUNT', N'REMARK', 1, 14, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:34.307'),
@@ -20371,7 +20401,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (3302, N'QC_COMPLAIN_M', N'BAD_QTY2', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3302, N'QC_COMPLAIN_M', N'BAD_RATE1', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3302, N'QC_COMPLAIN_M', N'BAD_RATE2', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (3302, N'QC_COMPLAIN_M', N'BAD_REMARK', 1, 14, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:35.501'),
+    (3302, N'QC_COMPLAIN_M', N'BAD_REMARK', 1, 14, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:35.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (3302, N'QC_COMPLAIN_M', N'BILL_NAME', 1, 15, 1, 1, 0, NULL, N'COMPLAIN_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3302, N'QC_COMPLAIN_M', N'BL_REMARK', 1, 16, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:35.501'),
     (3302, N'QC_COMPLAIN_M', N'CHARGE_EMP_ID', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -20385,9 +20417,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (3302, N'QC_COMPLAIN_M', N'COMPLAIN_TYPE', 1, 60, 1, 1, 0, NULL, N'COMPLAIN_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3302, N'QC_COMPLAIN_M', N'DEPT_ID2', 1, 26, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3302, N'QC_COMPLAIN_M', N'ELEMENT_PRO_NO', 1, 27, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (3302, N'QC_COMPLAIN_M', N'EMP_NAME', 1, 28, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (3302, N'QC_COMPLAIN_M', N'EMP_NAME', 1, 28, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3302, N'QC_COMPLAIN_M', N'GS_REMARK', 1, 32, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:35.511'),
     (3302, N'QC_COMPLAIN_M', N'HELP_REMARK', 1, 33, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:35.511'),
     (3302, N'QC_COMPLAIN_M', N'IF_COMPLAIN', 1, 34, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -20573,7 +20603,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (3901, N'INV_OCCUR_OUT_D', N'OCCUR_NO', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.948'),
     (3901, N'INV_OCCUR_OUT_D', N'OCCUR_TYPE', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.950'),
     (3901, N'INV_OCCUR_OUT_D', N'PRO_NAME', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.953'),
-    (3901, N'INV_OCCUR_OUT_D', N'PRO_NO', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.952'),
+    (3901, N'INV_OCCUR_OUT_D', N'PRO_NO', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.952')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (3901, N'INV_OCCUR_OUT_D', N'PRO_SPEC', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.953'),
     (3901, N'INV_OCCUR_OUT_D', N'QTY', 1, 14, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.954'),
     (3901, N'INV_OCCUR_OUT_D', N'REMARK', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.956'),
@@ -20587,9 +20619,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (3901, N'INV_OCCUR_OUT_M', N'OCCUR_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3901, N'INV_OCCUR_OUT_M', N'OCCUR_NO', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (3901, N'INV_OCCUR_OUT_M', N'OCCUR_TYPE', 1, 2, 1, 1, 0, NULL, N'OCCUR_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (3901, N'INV_OCCUR_OUT_M', N'REMARK', 1, 9, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.935')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (3901, N'INV_OCCUR_OUT_M', N'REMARK', 1, 9, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:37.935'),
     (14997, N'COP_ACCOUNT_M', N'ACCOUNT_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (14997, N'COP_ACCOUNT_M', N'ACCOUNT_MONTH', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (14997, N'COP_ACCOUNT_M', N'ACCOUNT_NO', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -20775,7 +20805,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (130101, N'INV_CHECK_STOCK_M', N'CHECK_STOCK_NO', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (130101, N'INV_CHECK_STOCK_M', N'CHECK_STOCK_TYPE', 1, 1, 1, 1, 0, NULL, N'CHECK_STOCK_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (130101, N'INV_CHECK_STOCK_M', N'COUNT_DATE', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (130101, N'INV_CHECK_STOCK_M', N'DEPOT_ID', 1, 3, 1, 1, 0, NULL, N'DEPOT_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
+    (130101, N'INV_CHECK_STOCK_M', N'DEPOT_ID', 1, 3, 1, 1, 0, NULL, N'DEPOT_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (130101, N'INV_CHECK_STOCK_M', N'DEPOT_NAME', 1, 4, 1, 1, 0, NULL, N'DEPOT_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (130101, N'INV_CHECK_STOCK_M', N'LOCATION_ROOT_NO', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (130101, N'INV_CHECK_STOCK_M', N'REMARK', 1, 5, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:42.772'),
@@ -20789,9 +20821,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (130102, N'INV_OCCUR_INIT_D', N'EFFECT_DATE', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'migration-257', '2026-09-27T09:26:13.613'),
     (130102, N'INV_OCCUR_INIT_D', N'LOCATION_NO', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208'),
     (130102, N'INV_OCCUR_INIT_D', N'OCCUR_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208'),
-    (130102, N'INV_OCCUR_INIT_D', N'OCCUR_NO', 1, 2, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (130102, N'INV_OCCUR_INIT_D', N'OCCUR_NO', 1, 2, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208'),
     (130102, N'INV_OCCUR_INIT_D', N'OCCUR_TYPE', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208'),
     (130102, N'INV_OCCUR_INIT_D', N'PRICE', 1, 14, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208'),
     (130102, N'INV_OCCUR_INIT_D', N'PRO_NAME', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:43.208'),
@@ -20977,7 +21007,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (130108, N'INV_LOAN_D', N'RETURN_SERIAL_NO', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:45.928'),
     (130108, N'INV_LOAN_D', N'RETURN_TYPE', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:45.928'),
     (130108, N'INV_LOAN_D', N'SERIAL_NO', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:45.928'),
-    (130108, N'INV_LOAN_D', N'UNIT_ID', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:45.928'),
+    (130108, N'INV_LOAN_D', N'UNIT_ID', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:45.928')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (130108, N'INV_LOAN_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'LOAN_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (130108, N'INV_LOAN_M', N'DEPT_ID', 1, 5, 1, 1, 0, NULL, N'DEPT_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (130108, N'INV_LOAN_M', N'EMP_ID', 1, 6, 1, 1, 0, NULL, N'EMP_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -20991,9 +21023,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (130109, N'INV_RETURN_D', N'CURR_ID', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.356'),
     (130109, N'INV_RETURN_D', N'CURR_RATE', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.357'),
     (130109, N'INV_RETURN_D', N'DEPOT_ID', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.351'),
-    (130109, N'INV_RETURN_D', N'LOAN_NO', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.351')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (130109, N'INV_RETURN_D', N'LOAN_NO', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.351'),
     (130109, N'INV_RETURN_D', N'LOAN_SERIAL_NO', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.352'),
     (130109, N'INV_RETURN_D', N'LOAN_TYPE', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.352'),
     (130109, N'INV_RETURN_D', N'LOCATION_NO', 1, 22, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:46.358'),
@@ -21179,7 +21209,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (170103, N'COP_PREPAY_D', N'PREPAY_NO', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.175'),
     (170103, N'COP_PREPAY_D', N'PREPAY_TYPE', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.175'),
     (170103, N'COP_PREPAY_D', N'PRO_NAME', 1, 14, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.190'),
-    (170103, N'COP_PREPAY_D', N'PRO_NO', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.190'),
+    (170103, N'COP_PREPAY_D', N'PRO_NO', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.190')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (170103, N'COP_PREPAY_D', N'PRO_SPEC', 1, 15, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.190'),
     (170103, N'COP_PREPAY_D', N'RECEIVE_ACCOUNT_ID', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.175'),
     (170103, N'COP_PREPAY_D', N'REMARK', 1, 20, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:48.190'),
@@ -21193,9 +21225,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (170103, N'COP_PREPAY_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'PREPAY_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170103, N'COP_PREPAY_M', N'CLIENT_ID', 1, 5, 1, 1, 0, NULL, N'CLIENT_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170103, N'COP_PREPAY_M', N'CLIENT_NAME', 1, 6, 1, 1, 0, NULL, N'CLIENT_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (170103, N'COP_PREPAY_M', N'CURR_ID', 1, 9, 1, 1, 0, NULL, N'CURR_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (170103, N'COP_PREPAY_M', N'CURR_ID', 1, 9, 1, 1, 0, NULL, N'CURR_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170103, N'COP_PREPAY_M', N'CURR_RATE', 1, 10, 1, 1, 0, NULL, N'CURR_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170103, N'COP_PREPAY_M', N'EMP_NAME', 1, 21, 1, 1, 0, NULL, N'SALES_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170103, N'COP_PREPAY_M', N'PREPAY_AMOUNT', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -21381,7 +21411,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (170203, N'PUR_PREPAY_D', N'PRO_SPEC', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.431'),
     (170203, N'PUR_PREPAY_D', N'PURCHASE_NO', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.431'),
     (170203, N'PUR_PREPAY_D', N'PURCHASE_SERIAL_NO', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.431'),
-    (170203, N'PUR_PREPAY_D', N'PURCHASE_TYPE', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.427'),
+    (170203, N'PUR_PREPAY_D', N'PURCHASE_TYPE', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.427')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (170203, N'PUR_PREPAY_D', N'QTY', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.428'),
     (170203, N'PUR_PREPAY_D', N'RECEIVE_ACCOUNT_ID', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.428'),
     (170203, N'PUR_PREPAY_D', N'REMARK', 1, 21, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:50.432'),
@@ -21395,9 +21427,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (170203, N'PUR_PREPAY_M', N'BANK_NAME', 1, 18, 1, 1, 0, NULL, N'BANK_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170203, N'PUR_PREPAY_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'PREPAY_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170203, N'PUR_PREPAY_M', N'CURR_ID', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (170203, N'PUR_PREPAY_M', N'CURR_RATE', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (170203, N'PUR_PREPAY_M', N'CURR_RATE', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170203, N'PUR_PREPAY_M', N'PREPAY_AMOUNT', 1, 15, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170203, N'PUR_PREPAY_M', N'PREPAY_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (170203, N'PUR_PREPAY_M', N'PREPAY_NO', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -21583,7 +21613,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180103, N'HR_REDEPLOY_D', N'EMP_NAME', 1, 31, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.912'),
     (180103, N'HR_REDEPLOY_D', N'EMP_NO', 1, 30, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.911'),
     (180103, N'HR_REDEPLOY_D', N'GRADE_ID', 1, 41, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.915'),
-    (180103, N'HR_REDEPLOY_D', N'IF_CARD', 1, 51, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.919'),
+    (180103, N'HR_REDEPLOY_D', N'IF_CARD', 1, 51, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.919')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180103, N'HR_REDEPLOY_D', N'IF_COUNT', 1, 49, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.918'),
     (180103, N'HR_REDEPLOY_D', N'IF_DORM', 1, 47, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.918'),
     (180103, N'HR_REDEPLOY_D', N'IF_EAT', 1, 45, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.917'),
@@ -21597,9 +21629,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_4', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.907'),
     (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_5', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.908'),
     (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_6', 1, 20, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.908'),
-    (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_7', 1, 21, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.908')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_7', 1, 21, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.908'),
     (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_8', 1, 22, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.908'),
     (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_9', 1, 23, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.909'),
     (180103, N'HR_REDEPLOY_D', N'OLD_BASEPAY_A', 1, 24, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:51.909'),
@@ -21785,7 +21815,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180107, N'HR_SAFE_D', N'SERIAL_NO', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.114'),
     (180107, N'HR_SAFE_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'SAFE_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180107, N'HR_SAFE_M', N'REMARK', 1, 5, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.107'),
-    (180107, N'HR_SAFE_M', N'SAFE_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
+    (180107, N'HR_SAFE_M', N'SAFE_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180107, N'HR_SAFE_M', N'SAFE_NO', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180107, N'HR_SAFE_M', N'SAFE_TYPE', 1, 2, 1, 1, 0, NULL, N'SAFE_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180108, N'HR_CERTIFY_D', N'BEGIN_DATE', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.522'),
@@ -21799,9 +21831,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180108, N'HR_CERTIFY_D', N'EMP_NAME', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.507'),
     (180108, N'HR_CERTIFY_D', N'EMP_NO', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.507'),
     (180108, N'HR_CERTIFY_D', N'END_DATE', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.522'),
-    (180108, N'HR_CERTIFY_D', N'REMARK', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.522')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180108, N'HR_CERTIFY_D', N'REMARK', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.522'),
     (180108, N'HR_CERTIFY_D', N'SERIAL_NO', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:53.507'),
     (180108, N'HR_CERTIFY_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'CERTIFY_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180108, N'HR_CERTIFY_M', N'CERTIFY_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -21987,7 +22017,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180111, N'HR_EMPLOYEE', N'TITLE_NAME', 1, 15, 1, 1, 0, NULL, N'TITLE_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180111, N'HR_EMPLOYEE', N'WEDLOCK', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180111, N'HR_EMPLOYEE', N'WORK_STORY', 3, 83, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (180111, N'HR_EMPLOYEE', N'WORKTYPE_ID', 1, 12, 1, 1, 0, NULL, N'WORKTYPE_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
+    (180111, N'HR_EMPLOYEE', N'WORKTYPE_ID', 1, 12, 1, 1, 0, NULL, N'WORKTYPE_ID', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180111, N'HR_EMPLOYEE', N'WORKTYPE_NAME', 1, 13, 1, 1, 0, NULL, N'WORKTYPE_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180111, N'HR_EMPLOYEE_D', N'CUE_DATE', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.831'),
     (180111, N'HR_EMPLOYEE_D', N'EMAIL', 1, 1, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.816'),
@@ -22001,9 +22033,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180111, N'HR_EMPLOYEE_D', N'PAPER_NO', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.816'),
     (180111, N'HR_EMPLOYEE_D', N'QQ_MSN', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.816'),
     (180111, N'HR_EMPLOYEE_D', N'REMARK', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.816'),
-    (180111, N'HR_EMPLOYEE_D', N'REMARK1', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.828')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180111, N'HR_EMPLOYEE_D', N'REMARK1', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.828'),
     (180111, N'HR_EMPLOYEE_D', N'REMARK2', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.828'),
     (180111, N'HR_EMPLOYEE_D', N'REMARK3', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.828'),
     (180111, N'HR_EMPLOYEE_D', N'SERIAL_NO', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:25.832'),
@@ -22189,7 +22219,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180208, N'HR_EMPLOYEE_CARD', N'DEPT_NAME', 1, 6, 1, 1, 0, NULL, N'DEPT_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180208, N'HR_EMPLOYEE_CARD', N'EMP_ID', 1, 1, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180208, N'HR_EMPLOYEE_CARD', N'EMP_NAME', 1, 2, 1, 1, 0, NULL, N'EMP_NO', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (180208, N'HR_EMPLOYEE_CARD', N'EMP_NO', 1, 3, 1, 1, 0, NULL, N'EMP_NO', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
+    (180208, N'HR_EMPLOYEE_CARD', N'EMP_NO', 1, 3, 1, 1, 0, NULL, N'EMP_NO', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180208, N'HR_EMPLOYEE_CARD', N'END_DATE', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180208, N'HR_EMPLOYEE_CARD', N'REMARK', 1, 9, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:53:26.649'),
     (180209, N'HR_EXCHANGE_D', N'DEPT_ID', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:57.119'),
@@ -22203,9 +22235,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180209, N'HR_EXCHANGE_D', N'EXCHANGE_TYPE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:57.119'),
     (180209, N'HR_EXCHANGE_D', N'FIRST_DAY', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:57.121'),
     (180209, N'HR_EXCHANGE_D', N'REMARK', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:57.122'),
-    (180209, N'HR_EXCHANGE_D', N'SERIAL_NO', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:57.119')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180209, N'HR_EXCHANGE_D', N'SERIAL_NO', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:57.119'),
     (180209, N'HR_EXCHANGE_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'EXCHANGE_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180209, N'HR_EXCHANGE_M', N'END_DAY', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180209, N'HR_EXCHANGE_M', N'EXCHANGE_DATE', 1, 16, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -22391,7 +22421,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180216, N'HR_ADJUST_D', N'DEPT_NAME', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.027'),
     (180216, N'HR_ADJUST_D', N'EMP_ID', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.027'),
     (180216, N'HR_ADJUST_D', N'EMP_NAME', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
-    (180216, N'HR_ADJUST_D', N'EMP_NO', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.027'),
+    (180216, N'HR_ADJUST_D', N'EMP_NO', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.027')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180216, N'HR_ADJUST_D', N'EMP_STATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.027'),
     (180216, N'HR_ADJUST_D', N'IN_TIME1', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
     (180216, N'HR_ADJUST_D', N'IN_TIME2', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
@@ -22405,9 +22437,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180216, N'HR_ADJUST_D', N'SERIAL_NO', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.027'),
     (180216, N'HR_ADJUST_D', N'TIMETYPE_ID', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
     (180216, N'HR_ADJUST_D', N'WORK_HOURS1', 1, 15, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
-    (180216, N'HR_ADJUST_D', N'WORK_HOURS2', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180216, N'HR_ADJUST_D', N'WORK_HOURS2', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
     (180216, N'HR_ADJUST_D', N'WORK_HOURS3', 1, 23, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
     (180216, N'HR_ADJUST_D', N'WORK_HOURS4', 1, 27, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:40:59.043'),
     (180216, N'HR_ADJUST_M', N'ADJUST_DATE', 1, 15, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -22593,7 +22623,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM06', 1, 29, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.595'),
     (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM07', 1, 30, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.595'),
     (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM08', 1, 20, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
-    (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM09', 1, 22, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
+    (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM09', 1, 22, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM10', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
     (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM11', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
     (180308, N'HR_BASEPAY_D', N'BASEPAY_ITEM12', 1, 21, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
@@ -22607,9 +22639,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180308, N'HR_BASEPAY_D', N'EMP_NAME', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
     (180308, N'HR_BASEPAY_D', N'EMP_NO', 1, 16, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.589'),
     (180308, N'HR_BASEPAY_D', N'EMP_STATE', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.582'),
-    (180308, N'HR_BASEPAY_D', N'IN_DATE', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.582')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180308, N'HR_BASEPAY_D', N'IN_DATE', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.582'),
     (180308, N'HR_BASEPAY_D', N'KIND', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.584'),
     (180308, N'HR_BASEPAY_D', N'REMARK', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.584'),
     (180308, N'HR_BASEPAY_D', N'SERIAL_NO', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:02.586'),
@@ -22795,7 +22825,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180503, N'HRM_BASEPAY_D', N'STATE', 1, 27, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:07.817'),
     (180503, N'HRM_BASEPAY_M', N'BASEPAY_DATE', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180503, N'HRM_BASEPAY_M', N'BASEPAY_NO', 1, 16, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (180503, N'HRM_BASEPAY_M', N'BASEPAY_TYPE', 1, 17, 1, 1, 0, NULL, N'BASEPAY_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
+    (180503, N'HRM_BASEPAY_M', N'BASEPAY_TYPE', 1, 17, 1, 1, 0, NULL, N'BASEPAY_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180503, N'HRM_BASEPAY_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'BASEPAY_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180503, N'HRM_BASEPAY_M', N'COUNT_MONTH', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180503, N'HRM_BASEPAY_M', N'DEPT_ID', 1, 8, 1, 1, 0, NULL, N'DEPT', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -22809,9 +22841,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180504, N'HRM_WAGE_D', N'DIMISSION_NO', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.399'),
     (180504, N'HRM_WAGE_D', N'DIMISSION_TYPE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.399'),
     (180504, N'HRM_WAGE_D', N'DUTY_NAME', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.402'),
-    (180504, N'HRM_WAGE_D', N'EMP_ID', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.402')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180504, N'HRM_WAGE_D', N'EMP_ID', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.402'),
     (180504, N'HRM_WAGE_D', N'EMP_NAME', 1, 115, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.467'),
     (180504, N'HRM_WAGE_D', N'EMP_NO', 1, 114, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.467'),
     (180504, N'HRM_WAGE_D', N'EMP_STATE', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:08.402'),
@@ -22997,7 +23027,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180655, N'HRM_LEAVE_D', N'START_DATE', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.445'),
     (180655, N'HRM_LEAVE_D', N'START_TIME', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.445'),
     (180655, N'HRM_LEAVE_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'LEAVE_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (180655, N'HRM_LEAVE_M', N'COUNT_DATE', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
+    (180655, N'HRM_LEAVE_M', N'COUNT_DATE', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (180655, N'HRM_LEAVE_M', N'COUNT_MULTIPLE', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180655, N'HRM_LEAVE_M', N'DEPT_ID', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (180655, N'HRM_LEAVE_M', N'LEAVE_DATE', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -23011,9 +23043,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (180656, N'HRM_SIGN_D', N'EMP_NAME', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
     (180656, N'HRM_SIGN_D', N'EMP_NO', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
     (180656, N'HRM_SIGN_D', N'EMP_STATE', 1, 2, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
-    (180656, N'HRM_SIGN_D', N'ON1', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (180656, N'HRM_SIGN_D', N'ON1', 1, 13, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
     (180656, N'HRM_SIGN_D', N'ON2', 1, 15, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
     (180656, N'HRM_SIGN_D', N'ON3', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
     (180656, N'HRM_SIGN_D', N'ON4', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:10.841'),
@@ -23199,7 +23229,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (300301, N'CUS_EXPORT_D', N'INSIDE_NAME', 1, 9, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.391'),
     (300301, N'CUS_EXPORT_D', N'ITEM_NO', 1, 10, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.391'),
     (300301, N'CUS_EXPORT_D', N'MANUAL_NO', 1, 11, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.392'),
-    (300301, N'CUS_EXPORT_D', N'NON_INSURE_RATE', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.392'),
+    (300301, N'CUS_EXPORT_D', N'NON_INSURE_RATE', 1, 12, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.392')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (300301, N'CUS_EXPORT_D', N'NOW_AMOUNT', 1, 32, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.401'),
     (300301, N'CUS_EXPORT_D', N'NOW_CURR_ID', 1, 31, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.400'),
     (300301, N'CUS_EXPORT_D', N'NOW_CURR_RATE', 1, 30, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.399'),
@@ -23213,9 +23245,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (300301, N'CUS_EXPORT_D', N'PRO_NO', 1, 26, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.398'),
     (300301, N'CUS_EXPORT_D', N'PRO_SERIAL_NO', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.395'),
     (300301, N'CUS_EXPORT_D', N'PRO_SPEC', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.395'),
-    (300301, N'CUS_EXPORT_D', N'PROCESS_AMOUNT', 1, 36, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.402')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (300301, N'CUS_EXPORT_D', N'PROCESS_AMOUNT', 1, 36, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.402'),
     (300301, N'CUS_EXPORT_D', N'PROCESS_PRICE', 1, 35, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.401'),
     (300301, N'CUS_EXPORT_D', N'QTY', 1, 28, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.399'),
     (300301, N'CUS_EXPORT_D', N'REMARK', 1, 20, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:15.396'),
@@ -23401,7 +23431,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (300304, N'CUS_EXPORT_D', N'PRO_DESC', 1, 17, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.727'),
     (300304, N'CUS_EXPORT_D', N'PRO_ID', 1, 25, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.743'),
     (300304, N'CUS_EXPORT_D', N'PRO_NAME', 1, 27, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.743'),
-    (300304, N'CUS_EXPORT_D', N'PRO_NO', 1, 26, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.743'),
+    (300304, N'CUS_EXPORT_D', N'PRO_NO', 1, 26, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.743')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (300304, N'CUS_EXPORT_D', N'PRO_SERIAL_NO', 1, 18, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.727'),
     (300304, N'CUS_EXPORT_D', N'PRO_SPEC', 1, 19, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.727'),
     (300304, N'CUS_EXPORT_D', N'PROCESS_AMOUNT', 1, 36, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:16.743'),
@@ -23415,9 +23447,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (300304, N'CUS_EXPORT_M', N'ACCOUNT_TYPE', 1, 18, 1, 1, 0, NULL, N'SEAL_NO', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (300304, N'CUS_EXPORT_M', N'ADDTION_BILLS', 2, 46, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (300304, N'CUS_EXPORT_M', N'AGREE_NO', 2, 40, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (300304, N'CUS_EXPORT_M', N'APPROVE_NO', 2, 39, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (300304, N'CUS_EXPORT_M', N'APPROVE_NO', 2, 39, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (300304, N'CUS_EXPORT_M', N'BILL_NAME', 1, 1, 1, 1, 0, NULL, N'EXPORT_TYPE', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (300304, N'CUS_EXPORT_M', N'CLIENT_ID', 1, 14, 1, 1, 0, NULL, N'CLIENT', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (300304, N'CUS_EXPORT_M', N'CLIENT_NAME', 1, 15, 1, 1, 0, NULL, N'CLIENT', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -23603,7 +23633,9 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (1803091, N'HR_WAGE_D', N'EMP_NAME', 1, 86, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.409'),
     (1803091, N'HR_WAGE_D', N'EMP_NO', 1, 85, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.409'),
     (1803091, N'HR_WAGE_D', N'EMP_STATE', 1, 5, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.376'),
-    (1803091, N'HR_WAGE_D', N'IN_DATE', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.376'),
+    (1803091, N'HR_WAGE_D', N'IN_DATE', 1, 6, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.376')
+;
+INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
     (1803091, N'HR_WAGE_D', N'POST_ID', 1, 7, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.376'),
     (1803091, N'HR_WAGE_D', N'REMARK', 1, 8, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.376'),
     (1803091, N'HR_WAGE_D', N'SERIAL_NO', 1, 82, 1, 1, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.409'),
@@ -23617,9 +23649,7 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
     (1803091, N'HR_WAGE_M', N'DEPT_NAME', 1, 6, 1, 1, 0, NULL, N'DEPT_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (1803091, N'HR_WAGE_M', N'IF_DIMISSION', 1, 7, 1, 1, 0, NULL, N'DEPT_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (1803091, N'HR_WAGE_M', N'IF_SECRECY', 1, 8, 1, 1, 0, NULL, N'DEPT_ID', 2, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
-    (1803091, N'HR_WAGE_M', N'REMARK', 1, 10, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.366')
-;
-INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], [SPAN], [ROW_SPAN], [NEW_LINE], [SECTION_ID], [CELL_GROUP], [CELL_ROLE], [IS_HIDDEN], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (1803091, N'HR_WAGE_M', N'REMARK', 1, 10, 4, 2, 0, NULL, NULL, 0, 0, N'ADMIN', '2026-09-25T11:41:18.366'),
     (1803091, N'HR_WAGE_M', N'WAGE_DATE', 1, 4, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (1803091, N'HR_WAGE_M', N'WAGE_NO', 1, 3, 1, 1, 0, NULL, NULL, 0, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
     (1803091, N'HR_WAGE_M', N'WAGE_TYPE', 1, 2, 1, 1, 0, NULL, N'WAGE_TYPE', 1, 0, N'ADR-022-SPAN-FIX', '2026-09-25T15:49:49.501'),
@@ -23780,35 +23810,35 @@ INSERT dbo.[MODULE_FORM_LAYOUT] ([M_IDX], [T_ID], [F_ID], [TAB_NO], [ORDER_NO], 
 GO
 
 ------------------------------------------------------------------------------
--- MODULES（总 362 行，剔除 0）
+-- MODULES（总 365 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[MODULES];
 INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT_IDX], [M_TAG], [MASTER_TABLE], [FILTER], [DETAIL_TABLE], [REMARK], [MODIFIED_BY], [MODIFIED_TIME], [M_ALIAS], [DETAIL_NO_FIELDS], [DETAIL_NO_SAVE], [NOT_BACK_FIELDS], [NOT_BACK_FIELDS_M], [AUTO_APPROVE], [ERROR_NO_SAVE], [SEARCH_1], [SEARCH_2], [SORT_FIELDS], [IF_COPY], [M_ICON], [FORM_OPEN_MODE], [FORM_DIALOG_WIDTH], [FORM_DIALOG_HEIGHT], [APPROVE_ENABLED], [UNIFIED_FORM_ENABLED], [UNIFIED_FORM_EDIT_ENABLED]) VALUES
-    (11, N'基本参数', N'', NULL, 11, 10, 1, N'', N'', N'', N'目录模块，含 3 个子模块', N'IT                  ', '2026-10-26T01:11:51.413', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, N'base', NULL, NULL, NULL, 0, 0, 0),
-    (12, N'产品管理', N'', 0, 12, 20, 1, N'', N'', N'', N'目录模块，含 12 个子模块', N'IT                  ', '2026-10-26T01:11:51.417', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (13, N'仓库管理', N'', 0, 13, 40, 1, N'', N'', N'', N'目录模块，含 9 个子模块', N'IT                  ', '2026-10-26T01:11:51.417', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (14, N'销售管理', N'', 0, 14, 50, 1, N'', N'', N'', N'目录模块，含 22 个子模块', N'IT                  ', '2026-10-26T01:11:51.417', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (15, N'生产管理', NULL, 0, 15, 70, 1, NULL, NULL, NULL, N'目录模块，含 19 个子模块', N'IT                  ', '2026-10-26T01:11:51.420', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (16, N'采购管理', NULL, 0, 16, 110, 1, NULL, NULL, NULL, N'目录模块，含 16 个子模块', N'IT                  ', '2026-10-26T01:11:51.420', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (17, N'应收应付管理', N'', 0, 17, 130, 1, N'', N'', N'', N'目录模块，含 4 个子模块', N'IT                  ', '2026-10-26T01:11:51.420', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (18, N'人事薪资考勤', N'', 0, 18, 150, 1, N'', N'', N'', N'目录模块，含 9 个子模块', N'IT                  ', '2026-10-26T01:11:51.423', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (19, N'车辆管理', N'', 0, 19, 170, 1, N'', N'', N'', N'目录模块，含 10 个子模块', N'IT                  ', '2026-10-26T01:11:51.423', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (20, N'原纸条码管理', N'', 0, 20, 180, 1, N'', N'', N'', N'目录模块，含 6 个子模块', N'IT                  ', '2026-10-26T01:11:51.423', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (21, N'工作流', N'', 0, 21, 220, 1, N'', N'', N'', N'目录模块，含 4 个子模块', N'IT                  ', '2026-10-26T01:11:51.427', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (22, N'报表管理', N'', NULL, 22, 230, 1, N'', N'', N'', N'查询/报表类模块（无业务数据表）', N'IT                  ', '2026-10-26T01:11:51.427', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (23, N'系统管理', N'', 0, 23, 250, 1, N'', N'', N'', N'目录模块，含 8 个子模块', N'IT                  ', '2026-10-26T01:11:51.427', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (24, N'打样管理', N'', 0, 24, 30, 1, N'', N'', N'', N'目录模块，含 7 个子模块', N'IT                  ', '2026-10-26T01:11:51.417', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (26, N'半成品管理', N'', 0, 26, 100, 1, N'', N'', N'', N'别名：半成品', N'IT                  ', '2026-10-26T01:11:51.420', N'半成品', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (27, N'制程管理', N'', 0, 27, 80, 1, N'', N'', N'', N'别名：制程管理', N'IT                  ', '2026-10-26T01:11:51.420', N'制程管理', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (28, N'托外管理', NULL, 0, 28, 90, 1, NULL, NULL, NULL, N'别名：托外管理', N'IT                  ', '2026-10-26T01:11:51.420', N'托外管理', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (29, N'模具管理', N'', 0, 29, 200, 1, N'', N'', N'', N'别名：模具管理', N'IT                  ', '2026-10-26T01:11:51.423', N'模具管理', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (30, N'海关进出帐', N'', 0, 30, 140, 1, N'', N'', N'', N'目录模块，含 10 个子模块', N'IT                  ', '2026-10-26T01:11:51.420', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (31, N'工作助手管理', N'', 0, 31, 240, 1, NULL, NULL, NULL, NULL, N'IT                  ', '2026-10-26T01:11:51.427', NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (32, N'财务会计', NULL, 0, 32, 190, 1, NULL, NULL, NULL, N'目录模块，含 4 个子模块', N'IT                  ', '2026-10-26T01:11:51.423', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (33, N'品质管理', N'', 0, 33, 60, 1, N'', N'', N'', N'目录模块，含 8 个子模块', N'IT                  ', '2026-10-26T01:11:51.420', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (34, N'查询中心', N'/search-center', 0, 34, 235, 1, NULL, NULL, NULL, N'跨模块检索入口：不必先进具体模块，按各模块登记的可检索字段（SEARCH_1 主表 / SEARCH_2 明细表）找记录。可见性与统一工作台同一真源——模块清单按当前用户权限过滤，行范围同样受模块主表过滤条件、用户数据范围（DATA_FILTER）与执行范围（EXEC_TAG）约束。', N'IT                  ', '2026-10-26T01:11:51.427', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (38, N'人事薪资考勤', N'', 0, 38, 160, 1, N'', N'', N'', N'目录模块，含 4 个子模块', N'IT                  ', '2026-10-26T01:11:51.423', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (39, N'品检管理', NULL, 0, 39, 120, 1, NULL, NULL, NULL, N'目录模块，含 3 个子模块', N'IT                  ', '2026-10-26T01:11:51.420', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (11, N'基本参数', N'', NULL, 11, 10, 1, N'', N'', N'', N'目录模块，含 3 个子模块', N'IT                  ', '2026-11-01T15:19:34.677', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, N'base', NULL, NULL, NULL, 0, 0, 0),
+    (12, N'产品管理', N'', 0, 12, 20, 1, N'', N'', N'', N'目录模块，含 12 个子模块', N'IT                  ', '2026-11-01T15:19:34.690', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (13, N'仓库管理', N'', 0, 13, 40, 1, N'', N'', N'', N'目录模块，含 9 个子模块', N'IT                  ', '2026-11-01T15:19:34.703', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (14, N'销售管理', N'', 0, 14, 50, 1, N'', N'', N'', N'目录模块，含 22 个子模块', N'IT                  ', '2026-11-01T15:19:34.707', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (15, N'生产管理', NULL, 0, 15, 70, 1, NULL, NULL, NULL, N'目录模块，含 19 个子模块', N'IT                  ', '2026-11-01T15:19:34.717', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (16, N'采购管理', NULL, 0, 16, 110, 1, NULL, NULL, NULL, N'目录模块，含 16 个子模块', N'IT                  ', '2026-11-01T15:19:34.733', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (17, N'应收应付管理', N'', 0, 17, 130, 1, N'', N'', N'', N'目录模块，含 4 个子模块', N'IT                  ', '2026-11-01T15:19:34.740', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (18, N'人事薪资考勤', N'', 0, 18, 150, 1, N'', N'', N'', N'目录模块，含 9 个子模块', N'IT                  ', '2026-11-01T15:19:34.750', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (19, N'车辆管理', N'', 0, 19, 170, 1, N'', N'', N'', N'目录模块，含 10 个子模块', N'IT                  ', '2026-11-01T15:19:34.760', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (20, N'原纸条码管理', N'', 0, 20, 180, 1, N'', N'', N'', N'目录模块，含 6 个子模块', N'IT                  ', '2026-11-01T15:19:34.763', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (21, N'工作流', N'', 0, 21, 220, 1, N'', N'', N'', N'目录模块，含 4 个子模块', N'IT                  ', '2026-11-01T15:19:34.780', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (22, N'报表管理', N'', NULL, 22, 230, 1, N'', N'', N'', N'查询/报表类模块（无业务数据表）', N'IT                  ', '2026-11-01T15:19:34.783', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (23, N'系统管理', N'', 0, 23, 250, 1, N'', N'', N'', N'目录模块，含 8 个子模块', N'IT                  ', '2026-11-01T15:19:34.797', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (24, N'打样管理', N'', 0, 24, 30, 1, N'', N'', N'', N'目录模块，含 7 个子模块', N'IT                  ', '2026-11-01T15:19:34.700', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (26, N'半成品管理', N'', 0, 26, 100, 1, N'', N'', N'', N'别名：半成品', N'IT                  ', '2026-11-01T15:19:34.730', N'半成品', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (27, N'制程管理', N'', 0, 27, 80, 1, N'', N'', N'', N'别名：制程管理', N'IT                  ', '2026-11-01T15:19:34.720', N'制程管理', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (28, N'托外管理', NULL, 0, 28, 90, 1, NULL, NULL, NULL, N'别名：托外管理', N'IT                  ', '2026-11-01T15:19:34.723', N'托外管理', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (29, N'模具管理', N'', 0, 29, 200, 1, N'', N'', N'', N'别名：模具管理', N'IT                  ', '2026-11-01T15:19:34.770', N'模具管理', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (30, N'海关进出帐', N'', 0, 30, 140, 1, N'', N'', N'', N'目录模块，含 10 个子模块', N'IT                  ', '2026-11-01T15:19:34.747', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (31, N'工作助手管理', N'', 0, 31, 240, 1, NULL, NULL, NULL, NULL, N'IT                  ', '2026-11-01T15:19:34.793', NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (32, N'财务会计', NULL, 0, 32, 190, 1, NULL, NULL, NULL, N'目录模块，含 4 个子模块', N'IT                  ', '2026-11-01T15:19:34.767', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (33, N'品质管理', N'', 0, 33, 60, 1, N'', N'', N'', N'目录模块，含 8 个子模块', N'IT                  ', '2026-11-01T15:19:34.710', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (34, N'查询中心', N'/search-center', 0, 34, 235, 1, NULL, NULL, NULL, N'跨模块检索入口：不必先进具体模块，按各模块登记的可检索字段（SEARCH_1 主表 / SEARCH_2 明细表）找记录。可见性与统一工作台同一真源——模块清单按当前用户权限过滤，行范围同样受模块主表过滤条件、用户数据范围（DATA_FILTER）与执行范围（EXEC_TAG）约束。', N'IT                  ', '2026-11-01T15:19:34.790', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (38, N'人事薪资考勤', N'', 0, 38, 160, 1, N'', N'', N'', N'目录模块，含 4 个子模块', N'IT                  ', '2026-11-01T15:19:34.753', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (39, N'品检管理', NULL, 0, 39, 120, 1, NULL, NULL, NULL, N'目录模块，含 3 个子模块', N'IT                  ', '2026-11-01T15:19:34.737', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (1101, N'系统参数', N'', 11, 11, 10, 1, N'', N'', N'', N'目录模块，含 11 个子模块', N'EOS-DOC-GEN         ', '2026-08-09T12:13:14.727', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (1103, N'产品参数', N'', 11, 11, 30, 1, N'', N'', N'', N'目录模块，含 7 个子模块', N'EOS-DOC-GEN         ', '2026-08-09T12:13:14.727', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (1201, N'料件基本资料', N'/workbench', 12, 12, 10, 1, N'PRODUCT', N'', N'', N'主表：PRODUCT；保存存储过程：P_WF_PRODUCT；别名：Product', N'管理员                 ', '2026-10-17T21:24:10.830', N'Product', N'', 1, N'', N'', 0, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
@@ -23817,7 +23847,7 @@ INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT
     (1205, N'作业指导书', N'/workbench', 12, 12, 50, 1, N'BOM_INSTRUCT_M', N'', N'BOM_INSTRUCT_D', N'主表：BOM_INSTRUCT_M；明细表：BOM_INSTRUCT_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'PRO_NO', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1209, N'料件基本资料版次', N'/workbench', 12, 12, 90, 1, N'PRODUCT_EDITION', N'', N'', N'主表：PRODUCT_EDITION；别名：Productedition', N'管理员                 ', '2026-10-17T21:24:22.437', N'Productedition', N'', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1212, N'成本试算表', N'/workbench', 12, 12, 41, 1, N'BOM_COST_M', N'', N'BOM_COST_D', N'主表：BOM_COST_M；明细表：BOM_COST_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'PRO_NO', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
-    (1232, N'异常数据管理', NULL, NULL, 1232, 210, 1, NULL, NULL, NULL, N'目录模块，含 7 个子模块', N'IT                  ', '2026-10-26T01:11:51.423', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (1232, N'异常数据管理', NULL, NULL, 1232, 210, 1, NULL, NULL, NULL, N'目录模块，含 7 个子模块', N'IT                  ', '2026-11-01T15:19:34.777', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (1301, N'库存日常作业', N'', 13, 13, 10, 1, N'', N'', N'', N'目录模块，含 10 个子模块', N'EOS-DOC-GEN         ', '2026-08-09T12:13:14.733', N'', NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (1302, N'料件批号资料', N'/workbench', 13, 13, 20, 1, N'INV_BATCH_M', N'', N'INV_BATCH_D', N'主表：INV_BATCH_M；明细表：INV_BATCH_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'BATCH_NO', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 0),
     (1303, N'料件库存资料', N'/workbench', 13, 13, 30, 1, N'INV_PRO_DEPOT', N'QTY>0.1', NULL, N'主表：INV_PRO_DEPOT', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, 1, NULL, NULL, NULL, NULL, 0, 1, 0),
@@ -23841,7 +23871,7 @@ INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT
     (1418, N'销售订单变更', N'/workbench', 14, 14, 110, 1, N'COP_ORDER_CHANGE_M', NULL, N'COP_ORDER_CHANGE_D', N'主表：COP_ORDER_CHANGE_M；明细表：COP_ORDER_CHANGE_D；保存存储过程：P_WF_COP_ORDER_CHANGE；批核存储过程：P_COP_ORDER_CHANGE_After_Save', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, N'CLIENT_ID;ORDER_NO', 1, NULL, NULL, 0, 1, 0, 0, N'COP_ORDER_CHANGE_M.CHANGE_ORDER_NO  desc', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1423, N'退料单(生产不良)', N'/workbench', 14, 14, 190, 1, N'COP_BACK_M', N'BACK_CODE=''2''', N'COP_BACK_D', N'主表：COP_BACK_M；明细表：COP_BACK_D；保存存储过程：P_WF_COP_BACK；批核存储过程：P_COP_BACK_After_Save', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'CALLBACK_NO', N'', 1, 1, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1428, N'订单生产用料明细', N'/workbench', 14, 14, 120, 1, N'COP_ORDER_MORE', NULL, NULL, N'主表：COP_ORDER_MORE', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 0, NULL, NULL, 0, 1, 0, 0, N'COP_ORDER_MORE.ORDER_NO desc', 1, NULL, NULL, NULL, NULL, 0, 0, 0),
-    (1501, N'生产线资料', N'/workbench', 15, 15, 10, 1, N'LINE', NULL, NULL, N'主表：LINE', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 1, NULL, NULL, 0, 1, 0, 0, NULL, 1, NULL, NULL, NULL, NULL, 0, 1, 1),
+    (1501, N'生产线资料', N'/workbench', 15, 15, 10, 1, N'LINE', NULL, NULL, N'主表：LINE', N'管理员                 ', '2026-11-01T14:18:42.313', NULL, NULL, 1, NULL, NULL, 0, 1, 0, 0, NULL, 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1502, N'制令单', N'/workbench', 15, 15, 20, 1, N'MOC_PRODUCE_M', N'REWORK_TAG=0 and OUTSIDE_TAG=0 AND PRODUCE_TYPE<>''BCPZ''', N'MOC_PRODUCE_D', N'主表：MOC_PRODUCE_M；明细表：MOC_PRODUCE_D；保存存储过程：P_WF_MOC_PRODUCE；批核存储过程：P_MOC_PRODUCE_After_Save；别名：Produce', N'migration-355       ', '2026-10-16T22:21:31.660', N'Produce', N'PRO_NO;PRODUCE_NO', 1, N'USED_QTY', NULL, 0, 1, 1, 1, N'MOC_PRODUCE_M.PRODUCE_NO DESC', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1503, N'生产领料单', N'/workbench', 15, 15, 30, 1, N'MOC_GET_M', N'REWORK_TAG=0 and OUTSIDE_TAG=0', N'MOC_GET_D', N'主表：MOC_GET_M；明细表：MOC_GET_D；保存存储过程：P_WF_MOC_GET；批核存储过程：P_MOC_GET_After_Save；别名：get', N'migration-355       ', '2026-10-16T22:21:31.660', N'get', N'GET_NO', 1, NULL, NULL, 0, 1, 0, 1, N'MOC_GET_M.GET_DATE desc,MOC_GET_M.GET_NO desc', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (1504, N'生产退料单', N'/workbench', 15, 15, 40, 1, N'MOC_BACK_M', NULL, N'MOC_BACK_D', N'主表：MOC_BACK_M；明细表：MOC_BACK_D；保存存储过程：P_WF_MOC_BACK；别名：MOC_BACK', N'migration-355       ', '2026-10-16T22:21:31.660', N'MOC_BACK', N'BACK_NO;LINE_ID', 1, NULL, NULL, 0, 0, 0, 1, N'MOC_BACK_M.BACK_DATE desc,MOC_BACK_M.BACK_NO desc', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
@@ -23910,6 +23940,7 @@ INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT
     (2313, N'日志管理', N'/admin/logs', 23, 23, 70, 1, NULL, NULL, NULL, NULL, N'353                 ', '2026-10-16T00:36:59.120', NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (2314, N'业务流程图', N'/admin/business-flow', 23, 23, 35, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (2316, N'操作审计', N'/workbench', 23, 23, 80, 1, N'AUDIT_EVENT', NULL, N'AUDIT_FIELD_CHANGE', N'操作审计记录（AUDIT_EVENT）的只读承载页：记录由系统写入，界面只浏览与检索，不提供新增/修改/删除入口；字段级变更见子表 AUDIT_FIELD_CHANGE。', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 0, NULL, NULL, 0, 0, 0, 0, N'AUDIT_EVENT.EVENT_ID DESC', 0, NULL, NULL, NULL, NULL, 0, 1, 0),
+    (2317, N'指标口径', N'/admin/metrics', 23, 23, 50, 1, NULL, NULL, NULL, N'指标口径（REPORT_METRIC）维护：新增/修改/确认/删除。校验在服务端（受控表达式解析 + 物理列校验 + 行过滤归属），删除只允许候选口径。可见性与维护权由管理员在 2306 分配。', N'464                 ', '2026-10-31T23:57:15.570', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (2401, N'样品基本资料', N'/workbench', 24, 24, 1, 1, N'SAMPLE_PRO', N'', N'', N'主表：SAMPLE_PRO；保存存储过程：P_WF_SAMPLE_PRO', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 0, N'', N'', 1, 0, 0, 0, N'', 1, NULL, N'TAB', NULL, NULL, 1, 1, 1),
     (2402, N'打样工单', N'/workbench', 24, 24, 2, 1, N'SAM_APPLY_M', N'', N'SAM_APPLY_D', N'主表：SAM_APPLY_M；明细表：SAM_APPLY_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'APPLY_NO;CLIENT_ID', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (2403, N'打样入库单', N'/workbench', 24, 24, 3, 1, N'SAM_IN_M', N'', N'SAM_IN_D', N'主表：SAM_IN_M；明细表：SAM_IN_D；保存存储过程：P_WF_SAM_IN', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'CLIENT_ID;IN_NO', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
@@ -23972,6 +24003,8 @@ INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT
     (3103, N'知识库管理', N'/admin/assistant/kb', 31, 31, 40, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (3104, N'机制与工具总览', N'/admin/assistant/mechanism', 31, 31, 40, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (3105, N'助手设置', N'/admin/assistant/settings', 31, 31, 30, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
+    (3106, N'评估用例', N'/workbench', 31, 31, 40, 1, N'ASSISTANT_EVAL_CASE', NULL, NULL, N'助手评估用例（尺子）：按层次维护问句/期望工具链/诊断样本与配置样本。可见性与维护权**不预置**，由管理员在「用户权限设定」按模块分配；审阅状态（REVIEW_STATUS）与批核位分开，本模块不接流程。', N'458                 ', '2026-10-31T13:39:50.903', NULL, NULL, NULL, NULL, NULL, 0, 0, 1, 0, N'[CASE_ID] ASC', 0, NULL, NULL, NULL, NULL, 0, 1, 1),
+    (3107, N'评估运行', N'/admin/assistant/eval', 31, 31, 50, 1, NULL, NULL, NULL, N'评估运行：把库内评估用例（3106）跑一轮确定性检查，逐用例结果落库，失败按分诊（FIX_AT） 分组指向"该去哪里改、需要哪个模块的权限"。只跑确定性层：不调用模型、不判回答对错。', N'465                 ', '2026-11-01T00:10:49.460', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL, 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (3201, N'会计科目', N'/workbench', 32, 32, 10, 1, N'ACC_ACCOUNT', N'', N'', N'主表：ACC_ACCOUNT', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (3202, N'科目类别', N'/workbench', 32, 32, 10, 1, N'ACC_ACCOUNT_TYPE', N'', N'', N'主表：ACC_ACCOUNT_TYPE', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
     (3203, N'会计日记帐', N'/workbench', 32, 32, 30, 1, N'ACC_DAILY_M', NULL, N'ACC_DAILY_D', N'主表：ACC_DAILY_M；明细表：ACC_DAILY_D', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, N'ACCOUNT_ID', 1, NULL, NULL, 0, 0, 0, 0, N'ACC_DAILY_M.DAILY_NO desc', 1, NULL, NULL, NULL, NULL, 0, 1, 1),
@@ -23980,12 +24013,12 @@ INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT
     (3303, N'品质日分析单', N'/workbench', 33, 33, 30, 1, N'QC_ANALYSIS_M', N'', N'QC_ANALYSIS_D', N'主表：QC_ANALYSIS_M；明细表：QC_ANALYSIS_D；保存存储过程：P_WF_QC_ANALYSIS；批核存储过程：P_QC_ANALYSIS_After_Save', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 1, 1, 1),
     (3304, N'品质处理单', N'/workbench', 33, 33, 40, 1, N'QC_SCRAP_M', N'', N'QC_SCRAP_D', N'主表：QC_SCRAP_M；明细表：QC_SCRAP_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 0, 1, 1),
     (3305, N'重工单', N'/workbench', 33, 33, 50, 1, N'QC_REWORK_M', N'', N'', N'主表：QC_REWORK_M', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 0, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 0, 1, 1),
-    (3306, N'特采申请单', N'/workbench', 33, 33, 60, 1, N'QC_APPLY_M', N'', N'', N'主表：QC_APPLY_M', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 0, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 0, 1, 1),
-    (3307, N'样品管理', N'/workbench', 33, 33, 70, 1, N'QC_SAMPLE_M', N'', N'', N'主表：QC_SAMPLE_M；保存存储过程：P_WF_QC_SAMPLE', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
-    (3308, N'品质材损单', N'/workbench', 33, 33, 80, 1, N'QC_LOSS_M', N'', N'QC_LOSS_D', N'主表：QC_LOSS_M；明细表：QC_LOSS_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 0, 1, 1),
-    (3901, N'品检不良品出库', N'/workbench', 39, 39, 80, 1, N'INV_OCCUR_OUT_M', N'OCCUR_TYPE=''TWBL''', N'INV_OCCUR_OUT_D', N'主表：INV_OCCUR_OUT_M；明细表：INV_OCCUR_OUT_D；保存存储过程：P_WF_INV_OCCUR_OUT；批核存储过程：P_INV_OCCUR_OUT_After_Save', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, N'OCCUR_NO', 1, NULL, NULL, 0, 0, 0, 0, N'INV_OCCUR_OUT_M.OCCUR_DATE desc,INV_OCCUR_OUT_M.OCCUR_NO desc', 0, NULL, NULL, NULL, NULL, 1, 1, 1)
+    (3306, N'特采申请单', N'/workbench', 33, 33, 60, 1, N'QC_APPLY_M', N'', N'', N'主表：QC_APPLY_M', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 0, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 0, 1, 1)
 ;
 INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT_IDX], [M_TAG], [MASTER_TABLE], [FILTER], [DETAIL_TABLE], [REMARK], [MODIFIED_BY], [MODIFIED_TIME], [M_ALIAS], [DETAIL_NO_FIELDS], [DETAIL_NO_SAVE], [NOT_BACK_FIELDS], [NOT_BACK_FIELDS_M], [AUTO_APPROVE], [ERROR_NO_SAVE], [SEARCH_1], [SEARCH_2], [SORT_FIELDS], [IF_COPY], [M_ICON], [FORM_OPEN_MODE], [FORM_DIALOG_WIDTH], [FORM_DIALOG_HEIGHT], [APPROVE_ENABLED], [UNIFIED_FORM_ENABLED], [UNIFIED_FORM_EDIT_ENABLED]) VALUES
+    (3307, N'样品管理', N'/workbench', 33, 33, 70, 1, N'QC_SAMPLE_M', N'', N'', N'主表：QC_SAMPLE_M；保存存储过程：P_WF_QC_SAMPLE', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 1, 0, 0, 0, N'', 1, NULL, NULL, NULL, NULL, 1, 1, 1),
+    (3308, N'品质材损单', N'/workbench', 33, 33, 80, 1, N'QC_LOSS_M', N'', N'QC_LOSS_D', N'主表：QC_LOSS_M；明细表：QC_LOSS_D', N'migration-355       ', '2026-10-16T22:21:31.660', N'', N'', 1, N'', N'', 0, 0, 0, 0, N'', 0, NULL, NULL, NULL, NULL, 0, 1, 1),
+    (3901, N'品检不良品出库', N'/workbench', 39, 39, 80, 1, N'INV_OCCUR_OUT_M', N'OCCUR_TYPE=''TWBL''', N'INV_OCCUR_OUT_D', N'主表：INV_OCCUR_OUT_M；明细表：INV_OCCUR_OUT_D；保存存储过程：P_WF_INV_OCCUR_OUT；批核存储过程：P_INV_OCCUR_OUT_After_Save', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, N'OCCUR_NO', 1, NULL, NULL, 0, 0, 0, 0, N'INV_OCCUR_OUT_M.OCCUR_DATE desc,INV_OCCUR_OUT_M.OCCUR_NO desc', 0, NULL, NULL, NULL, NULL, 1, 1, 1),
     (14989, N'客户未送货明细', N'/workbench', 14, 14, 20, 1, N'COP_ORDER_D', N'FINISHED=0 and QTY-FINISHED_SEND_QTY>0', NULL, N'主表：COP_ORDER_D', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 1, NULL, NULL, 0, 0, 0, 0, N'COP_ORDER_D.PRE_SEND_DATE desc', 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (14993, N'应收未收(汇总)', N'/workbench', 1232, 1232, 10, 1, N'V_COP_ACCOUNT_M', NULL, NULL, N'主表：V_COP_ACCOUNT_M', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 1, NULL, NULL, 0, 0, 0, 0, N'V_COP_ACCOUNT_M.NOT_RECEIVE_AMOUNT desc', 0, NULL, NULL, NULL, NULL, 0, 0, 0),
     (14996, N'待生产订单明细', N'/workbench', 15, 15, 0, 1, N'V_COP_ORDER_D_UNPRODUCED', NULL, NULL, N'主表：COP_ORDER_D', N'migration-355       ', '2026-10-16T22:21:31.660', NULL, NULL, 1, NULL, NULL, 0, 0, 0, 0, N'V_COP_ORDER_D_UNPRODUCED.ORDER_DATE desc', 0, NULL, NULL, NULL, NULL, 0, 0, 0),
@@ -24152,7 +24185,7 @@ INSERT dbo.[MODULES] ([M_IDX], [M_DESC], [M_URL], [M_P_IDX], [M_ROOT_IDX], [SORT
 GO
 
 ------------------------------------------------------------------------------
--- SYS_DEFAULT_COLUMN（总 6848 行，剔除 0）
+-- SYS_DEFAULT_COLUMN（总 6847 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[SYS_DEFAULT_COLUMN];
 INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
@@ -30310,7 +30343,6 @@ INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
     (N'RECEIVE', N'RECEIVE', 9, N'APPROVED'),
     (N'REPORT', N'REPORT', 1, N'REPORT_ID'),
     (N'REPORT', N'REPORT', 2, N'REPORT_NAME'),
-    (N'REPORT', N'REPORT', 3, N'REPORT_PATH'),
     (N'REPORT', N'REPORT', 4, N'R_M_IDX'),
     (N'REPORT', N'REPORT', 5, N'M_DESC'),
     (N'REPORT', N'REPORT_SORT', 6, N'SERIAL_NO'),
@@ -30415,10 +30447,10 @@ INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
     (N'SAM_OUT_D', N'SAM_OUT_D', 9, N'PRICE'),
     (N'SAM_OUT_D', N'SAM_OUT_D', 10, N'AMOUNT'),
     (N'SAM_OUT_D', N'SAM_OUT_D', 11, N'CURR_RATE'),
-    (N'SAM_OUT_D', N'SAM_OUT_D', 12, N'CURR_ID')
+    (N'SAM_OUT_D', N'SAM_OUT_D', 12, N'CURR_ID'),
+    (N'SAM_OUT_D', N'SAM_OUT_D', 13, N'REMARK')
 ;
 INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
-    (N'SAM_OUT_D', N'SAM_OUT_D', 13, N'REMARK'),
     (N'SAM_OUT_M', N'SAM_OUT_D', 9, N'SERIAL_NO'),
     (N'SAM_OUT_M', N'SAM_OUT_D', 10, N'IN_TYPE'),
     (N'SAM_OUT_M', N'SAM_OUT_D', 11, N'IN_NO'),
@@ -30617,10 +30649,10 @@ INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
     (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 4, N'PROCEDURE_TYPE_NAME'),
     (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 5, N'PERSON_HOUR_UNIT'),
     (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 6, N'PERSON_UNIT_HOUR'),
-    (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 7, N'MACHINE_HOUR_UNIT')
+    (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 7, N'MACHINE_HOUR_UNIT'),
+    (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 8, N'MACHINE_UNIT_HOUR')
 ;
 INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
-    (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 8, N'MACHINE_UNIT_HOUR'),
     (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 9, N'PERSON_COST_UNIT'),
     (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 10, N'PRODUCE_OVER_RATE'),
     (N'SFC_PROCEDURE', N'SFC_PROCEDURE', 11, N'PRODUCE_OVER_QTY'),
@@ -30819,10 +30851,10 @@ INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
     (N'SYS_USER_ACCOUNT', N'SYS_USER_ACCOUNT', 9, N'SIR_NAME'),
     (N'SYS_USER_ACCOUNT', N'SYS_USER_ACCOUNT', 10, N'ACTIVE_TAG'),
     (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 11, N'M_DESC'),
-    (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 12, N'EXEC_TYPE')
+    (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 12, N'EXEC_TYPE'),
+    (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 13, N'ADDNEW_TAG')
 ;
 INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
-    (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 13, N'ADDNEW_TAG'),
     (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 14, N'EDIT_TAG'),
     (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 15, N'DELETE_TAG'),
     (N'SYS_USER_ACCOUNT', N'SYS_USER_MODULE_PERMISSION', 16, N'REPORT_TAG'),
@@ -31021,10 +31053,10 @@ INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
     (N'WF_MYTASK', N'WF_MYTASK', 3, N'SUBFLOW_DESC'),
     (N'WF_MYTASK', N'WF_MYTASK', 4, N'KEY_VALUE_DESC'),
     (N'WF_MYTASK', N'WF_MYTASK', 5, N'APPROVER'),
-    (N'WF_MYTASK', N'WF_MYTASK', 6, N'APP_EMP_ID')
+    (N'WF_MYTASK', N'WF_MYTASK', 6, N'APP_EMP_ID'),
+    (N'WF_MYTASK', N'WF_MYTASK', 7, N'APPROVE_STATE')
 ;
 INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
-    (N'WF_MYTASK', N'WF_MYTASK', 7, N'APPROVE_STATE'),
     (N'WF_MYTASK', N'WF_MYTASK', 8, N'APPROVE_MSG'),
     (N'WF_MYTASK', N'WF_MYTASK', 9, N'APPROVE_DATE'),
     (N'WF_MYTASK', N'WF_MYTASK_LOG', 10, N'SUBFLOW_NO'),
@@ -31076,7 +31108,7 @@ INSERT dbo.[SYS_DEFAULT_COLUMN] ([T_ID], [T_ID_R], [F_IDX], [F_ID]) VALUES
 GO
 
 ------------------------------------------------------------------------------
--- SYS_REPORT_PARAMETER（总 526 行，剔除 0）
+-- SYS_REPORT_PARAMETER（总 525 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[SYS_REPORT_PARAMETER];
 INSERT dbo.[SYS_REPORT_PARAMETER] ([M_IDX], [SERIAL_NO], [F_ID], [F_TYPE], [F_EXPR], [F_DESC], [F_VALUE], [REMARK], [PARA_NAME], [FILTER_TEMPLATE]) VALUES
@@ -31298,7 +31330,6 @@ INSERT dbo.[SYS_REPORT_PARAMETER] ([M_IDX], [SERIAL_NO], [F_ID], [F_TYPE], [F_EX
     (2005, 4, N'PAP_BARCODE_M.GRAMME_ID', N'1', N'', N'克重', N'', N'', N'', N'{"logic":"AND","items":[{"field":"PAP_BARCODE_M.GRAMME_ID","op":"GE","value":"{p.GRAMME_ID}"}]}'),
     (2005, 5, N'PAP_BARCODE_M.SPECS_ID', N'1', N'', N'规格', N'', N'', N'', N'{"logic":"AND","items":[{"field":"PAP_BARCODE_M.SPECS_ID","op":"GE","value":"{p.SPECS_ID}"}]}'),
     (2005, 6, N'PAP_BARCODE_M.TYPE_ID', N'1', N'', N'纸类', N'', N'', N'', N'{"logic":"AND","items":[{"field":"PAP_BARCODE_M.TYPE_ID","op":"GE","value":"{p.TYPE_ID}"}]}'),
-    (2201, 1, N'REPORT.REPORT_ID', N'1', N'', N'报表ID', N'', N'', N'', N'{"logic":"AND","items":[{"field":"REPORT.REPORT_ID","op":"GE","value":"{p.REPORT_ID}"}]}'),
     (2401, 1, N'SAMPLE_PRO.PRO_NO', N'1', N'', N'品号', N'', N'', N'', N'{"logic":"AND","items":[{"field":"SAMPLE_PRO.PRO_NO","op":"GE","value":"{p.PRO_NO}"}]}'),
     (2401, 2, N'SAMPLE_PRO.CLIENT_ID', N'1', N'', N'客户代号', N'', N'', N'', N'{"logic":"AND","items":[{"field":"SAMPLE_PRO.CLIENT_ID","op":"GE","value":"{p.CLIENT_ID}"}]}'),
     (2401, 3, N'SAMPLE_PRO.MODIFIED_TIME', N'1', N'', N'修改日期', N'', N'', N'', N'{"logic":"AND","items":[{"field":"SAMPLE_PRO.MODIFIED_TIME","op":"GE","value":"{p.MODIFIED_TIME}"}]}'),
@@ -31481,10 +31512,10 @@ INSERT dbo.[SYS_REPORT_PARAMETER] ([M_IDX], [SERIAL_NO], [F_ID], [F_TYPE], [F_EX
     (180102, 5, N'HR_EMPLOYEE.CONTRACT_DATE', N'1', N'', N'合同到期日', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.CONTRACT_DATE","op":"GE","value":"{p.CONTRACT_DATE}"}]}'),
     (180102, 6, N'HR_EMPLOYEE.IN_MONTH', N'1', N'', N'已入厂月数', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.IN_MONTH","op":"GE","value":"{p.IN_MONTH}"}]}'),
     (180102, 7, N'HR_EMPLOYEE.APPROVED', N'2', N'已批核:{HR_EMPLOYEE.APPROVED}=true;未批核:{HR_EMPLOYEE.APPROVED}=false', N'批核状态', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.APPROVED","op":"EQ","value":"{p.APPROVED}"}],"options":[{"label":"已批核","value":"true"},{"label":"未批核","value":"false"}],"parameterName":"APPROVED"}'),
-    (180102, 11, N'HR_EMPLOYEE.EMP_NAME', N'1', N'', N'姓名', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.EMP_NAME","op":"GE","value":"{p.EMP_NAME}"}]}')
+    (180102, 11, N'HR_EMPLOYEE.EMP_NAME', N'1', N'', N'姓名', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.EMP_NAME","op":"GE","value":"{p.EMP_NAME}"}]}'),
+    (180103, 1, N'HR_EMPLOYEE.DEPT_ID', N'1', N'', N'部门代号', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.DEPT_ID","op":"GE","value":"{p.DEPT_ID}"}]}')
 ;
 INSERT dbo.[SYS_REPORT_PARAMETER] ([M_IDX], [SERIAL_NO], [F_ID], [F_TYPE], [F_EXPR], [F_DESC], [F_VALUE], [REMARK], [PARA_NAME], [FILTER_TEMPLATE]) VALUES
-    (180103, 1, N'HR_EMPLOYEE.DEPT_ID', N'1', N'', N'部门代号', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.DEPT_ID","op":"GE","value":"{p.DEPT_ID}"}]}'),
     (180103, 2, N'HR_EMPLOYEE.EMP_NO', N'1', N'', N'员工工号', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_EMPLOYEE.EMP_NO","op":"GE","value":"{p.EMP_NO}"}]}'),
     (180103, 3, N'HR_REDEPLOY_M.REDEPLOY_DATE', N'1', N'', N'调动日期', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_REDEPLOY_M.REDEPLOY_DATE","op":"GE","value":"{p.REDEPLOY_DATE}"}]}'),
     (180103, 4, N'HR_REDEPLOY_M.REDEPLOY_NO', N'1', N'', N'调动单号', N'', N'', N'', N'{"logic":"AND","items":[{"field":"HR_REDEPLOY_M.REDEPLOY_NO","op":"GE","value":"{p.REDEPLOY_NO}"}]}'),
@@ -31620,7 +31651,7 @@ DELETE FROM dbo.[SYS_REPORT_PARAMETER_TYPE];
 GO
 
 ------------------------------------------------------------------------------
--- REPORT（总 460 行，剔除 0）
+-- REPORT（总 457 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[REPORT];
 INSERT dbo.[REPORT] ([REPORT_ID], [REPORT_NAME], [ISO_NO], [HEADER_ID], [FOOTER_TEXT], [TAIL_ID], [IS_DEFAULT], [REMARK], [CREATED_BY], [CREATED_TIME], [MODIFIED_BY], [MODIFIED_TIME], [APPROVED_BY], [APPROVED_TIME], [APPROVED], [REPORT_FILTER], [FORMAT_ID], [M_IDX], [COMPANY_ID]) VALUES
@@ -32035,8 +32066,6 @@ INSERT dbo.[REPORT] ([REPORT_ID], [REPORT_NAME], [ISO_NO], [HEADER_ID], [FOOTER_
     (N'QC_Rework                                         ', N'重工单', N'F001/REV.B0', N'00        ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'BLANK     ', 0, N'', N'刘一                  ', '2011-02-24T23:13:12.000', N'何群笑                 ', '2012-04-10T18:09:17.000', N'SYSTEM              ', '2012-04-10T18:09:17.000', 1, N'', NULL, 3305, N'DEFAULT'),
     (N'QC_Scrap                                          ', N'品质处理单', N'', N'00        ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'BLANK     ', 0, N'', N'刘一                  ', '2011-02-24T23:15:36.000', N'何群笑                 ', '2012-04-10T18:09:03.000', N'SYSTEM              ', '2012-04-10T18:09:03.000', 1, N'', NULL, 3304, N'DEFAULT'),
     (N'Quote                                             ', N'报价单', N'MOE01P', N'          ', N'', N'BLANK     ', 1, N'', N'何群笑                 ', '2010-02-02T15:33:53.000', N'EOS-19              ', '2026-08-23T23:33:17.920', N'SYSTEM              ', '2010-03-10T17:09:38.000', 1, N'', NULL, 1404, N'DEFAULT'),
-    (N'REPORT                                            ', N'报表设置', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 1, N'', N'                    ', '1900-01-01T00:00:00.000', N'                    ', '1900-01-01T00:00:00.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 2201, N'DEFAULT'),
-    (N'REPORT_229801                                     ', N'报表设置明细', NULL, N'DEFAULT   ', NULL, N'          ', 0, N'M84 报表定义自动补齐', N'EOS-DOC-GEN         ', '2026-08-14T00:43:56.510', N'EOS-DOC-GEN         ', '2026-08-14T00:43:56.510', NULL, NULL, 0, NULL, NULL, 2201, N'DEFAULT'),
     (N'SAM_APPLY_List                                    ', N'打样工单明细', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 1, N'', N'                    ', '1900-01-01T00:00:00.000', N'                    ', '1900-01-01T00:00:00.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 2402, N'DEFAULT'),
     (N'SAM_APPLY_M                                       ', N'打样工单', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'                    ', '1900-01-01T00:00:00.000', N'A01                 ', '2008-11-25T21:25:09.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 2402, N'DEFAULT'),
     (N'SAM_APPLY_Mhz                                     ', N'打样工单', N'', N'DEFAULT   ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'BLANK     ', 0, N'', N'刘一                  ', '2009-07-14T16:21:32.000', N'刘一                  ', '2009-07-14T16:21:32.000', N'SYSTEM              ', '2009-07-14T16:21:32.000', 1, N'', NULL, 2402, N'DEFAULT'),
@@ -32074,7 +32103,6 @@ INSERT dbo.[REPORT] ([REPORT_ID], [REPORT_NAME], [ISO_NO], [HEADER_ID], [FOOTER_
     (N'SYS_Company_List                                  ', N'公司资料明细', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'A01                 ', '2008-03-24T10:38:20.000', N'A01                 ', '2008-04-01T17:58:49.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 110101, N'DEFAULT'),
     (N'SYS_Cur                                           ', N'货币资料', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'A01                 ', '2008-03-24T10:32:21.000', N'A01                 ', '2008-03-24T20:52:17.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 110103, N'DEFAULT'),
     (N'SYS_Modules_List                                  ', N'菜单管理明细', N'', N'DEFAULT   ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'NOTHING   ', 0, N'', N'刘一                  ', '2008-12-26T16:49:56.000', N'刘一                  ', '2008-12-26T16:49:56.000', N'                    ', NULL, 0, NULL, NULL, 230901, N'DEFAULT'),
-    (N'SYS_Report_List                                   ', N'报表设置明细', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'A01                 ', '2008-03-25T09:57:34.000', N'A01                 ', '2008-03-25T09:57:34.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 2201, N'DEFAULT'),
     (N'SYS_Sysdg                                         ', N'用户组管理', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'A01                 ', '2008-03-24T10:35:22.000', N'A01                 ', '2008-03-24T20:51:37.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 2305, N'DEFAULT'),
     (N'SYS_Sysdg_List                                    ', N'用户组管理明细', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'A01                 ', '2008-03-24T10:36:39.000', N'A01                 ', '2008-04-01T18:02:07.000', N'                    ', '1900-01-01T00:00:00.000', 0, NULL, NULL, 2305, N'DEFAULT'),
     (N'SYS_Sysdl                                         ', N'用户权限', N'', N'          ', N'制表：{1}                  列印：{7}                    审核：{5}                     核准：', N'          ', 0, N'', N'A01                 ', '2008-03-24T11:22:21.000', N'何群笑                 ', '2009-03-02T10:28:26.000', N'                    ', '1900-01-01T00:00:00.000', 0, N'', NULL, 2306, N'DEFAULT'),
@@ -32096,7 +32124,7 @@ INSERT dbo.[REPORT] ([REPORT_ID], [REPORT_NAME], [ISO_NO], [HEADER_ID], [FOOTER_
 GO
 
 ------------------------------------------------------------------------------
--- REPORT_SORT（总 558 行，剔除 0）
+-- REPORT_SORT（总 557 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[REPORT_SORT];
 INSERT dbo.[REPORT_SORT] ([REPORT_ID], [SERIAL_NO], [SORT_NAME], [SORT_FIELDS], [SORT_DESC], [GROUP_NAME], [GROUP_FIELDS], [GROUP_DESC]) VALUES
@@ -32650,7 +32678,6 @@ INSERT dbo.[REPORT_SORT] ([REPORT_ID], [SERIAL_NO], [SORT_NAME], [SORT_FIELDS], 
     (N'SYS_Dept_List                                     ', 1, N'依部门代号排序', N'', N'', N'部门代号', N'DEPT.DEPT_ID', N'[主表]部门代号'),
     (N'SYS_Dept_List                                     ', 2, N'建立日期', N'', N'', N'建立日期', N'DEPT.CREATED_TIME', N'[主表]建立日期'),
     (N'SYS_Modules_List                                  ', 1, N'依表或视图名排序', N'', N'', N'表或视图名', N'', N''),
-    (N'SYS_Report_List                                   ', 1, N'依报表ID排序', N'REPORT.REPORT_ID', N'[主表]报表ID-升序', NULL, NULL, NULL),
     (N'SYS_Sysdg_List                                    ', 1, N'依用户描述排序', N'', N'', N'用户组描述', N'SYS_USER_GROUP.G_DESC', N'[主表]用户组描述'),
     (N'SYS_Sysdg_List                                    ', 2, N'建立日期', N'', N'', N'建立日期', N'SYS_USER_GROUP.CREATED_TIME', N'[主表]建立日期'),
     (N'SYS_Sysdl_List                                    ', 1, N'依用户ID排序', N'', N'', NULL, N'SYS_USER_ACCOUNT.USER_ID', N'[主表]用户ID'),
@@ -32705,21 +32732,316 @@ INSERT dbo.[REPORT_METRIC] ([METRIC_ID], [METRIC_NAME], [DEFINITION], [SOURCE_TA
 GO
 
 ------------------------------------------------------------------------------
--- REPORT_FORM_LAYOUT（总 0 行，剔除 0）
+-- REPORT_FORM_LAYOUT（总 1 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[REPORT_FORM_LAYOUT];
+SET IDENTITY_INSERT dbo.[REPORT_FORM_LAYOUT] ON;
+INSERT dbo.[REPORT_FORM_LAYOUT] ([LAYOUT_ID], [BASE_FORMAT_ID], [OWNER_ID], [LAYOUT_JSON], [LAYOUT_VERSION], [KIND], [CREATED_BY], [CREATED_TIME], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (4074, N'3106', N'ADMIN', N'{
+  "schemaVersion": 1,
+  "kind": "document",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait",
+    "margin": {
+      "top": 11.29,
+      "right": 11.29,
+      "bottom": 11.29,
+      "left": 11.29
+    }
+  },
+  "sections": {
+    "header": {
+      "height": 26,
+      "elements": [
+        {
+          "id": "h1",
+          "type": "text",
+          "x": 0,
+          "y": 0.71,
+          "w": 187.4,
+          "h": 7.2,
+          "content": "{{SYS.HEADER_COMPANY}}",
+          "style": {
+            "fontSize": 14,
+            "bold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h2",
+          "type": "text",
+          "x": 0,
+          "y": 7.4,
+          "w": 187.4,
+          "h": 4.5,
+          "content": "{{SYS.HEADER_COMPANY_EN}}",
+          "style": {
+            "fontSize": 9,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h3",
+          "type": "text",
+          "x": 0,
+          "y": 11.7,
+          "w": 187.4,
+          "h": 5.5,
+          "content": "{{SYS.TITLE}}",
+          "style": {
+            "fontSize": 12,
+            "semiBold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h4",
+          "type": "text",
+          "x": 0,
+          "y": 17.0,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "{{SYS.HEADER_TEXT}}",
+          "style": {
+            "fontSize": 8,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h5",
+          "type": "line",
+          "x": 0,
+          "y": 25.4,
+          "w": 187.4,
+          "h": 0.2,
+          "style": {
+            "lineWidth": 0.5
+          }
+        }
+      ]
+    },
+    "content": {
+      "elements": [
+        {
+          "id": "t1",
+          "type": "table",
+          "x": 0,
+          "y": 0,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "master",
+          "showHeader": false
+        },
+        {
+          "id": "t2",
+          "type": "table",
+          "x": 0,
+          "y": 45,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "details",
+          "showHeader": true,
+          "repeatHeaderOnPageBreak": true,
+          "showTotals": true
+        }
+      ]
+    },
+    "footer": {
+      "height": 14,
+      "elements": [
+        {
+          "id": "f1",
+          "type": "text",
+          "x": 0,
+          "y": 9.9,
+          "w": 100,
+          "h": 4.0,
+          "content": "{{SYS.FOOTER_TEXT}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "f2",
+          "type": "text",
+          "x": 100,
+          "y": 9.9,
+          "w": 87.4,
+          "h": 4.0,
+          "content": "列印人：{{SYS.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        }
+      ]
+    }
+  }
+}
+', 1, N'document', N'ADMIN                                   ', '2026-10-31T19:54:00.722', N'ADMIN                                   ', '2026-10-31T19:54:00.722')
+;
+SET IDENTITY_INSERT dbo.[REPORT_FORM_LAYOUT] OFF;
 GO
 
 ------------------------------------------------------------------------------
--- REPORT_FORM_BINDING（总 0 行，剔除 0）
+-- REPORT_FORM_BINDING（总 1 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[REPORT_FORM_BINDING];
+INSERT dbo.[REPORT_FORM_BINDING] ([FORM_TYPE], [CLIENT_ID], [LAYOUT_ID], [HEADER_ID], [TAIL_ID], [PRINT_PRICE], [CREATED_BY], [CREATED_TIME], [MODIFIED_BY], [MODIFIED_TIME]) VALUES
+    (N'3106', N'', 4074, NULL, NULL, NULL, N'ADMIN                                   ', '2026-10-31T19:54:00.761', N'ADMIN                                   ', '2026-10-31T19:54:00.761')
+;
 GO
 
 ------------------------------------------------------------------------------
--- REPORT_FORM_LAYOUT_VERSION（总 0 行，剔除 0）
+-- REPORT_FORM_LAYOUT_VERSION（总 1 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[REPORT_FORM_LAYOUT_VERSION];
+INSERT dbo.[REPORT_FORM_LAYOUT_VERSION] ([LAYOUT_ID], [VERSION], [LAYOUT_JSON], [CREATED_BY], [CREATED_TIME]) VALUES
+    (4074, 1, N'{
+  "schemaVersion": 1,
+  "kind": "document",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait",
+    "margin": {
+      "top": 11.29,
+      "right": 11.29,
+      "bottom": 11.29,
+      "left": 11.29
+    }
+  },
+  "sections": {
+    "header": {
+      "height": 26,
+      "elements": [
+        {
+          "id": "h1",
+          "type": "text",
+          "x": 0,
+          "y": 0.71,
+          "w": 187.4,
+          "h": 7.2,
+          "content": "{{SYS.HEADER_COMPANY}}",
+          "style": {
+            "fontSize": 14,
+            "bold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h2",
+          "type": "text",
+          "x": 0,
+          "y": 7.4,
+          "w": 187.4,
+          "h": 4.5,
+          "content": "{{SYS.HEADER_COMPANY_EN}}",
+          "style": {
+            "fontSize": 9,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h3",
+          "type": "text",
+          "x": 0,
+          "y": 11.7,
+          "w": 187.4,
+          "h": 5.5,
+          "content": "{{SYS.TITLE}}",
+          "style": {
+            "fontSize": 12,
+            "semiBold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h4",
+          "type": "text",
+          "x": 0,
+          "y": 17.0,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "{{SYS.HEADER_TEXT}}",
+          "style": {
+            "fontSize": 8,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h5",
+          "type": "line",
+          "x": 0,
+          "y": 25.4,
+          "w": 187.4,
+          "h": 0.2,
+          "style": {
+            "lineWidth": 0.5
+          }
+        }
+      ]
+    },
+    "content": {
+      "elements": [
+        {
+          "id": "t1",
+          "type": "table",
+          "x": 0,
+          "y": 0,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "master",
+          "showHeader": false
+        },
+        {
+          "id": "t2",
+          "type": "table",
+          "x": 0,
+          "y": 45,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "details",
+          "showHeader": true,
+          "repeatHeaderOnPageBreak": true,
+          "showTotals": true
+        }
+      ]
+    },
+    "footer": {
+      "height": 14,
+      "elements": [
+        {
+          "id": "f1",
+          "type": "text",
+          "x": 0,
+          "y": 9.9,
+          "w": 100,
+          "h": 4.0,
+          "content": "{{SYS.FOOTER_TEXT}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "f2",
+          "type": "text",
+          "x": 100,
+          "y": 9.9,
+          "w": 87.4,
+          "h": 4.0,
+          "content": "列印人：{{SYS.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        }
+      ]
+    }
+  }
+}
+', N'ADMIN                                   ', '2026-10-31T19:54:00.741')
+;
 GO
 
 ------------------------------------------------------------------------------
@@ -32762,7 +33084,7 @@ INSERT dbo.[SYS_PERMISSION_ACTION] ([EXEC_ID], [EXEC_DESC]) VALUES
 GO
 
 ------------------------------------------------------------------------------
--- SYS_PARAMETER（总 223 行，剔除 0）
+-- SYS_PARAMETER（总 234 行，剔除 0）
 ------------------------------------------------------------------------------
 DELETE FROM dbo.[SYS_PARAMETER];
 INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_TYPE], [DEFAULT_VALUE], [GROUP_CODE], [GROUP_LABEL], [DESC_TEXT], [EFFECT_SCOPE], [SEQ_NO], [OPTIONS], [REMARK], [CREATED_BY], [CREATED_TIME], [MODIFIED_BY], [MODIFIED_TIME], [GROUP_SEQ]) VALUES
@@ -32838,6 +33160,7 @@ INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_T
     (3105, N'SYSTEM_PROMPT', NULL, N'string', NULL, N'PROMPT', N'提示词', N'每轮对话注入的指令。输出格式那一段是与前端渲染面的契约（回答按 Markdown 渲染），改之前先看手册 60 篇', N'immediate', 10, NULL, NULL, N'mig-294   ', '2026-10-01T23:22:44.287', NULL, NULL, 10),
     (3105, N'TOOL_APPLY_CHANGESET', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 apply_changeset 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 250, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_APPLY_CONFIG_CHANGE', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 apply_config_change 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 310, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
+    (3105, N'TOOL_APPLY_DOCUMENT_ACTION', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型不能执行自定义单据动作（apply_document_action）；确认型动作仍可由用户自行点击。', N'immediate', 420, NULL, NULL, N'mig-455   ', '2026-10-30T20:24:00.800', NULL, NULL, 40),
     (3105, N'TOOL_APPLY_RECORD_ACTION', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 apply_record_action 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 270, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_CLONE_MODULE_CONFIG', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 clone_module_config 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 290, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_DESCRIBE_MECHANISM', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 describe_mechanism 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 230, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
@@ -32855,15 +33178,21 @@ INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_T
     (3105, N'TOOL_GET_RECORD_HISTORY', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型看不到「查看单据历史」（get_record_history）这个工具，也调不动它（幻觉出一个已关闭的工具名会被明确拒绝，而不是当成工具不存在）。', N'immediate', 370, NULL, NULL, N'mig-305   ', '2026-10-02T09:09:50.493', NULL, NULL, 40),
     (3105, N'TOOL_KB_SEARCH', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 kb_search 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 220, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_LIMIT_ATTACHMENT_LIST_MAX', NULL, N'int', N'20', N'TOOL_LIMIT', N'工具输出', N'list_attachments 一次最多列出几个附件；同时写进发给模型的工具说明。', N'immediate', 170, NULL, NULL, N'mig-306   ', '2026-10-02T09:15:36.140', NULL, NULL, 30),
+    (3105, N'TOOL_LIMIT_BRIEF_MAX_FIELDS', NULL, N'int', N'24', N'TOOL_LIMIT', N'工具输出', N'页面处境有模块时，自动注入的模块简报每张表最多列几个字段。', N'immediate', 230, NULL, NULL, N'mig-456   ', '2026-10-30T20:42:35.587', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_DESCRIBE_MAX_FIELDS', NULL, N'int', N'80', N'TOOL_LIMIT', N'工具输出', N'describe_module 每张表最多列出几个字段', N'immediate', 70, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_DETAIL_MAX_COLUMNS', NULL, N'int', N'24', N'TOOL_LIMIT', N'工具输出', N'get_record_detail 单行最多带几列', N'immediate', 40, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
+    (3105, N'TOOL_LIMIT_DETAIL_MAX_ROWS', NULL, N'int', N'50', N'TOOL_LIMIT', N'工具输出', N'get_record_detail 明细最多带回几行；超出时如实说明还有多少行未展示。', N'immediate', 180, NULL, NULL, N'mig-454   ', '2026-10-30T20:02:49.213', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_DETAIL_MAX_VALUE_LENGTH', NULL, N'int', N'200', N'TOOL_LIMIT', N'工具输出', N'get_record_detail 每个字段值截断到多少字符', N'immediate', 50, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
+    (3105, N'TOOL_LIMIT_DETAIL_ROW_COLUMNS', NULL, N'int', N'8', N'TOOL_LIMIT', N'工具输出', N'get_record_detail 明细每行最多带几列。', N'immediate', 190, NULL, NULL, N'mig-454   ', '2026-10-30T20:02:49.213', NULL, NULL, 30),
+    (3105, N'TOOL_LIMIT_DETAIL_ROW_VALUE_LENGTH', NULL, N'int', N'40', N'TOOL_LIMIT', N'工具输出', N'get_record_detail 明细每个字段值截断到多少字符。', N'immediate', 200, NULL, NULL, N'mig-454   ', '2026-10-30T20:02:49.213', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_DRAFT_MAX_VALUE_LENGTH', NULL, N'int', N'500', N'TOOL_LIMIT', N'工具输出', N'draft_record 试算时单个字段值截断到多少字符；截断会随试算结果一起告警', N'immediate', 60, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_FIELD_RELATIONS_MAX', NULL, N'int', N'50', N'TOOL_LIMIT', N'工具输出', N'get_field_relations 一次最多返回几条关系', N'immediate', 100, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_LIST_CAPABILITIES_MAX', NULL, N'int', N'50', N'TOOL_LIMIT', N'工具输出', N'list_my_capabilities 一次最多返回几个模块', N'immediate', 90, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_LIST_MODULES_MAX', NULL, N'int', N'50', N'TOOL_LIMIT', N'工具输出', N'list_modules 一次最多返回几个模块', N'immediate', 80, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
+    (3105, N'TOOL_LIMIT_METADATA_SEARCH_MAX', NULL, N'int', N'20', N'TOOL_LIMIT', N'工具输出', N'search_metadata 一次最多返回几条命中（模块/表/字段/动作合计）。', N'immediate', 220, NULL, NULL, N'mig-456   ', '2026-10-30T20:42:35.587', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_RECORD_ACTIVITY_DAYS', NULL, N'int', N'90', N'TOOL_LIMIT', N'工具输出', N'get_record_history 只看最近多少天的操作记录（窗口越大越慢、越贵）。', N'immediate', 160, NULL, NULL, N'mig-305   ', '2026-10-02T09:09:50.493', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_RECORD_HISTORY_MAX', NULL, N'int', N'20', N'TOOL_LIMIT', N'工具输出', N'get_record_history 的审批历史与最近操作各最多带回几条；同时写进发给模型的工具说明。', N'immediate', 150, NULL, NULL, N'mig-305   ', '2026-10-02T09:09:50.493', NULL, NULL, 30),
+    (3105, N'TOOL_LIMIT_REFERENCE_MAX', NULL, N'int', N'10', N'TOOL_LIMIT', N'工具输出', N'resolve_reference 一次最多返回几个候选；超出时提示用户补充关键字。', N'immediate', 210, NULL, NULL, N'mig-454   ', '2026-10-30T20:02:49.213', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_REPORT_LIST_MAX', NULL, N'int', N'20', N'TOOL_LIMIT', N'工具输出', N'list_reports 一次最多列出几个报表。', N'immediate', 110, NULL, NULL, N'mig-304   ', '2026-10-02T08:55:36.220', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_REPORT_MAX_COLUMNS', NULL, N'int', N'12', N'TOOL_LIMIT', N'工具输出', N'run_report 每行最多带几列。', N'immediate', 130, NULL, NULL, N'mig-304   ', '2026-10-02T08:55:36.220', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_REPORT_MAX_ROWS', NULL, N'int', N'20', N'TOOL_LIMIT', N'工具输出', N'run_report 一次最多带回几行；同时写进发给模型的工具说明。', N'immediate', 120, NULL, NULL, N'mig-304   ', '2026-10-02T08:55:36.220', NULL, NULL, 30),
@@ -32872,6 +33201,7 @@ INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_T
     (3105, N'TOOL_LIMIT_SEARCH_MAX_ROWS', NULL, N'int', N'5', N'TOOL_LIMIT', N'工具输出', N'search_records 一次最多返回几行；同时写进发给模型的工具说明', N'immediate', 10, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
     (3105, N'TOOL_LIMIT_SEARCH_MAX_VALUE_LENGTH', NULL, N'int', N'40', N'TOOL_LIMIT', N'工具输出', N'search_records 每个字段值截断到多少字符（列表视图的语义，不是详情）', N'immediate', 30, NULL, NULL, N'mig-301   ', '2026-10-02T00:14:42.433', NULL, NULL, 30),
     (3105, N'TOOL_LIST_ATTACHMENTS', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型看不到「查看单据附件清单」（list_attachments）这个工具，也调不动它（幻觉出一个已关闭的工具名会被明确拒绝，而不是当成工具不存在）。', N'immediate', 380, NULL, NULL, N'mig-306   ', '2026-10-02T09:15:36.140', NULL, NULL, 40),
+    (3105, N'TOOL_LIST_DOCUMENT_ACTIONS', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型看不到「列出单据动作」（list_document_actions），也调不动它。', N'immediate', 400, NULL, NULL, N'mig-455   ', '2026-10-30T20:24:00.800', NULL, NULL, 40),
     (3105, N'TOOL_LIST_MODULES', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 list_modules 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 50, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_LIST_MY_CAPABILITIES', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 list_my_capabilities 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 190, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_LIST_PROCEDURES', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 list_procedures 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 80, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
@@ -32880,9 +33210,12 @@ INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_T
     (3105, N'TOOL_LIST_VIEWS', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 list_views 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 70, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_PREVIEW_BATCH_DECISION', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 preview_batch_decision 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 280, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_PREVIEW_CONFIG_CHANGE', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 preview_config_change 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 300, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
+    (3105, N'TOOL_PREVIEW_DOCUMENT_ACTION', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型不能预演自定义单据动作（preview_document_action）。', N'immediate', 410, NULL, NULL, N'mig-455   ', '2026-10-30T20:24:00.800', NULL, NULL, 40),
     (3105, N'TOOL_PREVIEW_RECORD_ACTION', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 preview_record_action 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 260, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'TOOL_RESOLVE_METRIC', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 resolve_metric 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 210, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
+    (3105, N'TOOL_RESOLVE_REFERENCE', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型看不到「解析引用值」（resolve_reference）这个工具，也调不动它（幻觉出一个已关闭的工具名会被明确拒绝，而不是当成工具不存在）。', N'immediate', 390, NULL, NULL, N'mig-454   ', '2026-10-30T20:02:49.213', NULL, NULL, 40),
     (3105, N'TOOL_RUN_REPORT', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型看不到「取报表数据」（run_report）这个工具，也调不动它（幻觉出一个已关闭的工具名会被明确拒绝，而不是当成工具不存在）。', N'immediate', 360, NULL, NULL, N'mig-304   ', '2026-10-02T08:55:36.220', NULL, NULL, 40),
+    (3105, N'TOOL_SEARCH_METADATA', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉之后模型看不到「检索模块/表/字段」（search_metadata），也调不动它。', N'immediate', 430, NULL, NULL, N'mig-456   ', '2026-10-30T20:42:35.587', NULL, NULL, 40),
     (3105, N'TOOL_SEARCH_RECORDS', NULL, N'bit', N'1', N'CAPABILITY', N'能力面', N'关掉后模型看不到 search_records 这个工具，也调不动它（它若仍被调用会被明确拒绝）', N'immediate', 130, NULL, NULL, N'mig-298   ', '2026-10-01T23:49:20.420', NULL, NULL, 40),
     (3105, N'USER_DAILY_CAP_YUAN', NULL, N'decimal', N'5', N'GOVERNANCE', N'成本与熔断', N'单个用户当日上限（元），必须大于 0；这是唯一允许按用户放宽的参数——给别人调高限额是管理决定', N'immediate', 20, NULL, NULL, N'mig-294   ', '2026-10-01T23:22:44.287', NULL, NULL, 50),
     (110111, N'CLIENT_DAYS', N'100000', N'int', N'1000000', N'PARTNER', N'往来与账期', N'客户未交易天数', N'immediate', 10, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
@@ -32954,7 +33287,9 @@ INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_T
     (180213, N'WAGE_RESTTIME', N'', N'string', NULL, N'WAGE_MAP', N'工资字段映射', N'休息加班字段', N'immediate', 80, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 40),
     (180213, N'WAGE_WORK', N'', N'string', NULL, N'WAGE_MAP', N'工资字段映射', N'上班工资字段', N'immediate', 20, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 40),
     (180213, N'WAGE_WORKTIME', N'', N'string', NULL, N'WAGE_MAP', N'工资字段映射', N'上班时间字段', N'immediate', 60, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 40),
-    (180213, N'YEAR_LENGTH', N'4', N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'年长度', N'immediate', 80, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
+    (180213, N'YEAR_LENGTH', N'4', N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'年长度', N'immediate', 80, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10)
+;
+INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_TYPE], [DEFAULT_VALUE], [GROUP_CODE], [GROUP_LABEL], [DESC_TEXT], [EFFECT_SCOPE], [SEQ_NO], [OPTIONS], [REMARK], [CREATED_BY], [CREATED_TIME], [MODIFIED_BY], [MODIFIED_TIME], [GROUP_SEQ]) VALUES
     (180213, N'YEAR_START', N'4', N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'年起始位', N'immediate', 70, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'CARD_LENGTH', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'卡号长度', N'immediate', 60, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'CARD_START', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'卡号起始位', N'immediate', 50, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
@@ -32965,9 +33300,7 @@ INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_T
     (180662, N'HOUR_START', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'时起始位', N'immediate', 130, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'MACHINE_LENGTH', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'机号长度', N'immediate', 20, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'MACHINE_START', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'机号起始位', N'immediate', 10, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
-    (180662, N'MINUTE_LENGTH', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'分长度', N'immediate', 160, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10)
-;
-INSERT dbo.[SYS_PARAMETER] ([OWNER_MODULE], [PARAM_KEY], [PARAM_VALUE], [VALUE_TYPE], [DEFAULT_VALUE], [GROUP_CODE], [GROUP_LABEL], [DESC_TEXT], [EFFECT_SCOPE], [SEQ_NO], [OPTIONS], [REMARK], [CREATED_BY], [CREATED_TIME], [MODIFIED_BY], [MODIFIED_TIME], [GROUP_SEQ]) VALUES
+    (180662, N'MINUTE_LENGTH', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'分长度', N'immediate', 160, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'MINUTE_START', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'分起始位', N'immediate', 150, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'MONTH_LENGTH', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'月长度', N'immediate', 100, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
     (180662, N'MONTH_START', NULL, N'int', NULL, N'ATT_CARD', N'考勤卡号解析', N'月起始位', N'immediate', 90, NULL, NULL, N'          ', '2026-09-20T20:28:49.497', NULL, NULL, 10),
