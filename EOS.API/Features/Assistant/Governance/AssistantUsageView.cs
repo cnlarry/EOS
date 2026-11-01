@@ -1,5 +1,6 @@
 using EOS.API.Data;
 using EOS.API.Data.Assistant;
+using EOS.API.Features.Assistant.ModelAccess;
 
 namespace EOS.API.Features.Assistant.Governance;
 
@@ -32,6 +33,39 @@ public sealed record AssistantUsageTrendRow(
 /// </summary>
 public static class AssistantUsageView
 {
+    /// <summary>
+    /// 从模型行建"型号 → 单价"的查找表。
+    ///
+    /// <para>
+    /// **同一型号可能有两行**（对话 + 判官，身份含用途，迁移 469），而用量与金额都按消息里记下的
+    /// 型号名聚合——`ASSISTANT_MESSAGE` 没有"用途"这一列。所以一个型号只能定一条价：
+    /// 优先取**对话**那行（对话是主力，判官通常沿用同一个单价），其次判官、嵌入，最后按主键最小取一条，
+    /// 保证同一份数据每次算出来的钱一样。判官若单独配了另一个单价，看板仍按型号合并计价——
+    /// 这是"按型号聚合"本身的限制，不是折算出错。
+    /// </para>
+    ///
+    /// <para>
+    /// 用 <c>GroupBy</c> 而不是直接 <c>ToDictionary</c>：后者在出现第二行同型号时会抛
+    /// "An item with the same key has already been added"，用量看板与个人用量页会整页报错。
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, AssistantModelRow> PriceByCode(
+        IEnumerable<AssistantModelRow> models)
+        => models
+            .GroupBy(row => row.ModelCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(row => row.Kind switch
+                    {
+                        AssistantModelKind.Chat => 0,
+                        AssistantModelKind.Judge => 1,
+                        _ => 2,
+                    })
+                    .ThenBy(row => row.ModelId)
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// 按模型折算。落库的 <c>MODEL_NAME</c> 就是模型标识，所以能按它找回那一行的单价；
     /// 找不回（模型已被删 / 改过名）就用全局兜底价——不能让成本显示成 0，否则"限额到底还有多少"

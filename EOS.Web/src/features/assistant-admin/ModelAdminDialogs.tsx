@@ -28,6 +28,21 @@ const KIND_LABEL: Record<AssistantModelKind, string> = {
 }
 
 /**
+ * 目录里一条型号**可以选哪些用途**。
+ *
+ * <p>对话型号也能当判官：判官不是第三种型号，而是"把一个对话模型钉住"——换对话模型时
+ * 判官不跟着换，历史判定才可比。嵌入没有第二种用途，它连对话能力都没有。</p>
+ */
+const KIND_CHOICES_OF: Record<AssistantModelKind, AssistantModelKind[]> = {
+  CHAT: ['CHAT', 'JUDGE'],
+  EMBEDDING: ['EMBEDDING'],
+  JUDGE: ['JUDGE'],
+}
+
+/** 厂商新列出的型号：三种用途都可能对，由人选（不猜）。 */
+const VENDOR_KIND_CHOICES: AssistantModelKind[] = ['CHAT', 'EMBEDDING', 'JUDGE']
+
+/**
  * 空字符串代表"不传该参数"，所以这里区分"空"与"0"。
  *
  * <p>刻意不导出：这个文件只导出组件，否则 React Fast Refresh 会失效（改了组件不热更新）。</p>
@@ -562,7 +577,12 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
       {/* 用途与维度紧挨着身份：模型标识的含义取决于用途（同一个字符串不会既是对话模型又是嵌入模型） */}
       <div className="row">
         <div className="col-md-6">
-          <Field label="用途" hint="对话用于聊天，嵌入用于知识库检索，判官只对已落库的回答做条款级判定（ADR-044）。三者各有一条「当前」。">
+          <Field label="用途" hint={
+            model && form.kind !== model.kind
+              ? `改用途＝把这条模型搬到另一个槽。它若正作为${KIND_LABEL[model.kind]}的当前模型，`
+                + `请先「取消${KIND_LABEL[model.kind]}当前」再改，否则服务端会拒绝。`
+              : '对话用于聊天，嵌入用于知识库检索，判官只对已落库的回答做条款级判定（ADR-044）。三者各有一条「当前」。'
+          }>
             <select className="form-select" value={form.kind} aria-label="用途"
               onChange={(event) => setKind(event.target.value as AssistantModelKind)}>
               <option value="CHAT">对话</option>
@@ -726,8 +746,13 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
  * </p>
  *
  * <p>
- * **库里已有的型号不再列出**：勾了也会被唯一约束拒，而拒在逐条提交的中途会留下半截结果。
- * 手填表单只剩一个出口（自建端点 / 清单里都没有的型号），作为**次要动作**放在底栏。
+ * **判重按"型号 + 用途"**：身份是"供应商 + 型号 + 用途"，所以同一型号可以既当对话、又当判官
+ * （判官要单独钉住，换对话模型不该把判官一起换掉）。已经以某种用途落库的那一种在这里标「已加」，
+ * 其余用途照旧可加；三种用途都落库了才整行不再列出。
+ * </p>
+ *
+ * <p>
+ * **手填表单只剩一个出口**（自建端点 / 清单里都没有的型号），作为**次要动作**放在底栏。
  * </p>
  */
 export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
@@ -750,27 +775,42 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
 
   const [keyword, setKeyword] = useState('')
   const [selected, setSelected] = useState<string[]>([])
-  /** 厂商列了、目录里没有的型号：用途（嵌入还有维度）由人选；没选就不给加。 */
+  /** 每行选定的用途：目录行的初值来自目录，厂商新列出的必须人选；嵌入还要维度。 */
   const [picks, setPicks] = useState<Record<string, { kind: AssistantModelKind | ''; dimension: string }>>({})
 
-  /** 库里已有的型号不再列出（理由见上面那段注释）。 */
-  const existing = useMemo(
-    () => new Set(provider.models.map(item => item.modelCode)),
+  /**
+   * 已落库的 **(型号, 用途)** 组合：判重必须带上用途。
+   *
+   * <p>身份是"供应商 + 型号 + 用途"：同一个型号可以既当对话、又当判官（判官要单独钉住，
+   * 换对话模型不会连带换掉它），所以按型号判重会把"再加一条判官"这条路堵死。</p>
+   */
+  const existingPairs = useMemo(
+    () => new Set(provider.models.map(item => `${item.modelCode}|${item.kind}`)),
     [provider.models])
 
-  /** 目录里收录过的：参数齐全，选中即落库。 */
+  const isAdded = useCallback(
+    (modelCode: string, kind: AssistantModelKind | '') =>
+      kind !== '' && existingPairs.has(`${modelCode}|${kind}`),
+    [existingPairs])
+
+  /** 目录里收录、且还有用途没落库的型号。 */
   const catalogRows = useMemo(
     () => (preset?.models ?? [])
-      .filter(item => !existing.has(item.modelCode))
+      .filter(item => KIND_CHOICES_OF[item.kind].some(kind => !existingPairs.has(`${item.modelCode}|${kind}`)))
       .sort((left, right) => left.modelCode.localeCompare(right.modelCode)),
-    [preset, existing])
+    [preset, existingPairs])
 
   /** 厂商列了、目录里没有的：只有型号名（厂商顺带给的窗口与最大输出也留着），用途要人选。 */
   const vendorOnlyRows = useMemo(() => {
     const known = new Set((preset?.models ?? []).map(item => item.modelCode))
     return (discovered.data?.models ?? [])
-      .filter(item => !existing.has(item.modelCode) && !known.has(item.modelCode))
-  }, [discovered.data, preset, existing])
+      .filter(item => !known.has(item.modelCode)
+        && VENDOR_KIND_CHOICES.some(kind => !existingPairs.has(`${item.modelCode}|${kind}`)))
+  }, [discovered.data, preset, existingPairs])
+
+  /** 这一行当前选定的用途：目录行默认取目录值，厂商新列出的由人选（'' = 还没选）。 */
+  const kindOf = (modelCode: string, fallback: AssistantModelKind | '' = '') =>
+    picks[modelCode]?.kind ?? fallback
 
   const visibleCatalog = useMemo(() => {
     const text = keyword.trim().toLowerCase()
@@ -823,13 +863,22 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
     mutationFn: async () => {
       let created = 0
       for (const item of catalogRows.filter(one => selected.includes(one.modelCode))) {
-        // **连同目录里的参考参数一起落库**：用途 / 维度 / 窗口 / 最大输出 / 工具能力 / 参考单价
-        await createModel({ ...toPresetModelWrite(item), providerId: provider.providerId })
+        // **连同目录里的参考参数一起落库**：用途 / 维度 / 窗口 / 最大输出 / 工具能力 / 参考单价。
+        // 用途可能被改成判官（同一型号既对话又判官），此时窗口与单价照旧有用，工具能力没有意义。
+        const kind = kindOf(item.modelCode, item.kind) as AssistantModelKind
+        await createModel({
+          ...toPresetModelWrite(item),
+          providerId: provider.providerId,
+          kind,
+          supportsTools: kind === 'CHAT' ? item.supportsTools : false,
+          dimension: kind === 'EMBEDDING' ? item.dimension : null,
+        })
         created++
       }
       for (const item of vendorOnlyRows.filter(one => selected.includes(one.modelCode))) {
         const pick = picks[item.modelCode]!
-        const isEmbedding = pick.kind === 'EMBEDDING'
+        const kind = pick.kind as AssistantModelKind
+        const isEmbedding = kind === 'EMBEDDING'
         await createModel({
           providerId: provider.providerId,
           modelCode: item.modelCode,
@@ -841,11 +890,12 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
           timeoutSeconds: null,
           inputPerMillionYuan: null,
           outputPerMillionYuan: null,
-          supportsTools: !isEmbedding,
+          // 判官不调工具，嵌入没有对话能力：只有对话模型才带"支持工具"
+          supportsTools: kind === 'CHAT',
           enabled: true,
           sortIdx: 0,
           remark: null,
-          kind: pick.kind as AssistantModelKind,
+          kind,
           dimension: isEmbedding ? Number(pick.dimension) : null,
         })
         created++
@@ -902,6 +952,9 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
               共 {catalogRows.length + vendorOnlyRows.length} 个可加；已选 {selected.length} 个。
             </div>
           </div>
+          <div className="form-hint mb-1">
+            同一型号可以在不同用途各存一条：判官要单独钉住，换对话模型不会连带换掉它；同一用途只能有一条。
+          </div>
 
           {/* 拉取状态只在"还没回来"与"失败"时说：成功时说一句"厂商清单 N 条"是把列表本身复述一遍 */}
           {discovered.isPending && <div className="form-hint">正在读取厂商清单…</div>}
@@ -930,34 +983,61 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
               </label>
 
               <div className="d-flex flex-column gap-1">
-                {visibleCatalog.map(item => (
-                  <div key={item.modelCode} className="border rounded p-2">
-                    <label className="form-check mb-0">
-                      <input type="checkbox" className="form-check-input" checked={selected.includes(item.modelCode)}
-                        aria-label={item.modelCode}
-                        onChange={() => toggle(item.modelCode)} />
-                      <span className="form-check-label">
-                        <span className="font-monospace">{item.modelCode}</span>
-                        <span className="text-secondary small ms-2">
-                          {item.displayName}
-                          {/* 用途与维度都要标出来：它们决定这条模型能不能用（嵌入还得与集合维度一致）。
-                              这些值就是从目录带过来的，落库时照原样写进去 */}
-                          {' · '}{KIND_LABEL[item.kind]}
-                          {item.dimension ? `（${item.dimension} 维）` : ''}
-                          {item.kind === 'CHAT' && item.contextWindow
-                            ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}`
-                            : ''}
-                          {item.kind === 'CHAT' ? (item.supportsTools ? ' · 支持工具' : ' · 不支持工具') : ''}
-                          {item.inputPerMillionYuan != null ? ` · 参考单价 入 ¥${item.inputPerMillionYuan}` : ''}
-                          {item.kind === 'CHAT' && item.outputPerMillionYuan != null
-                            ? ` / 出 ¥${item.outputPerMillionYuan}`
-                            : ''}
-                        </span>
-                      </span>
-                    </label>
-                    {item.remark && <div className="form-hint">{item.remark}</div>}
-                  </div>
-                ))}
+                {visibleCatalog.map(item => {
+                  const kind = kindOf(item.modelCode, item.kind)
+                  const added = isAdded(item.modelCode, kind)
+                  const isEmbedding = kind === 'EMBEDDING'
+                  return (
+                    <div key={item.modelCode} className="border rounded p-2">
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <label className="form-check mb-0">
+                          <input type="checkbox" className="form-check-input"
+                            checked={selected.includes(item.modelCode)}
+                            disabled={added}
+                            aria-label={item.modelCode}
+                            onChange={() => toggle(item.modelCode)} />
+                          <span className="form-check-label">
+                            <span className="font-monospace">{item.modelCode}</span>
+                            <span className="text-secondary small ms-2">
+                              {item.displayName}
+                              {/* 维度只在嵌入上有意义；窗口 / 单价对判官同样有用（判定要稳、也要算成本），
+                                  只有"支持工具"是对话独有的——判官不调工具 */}
+                              {item.dimension ? `（${item.dimension} 维）` : ''}
+                              {!isEmbedding && item.contextWindow
+                                ? ` · 窗口 ${item.contextWindow.toLocaleString('zh-CN')}`
+                                : ''}
+                              {kind === 'CHAT' ? (item.supportsTools ? ' · 支持工具' : ' · 不支持工具') : ''}
+                              {item.inputPerMillionYuan != null ? ` · 参考单价 入 ¥${item.inputPerMillionYuan}` : ''}
+                              {!isEmbedding && item.outputPerMillionYuan != null
+                                ? ` / 出 ¥${item.outputPerMillionYuan}`
+                                : ''}
+                            </span>
+                          </span>
+                        </label>
+
+                        {/* 用途可以改：对话型号也能当判官（同一型号两个用途各一条），
+                            已经以某种用途落库的那种在这里标「已加」并且不可勾选。
+                            只有一种可选用途的行（嵌入）不摆这个下拉——一个只有一项的下拉是噪声 */}
+                        {KIND_CHOICES_OF[item.kind].length > 1 && (
+                          <span className="d-flex align-items-center gap-1 ms-auto">
+                            <select className="form-select form-select-sm" style={{ width: 110 }}
+                              aria-label={`${item.modelCode} 的用途`} value={kind}
+                              onChange={(event) => setPick(item.modelCode, {
+                                kind: event.target.value as AssistantModelKind,
+                              })}>
+                              {KIND_CHOICES_OF[item.kind].map(choice => (
+                                <option key={choice} value={choice} disabled={isAdded(item.modelCode, choice)}>
+                                  {KIND_LABEL[choice]}{isAdded(item.modelCode, choice) ? '（已加）' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </span>
+                        )}
+                      </div>
+                      {item.remark && <div className="form-hint">{item.remark}</div>}
+                    </div>
+                  )
+                })}
 
                 {visibleVendorOnly.map(item => {
                   const pick = picks[item.modelCode]
@@ -985,14 +1065,17 @@ export function AddModelsDialog({ provider, onClose, onSaved, onManual }: {
                             不选就不给加：这两个值猜不出来，猜错会得到一个永远打不通的行 */}
                         {chosen && (
                           <span className="d-flex align-items-center gap-1 ms-auto">
-                            <select className="form-select form-select-sm" style={{ width: 120 }}
+                            <select className="form-select form-select-sm" style={{ width: 130 }}
                               aria-label={`${item.modelCode} 的用途`} value={pick?.kind ?? ''}
                               onChange={(event) => setPick(item.modelCode, {
                                 kind: event.target.value as AssistantModelKind | '',
                               })}>
                               <option value="">选用途…</option>
-                              <option value="CHAT">对话</option>
-                              <option value="EMBEDDING">嵌入</option>
+                              {VENDOR_KIND_CHOICES.map(choice => (
+                                <option key={choice} value={choice} disabled={isAdded(item.modelCode, choice)}>
+                                  {KIND_LABEL[choice]}{isAdded(item.modelCode, choice) ? '（已加）' : ''}
+                                </option>
+                              ))}
                             </select>
                             {pick?.kind === 'EMBEDDING' && (
                               <input className="form-control form-control-sm" style={{ width: 110 }}

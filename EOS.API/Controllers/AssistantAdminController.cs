@@ -84,9 +84,13 @@ public sealed class AssistantAdminController(
             fieldChanges: null,
             token);
 
-    /// <summary>用途的中文说法：留痕是给人读的，不该把 CHAT / EMBEDDING 这样的枚举名写进去。</summary>
-    private static string DescribeKind(AssistantModelKind kind)
-        => kind == AssistantModelKind.Embedding ? "嵌入" : "对话";
+    /// <summary>用途的中文说法：留痕是给人读的，不该把 CHAT / EMBEDDING / JUDGE 这样的枚举名写进去。</summary>
+    private static string DescribeKind(AssistantModelKind kind) => kind switch
+    {
+        AssistantModelKind.Embedding => "嵌入",
+        AssistantModelKind.Judge => "判官",
+        _ => "对话",
+    };
 
     /// <summary>
     /// 能力面的边界。写在服务端而不是让前端硬编码：这些是"能力面上根本表达不出来"的东西，
@@ -244,8 +248,7 @@ public sealed class AssistantAdminController(
         if (sessions.Count == 0) return new Dictionary<long, double>();
         var usage = await repository.ListSessionModelUsageAsync(
             sessions.Select(session => session.Id).ToList(), token);
-        var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
-            row => row.ModelCode, StringComparer.OrdinalIgnoreCase);
+        var priceByCode = AssistantUsageView.PriceByCode(await modelCatalog.ListModelsAsync(token));
         return AssistantUsageView.PerSessionCost(usage, priceByCode, registry.Current.Settings.Cost);
     }
 
@@ -654,7 +657,7 @@ public sealed class AssistantAdminController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少供应商。"));
         }
 
-        if (await modelCatalog.GetProviderAsync(providerId, token) is null)
+        if (await modelCatalog.GetProviderAsync(providerId, token) is not { } provider)
         {
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
         }
@@ -665,8 +668,21 @@ public sealed class AssistantAdminController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
         }
 
-        var modelId = await modelCatalog.CreateModelAsync(
-            ToModelWrite(request, providerId), userContext.UserId, token);
+        // 身份是 (供应商, 型号, 用途)：同一型号允许在对话 / 判官各存一条（判官要单独钉住），
+        // 但同一用途只能一条。先在这里挡一次，免得界面看到的是唯一键抛出的英文 SQL 错误。
+        var write = ToModelWrite(request, providerId);
+        var existing = await modelCatalog.ListModelsAsync(token);
+        if (existing.Any(item => item.ProviderId == providerId
+            && string.Equals(item.ModelCode, write.ModelCode, StringComparison.OrdinalIgnoreCase)
+            && item.Kind == write.Kind))
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "MODEL_EXISTS",
+                $"「{provider.DisplayName}」下已经有型号「{write.ModelCode}」的{DescribeKind(write.Kind)}模型了；"
+                + "同一型号可以在不同用途各存一条（例如既做对话又做判官），但同一用途只能有一条。"));
+        }
+
+        var modelId = await modelCatalog.CreateModelAsync(write, userContext.UserId, token);
         return Ok(new { modelId });
     }
 
@@ -814,8 +830,35 @@ public sealed class AssistantAdminController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
         }
 
+        var write = ToModelWrite(request, providerId, row.Kind);
+
+        // 改用途 = 把这条模型搬到另一个槽。它若正作为原用途的当前模型，搬走会让那个用途
+        // 静默变成"未配置"，而新槽里还可能撞上已有的当前模型（筛选唯一索引）。
+        // 所以这里要求先把"当前"取消掉，再改用途——一步一个动作，出问题时看得见是哪一步。
+        if (write.Kind != row.Kind && row.IsActive)
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "MODEL_KIND_IS_ACTIVE",
+                $"这条模型正作为{DescribeKind(row.Kind)}的当前模型；改用途会把它搬走，"
+                + $"让「{DescribeKind(row.Kind)}」立刻变成未配置。请先「取消{DescribeKind(row.Kind)}当前」，再改用途。"));
+        }
+
+        // 改标识 / 改用途都可能撞上同供应商同用途的另一条（身份 = 供应商 + 型号 + 用途）：
+        // 先挡一次，别让唯一键在界面留下一句英文 SQL 错误
+        var others = await modelCatalog.ListModelsAsync(token);
+        if (others.Any(item => item.ModelId != modelId
+            && item.ProviderId == providerId
+            && string.Equals(item.ModelCode, write.ModelCode, StringComparison.OrdinalIgnoreCase)
+            && item.Kind == write.Kind))
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "MODEL_EXISTS",
+                $"这个供应商下已经有型号「{write.ModelCode}」的{DescribeKind(write.Kind)}模型了，"
+                + "同一用途不能重复。"));
+        }
+
         var updated = await modelCatalog.UpdateModelAsync(
-            modelId, ToModelWrite(request, providerId, row.Kind), userContext.UserId, token);
+            modelId, write, userContext.UserId, token);
         if (!updated)
         {
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
@@ -969,9 +1012,9 @@ public sealed class AssistantAdminController(
         var since = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-(window - 1)), TimeSpan.Zero);
         var cost = registry.Current.Settings.Cost;
         // 按**模型单价**计价：看板上的成本要和台账里实际扣掉的钱用同一套口径。两边对不上，
-        // 正是"配了单价却不消费"最容易露出来的样子。
-        var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
-            row => row.ModelCode, StringComparer.OrdinalIgnoreCase);
+        // 正是"配了单价却不消费"最容易露出来的样子。同一型号可能有对话 + 判官两行，
+        // 查找表的取舍规则在 AssistantUsageView.PriceByCode 里（按型号聚合只能定一条价）。
+        var priceByCode = AssistantUsageView.PriceByCode(await modelCatalog.ListModelsAsync(token));
 
         var models = await usageRepository.GetPerModelUsageAsync(since, token);
         var trend = await usageRepository.GetDailyTrendAsync(since, token);

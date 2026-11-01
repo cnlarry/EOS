@@ -31,11 +31,11 @@ import {
 const orDash = (value: number | null | undefined) => (value == null ? '默认' : String(value))
 
 /**
- * 两个用途的中文名（区块标题 / 通知文案共用一份，免得同一个词在两处各写一遍）。
+ * 三种用途的中文名（区块标题 / 通知文案共用一份，免得同一个词在两处各写一遍）。
  *
- * <p>两个用途在界面上始终分开说：助手能不能聊天看对话模型，知识库能不能用看嵌入模型。
- * 合成一句"模型未配置"会让人去查错方向——它们坏掉的表现完全不同（"助手不回话"
- * 对"问制度类问题没答案"）。</p>
+ * <p>三种用途在界面上始终分开说：助手能不能聊天看对话模型，知识库能不能用看嵌入模型，
+ * 回答质量能不能判看判官模型。合成一句"模型未配置"会让人去查错方向——它们坏掉的表现完全不同
+ * （"助手不回话" / "问制度类问题没答案" / "判分一直回落"）。</p>
  */
 const KIND_TITLE: Record<AssistantModelKind, string> = {
   CHAT: '对话模型',
@@ -541,7 +541,8 @@ export function ModelAdminPage() {
             </ErpListCard>
 
             {/* 子表：所选供应商的模型。用途用一个小切换器分开，而不是并成一张表——
-                两个用途的列根本不一样（嵌入看维度、对话看窗口与输出） */}
+                列按用途各一套（嵌入看维度、对话与判官看窗口与输出）。
+                同一型号可以既在对话页签、又在判官页签各有一条（身份含用途，迁移 469） */}
             <section className="card erp-detail-card">
               <div className="card-header erp-card-toolbar">
                 <span className="small fw-semibold">

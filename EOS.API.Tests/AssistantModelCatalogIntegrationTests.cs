@@ -1,5 +1,6 @@
 using EOS.API.Data;
 using EOS.API.Data.Assistant;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.ModelAccess;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -364,6 +365,57 @@ public sealed class AssistantModelCatalogIntegrationTests : IDisposable
         // 同一供应商下重复的模型标识要被唯一约束挡住（不能靠界面自觉）
         await Assert.ThrowsAsync<SqlException>(() => _catalog.CreateModelAsync(
             TestWrite(providerId, "batch-a"), "eosdev-test", token));
+    }
+
+    /// <summary>
+    /// **同一型号可以在两个用途各存一条**（迁移 469）：身份是"供应商 + 型号 + 用途"。
+    ///
+    /// <para>
+    /// 钉的是判官最主要的用法——把同一个模型钉成判官、对话仍用它，于是"换对话模型"不会连带
+    /// 换掉判官。旧唯一键 (供应商, 型号) 下这一行根本插不进去，症状是界面上一句英文唯一约束错误。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Same_Model_Code_Can_Serve_Chat_And_Judge_With_Independent_Active_Slots()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+
+        // 开发环境可能已经配了判官：记下来，用例结束原样放回（Dispose 只还原对话与嵌入两条）
+        var previousJudge = (await _catalog.GetActiveAsync(AssistantModelKind.Judge, token))?.Model.ModelId;
+
+        var providerId = await NewProviderAsync(token);
+        var chat = await NewModelAsync(providerId, "deepseek-flash", token);
+        var judge = await NewModelAsync(providerId, "deepseek-flash", token, kind: AssistantModelKind.Judge);
+
+        var mine = (await _catalog.ListModelsAsync(token))
+            .Where(item => item.ProviderId == providerId)
+            .ToList();
+        Assert.Equal(2, mine.Count);
+        Assert.Contains(mine, item => item.ModelId == chat && item.Kind == AssistantModelKind.Chat);
+        Assert.Contains(mine, item => item.ModelId == judge && item.Kind == AssistantModelKind.Judge);
+
+        // 两个槽各自独立：对话那条设为当前，判官槽不受影响；判官设上去也不挤掉对话
+        Assert.True(await _catalog.ActivateModelAsync(chat, AssistantModelKind.Chat, "eosdev-test", token));
+        Assert.True(await _catalog.ActivateModelAsync(judge, AssistantModelKind.Judge, "eosdev-test", token));
+        Assert.Equal(chat, (await _catalog.GetActiveAsync(AssistantModelKind.Chat, token))!.Model.ModelId);
+        Assert.Equal(judge, (await _catalog.GetActiveAsync(AssistantModelKind.Judge, token))!.Model.ModelId);
+
+        // 同一用途下再插一条同型号仍要被挡：用途并进身份，不等于取消唯一性
+        await Assert.ThrowsAsync<SqlException>(() => _catalog.CreateModelAsync(
+            TestWrite(providerId, "deepseek-flash"), "eosdev-test", token));
+
+        // 用量与金额的"型号 → 单价"查找表也必须能承受这两行（同一型号只出一项，取对话那条）；
+        // 直接 ToDictionary 会在这里抛 "An item with the same key has already been added"
+        var prices = AssistantUsageView.PriceByCode(await _catalog.ListModelsAsync(token));
+        Assert.Equal(AssistantModelKind.Chat, prices["deepseek-flash"].Kind);
+
+        // 收尾：撤掉自己设的判官，再把开发环境原来的判官放回去
+        await _catalog.ClearActiveModelAsync(AssistantModelKind.Judge, token);
+        if (previousJudge is { } restore)
+        {
+            await _catalog.ActivateModelAsync(restore, AssistantModelKind.Judge, "eosdev-test", token);
+        }
     }
 
     private static AssistantModelWrite TestWrite(int providerId, string modelCode) => new(

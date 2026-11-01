@@ -90,6 +90,19 @@ public sealed class AssistantModelWriteValidationTests
     }
 
     /// <summary>
+    /// **判官与对话同族**：窗口 / 最大输出照旧可给，只有维度不行——判官不产生向量，
+    /// 带上维度说明这行其实是嵌入模型被错标了用途。
+    /// </summary>
+    [Fact]
+    public void Judge_Is_Chat_Shaped_But_Has_No_Dimension()
+    {
+        Assert.Null(AssistantAdminController.ValidateModel(Request(kind: "JUDGE")));
+        Assert.Null(AssistantAdminController.ValidateModel(Request(kind: "judge", contextWindow: 65_536)));
+        Assert.Null(AssistantAdminController.ValidateModel(Request(kind: "JUDGE", maxOutputTokens: 8_192)));
+        Assert.NotNull(AssistantAdminController.ValidateModel(Request(kind: "JUDGE", dimension: 1024)));
+    }
+
+    /// <summary>
     /// **编辑时不传用途 = 沿用原值**。缺省成对话那版实现下，一次"只改单价"的编辑会把嵌入模型
     /// 变成对话模型；而这条错不会报错——它只会让知识库某天突然说"没有嵌入模型"。
     /// </summary>

@@ -520,8 +520,7 @@ public sealed class AssistantController(
         var todayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
         var since = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-(window - 1)), TimeSpan.Zero);
 
-        var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
-            row => row.ModelCode, StringComparer.OrdinalIgnoreCase);
+        var priceByCode = AssistantUsageView.PriceByCode(await modelCatalog.ListModelsAsync(token));
 
         var models = await usageRepository.GetUserPerModelUsageAsync(userId, since, token);
         var trend = await usageRepository.GetUserDailyTrendAsync(userId, since, token);

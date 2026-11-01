@@ -510,17 +510,22 @@ describe('ModelAdminPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
     fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
 
-    // 目录里这家的型号：deepseek-chat 已在库 → 不列（勾了也会被唯一约束拒，
-    // 而拒在逐条提交的中途会留下半截结果）；其余两条可选
+    // 目录里这家的型号都会列出：deepseek-chat 已经作为**对话**落库，所以"对话"那种标「已加」、
+    // 复选框不可勾选；但同一型号仍能再加一条判官（身份含用途，迁移 469）。其余两条照常可选
     expect(await screen.findByLabelText('deepseek-reasoner', {}, { timeout: 10_000 })).toBeInTheDocument()
-    expect(screen.queryByLabelText('deepseek-chat')).toBeNull()
+    const chatCheckbox = screen.getByLabelText('deepseek-chat')
+    expect(chatCheckbox).toBeDisabled()
+    const chatKind = screen.getByLabelText('deepseek-chat 的用途') as HTMLSelectElement
+    expect(chatKind).toHaveValue('CHAT')
+    expect(within(chatKind).getByRole('option', { name: /对话/ })).toBeDisabled()
+    expect(within(chatKind).getByRole('option', { name: /判官/ })).not.toBeDisabled()
     // 打开就**自动拉了一次**厂商清单（不需要用户先点一个"拉取"）
     expect(harness.calls.filter(call => call.url.includes('/models/discover'))).toHaveLength(1)
 
     // 用途与维度**由目录带出来、不必人选也不必填**——这一步本来就只是"选"。
     // 断言落在整行的文本上：这行由多段拼成，逐段查容易随文案调整误报
     const embedRow = screen.getByLabelText('text-embedding-v4').closest('label')!
-    expect(embedRow.textContent).toContain('嵌入（1024 维）')
+    expect(embedRow.textContent).toContain('（1024 维）')
     expect(embedRow.textContent).toContain('参考单价 入 ¥0.5')
 
     fireEvent.click(screen.getByLabelText('deepseek-reasoner'))
@@ -544,6 +549,36 @@ describe('ModelAdminPage', () => {
     expect(embed.maxOutputTokens).toBeNull()
     expect(embed.supportsTools).toBe(false)
     expect(postedModels().every(item => item.providerId === 1)).toBe(true)
+  })
+
+  it('同一型号可以再加一条判官：用途切到判官即可勾选，落库时收敛掉工具能力', async () => {
+    const harness = installFetchMock()
+    const postedModels = () => harness.calls
+      .filter(call => call.method === 'POST' && call.url.includes('/admin/assistant/models'))
+      .map(call => JSON.parse(call.body!))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加模型' })).not.toBeDisabled(), { timeout: 10_000 })
+    fireEvent.click(screen.getByRole('button', { name: '添加模型' }))
+
+    // deepseek-chat 已经作为**对话**在库：默认那一种不可勾选，切到判官才解锁
+    const checkbox = await screen.findByLabelText('deepseek-chat', {}, { timeout: 10_000 })
+    expect(checkbox).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('deepseek-chat 的用途'), { target: { value: 'JUDGE' } })
+    expect(screen.getByLabelText('deepseek-chat')).not.toBeDisabled()
+
+    fireEvent.click(screen.getByLabelText('deepseek-chat'))
+    fireEvent.click(screen.getByRole('button', { name: '添加（1 个）' }))
+
+    await waitFor(() => expect(postedModels()).toHaveLength(1))
+    const posted = postedModels()[0]
+    expect(posted.modelCode).toBe('deepseek-chat')
+    expect(posted.kind).toBe('JUDGE')
+    // 判官不调工具：目录那条写着"支持工具"，落成判官时必须收敛成 false
+    expect(posted.supportsTools).toBe(false)
+    // 窗口与单价对判定仍然有用：照目录带上
+    expect(posted.contextWindow).toBe(65536)
+    expect(posted.dimension).toBeNull()
   })
 
   it('清单里没有的型号：从「添加模型」里的次要出口转手工填，仍以新增提交', async () => {
