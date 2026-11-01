@@ -457,6 +457,16 @@ export function ReportAdminPage() {
   const [sortEditor, setSortEditor] = useState<SortEditorState | null>(null)
 
   const modules = useQuery({ queryKey: ['report-admin', 'modules'], queryFn: () => apiClient.get<ModuleOption[]>('/report-admin/modules') })
+  // 能力位：这张页是配置面，写入口必须由服务端说了算。`canSetup = false` 时按钮禁用并说明原因，
+  // 而不是让只有浏览权的人点下去才吃 403（服务端每个写端点仍各自复核）。
+  const capabilities = useQuery({
+    queryKey: ['report-admin', 'capabilities'],
+    queryFn: () => apiClient.get<{ canBrowse: boolean; canSetup: boolean }>('/report-admin/capabilities'),
+  })
+  const canWrite = capabilities.data?.canSetup === true
+  const readOnlyReason = capabilities.isError
+    ? '未能确认写权限（能力位加载失败），已按只读显示；要修改请刷新页面重试'
+    : '只读：本账号有 2201 报表排序汇总设置的浏览权，没有设置权；要修改请让管理员放开该模块的 SETUP'
   const reports = useQuery({ queryKey: ['report-admin', 'reports'], queryFn: () => apiClient.get<ReportRow[]>('/report-admin/reports') })
   const headers = useQuery({ queryKey: ['report-admin', 'headers'], queryFn: () => apiClient.get<IdNameOption[]>('/report-admin/headers') })
   const tails = useQuery({ queryKey: ['report-admin', 'tails'], queryFn: () => apiClient.get<IdNameOption[]>('/report-admin/tails') })
@@ -498,21 +508,23 @@ export function ReportAdminPage() {
   }, [reports.data])
 
   const deleteReport = useCallback(async (row: ReportRow) => {
+    if (!canWrite) return
     if (!window.confirm(`确定删除报表「${row.reportName ?? row.reportId}」及其排序方案？`)) return
     try {
       await apiClient.delete(`/report-admin/reports/${encodeURIComponent(row.reportId)}`)
       if (selectedReport === row.reportId) { setSelectedReport(''); setReportSelection({}); setSortEditor(null) }
       await reports.refetch()
     } catch { /* 删除失败静默：保持列表现场，错误由下次刷新体现 */ }
-  }, [selectedReport, reports])
+  }, [canWrite, selectedReport, reports])
 
   const deleteSort = useCallback(async (row: SortRow) => {
+    if (!canWrite) return
     if (!window.confirm(`确定删除排序方案「${row.sortName ?? row.serialNo}」？`)) return
     try {
       await apiClient.delete(`/report-admin/sorts/${encodeURIComponent(selectedReport)}/${row.serialNo}`)
       await sorts.refetch()
     } catch { /* 删除失败静默 */ }
-  }, [selectedReport, sorts])
+  }, [canWrite, selectedReport, sorts])
 
   const handleReportSelectionChange = (next: RowSelectionState) => {
     setReportSelection(next)
@@ -560,12 +572,12 @@ export function ReportAdminPage() {
       meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
-          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} onClick={() => setReportEditor({ mode: 'edit', row: row.original })}>编辑</Button>
-          <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} onClick={() => void deleteReport(row.original)}>删除</Button>
+          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} disabled={!canWrite} title={canWrite ? undefined : readOnlyReason} onClick={() => setReportEditor({ mode: 'edit', row: row.original })}>编辑</Button>
+          <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} disabled={!canWrite} title={canWrite ? undefined : readOnlyReason} onClick={() => void deleteReport(row.original)}>删除</Button>
         </div>
       ),
     },
-  ], [headers.data, tails.data, companies.data, modules.data, deleteReport])
+  ], [headers.data, tails.data, companies.data, modules.data, deleteReport, canWrite, readOnlyReason])
 
   const sortColumns = useMemo<ColumnDef<SortRow, unknown>[]>(() => [
     selectColumn<SortRow>(),
@@ -581,14 +593,14 @@ export function ReportAdminPage() {
       meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, autoWidth: true },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
-          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} onClick={() => setSortEditor({ mode: 'edit', row: row.original })}>编辑</Button>
-          <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} onClick={() => void deleteSort(row.original)}>删除</Button>
+          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} disabled={!canWrite} title={canWrite ? undefined : readOnlyReason} onClick={() => setSortEditor({ mode: 'edit', row: row.original })}>编辑</Button>
+          <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} disabled={!canWrite} title={canWrite ? undefined : readOnlyReason} onClick={() => void deleteSort(row.original)}>删除</Button>
         </div>
       ),
     },
-  ], [deleteSort])
+  ], [deleteSort, canWrite, readOnlyReason])
 
-  if (modules.isPending) return <LoadingState label="正在加载模块…" />
+  if (modules.isPending || capabilities.isPending) return <LoadingState label="正在加载模块…" />
   if (modules.isError) return <ErrorState message={describeApiError(modules.error, '加载失败。')} onRetry={() => void modules.refetch()} />
 
   const selectedRow = rows.find((item) => item.reportId === selectedReport)
@@ -610,11 +622,12 @@ export function ReportAdminPage() {
         regionClassName="erp-master-table-region"
         sorting={{ mode: 'client' }}
         selection={{ value: reportSelection, onChange: handleReportSelectionChange }}
-        empty={<EmptyState title={keyword.trim() ? '未找到匹配报表' : '暂无报表定义'} description={keyword.trim() ? '换一个关键词试试。' : '点击「新增报表」建立第一条报表定义。'} />}
+        empty={<EmptyState title={keyword.trim() ? '未找到匹配报表' : '暂无报表定义'} description={keyword.trim() ? '换一个关键词试试。' : canWrite ? '点击「新增报表」建立第一条报表定义。' : '当前没有报表定义；本账号对该配置面只有浏览权。'} />}
         search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300} placeholder="搜索报表编号/名称/所属模块" ariaLabel="搜索报表" />}
         actions={<div className="d-flex gap-2 align-items-center">
+          {canWrite ? null : <span className="badge text-bg-secondary" title={readOnlyReason}>只读</span>}
           <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void reports.refetch()}>刷新</Button>
-          <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} onClick={() => setReportEditor({ mode: 'new' })}>新增报表</Button>
+          <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} disabled={!canWrite} title={canWrite ? undefined : readOnlyReason} onClick={() => setReportEditor({ mode: 'new' })}>新增报表</Button>
         </div>}
         header={reports.data ? <div className="erp-list-header">共 {rows.length} 个报表{keyword.trim() ? `，筛选后 ${filteredRows.length} 个` : ''}；点击行选中报表，下方显示其排序/分组方案。</div> : undefined}
       />
@@ -622,7 +635,7 @@ export function ReportAdminPage() {
         <div className="card-header erp-card-toolbar">
           <span className="small fw-semibold">{selectedReport ? `排序/分组方案（REPORT_SORT）——报表：${selectedReport}` : '排序/分组方案（REPORT_SORT）'}</span>
           <div className="ms-auto">
-            <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} disabled={!selectedReport} onClick={() => setSortEditor({ mode: 'new' })}>新增方案</Button>
+            <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} disabled={!selectedReport || !canWrite} title={canWrite ? undefined : readOnlyReason} onClick={() => setSortEditor({ mode: 'new' })}>新增方案</Button>
           </div>
         </div>
         {selectedReport && sorts.isPending ? <LoadingState label="正在加载排序方案…" /> : sorts.isError ? (
@@ -637,7 +650,7 @@ export function ReportAdminPage() {
             fetching={sorts.isFetching}
             sorting={{ mode: 'client' }}
             selection={{ value: sortSelection, onChange: setSortSelection }}
-            empty={<EmptyState title={selectedReport ? '暂无排序方案' : '未选择报表'} description={selectedReport ? '点击「新增方案」建立排序/分组方案。' : '请先选择上方报表，再维护其排序/分组方案。'} />}
+            empty={<EmptyState title={selectedReport ? '暂无排序方案' : '未选择报表'} description={selectedReport ? (canWrite ? '点击「新增方案」建立排序/分组方案。' : '这张报表没有排序/分组方案；本账号只有浏览权。') : '请先选择上方报表，再维护其排序/分组方案。'} />}
           />
         )}
       </section>

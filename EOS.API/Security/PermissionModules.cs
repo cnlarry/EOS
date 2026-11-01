@@ -9,6 +9,17 @@ public static class PermissionModules
     public const int SystemManagement = 2306;
 
     /// <summary>
+    /// 报表排序汇总设置（2201）：报表定义与排序/分组方案的维护面（定制页 `/admin/report-setup`）。
+    ///
+    /// <para>
+    /// 读 = `CanBrowse`，写 = `CanSetup`。它是**配置面**而不是单据，故不进统一表单：
+    /// 写路径带 5 张引用表的级联删除与版式包/开单公司/编号正则/字段白名单四类校验，
+    /// 通用管线一样都没有（见 `docs/guide/50-统一报表.md`）。
+    /// </para>
+    /// </summary>
+    public const int ReportAdmin = 2201;
+
+    /// <summary>
     /// 指标口径（2317）：`REPORT_METRIC` 维护面的门。读 = CanBrowse，写 = CanSetup。
     ///
     /// <para>

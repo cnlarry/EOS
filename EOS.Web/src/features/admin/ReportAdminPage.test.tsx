@@ -51,6 +51,25 @@ function renderPage() {
 }
 
 /**
+ * 端点桩：`canSetup` 决定能力位（`/report-admin/capabilities`）。
+ * 页面据此决定写入口是否禁用——服务端仍各自复核，这里钉的是**界面行为**。
+ */
+function mockEndpoints({ canSetup = true }: { canSetup?: boolean } = {}) {
+  apiClientMock.get.mockImplementation(async (path: string) => {
+    if (path.includes('/capabilities')) return { canBrowse: true, canSetup }
+    if (path.includes('/sorts')) return sorts
+    if (path.includes('/reports')) return reports
+    if (path.includes('/field-options')) return fieldOptions
+    if (path.includes('/formats')) return reportFormats
+    if (path.includes('/headers')) return headers
+    if (path.includes('/tails')) return tails
+    if (path.includes('/companies')) return companies
+    if (path.includes('/modules')) return modules
+    throw new Error(`unexpected path: ${path}`)
+  })
+}
+
+/**
  * 等首屏数据到位。超时给足：满量跑（上千条用例并行）时这一页的数据要几秒才到，
  * 默认 1s 会偶发失败——而那条失败的报错是"找不到 RPT_A"，看着像渲染错了，其实只是慢
  * （手册 06：这类用例断言的是**行为**而不是速度）。
@@ -84,17 +103,7 @@ async function openNewReportWithModule() {
 
 describe('ReportAdminPage', () => {
   beforeEach(() => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      if (path.includes('/sorts')) return sorts
-      if (path.includes('/reports')) return reports
-      if (path.includes('/field-options')) return fieldOptions
-      if (path.includes('/formats')) return reportFormats
-      if (path.includes('/headers')) return headers
-      if (path.includes('/tails')) return tails
-      if (path.includes('/companies')) return companies
-      if (path.includes('/modules')) return modules
-      throw new Error(`unexpected path: ${path}`)
-    })
+    mockEndpoints()
     apiClientMock.post.mockImplementation(async (path: string) => {
       if (path === '/chooser/query') return chooserModules
       return undefined
@@ -131,6 +140,30 @@ describe('ReportAdminPage', () => {
       expect(apiClientMock.get).toHaveBeenCalledWith('/report-admin/sorts?reportId=RPT_A')
     })
     expect(screen.getByText('排序/分组方案（REPORT_SORT）——报表：RPT_A')).toBeInTheDocument()
+  })
+
+  // 浏览权限账号（canSetup=false）不该看到可用的写入口：按钮禁用 + 顶部「只读」徽标说明原因，
+  // 而不是点下去才吃服务端 403。服务端仍按 CanSetup 复核，这条钉的是界面行为。
+  it('只有浏览权时写入口一律禁用并说明原因', async () => {
+    mockEndpoints({ canSetup: false })
+    renderPage()
+    await loaded()
+    expect(screen.getByText('只读')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新增报表' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '新增方案' })).toBeDisabled()
+    // 行内操作（报表与排序方案两张表）同样禁用
+    expect(within(rowOf('RPT_A')).getByRole('button', { name: '编辑' })).toBeDisabled()
+    expect(within(rowOf('RPT_A')).getByRole('button', { name: '删除' })).toBeDisabled()
+    // 只读不影响看数据
+    expect(screen.getByText('RPT_B')).toBeInTheDocument()
+  })
+
+  it('有设置权时不出现只读徽标，写入口可用', async () => {
+    renderPage()
+    await loaded()
+    expect(screen.queryByText('只读')).toBeNull()
+    expect(screen.getByRole('button', { name: '新增报表' })).toBeEnabled()
+    expect(within(rowOf('RPT_A')).getByRole('button', { name: '编辑' })).toBeEnabled()
   })
 
   it('点击行内选中该报表并清除其它行（rowClickSingleSelect 单选语义），排序区随之切换', async () => {

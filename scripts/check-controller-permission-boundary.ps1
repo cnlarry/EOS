@@ -43,7 +43,6 @@ $allowed = @(
     'EOS.API/Controllers/ModuleButtonAdminController.cs'
     'EOS.API/Controllers/ModuleGroupAdminController.cs'
     'EOS.API/Controllers/NavigationGroupsController.cs'
-    'EOS.API/Controllers/ReportAdminController.cs'
     'EOS.API/Controllers/RightsAdminController.cs'
     'EOS.API/Controllers/SettingsController.cs'
     'EOS.API/Controllers/TableDataController.cs'

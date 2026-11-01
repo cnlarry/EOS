@@ -20,10 +20,26 @@ namespace EOS.API.Controllers;
 public sealed class ReportAdminController(
     ReportAdminRepository repository,
     ReportFormatRepository reportFormats,
-    ModuleRightsRepository rightsRepository,
+    IPermissionService permissions,
     ReportMetricAdminRepository metrics,
     Features.Assistant.Metrics.ReportMetricAdminValidator metricValidator) : ControllerBase
 {
+    /// <summary>
+    /// 本页的能力位：能不能看、能不能改。
+    ///
+    /// <para>
+    /// 前端据此把「新增 / 编辑 / 删除」禁用并说清原因——否则只有浏览权的账号会先看到
+    /// 一整套写入口、点下去才吃 403。能力位只改善体验：每个写端点仍各自复核 `CanSetup`。
+    /// </para>
+    /// </summary>
+    [HttpGet("capabilities")]
+    public async Task<IActionResult> Capabilities(CancellationToken token)
+    {
+        var permission = await PermissionAsync(token);
+        if (permission is null || !permission.CanBrowse) return Forbid();
+        return Ok(new { canBrowse = true, canSetup = permission.CanSetup });
+    }
+
     /// <summary>
     /// 可绑定的打印版式（内置格式包）。版式自带数据契约（列清单），只能绑到同模块的报表上——
     /// 跨模块绑定会让版式引用到报表没有的列。
@@ -222,17 +238,17 @@ public sealed class ReportAdminController(
     }
 
     private async Task<bool> CanBrowseAsync(CancellationToken token)
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return false;
-        return (await rightsRepository.GetAsync(userId, 2201, token)).CanBrowse;
-    }
+        => (await PermissionAsync(token))?.CanBrowse == true;
 
     private async Task<bool> CanSetupAsync(CancellationToken token)
+        => (await PermissionAsync(token))?.CanSetup == true;
+
+    /// <summary>当前用户对本模块（2201）的权限；无身份时返回 null（调用方按拒绝处理）。</summary>
+    private async Task<ModulePermission?> PermissionAsync(CancellationToken token)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return false;
-        return (await rightsRepository.GetAsync(userId, 2201, token)).CanSetup;
+        if (userId is null) return null;
+        return await permissions.GetAsync(userId, PermissionModules.ReportAdmin, token);
     }
 
     // ---------- 指标口径（REPORT_METRIC）维护 ----------
@@ -288,16 +304,15 @@ public sealed class ReportAdminController(
     private string CurrentUserId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
     private async Task<bool> CanStewardBrowseAsync(CancellationToken token)
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return false;
-        return (await rightsRepository.GetAsync(userId, PermissionModules.MetricCatalog, token)).CanBrowse;
-    }
+        => (await StewardPermissionAsync(token))?.CanBrowse == true;
 
     private async Task<bool> CanStewardSetupAsync(CancellationToken token)
+        => (await StewardPermissionAsync(token))?.CanSetup == true;
+
+    private async Task<ModulePermission?> StewardPermissionAsync(CancellationToken token)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return false;
-        return (await rightsRepository.GetAsync(userId, PermissionModules.MetricCatalog, token)).CanSetup;
+        if (userId is null) return null;
+        return await permissions.GetAsync(userId, PermissionModules.MetricCatalog, token);
     }
 }
