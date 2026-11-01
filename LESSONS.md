@@ -13,11 +13,11 @@
 | 一、真库用例与双路对拍（L1–L17） | 夹具、对拍口径、影子运行 | 写夹具 / 跑对拍 / 动配置前后 |
 | 二、迁移、SQL 与库对象（L18–L26、L69–L70、L73、L77、L80、L85、L115、L123、L128） | 迁移脚本、T-SQL、依赖核查、建库种子数据、迁移台账、跨表 OR 谓词的执行计划、迁移被服务重启落库、种子在新库上真跑 | 写迁移 / 退役库对象 / 查依赖 / 加种子数据 / 删自引用树 / 回填数据 / 台账报重复 / 干跑报 SET 选项 / 写带 OR 的连库查询 / 动大改名迁移 |
 | 三、配置面与元数据（L27–L34、L72、L74–L75、L118） | 模块位、效果与校验配置、字段元数据、元数据与物理列对账 | 改元数据 / 加效果 / 建新表 / 动模块树 / 写跨主从表核查 SQL |
-| 四、门禁与验证（L35–L39、L92、L95、L124–L125、L127、L132） | 门禁能拦什么、拦不住什么、失败结论本身可信吗、按名判定的口径会随改名扩张、验证取样是否在可见范围内 | 改完准备声称"通过"之前 / 批量改名之后 |
+| 四、门禁与验证（L35–L39、L92、L95、L124–L125、L127、L132、L134） | 门禁能拦什么、拦不住什么、失败结论本身可信吗、按名判定的口径会随改名扩张、验证取样是否在可见范围内、改字段顺序会让快照静默落后 | 改完准备声称"通过"之前 / 批量改名之后 / 动字段读取的排序与集合 |
 | 五、测试写法（L40–L47、L88、L91、L97） | 怎么写出会失败的断言、验收脚本的夹具取值、谁去构造畸形入参 | 写测试 / 跑测试 / 写验收脚本 |
 | 六、发布与版本（L48–L50） | 打标签、CHANGELOG、gh 凭据 | 发布 |
 | 七、并发协作与文档（L51–L55） | 共享文件、暂存范围、文档同步 | 多会话并行 / 提交 / 改手册 |
-| 八、构建、工具链与环境（L56–L62、L68、L86、L119、L126、L131） | dotnet、sqlcmd、长驻进程、Playwright、测试输出目录、submodule 内的 testhost | 构建失败 / 脚本卡住 / 工具起不来 / 一批测试离奇全红 / 子模块里跑不起单测 |
+| 八、构建、工具链与环境（L56–L62、L68、L86、L119、L126、L131、L133、L135） | dotnet、sqlcmd、长驻进程、Playwright、测试输出目录、submodule 内的 testhost、环境变量与进程继承、迁移里 DDL 与 DML 必须分批 | 构建失败 / 脚本卡住 / 工具起不来 / 一批测试离奇全红 / 子模块里跑不起单测 / 改了密钥仍 401 / 迁移报"列名无效" |
 | 九、前端界面（L63、L76、L89、L96、L116、L117） | 表格列与输入控件、焦点、样式库升级与主题开关、页面布局抖动、列表读不到数据、吸顶表头底色、虚拟化滚动 | 改前端表格 / 加可编辑列 / 换样式库 / 页面高度随内容变 / 新列表页空数据 / 加 sticky 表头 / 大列表滚动白块 |
 | 十、模型接入与助手编排（L64、L130） | 模型输出通道、回答净化、评估样本的来源锚定 | 接模型 / 改助手对话编排 / 动被样本锚定的成员 |
 | 十一、指标与口径（L65） | 口径来源模块、行过滤归属 | 加口径 / 改指标取数 |
@@ -1578,3 +1578,54 @@
 - **防线**：验收子模块里的用例时直接按上述方式跑；看到 `Win32Exception (5)` +
   `SetParentProcessExitCallback` 就先怀疑路径，而不是先去改测试或升包。
   改 Harness 代码后两手都要过：`dotnet build Agent.Harness.slnx` 与（复制后）`dotnet vstest`。
+
+### L135 迁移里 ALTER TABLE 加列后，同一批次里引用新列必然"列名无效"
+
+- **触发／症状**：迁移 `460` 先 `ALTER TABLE ... ADD FIX_AT`，随后同一个批次里 `UPDATE ... SET FIX_AT = ...`，
+  执行报 `列名 'FIX_AT' 无效`；把脚本单独拿去跑也一样。EOS.API 启动日志只写
+  `SQL exception has occurred in script: '...460...'`，看不到具体语句。
+- **根因**：SQL Server **整批编译**：同一批次里引用的列必须在编译期存在。`ALTER` 与后续语句放在同一批，
+  即使执行顺序在前也编译不过。
+- **处置**：用 `GO` 把 DDL 与引用它的 DML 分开（DbUp 按 `GO` 切批）；`COL_LENGTH(...) IS NULL` 做幂等守卫。
+- **防线**：迁移里"加列/加表 + 立刻用它"的模式一律 `GO` 分批。排查时用
+  `BEGIN TRAN; <脚本全文>; ROLLBACK;` 手工跑一遍并打印 `SqlException.LineNumber`，比翻启动日志快。
+
+### L134 改字段读取的 ORDER BY 会让"全量快照"静默落后（门禁抓得住，肉眼看不出来）
+
+- **触发／症状**：为"明细按物理列序展示"给 `WorkbenchDefinitionBuilder.ReadFields` 加了一个
+  `@OrderByPhysicalColumns` 分支。跑 `check-snapshot-staleness.ps1` 报
+  `stale with NO dirty flag`：`module 110105 银行帐号资料 v3 (len 10063 -> 6365)`，
+  且 diff 显示快照首个主表字段是 `AMOUNT`、重建后是 `BANK_ID`——字段内容没变，**顺序变了**。
+- **根因**：旧 ORDER BY 有三段：`NULL 排最后` → `个人列序/VERIFY_INDEX` → `F_ID`。
+  改写成 `CASE WHEN @OrderByPhysicalColumns=1 ... ELSE COALESCE(u.F_IDX, ...) END` 时**丢了第一段**，
+  于是"没有个人列配置"的模块（`u.F_IDX` 全为 NULL）默认字段顺序整体前移——
+  定义 JSON 变了，快照没重发布 ⇒ 静默落后。这类差异只在"重建一次定义"时可见。
+- **处置**：把第一段按分支还原（`CASE WHEN @OrderByPhysicalColumns=1 THEN 0 ELSE CASE WHEN u.F_IDX IS NULL THEN 1 ELSE 0 END END`），
+  两个受影响的模块各重发布一次（`POST /api/v1/workbench-definitions/publish`，`110309` 因 457 改了规则消息、
+  `110105` 属历史漂移），复跑 `262/262 fresh`。
+- **防线**：动字段读取的 `ORDER BY` / 字段集合，**必须跑一次 `check-snapshot-staleness.ps1`**——
+  它比对的是"快照 vs 按当前代码重建"，不是数据行；单测与编译都不会红。
+  看到 `stale 且无脏标记`，先怀疑"排序/集合变了"，不要先怀疑数据。
+
+### L133 改完用户级密钥变量再重启，进程仍拿旧值：界面说"配好了"，检索却 401
+
+- **触发／症状**：`EOS_ASSISTANT_KEY_ZHIPU`（嵌入供应商密钥）在**用户级**已更新，
+  重启 `EOS.API` 后 `kb_search` 仍返回 `AI_MODEL_UNAUTHORIZED`；管理端点的
+  `apiKeyConfigured=true`、掩码末四位看着也是新值，但检索一律失败。
+  同一台机器上聊天（另一家供应商）却一切正常，容易误判成"嵌入模型/维度配错"。
+- **根因**：进程环境在**启动那一刻**从父进程继承。父 shell 早于用户级变量修改时，
+  新起的进程拿到的仍是旧值——注册表（User）与进程内（Process）是两份事实。
+  实测：`[Environment]::GetEnvironmentVariable('EOS_ASSISTANT_KEY_ZHIPU','Process')`
+  尾部 `RtRf`（旧），`'User'` 尾部 `xx7T`（新）。
+- **处置**：不用重启——给管理端点写回当前密钥即可（`PUT /api/v1/admin/assistant/providers/{id}/key`，
+  返回里的 `processUpdated` / `persisted` 说明它是只改了进程还是也落了用户级），
+  然后 `POST /api/v1/assistant/kb/search` 验证真能命中。
+  若坚持重启，必须从**新开终端**启动，或在启动命令前把 User 值注入当前 shell 的环境变量。
+- **防线**：判断"密钥是否生效"要看**进程内**的值（端点掩码 + 一次真实调用），
+  不能只看界面 `configured=true`；排查顺序固定为 `Process 值 → User 值 → 端点重设 → 真实调用`。
+- **顺带一条进程维护口径**：`dotnet bin/Debug/net10.0/EOS.API.dll` 起的进程**进程名是 `dotnet`**，
+  `Get-Process EOS.API` 抓不到它；要停就按端口找：
+  `(Get-NetTCPConnection -LocalPort 5261 -State Listen).OwningProcess | Stop-Process -Force`，
+  否则旧进程继续占着 `bin` 里的 dll，`dotnet build` 会以 `MSB3021/MSB3027`（文件被 NET Host 锁定）失败，
+  而 `health/live` 仍答 200 —— 看起来"重启成功"，实际跑的还是旧二进制。
+

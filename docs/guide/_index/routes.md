@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: bbfd130ba42d0839 -->
+<!-- code-map-fingerprint: 4abe90fcd452d4fb -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,10 +11,14 @@
 
 ## 一、后端路由
 
-- 控制器 41 个、方法级路由属性 291 处、解析出 291 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 42 个、方法级路由属性 302 处、解析出 302 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
+| GET | `api/v1/admin/assistant/eval/layers` | EvalLayers | `AssistantAdminController.cs` |
+| GET | `api/v1/admin/assistant/eval/runs` | EvalRuns | `AssistantAdminController.cs` |
+| POST | `api/v1/admin/assistant/eval/runs` | RunEval | `AssistantAdminController.cs` |
+| GET | `api/v1/admin/assistant/eval/runs/{runId:int}` | EvalRun | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/kb/collections` | ListKbCollections | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/kb/documents` | ListKbDocuments | `AssistantAdminController.cs` |
 | DELETE | `api/v1/admin/assistant/kb/documents/{docId:long}` | DeleteKbDocument | `AssistantAdminController.cs` |
@@ -26,11 +30,14 @@
 | POST | `api/v1/admin/assistant/models/active/clear` | ClearActiveModel | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/models/discover` | DiscoverModels | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/presets` | ListPresets | `AssistantAdminController.cs` |
+| GET | `api/v1/admin/assistant/prompt-segments` | PromptSegments | `AssistantAdminController.cs` |
+| PUT | `api/v1/admin/assistant/prompt-segments/{key}` | UpdatePromptSegment | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/providers` | ListProviders | `AssistantAdminController.cs` |
 | POST | `api/v1/admin/assistant/providers` | CreateProvider | `AssistantAdminController.cs` |
 | DELETE | `api/v1/admin/assistant/providers/{providerId:int}` | DeleteProvider | `AssistantAdminController.cs` |
 | PUT | `api/v1/admin/assistant/providers/{providerId:int}` | UpdateProvider | `AssistantAdminController.cs` |
 | PUT | `api/v1/admin/assistant/providers/{providerId:int}/key` | SetProviderKey | `AssistantAdminController.cs` |
+| GET | `api/v1/admin/assistant/quality` | Get | `AssistantQualityController.cs` |
 | GET | `api/v1/admin/assistant/sessions` | ListSessions | `AssistantAdminController.cs` |
 | DELETE | `api/v1/admin/assistant/sessions/{sessionId:long}` | DeleteSession | `AssistantAdminController.cs` |
 | PUT | `api/v1/admin/assistant/sessions/{sessionId:long}/archive` | ArchiveSession | `AssistantAdminController.cs` |
@@ -248,6 +255,10 @@
 | GET | `api/v1/report-admin/field-options` | FieldOptions | `ReportAdminController.cs` |
 | GET | `api/v1/report-admin/formats` | Formats | `ReportAdminController.cs` |
 | GET | `api/v1/report-admin/headers` | Headers | `ReportAdminController.cs` |
+| GET | `api/v1/report-admin/metrics` | Metrics | `ReportAdminController.cs` |
+| POST | `api/v1/report-admin/metrics` | CreateMetric | `ReportAdminController.cs` |
+| DELETE | `api/v1/report-admin/metrics/{metricId}` | DeleteMetric | `ReportAdminController.cs` |
+| PUT | `api/v1/report-admin/metrics/{metricId}` | UpdateMetric | `ReportAdminController.cs` |
 | GET | `api/v1/report-admin/modules` | Modules | `ReportAdminController.cs` |
 | GET | `api/v1/report-admin/reports` | Reports | `ReportAdminController.cs` |
 | POST | `api/v1/report-admin/reports` | CreateReport | `ReportAdminController.cs` |
@@ -309,12 +320,13 @@
 
 ## 二、前端页面路由
 
-- 源文件 `path:` 60 处、解析出 60 条（两者必须相等）。权限模块号来自包住该路由的
+- 源文件 `path:` 62 处、解析出 62 条（两者必须相等）。权限模块号来自包住该路由的
   `RequirePermission permission={moduleReadPermission(N)}`；空表示该页面不需要模块读权限（如登录后即可见的助手页）。
 
 | 路径 | 页面 | 权限模块 |
 |---|---|---|
 | `/*` | `UnknownRoutePage` | — |
+| `/admin/assistant/eval` | `EvalRunPage` | 3107 |
 | `/admin/assistant/kb` | `KbAdminPage` | 3103 |
 | `/admin/assistant/mechanism` | `MechanismOverviewPage` | 3104 |
 | `/admin/assistant/models` | `ModelAdminPage` | 3102 |
@@ -330,6 +342,7 @@
 | `/admin/groups/:groupId/rights` | `GroupRightsPage` | 2305 |
 | `/admin/logs` | `LogAdminPage` | 2313 |
 | `/admin/menus` | `MenuAdminPage` | 230101 |
+| `/admin/metrics` | `MetricCatalogPage` | 2317 |
 | `/admin/module-actions` | `ModuleActionsPage` | 230104 |
 | `/admin/module-buttons` | `ModuleButtonsPage` | 230103 |
 | `/admin/module-groups` | `ModuleGroupsPage` | 230102 |

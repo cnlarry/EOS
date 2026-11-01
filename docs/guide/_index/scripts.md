@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: 55555e0d10b28b20 -->
+<!-- inventory-fingerprint: f699bc7a7fb1a361 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,11 +21,11 @@
 
 ## 一、总览
 
-- 入库脚本 **94** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 21 · 工具 33
+- 入库脚本 **96** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 23 · 工具 33
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**12** 个，见第七节
-- `scripts/oneshot/` 待清理的一次性脚本：**5** 个，见第二节
+- `scripts/oneshot/` 待清理的一次性脚本：**7** 个，见第二节
 - 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **67** 个——被 `.git/info/exclude` 排除，
   别人的克隆里没有它们，故不参与上面的引用统计。
 
@@ -36,10 +36,12 @@
 
 | 脚本 | 锚点 | 作用 |
 |---|---|---|
+| `gen-458-eval-case-seed.ps1` | **缺锚点** | 一次性｜锚点：迁移 458（助手评估用例模块）——把现有种子文件导出成迁移的种子数据段。 |
 | `gen-numeric-batch-migration.ps1` | ADR-038（各批 | 一次性脚本：为指定业务域生成分片的类型迁移 SQL。 |
 | `numeric-batch-prescan.ps1` | ADR-038（各批类型迁移前的溢出预扫描） | 一次性脚本：指定业务域的 float 列溢出预扫描，只读不写。 |
 | `numeric-role-registry.ps1` | ADR-038 | 一次性脚本：推断 float 列的语义族并生成迁移 357（随 ADR-038 收口失效） |
 | `rebuild-workbench-snapshots.ps1` | 迁移 | 重建全部工作台快照：备份当前快照 → 清空版本历史 → 全量重新发布。 |
+| `seed-eval-candidates-2026-10-31.ps1` | **缺锚点** | 一次性｜锚点：模块 3106（助手评估用例）——导入 2026-10-31 的三批候选。 |
 | `sync-bootstrap-numeric-types.ps1` | ADR-038 | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 |
 
 ## 三、门禁（CI 自动跑，不需要你动手）
@@ -52,14 +54,14 @@
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 9 |
 | `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 4 |
 | `check-controller-sql-boundary.ps1` | 静态门禁：控制器不得持有数据访问（ADR-036 §5 断言 A）。 | 仅静态 | 3 |
-| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 7 |
+| `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 8 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
-| `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 11 |
+| `check-di-registrations.ps1` | DI quality gate: every controller dependency must be registered in Program.cs. | 仅静态 | 12 |
 | `check-docs.ps1` | 文档陈旧检查：确认 docs/status.md 未长期未刷新、README 未复述里程碑、 活跃计划未长期未刷新、活跃文档未残留指向已归档文件的死链， 以及**随仓库分发的文档里，相对链接必须指向已入库的文件**。 | git | 10 |
 | `check-identifier-single-source.ps1` | 静态门禁：动态标识符白名单只有一处实现（ADR-036 §5 断言 C）。 | 仅静态 | 3 |
-| `check-migration-numbers.ps1` | 迁移编号唯一性门禁：同一个编号只能对应一个迁移脚本，且文件名必须符合 `NNN_描述.sql`。 | 仅静态 | 5 |
+| `check-migration-numbers.ps1` | 迁移编号唯一性门禁：同一个编号只能对应一个迁移脚本，且文件名必须符合 `NNN_描述.sql`。 | 仅静态 | 6 |
 | `check-numeric-column-types.ps1` | 静态门禁：迁移脚本不得新增 float 列。 | 仅静态 | 4 |
-| `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 8 |
+| `check-page-shell.ps1` | 前端「页面外壳只有一套」门禁：JSX 里不得再手写字面意义上的壳。 | 仅静态 | 9 |
 | `check-retired-db-objects.ps1` | 退役库对象门禁：已退役的库列 / 库对象不得再被生产代码与脚本引用。 | 仅静态 | 9 |
 | `check-sensitive-terms.ps1` | 扫描文本文件中的敏感信息（真实企业名、客户名、个人身份信息），拦截其随代码提交扩散。 | git | 3 |
 | `check-tab-navigation.ps1` | 前端「工作区导航」门禁：跨模块跳转与返回只允许一种写法（ADR-040）。 | 仅静态 | 3 |
@@ -82,7 +84,7 @@
 | `check-lifecycle-columns.ps1` | 单据生命周期列结构巡检：状态位/建立组必须 NOT NULL DEFAULT，经办人/日期列必须保持可空。 | 连库 | 10 |
 | `check-live-fixture-hygiene.ps1` | 真库用例夹具卫生门禁：写入只能落在用例**自己造**的键上。 | 仅静态 | 5 |
 | `check-master-amount-rollup.ps1` | 连库门禁：主表金额汇总（主表列 = 明细同名列 SUM）的三项断言。 | 连库 | 2 |
-| `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 7 |
+| `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 8 |
 | `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
 | `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 9 |
 | `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 4 |
@@ -105,6 +107,7 @@
 | `clean-placeholder-formula-rows.ps1` | 删除服务型效果下遗留的全空占位公式行，删除前把每一行**逐列**备份成可回退的数据文件。 | 连库 | 1 |
 | `compare-form-layout-parity.ps1` | 模块级表单版式改造的「观感零变化」对拍：改造前抓基线，改造后逐模块比对。 | 连库、需 API 在线、工具链 | 1 |
 | `compare-report-rowset-parity.ps1` | 报表归属迁移的「取数结果零变化」对拍：改造前抓基线，改造后逐张比对。 | 连库、需 API 在线 | 独立工具 |
+| `gen-458-eval-case-seed.ps1` | 一次性｜锚点：迁移 458（助手评估用例模块）——把现有种子文件导出成迁移的种子数据段。 | 仅静态 | 2 |
 | `gen-numeric-batch-migration.ps1` | 一次性脚本：为指定业务域生成分片的类型迁移 SQL。 | 连库 | 1 |
 | `materialize-form-layouts.ps1` | 把「推导默认版式」落成真实的版式行（模块级版式退役字段级配置的前置数据搬运；服务端设计态读法生成，本脚本只做"读出来 → 原样回写"）。 | 需 API 在线 | 独立工具 |
 | `metadata-disposition.ps1` | 阶段 1 元数据异常清单处置：生成逐条处置记录（disposition.csv）并对机械性 TYPE_MISMATCH 直接修复（F_TYPE 对齐物理列类型族）。 | 仅静态 | 独立工具 |
@@ -115,6 +118,7 @@
 | `restore-legacy-groundtruth-sprocs.ps1` | 还原"旧过程基准"过程：CompareAfterSave.ps1 用来做特征化的遗留保存后钩子。 | 连库 | 2 |
 | `restore-placeholder-formula-rows.ps1` | 按清理脚本留下的备份文件，把占位公式行**逐列按原值**插回。 | 连库 | 1 |
 | `rollback-report-attribution.ps1` | 回滚报表归属列（REPORT.M_IDX）的落库：删列 + 卸约束 + 撤销迁移台账行。 | 连库 | 独立工具 |
+| `seed-eval-candidates-2026-10-31.ps1` | 一次性｜锚点：模块 3106（助手评估用例）——导入 2026-10-31 的三批候选。 | 连库 | 1 |
 | `sync-bootstrap-numeric-types.ps1` | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 | 仅静态 | 2 |
 | `verify-adr024-remainder.ps1` | ADR-024 收尾批的落库与运行态复验（重启 EOS.API 之后跑）。 | 连库、需 API 在线 | 独立工具 |
 
