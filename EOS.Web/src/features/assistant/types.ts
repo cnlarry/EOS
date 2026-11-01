@@ -19,6 +19,11 @@ export interface AssistantSession {
   /** 该会话累计消耗的 token（prompt + completion 之和，只有管理侧列表会算）。 */
   messageTokens?: number
   /**
+   * 该会话**估算**花了多少钱（元，只有管理侧列表会算）。按每条回复记录时所用模型的单价折算、
+   * 模型单价取不回时退全局兜底价，所以是"约"；缺省/null = 未计算，不是 0 元。
+   */
+  estimatedCostYuan?: number | null
+  /**
    * 归属用户的姓名（管理侧列表经 SYS_USER_ACCOUNT/SYS_EMPLOYEE 取出）。`userId` 是账号/编号，
    * 看列表的人要的是"这是谁的会话"；取不到时为 null，界面回落显示账号。
    */

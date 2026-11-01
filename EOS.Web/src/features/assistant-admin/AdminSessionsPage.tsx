@@ -49,9 +49,15 @@ function formatTime(value: string) {
  * </para>
  *
  * <para>
- * **只看元数据，不提供对话正文**（ADR-030 §2）：列表给出归属用户 / 标题 / 消息数 / 时间 / 归档状态，
- * 管理动作是归档·取消归档与"仅对已归档开放"的永久删除（单行与批量同一口径）。要看正文是另一个
- * 需要独立权限位与审计留痕的决定，不要因为"反正有读权限"就把它加进来。
+ * **只看元数据，不提供对话正文**（ADR-030 §2）：列表给出归属用户 / 标题 / 消息数 / token / 金额 /
+ * 时间 / 归档状态，管理动作是归档·取消归档与"仅对已归档开放"的永久删除（单行与批量同一口径）。
+ * 要看正文是另一个需要独立权限位与审计留痕的决定，不要因为"反正有读权限"就把它加进来。
+ * </para>
+ *
+ * <para>
+ * **金额是估算，且是服务端算的**：按每条回复记录时所用模型的单价折算，同一会话跑过多个模型就
+ * 分别计价再相加（单价取不回时用全局兜底价，与用量看板同一口径）。它因此**不能排序**——
+ * 排序必须在服务端做，而这份钱不在 SQL 的排序键里；要按花费找会话，先按 Tokens 排。
  * </para>
  */
 export function AdminSessionsPage() {
@@ -246,6 +252,23 @@ export function AdminSessionsPage() {
       ),
     },
     {
+      accessorKey: 'estimatedCostYuan',
+      header: '估算金额（元）',
+      // 不可排序：金额由服务端**按模型单价折算**（同一会话可能跑过多个模型，SQL 里排不出来），
+      // 前端排只会排到当前这一页——那比不给排序更糟。想找"最贵的会话"可以先按 Tokens 排。
+      enableSorting: false,
+      meta: { className: 'text-end text-nowrap', minWidth: 120 },
+      cell: (info) => {
+        const value = info.getValue() as number | null | undefined
+        // 四位小数与「用量」看板同一精度：一轮对话常常只有几分钱，两位小数会把它们全显示成 0.00
+        return (
+          <span className="text-secondary" title="按各模型单价估算（与用量看板同一口径）">
+            {value == null ? '—' : `¥${value.toFixed(4)}`}
+          </span>
+        )
+      },
+    },
+    {
       accessorKey: 'lastActiveAt',
       header: '最近活跃',
       meta: { className: 'text-nowrap' },
@@ -327,7 +350,7 @@ export function AdminSessionsPage() {
             </span>
           )}
           <span className="ms-auto text-secondary small">
-            跨用户查看会话元数据；不含对话正文，归档＝可恢复，删除只对已归档开放
+            跨用户查看会话元数据；不含对话正文，归档＝可恢复，删除只对已归档开放；金额按各模型单价估算
           </span>
         </div>}
         footer={!sessions.isPending && !sessions.isError

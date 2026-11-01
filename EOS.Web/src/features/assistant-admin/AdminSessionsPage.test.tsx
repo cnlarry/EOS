@@ -23,7 +23,7 @@ function sessionRow(
   userId: string,
   title: string,
   archivedAt: string | null,
-  extra: { employeeName?: string | null; messageTokens?: number } = {},
+  extra: { employeeName?: string | null; messageTokens?: number; estimatedCostYuan?: number | null } = {},
 ) {
   return {
     id, userId, title,
@@ -31,6 +31,8 @@ function sessionRow(
     archivedAt, messageCount: 4,
     employeeName: extra.employeeName ?? null,
     messageTokens: extra.messageTokens ?? 0,
+    // 服务端总会给一个数（没花钱就是 0），所以默认 0 而不是 null——null 只表示"没算过"
+    estimatedCostYuan: extra.estimatedCostYuan ?? 0,
   }
 }
 
@@ -91,8 +93,10 @@ describe('AdminSessionsPage', () => {
   it('跨用户列出会话：归属用户与消息数都看得见', async () => {
     installFetchMock({
       sessions: [
-        sessionRow('11', 'zhangsan', '十月采购对账', null, { employeeName: '张三', messageTokens: 12345 }),
-        sessionRow('12', 'lisi', '八月盘点', '2026-09-20T02:00:00Z', { employeeName: '李四', messageTokens: 678 }),
+        sessionRow('11', 'zhangsan', '十月采购对账', null,
+          { employeeName: '张三', messageTokens: 12345, estimatedCostYuan: 0.0123 }),
+        sessionRow('12', 'lisi', '八月盘点', '2026-09-20T02:00:00Z',
+          { employeeName: '李四', messageTokens: 678, estimatedCostYuan: 1.5 }),
         // 账号不在 SYS_USER_ACCOUNT 里（例如测试账号）：姓名取不到，界面要如实说，不假装它有姓名
         sessionRow('13', 'eosdev-assistant-test-a', '测试会话', null),
       ],
@@ -112,6 +116,10 @@ describe('AdminSessionsPage', () => {
     expect(screen.getByText('12,345')).toBeInTheDocument()
     expect(screen.getByText('678')).toBeInTheDocument()
 
+    // 金额列：四位小数（一轮对话常常只有几分钱，两位小数会全抹成 0.00）
+    expect(screen.getByText('¥0.0123')).toBeInTheDocument()
+    expect(screen.getByText('¥1.5000')).toBeInTheDocument()
+
     // 管理侧的关键能力：同一条列表里同时出现不同用户的会话。
     // 账号在"按归属用户筛选"的 option 与行内次行各有一份，所以按"至少两处"来断言
     expect(screen.getAllByText('zhangsan').length).toBeGreaterThanOrEqual(2)
@@ -124,6 +132,7 @@ describe('AdminSessionsPage', () => {
     expect(heads.some(text => text.includes('归属用户'))).toBe(true)
     expect(heads.some(text => text.includes('消息'))).toBe(true)
     expect(heads.some(text => text.includes('Tokens'))).toBe(true)
+    expect(heads.some(text => text.includes('估算金额'))).toBe(true)
   })
 
   it('删除只对已归档开放：在列的行不给删除按钮', async () => {

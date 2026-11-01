@@ -81,4 +81,41 @@ public static class AssistantUsageView
 
         return result;
     }
+
+    /// <summary>
+    /// 按**会话**折算金额（会话管理列表的「金额」列）。
+    ///
+    /// <para>
+    /// 一个会话可能跑过多个模型，所以必须**先按模型分别计价、再相加**：拿会话总 token 乘某一个
+    /// 模型的单价，得到的数既不是那个模型的钱，也不是这个会话的钱。单价找不回（模型已删 / 改过名）
+    /// 时同样退回全局兜底价，理由与按模型折算一致——显示成 0 会把"花过钱"读成"没花钱"。
+    /// </para>
+    ///
+    /// <para>
+    /// 这是**估算**：单价取的是当前配置，而不是花钱那一刻的价格（历史价格没有留档）。
+    /// 界面上因此以「估算金额」表头呈现，别让它看起来像一张账单。
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<long, double> PerSessionCost(
+        IReadOnlyList<SessionModelUsage> rows,
+        IReadOnlyDictionary<string, AssistantModelRow> priceByCode,
+        AssistantCostOptions cost)
+    {
+        var result = new Dictionary<long, double>();
+        foreach (var group in rows.GroupBy(row => row.SessionId))
+        {
+            var total = 0.0;
+            foreach (var entry in group)
+            {
+                priceByCode.TryGetValue(entry.ModelName, out var price);
+                total += AssistantCost.Calculate(
+                    entry.PromptTokens, entry.CompletionTokens, cost,
+                    price?.InputPerMillionYuan, price?.OutputPerMillionYuan);
+            }
+
+            result[group.Key] = Math.Round(total, 4);
+        }
+
+        return result;
+    }
 }

@@ -219,7 +219,34 @@ public sealed class AssistantAdminController(
         var (items, total) = await repository.ListSessionsAsync(
             offset, limit, ParseState(state), keyword, owner,
             ParseSort(sortBy), string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase), token);
-        return Ok(new { items, total });
+        var costBySession = await SessionCostsAsync(items, token);
+        return Ok(new
+        {
+            // 金额是**按这一页会话**算的（列表服务端分页，先取这一页再折算），
+            // 所以它随翻页重算，而不是"全表算一遍只取一行"。
+            items = items.Select(session => session with
+            {
+                EstimatedCostYuan = costBySession.TryGetValue(session.Id, out var yuan) ? yuan : 0d,
+            }),
+            total,
+        });
+    }
+
+    /// <summary>
+    /// 这一页会话各自花了多少钱（元）。**计价只走 <see cref="AssistantCost"/> 一处**：
+    /// 按消息记录时所用模型的单价折算，单价找不回（模型已删 / 改过名）时用全局兜底价——
+    /// 与用量看板同一套口径。不在 SQL 里再写一份算价，否则"会话金额之和"与"用量看板总成本"
+    /// 迟早会分成两个数，而两边看上去都对。
+    /// </summary>
+    private async Task<IReadOnlyDictionary<long, double>> SessionCostsAsync(
+        IReadOnlyList<AssistantSessionDto> sessions, CancellationToken token)
+    {
+        if (sessions.Count == 0) return new Dictionary<long, double>();
+        var usage = await repository.ListSessionModelUsageAsync(
+            sessions.Select(session => session.Id).ToList(), token);
+        var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
+            row => row.ModelCode, StringComparer.OrdinalIgnoreCase);
+        return AssistantUsageView.PerSessionCost(usage, priceByCode, registry.Current.Settings.Cost);
     }
 
     /// <summary>出现过的归属用户（管理页"按用户筛选"的下拉）。</summary>

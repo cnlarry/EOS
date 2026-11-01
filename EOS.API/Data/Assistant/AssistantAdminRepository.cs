@@ -29,6 +29,17 @@ public enum AssistantSessionSort
 }
 
 /// <summary>
+/// 一个会话里**某一个模型**的 token 合计——会话金额的原料。
+///
+/// <para>
+/// 按模型分组是必须的：一个会话可以中途换模型，而不同模型单价差好几倍；
+/// 把会话的总 token 乘某一个模型的单价，得到的钱既不是那个模型的钱，也不是这个会话的钱。
+/// </para>
+/// </summary>
+public sealed record SessionModelUsage(
+    long SessionId, string ModelName, long PromptTokens, long CompletionTokens);
+
+/// <summary>
 /// 工作助手会话的**管理侧**读写（菜单组 31 / 模块 3101，见 ADR-030 §4）。
 ///
 /// <para>
@@ -60,6 +71,17 @@ public interface IAssistantAdminRepository
 
     /// <summary>出现在会话表里的全部归属用户（供管理页的"按用户筛选"下拉）。</summary>
     Task<IReadOnlyList<string>> ListOwnersAsync(CancellationToken token);
+
+    /// <summary>
+    /// 这些会话里**每个模型**的 token 合计（会话金额的原料，见 <see cref="SessionModelUsage"/>）。
+    ///
+    /// <para>
+    /// 只算助手回复（<c>ROLE = 2</c>）：用户消息不产生费用，算进去金额会凭空变大。
+    /// 只取传进来的会话号，因为金额只显示在当前这一页（列表是服务端分页的）。
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<SessionModelUsage>> ListSessionModelUsageAsync(
+        IReadOnlyList<long> sessionIds, CancellationToken token);
 
     /// <summary>归档 / 取消归档任意用户的会话（幂等）。返回受影响行数。</summary>
     Task<int> ArchiveSessionAsync(long sessionId, bool archived, CancellationToken token);
@@ -188,6 +210,48 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
         }
 
         return owners;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SessionModelUsage>> ListSessionModelUsageAsync(
+        IReadOnlyList<long> sessionIds, CancellationToken token)
+    {
+        if (sessionIds.Count == 0) return [];
+
+        // IN 列表的参数名按序号生成、值仍走参数化：会话号是服务端自己查出来的，
+        // 但"用户侧的值不进 SQL 字符串"这条没有例外，也免得日后有人把别处的输入接到这里。
+        const string sqlFormat = """
+            SELECT m.SESSION_ID,
+                   ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)') AS MODEL_NAME,
+                   ISNULL(SUM(CAST(m.PROMPT_TOKENS AS bigint)), 0),
+                   ISNULL(SUM(CAST(m.COMPLETION_TOKENS AS bigint)), 0)
+            FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
+            WHERE m.ROLE = 2 AND m.SESSION_ID IN ({0})
+            GROUP BY m.SESSION_ID, ISNULL(NULLIF(LTRIM(RTRIM(m.MODEL_NAME)), N''), N'(未记录)');
+            """;
+        var names = new string[sessionIds.Count];
+        for (var index = 0; index < sessionIds.Count; index++) names[index] = $"@Id{index}";
+
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(string.Format(sqlFormat, string.Join(", ", names)), conn);
+        for (var index = 0; index < sessionIds.Count; index++)
+        {
+            cmd.Parameters.AddWithValue(names[index], sessionIds[index]);
+        }
+
+        var items = new List<SessionModelUsage>();
+        await using var reader = await cmd.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            items.Add(new SessionModelUsage(
+                reader.GetInt64(0),
+                reader.GetString(1),
+                Convert.ToInt64(reader.GetValue(2)),
+                Convert.ToInt64(reader.GetValue(3))));
+        }
+
+        return items;
     }
 
     /// <inheritdoc />

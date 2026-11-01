@@ -169,6 +169,45 @@ public sealed class AssistantAdminRepositoryIntegrationTests : IDisposable
     }
 
     /// <summary>
+    /// 会话金额的原料（<c>ListSessionModelUsageAsync</c>）：**按模型分组**聚合、只算助手回复。
+    ///
+    /// <para>
+    /// 同一会话跑过两个模型时必须分成两行——金额要按各自单价算，合并成一行就再也拆不开。
+    /// 用户消息不产生费用，所以要排除；否则金额会凭空变大。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Session_Model_Usage_Groups_By_Model_And_Skips_User_Messages()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+        const string user = "eosdev-assistant-test-a";
+
+        var session = await NewSessionAsync(user, token);
+        await _personal.AddUserMessageAsync(user, session.Id, "甲：这条不该计费", "c-cost", token);
+        await _personal.AddAssistantMessageAsync(
+            user, session.Id, "乙：一", "model-a", 100, 50, 100, "c-cost", token);
+        await _personal.AddAssistantMessageAsync(
+            user, session.Id, "丙：二", "model-a", 200, 20, 100, "c-cost", token);
+        await _personal.AddAssistantMessageAsync(
+            user, session.Id, "丁：三", "model-b", 7, 3, 100, "c-cost", token);
+
+        var usage = await _admin.ListSessionModelUsageAsync([session.Id], token);
+
+        Assert.Equal(2, usage.Count);
+        var cheap = usage.Single(row => row.ModelName == "model-a");
+        Assert.Equal(session.Id, cheap.SessionId);
+        Assert.Equal(300, cheap.PromptTokens);
+        Assert.Equal(70, cheap.CompletionTokens);
+        var other = usage.Single(row => row.ModelName == "model-b");
+        Assert.Equal(7, other.PromptTokens);
+        Assert.Equal(3, other.CompletionTokens);
+
+        // 空列表直接返回，不去生成一条 IN () 的坏 SQL
+        Assert.Empty(await _admin.ListSessionModelUsageAsync([], token));
+    }
+
+    /// <summary>
     /// 排序在**服务端**做（列表是服务端分页的，在前端排只会排当前这一页）：
     /// 按消息数降序时，消息多的会话排在前面。
     /// </summary>

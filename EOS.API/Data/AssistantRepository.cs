@@ -37,7 +37,12 @@ public sealed record AssistantSessionDto(
     /// `USER_ID` 是账号/编号，看列表的人需要的是"这是谁的会话"。取不到（账号不在 SYS_USER_ACCOUNT 里，
     /// 例如测试账号）就为 null，界面回落显示账号本身。
     /// </summary>
-    string? EmployeeName = null);
+    string? EmployeeName = null,
+    /// <summary>
+    /// 该会话**估算花了多少钱**（元）。只有管理侧列表会算（按消息记录时所用模型的单价折算，
+    /// 见 <c>AssistantUsageView.PerSessionCost</c>）；其它位置为 null = 未计算，**不是 0 元**。
+    /// </summary>
+    double? EstimatedCostYuan = null);
 
 /// <summary>ASSISTANT_MESSAGE 行。</summary>
 public sealed record AssistantMessageDto(
