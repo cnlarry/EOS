@@ -8,8 +8,9 @@
          规则已停用 / 阶段不符 / 证据不足），expect=deny；
       2) 真实失败样本 OBS-001..OBS-012：由 AUDIT_EVENT（RESULT=0）按
          (模块, 动作, 摘要) 归并，ORIGIN='observed'；
-      3) 配置面样本 CFG-01..CFG-06：只用已实现的三条原因码（reverse-note-not-read /
+      3) 配置面样本 CFG-01..CFG-05：只用已实现的三条原因码（reverse-note-not-read /
          reverse-kind-unsupported / effect-key-singleton），其余标"触发数据待构造"。
+         CFG-06（模块级配置面）**不导入**：该面的归因类别未定，见文件末尾说明。
 
     幂等：按 CASE_ID 判重，已存在则跳过（不覆盖用户在界面上的改动）。
     不改仓库里的 jsonl——那是离线门禁的输入（见 ADR-045 §2.4）。
@@ -88,9 +89,10 @@ $cases += @{ id='CFG-04'; layer='config'; expected='应当检出 reverse-kind-un
                note='触发数据待构造：需要一条反向 kind 越界的真实配置' } }
 $cases += @{ id='CFG-05'; layer='config'; expected='不应有检出：虚拟字段带表达式、非虚拟字段空表达式都合法'; origin='draft'
     payload=@{ surface='fields'; isVirtual=$true; virtualExp='COP_ORDER_M.ORDER_DATE'; expectCode=$null } }
-$cases += @{ id='CFG-06'; layer='config'; expected='待定：模块声明统一表单但主表不存在——配置面归因类别尚未定义（见 ADR-016 已知缺口 #6）'; origin='draft'
-    payload=@{ surface='module'; expectCode=$null; observed=@{ unifiedFormEnabled=$true; masterTableExists=$false }
-               note='本条只登记场景，不预设原因码：需先定归因类别再补判据' } }
+
+# CFG-06（配置面「module」）不导入：配置面的四个面是 fields/datasource/buttons/effect，模块级
+# 归因类别尚未定义（ADR-016 已知缺口 #6）。只登记场景、不含判据的样本会被确定性层判成恒失败，
+# 等于给运行器塞一条永远红的用例；要它先定归因类别，再按判据重写。
 
 # ---------- 写库（按 CASE_ID 判重，不覆盖既有行） ----------
 $insert = @'
