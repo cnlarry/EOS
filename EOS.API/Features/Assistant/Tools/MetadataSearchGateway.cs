@@ -91,9 +91,9 @@ public sealed class MetadataSearchGateway(
     /// </summary>
     private const string Sql = """
         SELECT TOP (@Max)
-            h.KIND, h.MODULE_ID, h.MODULE_TITLE, h.[KEY], h.LABEL, h.TABLE_ID
+            h.KIND, h.MODULE_KEY, h.MODULE_TITLE, h.[KEY], h.LABEL, h.TABLE_ID
         FROM (
-            SELECT N'module' AS KIND, m.M_IDX AS MODULE_ID,
+            SELECT N'module' AS KIND, m.M_IDX AS MODULE_KEY,
                    LTRIM(RTRIM(m.M_DESC)) AS MODULE_TITLE,
                    CONVERT(NVARCHAR(20), m.M_IDX) AS [KEY],
                    LTRIM(RTRIM(m.M_DESC)) AS LABEL,
@@ -133,6 +133,6 @@ public sealed class MetadataSearchGateway(
                  WHEN h.[KEY] LIKE @Prefix OR h.LABEL LIKE @Prefix THEN 1
                  ELSE 2 END,
             CASE h.KIND WHEN N'module' THEN 0 WHEN N'table' THEN 1 WHEN N'field' THEN 2 ELSE 3 END,
-            h.MODULE_ID, h.[KEY];
+            h.MODULE_KEY, h.[KEY];
         """;
 }
