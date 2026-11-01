@@ -22,6 +22,7 @@ describe('WORKSPACE_ROUTES', () => {
       '/admin/menus',
       '/admin/module-groups',
       '/admin/metrics',
+      '/admin/report-setup',
       '/admin/assistant/eval',
       '/admin/module-buttons',
       '/admin/module-actions',

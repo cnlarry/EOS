@@ -23,6 +23,12 @@
       ④ 脏标记合法：`WORKBENCH_MODULE_DIRTY` 只允许出现在"有单据面"的模块上（工作台，或声明了
          统一表单的定制页），且不得指向已不存在的编号——编号级联语句不覆盖这张表，保存路径已改为
          "撤销旧编号的行"。没有单据面的模块不需要发布快照，挂脏只会永久占着待发布清单。
+      ⑤ 非工作台节点不得留当前快照（运行期"有快照就一定用快照"，形态变更后遗留的快照会让旧定义继续生效）。
+      ⑥ **配置面定制页不得改回统一表单**：2201（报表排序汇总设置）必须保持 CUSTOMPAGE 且
+         UNIFIED_FORM_ENABLED = 0。它的写路径带级联删除（REPORT_SORT / REPORT_INBOX /
+         REPORT_SUBSCRIPTION / REPORT_USER_STATE / SYS_USER_REPORT_PRINT）与跨表校验
+         （版式包必须存在且同模块、开单公司必须存在、报表编号正则、排序字段白名单）；
+         换成通用管线会留下孤儿行、放过坏配置，且这些校验没有第二处实现。
 
     刻意不查（都有真实消费方，与形态无关）：`MASTER_TABLE` / `DETAIL_TABLE`（报表数据集、
     搜索中心、统一选择器与助手指标的锚点）、`FILTER`（报表与选择器的**实时**数据范围）、
@@ -124,6 +130,22 @@ LEFT JOIN dbo.V_MODULE_NODE n ON n.M_IDX = s.M_IDX
 WHERE s.IS_CURRENT = 1 AND (n.NODE_KIND IS NULL OR n.NODE_KIND <> N'WORKBENCH');
 '@
 
+    # ⑥ 配置面定制页不得改回统一表单：2201 报表排序汇总设置的写路径在 ReportAdminController
+    #    （级联删除 5 张引用表 + 版式/公司/编号/字段白名单校验），换成统一表单的通用管线
+    #    既没有级联也没有这些校验。约束原文见 docs/guide/50-统一报表.md。
+    $pinnedMissing = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
+SELECT CONVERT(nvarchar(20), COUNT(*)) FROM dbo.MODULES WHERE M_IDX = 2201;
+'@
+
+    $configFaceDrift = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
+SELECT N'CONFIG_FACE_AS_FORM | ' + CONVERT(nvarchar(20), m.M_IDX) + N' ' + LTRIM(RTRIM(ISNULL(m.M_DESC, N'')))
+       + N' 形态=' + ISNULL(n.NODE_KIND, N'(编号不存在)')
+FROM dbo.MODULES m
+LEFT JOIN dbo.V_MODULE_NODE n ON n.M_IDX = m.M_IDX
+WHERE m.M_IDX = 2201
+  AND (n.NODE_KIND IS NULL OR n.NODE_KIND <> N'CUSTOMPAGE' OR ISNULL(m.UNIFIED_FORM_ENABLED, 0) = 1);
+'@
+
     # 覆盖范围写入结论（形态分布是这条门禁的"分母"，读的人要一眼看得出查了什么）
     $shape = Invoke-EosSqlQuery -ConnectionString $ConnectionString -Query @'
 SELECT N'SHAPE | ' + n.NODE_KIND + N'=' + CONVERT(nvarchar(10), COUNT(*))
@@ -143,7 +165,9 @@ $whitelistDrift = @($whitelistDrift | Where-Object { $_ -and $_.Trim() -ne '' })
 $residue = @($residue | Where-Object { $_ -and $_.Trim() -ne '' })
 $dirtyDrift = @($dirtyDrift | Where-Object { $_ -and $_.Trim() -ne '' })
 $snapshotDrift = @($snapshotDrift | Where-Object { $_ -and $_.Trim() -ne '' })
+$configFaceDrift = @($configFaceDrift | Where-Object { $_ -and $_.Trim() -ne '' })
 $shape = @($shape | Where-Object { $_ -and $_.Trim() -ne '' })
+$pinnedMissing = @($pinnedMissing | Where-Object { $_ -and $_.Trim() -ne '' })
 
 if ($exists.Count -eq 0 -or $exists[0].Trim() -ne 'OK') {
     Write-Output 'FAIL dbo.V_MODULE_NODE is missing (migration 340 has not been applied): every shape-based judgement depends on it.'
@@ -177,6 +201,17 @@ if ($dirtyDrift.Count -gt 0) {
 if ($snapshotDrift.Count -gt 0) {
     Write-Output 'FAIL non-workbench nodes hold a current definition snapshot (the runtime prefers the snapshot whenever one exists, so a leftover drives stale keys/tables/rules):'
     $snapshotDrift | ForEach-Object { Write-Output "  $_" }
+    exit 1
+}
+
+if ($pinnedMissing.Count -eq 0 -or [int]($pinnedMissing[0].Trim()) -eq 0) {
+    Write-Output 'FAIL module 2201 (report definition maintenance) is missing from MODULES: its custom page /admin/report-setup and the ReportAdminController write path are pinned together.'
+    exit 1
+}
+
+if ($configFaceDrift.Count -gt 0) {
+    Write-Output 'FAIL a configuration-face custom page was turned into a unified form (it would gain a second write path without the cascade delete and cross-table validation of ReportAdminController):'
+    $configFaceDrift | ForEach-Object { Write-Output "  $_" }
     exit 1
 }
 
