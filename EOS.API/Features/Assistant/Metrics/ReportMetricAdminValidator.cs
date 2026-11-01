@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using EOS.API.Data;
+using EOS.API.Data.Reports;
 
 namespace EOS.API.Features.Assistant.Metrics;
 

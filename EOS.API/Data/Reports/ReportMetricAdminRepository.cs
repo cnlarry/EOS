@@ -1,7 +1,7 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Reports;
 
 /// <summary>口径维护用的完整行（含待确认项，供 2201 报表设置页的"指标口径"区展示）。</summary>
 public sealed record ReportMetricAdminItem(

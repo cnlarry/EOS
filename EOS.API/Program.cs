@@ -291,7 +291,7 @@ builder.Services.AddScoped<PrintSettingsRepository>();
 builder.Services.AddScoped<SystemParameterService>();
 builder.Services.AddScoped<ReportAdminRepository>();
 // 口径维护（REPORT_METRIC）：校验复用 ResolveMetricTool 的那一套（表达式/维度/行过滤同一实现）
-builder.Services.AddScoped<EOS.API.Data.ReportMetricAdminRepository>();
+builder.Services.AddScoped<EOS.API.Data.Reports.ReportMetricAdminRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.ReportMetricAdminValidator>();
 builder.Services.AddScoped<ReportInboxRepository>();
 builder.Services.AddScoped<SearchCenterRepository>();

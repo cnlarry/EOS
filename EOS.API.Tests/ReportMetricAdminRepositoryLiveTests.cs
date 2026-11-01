@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Reports;
 using EOS.API.Features.Assistant.Metrics;
 using Microsoft.Extensions.Configuration;
 using Xunit;

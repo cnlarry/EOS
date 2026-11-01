@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EOS.API.Data;
+using EOS.API.Data.Reports;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
