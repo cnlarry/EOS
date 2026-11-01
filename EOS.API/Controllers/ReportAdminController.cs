@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using EOS.API.Data;
 using EOS.API.Models;
+using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,7 +19,9 @@ namespace EOS.API.Controllers;
 public sealed class ReportAdminController(
     ReportAdminRepository repository,
     ReportFormatRepository reportFormats,
-    ModuleRightsRepository rightsRepository) : ControllerBase
+    ModuleRightsRepository rightsRepository,
+    ReportMetricAdminRepository metrics,
+    Features.Assistant.Metrics.ReportMetricAdminValidator metricValidator) : ControllerBase
 {
     /// <summary>
     /// 可绑定的打印版式（内置格式包）。版式自带数据契约（列清单），只能绑到同模块的报表上——
@@ -229,5 +232,71 @@ public sealed class ReportAdminController(
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return false;
         return (await rightsRepository.GetAsync(userId, 2201, token)).CanSetup;
+    }
+
+    // ---------- 指标口径（REPORT_METRIC）维护 ----------
+    // 权限门用 **2317 指标口径**（独立能力，不挂在报表设置或元数据管理上）：读 = CanBrowse，写 = CanSetup。
+    // 与报表（2201）分开的理由：同一条口径被报表与助手共同消费，把它绑在某张报表的权限上
+    // 会让"谁能改口径"取决于"谁能改报表"。
+
+    /// <summary>口径清单（含候选口径）。</summary>
+    [HttpGet("metrics")]
+    public async Task<IActionResult> Metrics(CancellationToken token)
+    {
+        if (!await CanStewardBrowseAsync(token)) return Forbid();
+        return Ok(await metrics.ListAsync(token));
+    }
+
+    /// <summary>新增口径。标识是身份（新增后不可改），表达式与维度必须过受控校验。</summary>
+    [HttpPost("metrics")]
+    public async Task<IActionResult> CreateMetric([FromBody] ReportMetricAdminDraft draft, CancellationToken token)
+    {
+        if (!await CanStewardSetupAsync(token)) return Forbid();
+        if (draft is null) throw new ArgumentException("缺少口径内容。");
+        await metricValidator.ValidateAsync(draft, token);
+        if (await metrics.ExistsAsync(draft.MetricId.Trim(), token)) return Conflict("口径标识已存在。");
+        await metrics.CreateAsync(draft, CurrentUserId, token);
+        return NoContent();
+    }
+
+    /// <summary>修改口径：版本号自动递增；改成 CONFIRMED 记批核人/时间，改回候选清空。</summary>
+    [HttpPut("metrics/{metricId}")]
+    public async Task<IActionResult> UpdateMetric(
+        string metricId, [FromBody] ReportMetricAdminDraft draft, CancellationToken token)
+    {
+        if (!await CanStewardSetupAsync(token)) return Forbid();
+        if (draft is null) throw new ArgumentException("缺少口径内容。");
+        if (!string.Equals(metricId.Trim(), draft.MetricId?.Trim(), StringComparison.Ordinal))
+        {
+            throw new ArgumentException("口径标识是身份，不允许修改；如需新标识请新建一条口径。");
+        }
+        await metricValidator.ValidateAsync(draft, token);
+        return await metrics.UpdateAsync(metricId.Trim(), draft, CurrentUserId, token) ? NoContent() : NotFound();
+    }
+
+    /// <summary>删除口径：只允许候选；已确认的先改回候选（那一步本身就是一次显式决策）。</summary>
+    [HttpDelete("metrics/{metricId}")]
+    public async Task<IActionResult> DeleteMetric(string metricId, CancellationToken token)
+    {
+        if (!await CanStewardSetupAsync(token)) return Forbid();
+        return await metrics.DeleteAsync(metricId.Trim(), token)
+            ? NoContent()
+            : Conflict("只能删除候选口径：已确认口径可能被报表与结论引用，请先改回候选。");
+    }
+
+    private string CurrentUserId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+
+    private async Task<bool> CanStewardBrowseAsync(CancellationToken token)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return false;
+        return (await rightsRepository.GetAsync(userId, PermissionModules.MetricCatalog, token)).CanBrowse;
+    }
+
+    private async Task<bool> CanStewardSetupAsync(CancellationToken token)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return false;
+        return (await rightsRepository.GetAsync(userId, PermissionModules.MetricCatalog, token)).CanSetup;
     }
 }
