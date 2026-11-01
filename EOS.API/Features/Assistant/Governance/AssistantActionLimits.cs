@@ -30,6 +30,12 @@ public static class AssistantActionLimits
     /// <summary>阈值的最小合法值：比它还小的一律视为填错（0 是"停机"语义，只对摘要来源成立）。</summary>
     public const int MinimumThreshold = 1;
 
+    /// <summary>
+    /// 助手可不经用户点击直接执行的最大行数。超过即只出操作卡：
+    /// 单行新增/修改属录入劳动，可代劳；删除与批量是"一把动多张"，执行主体应是用户那次确认。
+    /// </summary>
+    public const int MaxDirectRows = 1;
+
     // ===== 红线开关：恒为开，没有"配成关"的表达方式 =====
 
     /// <summary>预演恒为开：动作先在同一事务内跑完整条路径后回滚，判不下来的行不写。</summary>

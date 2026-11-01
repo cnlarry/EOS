@@ -163,10 +163,10 @@ public sealed class ConfigWriteGateTests
         Assert.Contains("clone_module_config", names);
         Assert.Contains("preview_config_change", names);
         Assert.Contains("apply_config_change", names);
-        // 工具面总数**要与两处同源**：手册 60 的「语义接口」清单（31 个，含机制自述工具）
+        // 工具面总数**要与两处同源**：手册 60 的「语义接口」清单（36 个，含机制自述工具）
         // 与 Program.cs 里 AssistantToolRegistry 的注册数。改工具面时三处一起动——
         // 这条断言的意义就是让"加了工具却忘了同步口径"当场撞红（而不是等文档与代码各说一套）。
-        Assert.Equal(31, names.Count);
+        Assert.Equal(36, names.Count);
     }
 
     // ===== 装配 =====

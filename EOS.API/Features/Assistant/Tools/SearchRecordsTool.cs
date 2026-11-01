@@ -29,8 +29,8 @@ public sealed class SearchRecordsTool(
     public AssistantToolRisk Risk => AssistantToolRisk.Read;
 
     public string Description =>
-        "在 ERP 模块中搜索单据/资料列表。当用户想找单据、查资料时使用。"
-        + "返回少量行及每行主键值数组 _keys，可用 get_record_detail 取单行完整详情。";
+        "在 ERP 模块中搜索单据/资料列表。可按关键字、结构化条件（字段/算子/值）、日期/批核状态/金额区间筛选，"
+        + "并可指定排序与翻页。返回行及每行主键值数组 _keys，可用 get_record_detail 取单行完整详情（含明细行）。";
 
     public string ParametersJson => """
         {
@@ -38,7 +38,30 @@ public sealed class SearchRecordsTool(
           "properties": {
             "module_title": { "type": "string", "description": "模块中文名关键字，如「客户订单」「送货单」；与 module_id 二选一" },
             "module_id": { "type": "integer", "description": "模块 ID；与 module_title 二选一" },
-            "keyword": { "type": "string", "description": "可选过滤关键字（单号/名称等）" }
+            "keyword": { "type": "string", "description": "可选过滤关键字（单号/名称等），在文本字段中模糊匹配" },
+            "conditions": {
+              "type": "array",
+              "description": "结构化条件（可选）。字段必须来自模块可见字段；多条默认 AND，可用 logic=or 连接。",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": { "type": "string", "description": "字段 Key，如 APPROVED、ORDER_DATE" },
+                  "operator": { "type": "string", "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "contains", "notcontains", "startswith", "endswith", "empty", "notempty", "between"] },
+                  "value": { "type": "string", "description": "比较值；空值类算子可省略" },
+                  "value_to": { "type": "string", "description": "between 的结束值" },
+                  "logic": { "type": "string", "enum": ["and", "or"], "description": "与前一条的连接词，默认 and" }
+                },
+                "required": ["field", "operator"]
+              }
+            },
+            "status": { "type": "string", "enum": ["approved", "unapproved", "finished", "unfinished"], "description": "批核/结案状态快捷筛选（可选）" },
+            "date_from": { "type": "string", "description": "业务日期起（yyyy-MM-dd，可选）" },
+            "date_to": { "type": "string", "description": "业务日期止（yyyy-MM-dd，可选）" },
+            "amount_min": { "type": "string", "description": "金额下限（可选）" },
+            "amount_max": { "type": "string", "description": "金额上限（可选）" },
+            "sort_field": { "type": "string", "description": "排序字段 Key（可选，必须是可见字段）" },
+            "sort_direction": { "type": "string", "enum": ["asc", "desc"], "description": "排序方向，默认 asc" },
+            "page": { "type": "integer", "description": "页码（从 1 开始，默认 1）" }
           }
         }
         """;
@@ -74,12 +97,71 @@ public sealed class SearchRecordsTool(
 
         var keyword = arguments.GetStringArg("keyword");
         var keywordArg = string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim();
+
+        AssistantFilterResult filter;
+        try
+        {
+            filter = AssistantQueryBuilder.Build(
+                definition,
+                arguments.GetStringArg("date_from"),
+                arguments.GetStringArg("date_to"),
+                arguments.GetStringArg("status"),
+                arguments.GetStringArg("amount_min"),
+                arguments.GetStringArg("amount_max"),
+                ReadFilters(arguments));
+        }
+        catch (ArgumentException ex)
+        {
+            return ToolExecutionResult.Deny(ex.Message);
+        }
+
+        var sortRequested = arguments.GetStringArg("sort_field");
+        var (sortField, sortDirection) = AssistantQueryBuilder.ResolveSort(
+            definition, sortRequested, arguments.GetStringArg("sort_direction"));
+        var sortNote = !string.IsNullOrWhiteSpace(sortRequested) && sortField is null
+            ? $"排序字段「{sortRequested}」不在可见字段内，未应用排序。"
+            : null;
+
+        var page = arguments.GetIntArg("page");
+        if (page <= 0) page = 1;
+
         var data = await gateway.GetRowsAsync(
-            definition, detail: false, new Dictionary<string, string>(), page: 1,
+            definition, detail: false, new Dictionary<string, string>(), page,
             pageSize: Limits.SearchMaxRows, token, keyword: keywordArg,
+            query: filter.Query,
+            sortField: sortField, sortDirection: sortDirection,
             dataFilter: permission.Rights.DataFilter);
 
-        return ToolExecutionResult.Success(Compress(definition, data, keywordArg, Limits));
+        return ToolExecutionResult.Success(
+            Compress(definition, data, keywordArg, Limits, filter.NotApplied, sortNote));
+    }
+
+    /// <summary>解析 conditions 数组；字段/算子白名单由 <see cref="AssistantQueryBuilder"/> 统一执行。</summary>
+    internal static IReadOnlyList<AssistantQueryBuilder.Filter> ReadFilters(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("conditions", out var element) || element.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var filters = new List<AssistantQueryBuilder.Filter>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var field = item.TryGetProperty("field", out var f) && f.ValueKind == JsonValueKind.String
+                ? f.GetString() : null;
+            var op = item.TryGetProperty("operator", out var o) && o.ValueKind == JsonValueKind.String
+                ? o.GetString() : null;
+            if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(op)) continue;
+            filters.Add(new AssistantQueryBuilder.Filter(
+                field!,
+                op!,
+                item.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null,
+                item.TryGetProperty("value_to", out var vt) && vt.ValueKind == JsonValueKind.String ? vt.GetString() : null,
+                item.TryGetProperty("logic", out var l) && l.ValueKind == JsonValueKind.String ? l.GetString() : null));
+        }
+
+        return filters;
     }
 
     /// <summary>
@@ -92,23 +174,39 @@ public sealed class SearchRecordsTool(
     /// </param>
     internal static string Compress(
         WorkbenchDefinition definition, WorkbenchData data, string? keyword,
-        AssistantToolLimitsOptions? limits = null)
+        AssistantToolLimitsOptions? limits = null,
+        IReadOnlyList<string>? notApplied = null, string? sortNote = null)
     {
         limits ??= new AssistantToolLimitsOptions();
         var sb = new StringBuilder();
-        sb.Append($"module={definition.ModuleId}({definition.Title}) total={data.Total} shown={data.Items.Count}");
+        sb.Append($"module={definition.ModuleId}({definition.Title}) total={data.Total}")
+            .Append($" page={data.Page} shown={data.Items.Count}");
         if (!string.IsNullOrEmpty(keyword))
         {
             sb.Append($" keyword=\"{keyword}\"");
         }
 
         sb.AppendLine();
+        if (notApplied is { Count: > 0 })
+        {
+            sb.AppendLine($"未应用的条件：{string.Join("、", notApplied)}（字段或算子不在白名单内，已忽略）。");
+        }
+
+        if (!string.IsNullOrEmpty(sortNote))
+        {
+            sb.AppendLine(sortNote);
+        }
         foreach (var row in data.Items)
         {
             var keys = definition.MasterPkOrder
                 .Select(key => row.TryGetValue(key, out var kv) ? kv?.ToString() ?? string.Empty : string.Empty)
                 .ToArray();
             sb.Append("- _keys=").Append(JsonSerializer.Serialize(keys));
+            sb.Append(" _view=").Append(AssistantRecordLinks.View(definition.ModuleId, keys));
+            if (definition.HasEdit)
+            {
+                sb.Append(" _edit=").Append(AssistantRecordLinks.Edit(definition.ModuleId, keys));
+            }
             int taken = 0;
             foreach (var field in definition.MasterFields)
             {
@@ -126,9 +224,11 @@ public sealed class SearchRecordsTool(
             sb.AppendLine();
         }
 
-        if (data.Total > data.Items.Count)
+        var shownUpTo = (data.Page - 1) * data.PageSize + data.Items.Count;
+        if (data.Total > shownUpTo)
         {
-            sb.Append($"（仅显示前 {data.Items.Count} 条，共 {data.Total} 条命中；可加更精确的 keyword 缩小范围）");
+            sb.Append($"（本页显示 {data.Items.Count} 条，累计到第 {shownUpTo} 条，共 {data.Total} 条命中；")
+                .Append($"可传 page={data.Page + 1} 继续，或加更精确的条件缩小范围）");
         }
 
         return sb.ToString().TrimEnd();

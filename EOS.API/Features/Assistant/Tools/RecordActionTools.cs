@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EOS.API.Features.Assistant.Actions;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Security;
 
 namespace EOS.API.Features.Assistant.Tools;
@@ -175,7 +176,8 @@ public sealed class ApplyRecordActionTool(
 
     public override string Description =>
         "执行新增 / 修改 / 删除单据（用户自己录的数据，可代劳）：服务端重新授权、按行预演通过后落库，"
-        + "写入走统一表单同一条管线并进审计。批核、解批、结案、取消结案不可代劳，请引导用户自己在界面上操作。";
+        + "写入走统一表单同一条管线并进审计。**删除与多行批量只生成操作卡、本轮不写**，由用户逐行确认后执行；"
+        + "单行新增/修改可直接执行。批核、解批、结案、取消结案不可代劳，请引导用户自己在界面上操作。";
 
     /// <summary>服务端注入本次工具调用身份，用于推导幂等键；它不构成权限依据。</summary>
     public void UseToolCallContext(long conversationId, string toolCallId)
@@ -205,6 +207,20 @@ public sealed class ApplyRecordActionTool(
         }
 
         request = WithPageKeys(request with { ModuleId = moduleId });
+
+        // 删除与多行批量：执行主体应是用户那次点击，助手只准备操作卡（本轮不写）。
+        if (RequiresUserConfirmation(request))
+        {
+            var preview = await actions.PreviewAsync(userId, EmployeeName, request, token);
+            var previewDraft = AssistantActionDtos.ToPreview(request, preview);
+            return new ToolExecutionResult(
+                preview.ModuleDenialCode is null,
+                $"已为{DescribeModule(preview.ModuleId, preview.ModuleTitle)}准备"
+                + $"{AssistantRecordActionNames.For(request.Kind)}操作卡（{request.Rows.Count} 行），"
+                + "本轮未写入。请用户在卡上逐行确认后由界面执行。",
+                previewDraft);
+        }
+
         var execution = await actions.ExecuteAsync(
             userId, EmployeeName, request,
             AssistantActionKeySeed.FromToolCall(_conversationId, _toolCallId!), token);
@@ -219,10 +235,23 @@ public sealed class ApplyRecordActionTool(
         {
             text.AppendLine().Append("- ").Append(row.Keys.Count > 0 ? string.Join('/', row.Keys) : "（新单）")
                 .Append(row.Succeeded ? "：已保存。" : $"：未保存（{row.Code}）{row.Message}");
+            if (row.Readback is { Count: > 0 })
+            {
+                text.Append(" 回读：")
+                    .Append(string.Join("，", row.Readback.Take(6).Select(item => $"{item.Key}={item.Value}")));
+            }
         }
 
         // 执行结果与界面上"确认执行"拿到的形状一致：两条入口回读的是同一种东西。
         var draft = AssistantActionDtos.ToResult(execution);
         return new ToolExecutionResult(succeeded > 0, text.ToString().TrimEnd(), draft);
     }
+
+    /// <summary>
+    /// 删除与多行批量必须由用户点击确认；单行新增/修改可直接代理。
+    /// 阈值只在 <see cref="AssistantActionLimits.MaxDirectRows"/> 声明一次。
+    /// </summary>
+    internal static bool RequiresUserConfirmation(AssistantActionRequest request) =>
+        request.Kind == AssistantRecordActionKind.Delete
+        || request.Rows.Count > AssistantActionLimits.MaxDirectRows;
 }

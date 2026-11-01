@@ -43,6 +43,8 @@ export type AssistantDraft =
   | AssistantConfigDiff
   | AssistantConfigApplyResult
   | AssistantApprovalRequestPreview
+  | AssistantDocumentActionDraft
+  | AssistantDocumentActionResultDraft
 
 /** 表单草稿：前端确认后经现有保存管线执行，助手不新增写路径。 */
 export interface AssistantFormDraft {
@@ -53,6 +55,43 @@ export interface AssistantFormDraft {
   missingRequired: string[]
   unknownKeys: string[]
   warnings: string[]
+  details?: Record<string, string>[]
+}
+
+/** 自定义单据动作的参数声明（与服务端 DocumentActionParams 的 fields 同形）。 */
+export interface AssistantDocumentActionParam {
+  key: string
+  label: string
+  type: string
+  required?: boolean
+  maxLength?: number | null
+}
+
+/** 自定义单据动作的确认卡：确认型动作只出卡，执行由用户点击触发。 */
+export interface AssistantDocumentActionDraft {
+  kind: 'document-action'
+  moduleId: number
+  moduleTitle: string
+  actionKey: string
+  actionLabel: string
+  keys: string[]
+  confirmTag: boolean
+  params?: { fields?: AssistantDocumentActionParam[] } | null
+  values?: Record<string, string>
+  previewMessage?: string | null
+}
+
+/** 自定义单据动作的执行结果卡。 */
+export interface AssistantDocumentActionResultDraft {
+  kind: 'document-action-result'
+  moduleId: number
+  moduleTitle: string
+  actionKey: string
+  actionLabel: string
+  message?: string | null
+  warnings?: Array<{ code: string; message: string }> | null
+  targetModuleId?: number | null
+  targetKey?: string[] | null
 }
 
 /** 随 chat 请求上报的处境（路由 + 界面状态总线采集）。 */

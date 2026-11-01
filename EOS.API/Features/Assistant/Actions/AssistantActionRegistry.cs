@@ -122,6 +122,15 @@ public static class AssistantActionRegistry
             AuditAction: "CFG_EFFECT（与业务同事务）；ACTION_CONFIRM（用户确认点击）",
             Endpoint: "ModuleBusinessConfigRepository.SaveAsync",
             Implementation: "ConfigWriteService.ApplyAsync → ConfigSurface.Effects"),
+        new AssistantActionDefinition(
+            Name: "DOC_ACTION",
+            ActorSubject: User,
+            Target: "模块配置的自定义单据动作：module_id + 动作键 + 主键值数组（键来自已发布的 MANUAL 行）",
+            Parameters: "list/preview/apply_document_action 的 JSON Schema（module_id/module_title、action_key、keys、params）",
+            IdempotencyKey: "服务端按工具调用身份推导；界面点击走本次确认键（与用户手点按钮同一幂等桶）",
+            AuditAction: "ACTION（动作键，由 DocumentActionExecutor 与业务同事务写入）；预演不占幂等键",
+            Endpoint: "DocumentActionExecutor.ExecuteAsync",
+            Implementation: "ApplyDocumentActionTool / PreviewDocumentActionTool"),
     ];
 
     /// <summary>
@@ -182,6 +191,7 @@ public static class AssistantActionRegistry
             ConfigSurfaceNames.ActionOf(ConfigSurface.DataSources),
             ConfigSurfaceNames.ActionOf(ConfigSurface.Buttons),
             ConfigSurfaceNames.ActionOf(ConfigSurface.Effects),
+            "DOC_ACTION",
         };
         foreach (var name in expected.Where(name => !seen.Contains(name)))
         {

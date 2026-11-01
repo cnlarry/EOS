@@ -109,6 +109,15 @@ public sealed class AssistantDraftToolTests
         DetailFields: [], MasterPkOrder: ["ORDER_NO"], DetailNoFields: string.Empty,
         DetailDfVerify: string.Empty);
 
+    private static FormDefinition FormWithDetails() => Form() with
+    {
+        DetailFields =
+        [
+            Field("PRO_NO", "料号"),
+            Field("QTY", "数量", type: "decimal", required: true),
+        ],
+    };
+
     private static DraftRecordTool CreateTool(bool canAddNew = true, FormDefinition? form = null)
     {
         var gateway = new FakeGateway(form ?? Form());
@@ -169,6 +178,36 @@ public sealed class AssistantDraftToolTests
         Assert.Equal("ok", draft.Values["REMARK"]);
         Assert.Contains(draft.MissingRequired, m => m.Contains("CLIENT_ID"));
         Assert.Contains(draft.Warnings, w => w.Contains("需要数值"));
+    }
+
+    [Fact]
+    public async Task Draft_Carries_Detail_Rows_And_Reports_Detail_Warnings()
+    {
+        var tool = CreateTool(form: FormWithDetails());
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            module_id = 1606,
+            values = new Dictionary<string, string> { ["CLIENT_ID"] = "C001" },
+            details = new[]
+            {
+                new Dictionary<string, string> { ["PRO_NO"] = "P001", ["QTY"] = "2" },
+                new Dictionary<string, string> { ["PRO_NO"] = "P002", ["QTY"] = "不是数字", ["BAD"] = "x" },
+            },
+        }, JsonOptions);
+
+        var result = await tool.ExecuteAsync("u1", args, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        var draft = Assert.IsType<AssistantFormDraft>(result.Draft);
+        Assert.NotNull(draft.Details);
+        Assert.Equal(2, draft.Details!.Count);
+        Assert.Equal("P001", draft.Details[0]["PRO_NO"]);
+        Assert.Equal("2", draft.Details[0]["QTY"]);
+        // 第二行数量类型错误被剔除 → 该行缺必填，且未知明细键被报出
+        Assert.False(draft.Details[1].ContainsKey("QTY"));
+        Assert.Contains(draft.Warnings, w => w.Contains("需要数值"));
+        Assert.Contains(draft.Warnings, w => w.Contains("第 2 行明细缺必填"));
+        Assert.Contains(draft.Warnings, w => w.Contains("BAD"));
     }
 
     [Fact]

@@ -36,6 +36,7 @@ import { ActionCard, ActionResultCard } from './ActionCard'
 import { AdminChangesetCard } from './AdminChangesetCard'
 import { ApprovalRequestCard } from './ApprovalRequestCard'
 import { ConfigApplyCard, ConfigDiffCard } from './ConfigDiffCard'
+import { DocumentActionCard, DocumentActionResultCard } from './DocumentActionCard'
 import type { AssistantDraft, AssistantFormDraft } from './useChatStream'
 
 interface AssistantPanelProps {
@@ -504,6 +505,8 @@ function renderDraft(draft: AssistantDraft, index: number, onOpenForm: (draft: A
     if (draft.kind === 'config-diff') return <ConfigDiffCard key={index} draft={draft} />
     if (draft.kind === 'config-apply-result') return <ConfigApplyCard key={index} result={draft} />
     if (draft.kind === 'approval-request-preview') return <ApprovalRequestCard key={index} draft={draft} />
+    if (draft.kind === 'document-action') return <DocumentActionCard key={index} draft={draft} />
+    if (draft.kind === 'document-action-result') return <DocumentActionResultCard key={index} result={draft} />
   }
   return <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={onOpenForm} />
 }
@@ -700,6 +703,18 @@ function DraftCard({ draft, onOpenForm }: { draft: AssistantFormDraft; onOpenFor
           ))}
         </tbody>
       </table>
+      {draft.details && draft.details.length > 0 && (
+        <div className="small mb-1">
+          明细 {draft.details.length} 行：
+          {draft.details.slice(0, 3).map((row, index) => (
+            <span key={index}>
+              {index > 0 ? '；' : ''}
+              第{index + 1}行 {Object.entries(row).map(([key, value]) => `${key}=${value}`).join(' ')}
+            </span>
+          ))}
+          {draft.details.length > 3 ? ' …' : ''}
+        </div>
+      )}
       {draft.missingRequired.length > 0 && (
         <div className="text-warning small mb-1">缺必填：{draft.missingRequired.join('、')}</div>
       )}

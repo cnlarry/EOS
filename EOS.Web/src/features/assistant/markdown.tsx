@@ -16,6 +16,11 @@ import { Fragment, type ReactNode } from 'react'
 export interface MarkdownOptions {
   /** 行内纯文本钩子：把一段纯文本转成节点（用于把 kb:// 来源引用变成按钮）；缺省原样输出。 */
   renderText?: (text: string, key: string) => ReactNode
+  /**
+   * 链接钩子：站内深链由调用方渲染成路由跳转（整页重开、丢工作区标签），
+   * 外链仍走默认的新标签页。缺省按 `target="_blank"` 渲染。
+   */
+  renderLink?: (href: string, label: ReactNode, key: string) => ReactNode
 }
 
 type Align = 'left' | 'center' | 'right'
@@ -319,6 +324,9 @@ function renderInlinePart(part: string, options: MarkdownOptions, key: string): 
   if (link) {
     const href = link[2]
     if (isSafeHref(href)) {
+      if (options.renderLink) {
+        return <Fragment key={key}>{options.renderLink(href, renderInline(link[1], options, key), key)}</Fragment>
+      }
       return (
         <a key={key} className="erp-assistant-md-link" href={href}
           target="_blank" rel="noopener noreferrer">

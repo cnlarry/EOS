@@ -17,7 +17,8 @@ public sealed record AssistantFormDraft(
     IReadOnlyDictionary<string, string> Labels,
     IReadOnlyList<string> MissingRequired,
     IReadOnlyList<string> UnknownKeys,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<IReadOnlyDictionary<string, string>>? Details = null);
 
 /// <summary>
 /// draft_record（DRAFT 级）：按模块生成「录入草稿」——只产出结构化变更集供用户在表单中确认，
@@ -40,7 +41,8 @@ public sealed class DraftRecordTool(
 
     public override string Description =>
         "为用户新建单据生成录入草稿（不直接保存）。必须先调 get_form_schema 拿到合法字段Key再调用本工具；"
-        + "引用类字段（客户/厂商等）的值应为编码 ID，可先用 search_records 在对应基础资料模块查询取得。"
+        + "主表字段放 values，明细行放 details（每行是字段Key→值）；"
+        + "引用类字段（客户/厂商等）的值应为编码 ID，可先用 resolve_reference 或 search_records 取得。"
         + "草稿将展示给用户确认，由用户带入表单完成录入。";
 
     public override string ParametersJson => """
@@ -50,8 +52,13 @@ public sealed class DraftRecordTool(
             "module_id": { "type": "integer", "description": "目标模块 ID" },
             "values": {
               "type": "object",
-              "description": "字段Key → 字符串值 的映射；Key 必须来自 get_form_schema 返回",
+              "description": "主表字段Key → 字符串值 的映射；Key 必须来自 get_form_schema 返回",
               "additionalProperties": { "type": "string" }
+            },
+            "details": {
+              "type": "array",
+              "description": "明细行（可选）；每行是明细字段Key → 字符串值的映射，Key 必须来自 get_form_schema 的 detail-writable-fields",
+              "items": { "type": "object", "additionalProperties": { "type": "string" } }
             }
           },
           "required": ["module_id", "values"]
@@ -138,6 +145,97 @@ public sealed class DraftRecordTool(
             .Select(f => $"{f.Label}({f.Key})")
             .ToList();
 
+        // —— 明细行：与主表同一套白名单 / 类型粗验 / 必填提示 ——
+        var detailWritable = form.DetailFields
+            .Where(GetFormSchemaTool.IsWritable)
+            .ToDictionary(f => f.Key);
+        var details = new List<IReadOnlyDictionary<string, string>>();
+        var unknownDetailKeys = new List<string>();
+        if (arguments.TryGetProperty("details", out var detailsEl)
+            && detailsEl.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+        {
+            if (detailsEl.ValueKind != JsonValueKind.Array)
+            {
+                warnings.Add("details 必须是数组，已忽略。");
+            }
+            else if (detailWritable.Count == 0)
+            {
+                warnings.Add("该模块没有可写明细字段，details 已忽略。");
+            }
+            else
+            {
+                foreach (var item in detailsEl.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object)
+                    {
+                        warnings.Add("details 的每一行都必须是对象，非对象行已忽略。");
+                        continue;
+                    }
+
+                    var row = new Dictionary<string, string>();
+                    foreach (var property in item.EnumerateObject())
+                    {
+                        if (!detailWritable.TryGetValue(property.Name, out var field))
+                        {
+                            unknownDetailKeys.Add(property.Name);
+                            continue;
+                        }
+
+                        if (property.Value.ValueKind != JsonValueKind.String)
+                        {
+                            warnings.Add($"明细字段 {field.Label}({field.Key}) 的值必须是字符串，已忽略非字符串输入。");
+                            continue;
+                        }
+
+                        var raw = property.Value.GetString() ?? string.Empty;
+                        if (raw.Length > Limits.DraftMaxValueLength)
+                        {
+                            raw = raw[..Limits.DraftMaxValueLength];
+                            warnings.Add(
+                                $"明细字段 {field.Label}({field.Key}) 的值过长，已截断到 {Limits.DraftMaxValueLength} 字符。");
+                        }
+
+                        if (!ValidateType(field, raw, out var typeWarning))
+                        {
+                            warnings.Add(typeWarning);
+                            continue;
+                        }
+
+                        row[field.Key] = raw;
+                    }
+
+                    details.Add(row);
+                }
+
+                if (details.Count > Limits.DetailMaxRows)
+                {
+                    details.RemoveRange(Limits.DetailMaxRows, details.Count - Limits.DetailMaxRows);
+                    warnings.Add($"明细超过 {Limits.DetailMaxRows} 行，超出部分已截断。");
+                }
+
+                var requiredDetail = detailWritable.Values
+                    .Where(f => f.IsRequired && string.IsNullOrEmpty(f.DefaultValue))
+                    .ToList();
+                for (var index = 0; index < details.Count; index++)
+                {
+                    var missing = requiredDetail
+                        .Where(f => !details[index].ContainsKey(f.Key))
+                        .Select(f => $"{f.Label}({f.Key})")
+                        .ToList();
+                    if (missing.Count > 0)
+                    {
+                        warnings.Add($"第 {index + 1} 行明细缺必填：{string.Join("、", missing)}。");
+                    }
+                }
+            }
+        }
+
+        if (unknownDetailKeys.Count > 0)
+        {
+            warnings.Add($"以下明细字段Key不在该模块表单中，已剔除：{string.Join("、", unknownDetailKeys)}。"
+                + "请以 get_form_schema 返回为准。");
+        }
+
         if (unknownKeys.Count > 0)
         {
             warnings.Add($"以下字段Key不在该模块表单中，已剔除：{string.Join("、", unknownKeys)}。"
@@ -152,14 +250,16 @@ public sealed class DraftRecordTool(
         var missingNote = missingRequired.Count > 0
             ? $"缺必填：{string.Join("、", missingRequired)}。"
             : string.Empty;
-        var content = $"已生成「{form.Title}」录入草稿（{values.Count} 个字段）。{missingNote}"
+        var detailNote = details.Count > 0 ? $"，明细 {details.Count} 行" : string.Empty;
+        var content = $"已生成「{form.Title}」录入草稿（{values.Count} 个字段{detailNote}）。{missingNote}"
             + "草稿已展示给用户确认，不会自动保存。";
 
         var draft = new AssistantFormDraft(
             form.ModuleId, form.Title,
             new Dictionary<string, string>(values),
             values.Keys.ToDictionary(k => k, k => writable[k].Label),
-            missingRequired, unknownKeys, warnings);
+            missingRequired, unknownKeys, warnings,
+            details.Count == 0 ? null : details);
 
         return new ToolExecutionResult(true, content, draft);
     }

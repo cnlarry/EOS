@@ -64,9 +64,7 @@ public sealed class AssistantRecordActionService(
                 allowed,
                 allowed ? null : result.ErrorCode ?? "ACTION_FAILED",
                 allowed ? null : Describe(result),
-                request.Kind == AssistantRecordActionKind.Delete
-                    ? BuildImpacts(access.Definition, notes)
-                    : null));
+                BuildImpacts(access.Definition, request.Kind, notes)));
         }
 
         await WriteDryRunAuditAsync(access.Definition, request, rows, userId, token);
@@ -110,6 +108,8 @@ public sealed class AssistantRecordActionService(
         var actionName = AssistantRecordActionNames.For(request.Kind);
         var results = new List<AssistantActionRowResult>(request.Rows.Count);
         using var agentScope = agentWrites.Begin();
+        // 回读是 best-effort 的附加证据：批量超过这个行数就不逐行回读，避免一次动作读 50 次。
+        const int maxReadbackRows = 5;
         foreach (var row in request.Rows)
         {
             var idempotencyKey = AssistantActionIdempotency.Create(
@@ -126,13 +126,20 @@ public sealed class AssistantRecordActionService(
 
             var written = await WriteAsync(access, request.Kind, row, userId, employeeName, idempotencyKey, token);
             var succeeded = written.Status == RecordAccessStatus.Ok;
+            var resultKeys = succeeded
+                ? written.Key ?? ReferenceKeys(request.Kind, row, written)
+                : ReferenceKeys(request.Kind, row, written);
+            var readback = succeeded && request.Rows.Count <= maxReadbackRows
+                ? await ReadBackAsync(access, resultKeys, token)
+                : null;
             results.Add(new AssistantActionRowResult(
-                succeeded ? written.Key ?? ReferenceKeys(request.Kind, row, written) : ReferenceKeys(request.Kind, row, written),
+                resultKeys,
                 succeeded,
                 succeeded ? null : written.ErrorCode ?? "ACTION_FAILED",
                 succeeded ? null : Describe(written),
                 idempotencyKey,
-                written.Key));
+                written.Key,
+                readback));
         }
 
         return new AssistantActionExecution(
@@ -149,6 +156,46 @@ public sealed class AssistantRecordActionService(
         WorkbenchFormAccess access, AssistantRecordActionKind kind, AssistantActionRow row,
         string userId, string employeeName, string idempotencyKey, CancellationToken token)
         => InvokeAsync(access, kind, row, userId, employeeName, idempotencyKey, dryRun: false, token);
+
+    /// <summary>
+    /// 写后回读：按业务主键重新读一次，证明"落库的确实是这次写入"。
+    /// **不改变写入结果**：读失败只记 Debug，不给用户一个"已经写成功但被读失败判为失败"的假象。
+    /// 列集合来自本人权限过滤后的定义，数据范围仍由 DATA_FILTER 强制。
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, string>?> ReadBackAsync(
+        WorkbenchFormAccess access, IReadOnlyList<string> keys, CancellationToken token)
+    {
+        if (keys.Count == 0) return null;
+        try
+        {
+            var rows = await repository.GetExportRowsByKeysAsync(
+                access.Definition, [keys], token,
+                exportFields: access.Definition.MasterFields,
+                dataFilter: access.Rights.DataFilter);
+            var row = rows.FirstOrDefault();
+            if (row is null) return null;
+
+            var readback = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var field in access.Definition.MasterFields.Where(field => field.IsVisible).Take(12))
+            {
+                if (!row.TryGetValue(field.Key, out var value) || value is null || value == DBNull.Value)
+                {
+                    continue;
+                }
+
+                var text = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (string.IsNullOrEmpty(text)) continue;
+                readback[field.Key] = text.Length > 120 ? text[..120] + "…" : text;
+            }
+
+            return readback.Count == 0 ? null : readback;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogDebug(exception, "动作写后回读失败 module={ModuleId}", access.Definition.ModuleId);
+            return null;
+        }
+    }
 
     private Task<RecordSaveResult> InvokeAsync(
         WorkbenchFormAccess access, AssistantRecordActionKind kind, AssistantActionRow row,
@@ -198,11 +245,12 @@ public sealed class AssistantRecordActionService(
     }
 
     /// <summary>
-    /// 删除的级联影响面：列出该模块**声明**的生效链（批核 / 保存阶段）会碰到的目标表与字段。
-    /// 删除本身不跑效果链，因此这张表回答的是"这张单据带着哪些业务副作用"，
-    /// 而不是"删除会执行这些效果"——不写清楚就会变成一句误导。
+    /// 动作的影响面：列出该模块**声明**的生效链（保存 / 批核阶段）会碰到的目标表与字段。
+    /// 删除本身不跑效果链，因此这张表回答的是"这张单据带着哪些业务副作用"；
+    /// 新增/修改会在保存时执行 SAVE 链，批核阶段的效果仍需批核才触发——两者都要说清楚。
     /// </summary>
-    private IReadOnlyList<AssistantActionImpact> BuildImpacts(WorkbenchDefinition definition, List<string> notes)
+    private IReadOnlyList<AssistantActionImpact> BuildImpacts(
+        WorkbenchDefinition definition, AssistantRecordActionKind kind, List<string> notes)
     {
         try
         {
@@ -232,8 +280,11 @@ public sealed class AssistantRecordActionService(
             }
             if (impacts.Count > 0)
             {
-                notes.Add("影响面来自本模块声明的效果链（批核/保存阶段），删除本身不执行效果链；"
-                    + "它回答的是这张单据带着哪些业务副作用。");
+                notes.Add(kind == AssistantRecordActionKind.Delete
+                    ? "影响面来自本模块声明的效果链（批核/保存阶段）；删除本身不执行效果链，"
+                      + "它回答的是这张单据带着哪些业务副作用。"
+                    : "影响面来自本模块声明的效果链；新增/修改会执行保存阶段的效果，"
+                      + "批核阶段的效果仍需批核后才触发。");
             }
             return impacts;
         }

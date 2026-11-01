@@ -9,6 +9,21 @@ namespace EOS.API.Data;
 /// </summary>
 public static class AssistantQueryBuilder
 {
+    /// <summary>一条由模型给出的结构化筛选；字段与算子都必须落在模块定义的白名单内。</summary>
+    public sealed record Filter(string Field, string Operator, string? Value = null, string? ValueTo = null, string? Logic = null);
+
+    private static readonly HashSet<string> Operators = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "eq", "ne", "gt", "gte", "lt", "lte",
+        "contains", "notcontains", "startswith", "endswith",
+        "empty", "notempty", "between",
+    };
+
+    private static readonly HashSet<string> ComparisonOperators = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "eq", "ne", "gt", "gte", "lt", "lte", "between",
+    };
+
     /// <summary>日期/金额格式非法时抛 ArgumentException（调用方转 400）。</summary>
     public static AssistantFilterResult Build(
         WorkbenchDefinition definition,
@@ -16,7 +31,8 @@ public static class AssistantQueryBuilder
         string? dateTo,
         string? status,
         string? amountMin,
-        string? amountMax)
+        string? amountMax,
+        IReadOnlyList<Filter>? filters = null)
     {
         var notApplied = new List<string>();
         var conditions = new List<WorkbenchQueryCondition>();
@@ -73,9 +89,75 @@ public static class AssistantQueryBuilder
             }
         }
 
+        if (filters is { Count: > 0 })
+        {
+            if (filters.Count > 20)
+            {
+                notApplied.Add($"conditions（超过 20 条，只应用前 20 条）");
+            }
+
+            foreach (var filter in filters.Take(20))
+            {
+                var field = fields.FirstOrDefault(item =>
+                    item.IsVisible
+                    && item.Key.Equals(filter.Field?.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (field is null || field.IsVirtual)
+                {
+                    notApplied.Add($"field:{filter.Field}");
+                    continue;
+                }
+
+                var op = filter.Operator?.Trim().ToLowerInvariant() ?? string.Empty;
+                if (!Operators.Contains(op))
+                {
+                    notApplied.Add($"operator:{filter.Operator}");
+                    continue;
+                }
+
+                if (!ComparisonOperators.Contains(op) && !field.IsQueryable)
+                {
+                    notApplied.Add($"field:{filter.Field}（该字段不支持此运算符）");
+                    continue;
+                }
+
+                if (op == "between" && (string.IsNullOrWhiteSpace(filter.Value) || string.IsNullOrWhiteSpace(filter.ValueTo)))
+                {
+                    notApplied.Add($"between:{filter.Field}（缺少起始或结束值）");
+                    continue;
+                }
+
+                var logic = string.Equals(filter.Logic?.Trim(), "or", StringComparison.OrdinalIgnoreCase) ? "or" : "and";
+                conditions.Add(new WorkbenchQueryCondition(
+                    field.Key, op, filter.Value?.Trim(), filter.ValueTo?.Trim(), null, logic));
+            }
+        }
+
         return new AssistantFilterResult(
             conditions.Count == 0 ? null : new WorkbenchQuery(conditions),
             notApplied);
+    }
+
+    /// <summary>
+    /// 排序字段白名单：只接受可见字段的 Key；非法/缺失返回 null，由调用方如实告知而不是静默回退。
+    /// </summary>
+    public static (string? Field, string Direction) ResolveSort(
+        WorkbenchDefinition definition, string? field, string? direction)
+    {
+        if (string.IsNullOrWhiteSpace(field))
+        {
+            return (null, "asc");
+        }
+
+        var match = definition.MasterFields.FirstOrDefault(item =>
+            item.IsVisible && item.Key.Equals(field.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            return (null, "asc");
+        }
+
+        return (match.Key, string.Equals(direction?.Trim(), "desc", StringComparison.OrdinalIgnoreCase)
+            ? "desc"
+            : "asc");
     }
 
     /// <summary>

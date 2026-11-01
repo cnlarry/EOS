@@ -28,6 +28,10 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
         => await definitionBuilder.GetDefinitionAsync(moduleId, userId, execTag, canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token);
 
+    /// <summary>知识型读取（助手详情）：字段集与列表一致，但按物理列序排列（见网关契约）。</summary>
+    public async Task<WorkbenchDefinition?> GetAssistantDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
+        => await definitionBuilder.GetDefinitionAsync(moduleId, userId, execTag, canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token, orderByPhysicalColumns: true);
+
     /// <summary>Builds the unified form definition (permission-filtered entry field view for the requested mode).</summary>
     public async Task<FormDefinition?> GetFormDefinitionAsync(
         WorkbenchDefinition definition,

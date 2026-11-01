@@ -40,7 +40,8 @@ public sealed record AssistantActionRowOutcomeDraft(
     string? Code,
     string? Message,
     IReadOnlyList<string>? ResultKeys,
-    string IdempotencyKey);
+    string IdempotencyKey,
+    IReadOnlyDictionary<string, string>? Readback = null);
 
 /// <summary>执行结果（界面下发的形状）。</summary>
 public sealed record AssistantActionResultDraft(
@@ -93,7 +94,7 @@ public static class AssistantActionDtos
             execution.ModuleDenialCode,
             execution.ModuleDenialMessage,
             [.. execution.Rows.Select(row => new AssistantActionRowOutcomeDraft(
-                row.Keys, row.Succeeded, row.Code, row.Message, row.ResultKeys, row.IdempotencyKey))]);
+                row.Keys, row.Succeeded, row.Code, row.Message, row.ResultKeys, row.IdempotencyKey, row.Readback))]);
 
     private static AssistantActionImpactDraft ToImpact(AssistantActionImpact impact)
         => new(impact.EffectKey, impact.EventCode, impact.EffectName,

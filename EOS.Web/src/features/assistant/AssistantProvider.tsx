@@ -284,7 +284,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   // 草稿确认后"带入表单"：经 sessionStorage 一次性通道预填，执行仍走既有统一保存管线。
   const openInForm = useCallback((draft: AssistantFormDraft) => {
-    sessionStorage.setItem(assistantPrefillKey(draft.moduleId), JSON.stringify(draft.values))
+    // 一次性通道：主表与明细一起带入，写入仍由用户在表单里确认后走既有保存管线。
+    sessionStorage.setItem(assistantPrefillKey(draft.moduleId), JSON.stringify({
+      values: draft.values,
+      details: draft.details ?? [],
+    }))
     setOpen(false)
     openTab(workbenchNew(draft.moduleId), { locate: true })
   }, [openTab])

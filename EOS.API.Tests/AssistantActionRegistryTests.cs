@@ -49,6 +49,7 @@ public sealed class AssistantActionRegistryTests
             ConfigSurfaceNames.ActionOf(ConfigSurface.DataSources),
             ConfigSurfaceNames.ActionOf(ConfigSurface.Buttons),
             ConfigSurfaceNames.ActionOf(ConfigSurface.Effects),
+            "DOC_ACTION",
         };
 
         Assert.Equal(

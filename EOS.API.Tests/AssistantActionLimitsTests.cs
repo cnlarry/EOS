@@ -1,6 +1,7 @@
 using EOS.API.Features.Assistant.Actions;
 using EOS.API.Features.Assistant.Config;
 using EOS.API.Features.Assistant.Governance;
+using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -52,6 +53,23 @@ public sealed class AssistantActionLimitsTests
             typeof(AssistantActionLimitsOptions).GetProperties(),
             property => property.Name is "DryRunRequired" or "IdempotencyRequired"
                 or "MaxUnauthorizedActions" or "ApprovalFamilyActionCount");
+    }
+
+    [Fact]
+    public void 删除与多行批量必须由用户确认_单行修改可直接代理()
+    {
+        static AssistantActionRequest Request(AssistantRecordActionKind kind, int rows) =>
+            new(1606, kind, [.. Enumerable.Range(0, rows).Select(index =>
+                new AssistantActionRow([$"A{index}"], null, null, null))]);
+
+        Assert.True(ApplyRecordActionTool.RequiresUserConfirmation(
+            Request(AssistantRecordActionKind.Delete, 1)));
+        Assert.True(ApplyRecordActionTool.RequiresUserConfirmation(
+            Request(AssistantRecordActionKind.Update, AssistantActionLimits.MaxDirectRows + 1)));
+        Assert.False(ApplyRecordActionTool.RequiresUserConfirmation(
+            Request(AssistantRecordActionKind.Insert, 1)));
+        Assert.False(ApplyRecordActionTool.RequiresUserConfirmation(
+            Request(AssistantRecordActionKind.Update, 1)));
     }
 
     [Fact]

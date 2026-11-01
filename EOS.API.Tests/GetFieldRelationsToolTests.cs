@@ -37,6 +37,9 @@ public sealed class GetFieldRelationsToolTests
         public Task<MetricDefinitionRow?> GetAsync(string metricId, CancellationToken token) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<MetricDefinitionRow>> SearchConfirmedAsync(string keyword, CancellationToken token) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<int>> FindModuleIdsByTableAsync(string table, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<int>>(
                 moduleIdsByTable.TryGetValue(table, out var ids) ? ids : []);

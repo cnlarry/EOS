@@ -71,7 +71,9 @@ public sealed class AssistantToolRegistry
             $" 输出上限：最多 {_limits.SearchMaxRows} 行、每行 {_limits.SearchMaxColumns} 列、"
             + $"单值 {_limits.SearchMaxValueLength} 字符。",
         GetRecordDetailTool.ToolName =>
-            $" 输出上限：最多 {_limits.DetailMaxColumns} 列、单值 {_limits.DetailMaxValueLength} 字符。",
+            $" 输出上限：主表最多 {_limits.DetailMaxColumns} 列、单值 {_limits.DetailMaxValueLength} 字符；"
+            + $"明细最多 {_limits.DetailMaxRows} 行、每行 {_limits.DetailRowMaxColumns} 列、"
+            + $"单值 {_limits.DetailRowMaxValueLength} 字符。",
         DraftRecordTool.ToolName =>
             $" 单个字段值超过 {_limits.DraftMaxValueLength} 字符会被截断并在试算结果里告警。",
         DescribeModuleTool.ToolName =>
@@ -92,6 +94,10 @@ public sealed class AssistantToolRegistry
             + $"最近操作只看最近 {_limits.RecordActivityDays} 天。",
         AttachmentListTool.ToolName =>
             $" 输出上限：最多列出 {_limits.AttachmentListMax} 个附件（只给文件元数据，不含内容）。",
+        ResolveReferenceTool.ToolName =>
+            $" 输出上限：最多返回 {_limits.ReferenceMaxRows} 个候选（超出时提示补充关键字）。",
+        SearchMetadataTool.ToolName =>
+            $" 输出上限：最多返回 {_limits.MetadataSearchMax} 条命中（模块/表/字段/动作合计）。",
         _ => string.Empty,
     };
 

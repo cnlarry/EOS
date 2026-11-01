@@ -33,6 +33,11 @@ export function ActionResultCard({ result }: { result: AssistantRecordActionResu
           {row.succeeded
             ? <span className="text-success">已保存</span>
             : <span className="text-warning">未保存：{row.message ?? row.code}</span>}
+          {row.readback && Object.keys(row.readback).length > 0 && (
+            <div className="text-secondary">
+              回读：{Object.entries(row.readback).map(([key, value]) => `${key}=${value}`).join('，')}
+            </div>
+          )}
         </div>
       ))}
     </div>

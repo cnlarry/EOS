@@ -9,7 +9,7 @@ namespace EOS.API.Features.Assistant.Parameters;
 /// </para>
 ///
 /// <para>
-/// 这里写下的是 29 个工具名（其中 2 个为批后追加，见 <see cref="AppendedToolNames"/>）。
+/// 这里写下的是 36 个工具名（其中 9 个为批后追加，见 <see cref="AppendedToolNames"/>）。
 /// **它们与工具类里 <c>ToolName</c> 常量的一致性由离线门禁断言**
 /// （扫源码里的 <c>ToolName = "…"</c> 并逐名比对）：新加一个工具却忘了加开关，门禁当场变红——
 /// 而"忘了加开关"的表现正是新工具绕过了能力面管理。
@@ -28,7 +28,8 @@ public static class AssistantToolKeys
     /// </para>
     /// </summary>
     public static IReadOnlyList<string> AppendedToolNames { get; } =
-        ["list_reports", "run_report", "get_record_history", "list_attachments"];
+        ["list_reports", "run_report", "get_record_history", "list_attachments", "resolve_reference",
+         "list_document_actions", "preview_document_action", "apply_document_action", "search_metadata"];
 
     /// <summary>工具名（与各工具类的 <c>ToolName</c> 常量逐一对应）。</summary>
     public static IReadOnlyList<string> ToolNames { get; } =
@@ -109,6 +110,11 @@ public static class AssistantToolKeys
             ["run_report"] = "取报表数据",
             ["get_record_history"] = "查看单据历史",
             ["list_attachments"] = "查看单据附件清单",
+            ["resolve_reference"] = "解析引用值候选",
+            ["list_document_actions"] = "列出单据动作",
+            ["preview_document_action"] = "预演单据动作",
+            ["apply_document_action"] = "执行单据动作",
+            ["search_metadata"] = "检索模块/表/字段",
             // 试算与执行（风险由低到高）
             ["draft_record"] = "试算：起草单据",
             ["apply_changeset"] = "试算：应用变更集",

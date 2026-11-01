@@ -54,7 +54,7 @@ public abstract record ChatStreamEvent
 }
 
 /// <summary>工具调用摘要（落库 TOOL_CALLS_JSON + done 事件下发前端展示）。</summary>
-public sealed record ToolCallSummary(string Name, string ArgumentsJson, string ResultDigest);
+public sealed record ToolCallSummary(string Name, string ArgumentsJson, string ResultDigest, bool? Ok = null);
 
 /// <summary>
 /// 自动轻量上下文：前端从当前路由与界面状态采集，服务端截断与白名单校验后作为**数据**注入。
@@ -150,7 +150,11 @@ public sealed class ChatService(
     AssistantSituationService? situation = null,
     IAssistantEffectiveParameters? effectiveParameters = null,
     // 引擎内部的日志工厂（模型调用、工具执行）；只在部署期给定，不是业务配置。
-    ILoggerFactory? loggerFactory = null)
+    ILoggerFactory? loggerFactory = null,
+    // 当前页面模块的紧凑结构摘要；缺省不注入（单测与无页面处境时不受影响）。
+    IModuleBriefProvider? moduleBrief = null,
+    // 行为规则段：文本在库（ADR-046 自助改进），锁定段只允许迁移改；缺省用代码默认值。
+    IPromptSegments? promptSegments = null)
 {
     // 用量账与记忆提炼是**准备段与循环段共用**的副作用，单独成类后只有一个入口：
     // 换引擎时这两段会落到不同实现，账若各写一份，"预算不可绕过"就会因为搬家而悄悄松动。
@@ -189,31 +193,6 @@ public sealed class ChatService(
     // 它们是运维真想调的数字，而调它们此前只有"改代码重新部署"一条路。
     // 本轮取值一律来自请求开始时的那一份快照（见 SendAsync 里的 local `chat`）。
 
-    /// <summary>
-    /// 量化指标必须走系统口径计算（enum_metrics 查定义 → resolve_metric 取数），
-    /// 无对应口径时如实说明，禁止模型自行拼公式或心算。
-    /// </summary>
-    private const string MetricUsageRule =
-        "回答涉及金额、数量、比率等量化指标时，必须先通过 enum_metrics 查看系统口径，"
-        + "再用 resolve_metric 按口径计算，并在回答中标注所用口径名与数值；"
-        + "若系统内没有对应口径，如实说明「该指标在系统内尚无定义」，禁止自行拼公式估算或心算。";
-
-    /// <summary>
-    /// 机制与规范分走两条通道：机制事实由能力目录从元数据与代码注册表现算，
-    /// 规范、边界、坑与设计动因只在文档里，走知识库检索且必须标注来源；两者冲突以服务端元数据为准。
-    /// </summary>
-    private const string KnowledgeChannelRule =
-        "机制问题走 describe_mechanism 现算；规范、坑与设计动因走 kb_search 并标注来源与版本；冲突以服务端元数据为准。";
-
-    /// <summary>
-    /// "这张单为什么存不下去 / 改不了"必须落到证据上：走 diagnose_record 按模块与单号逐条取证，
-    /// 权限类原因直说，证据不足时如实说明缺什么——不猜、不编下一步。
-    /// </summary>
-    private const string DiagnosisUsageRule =
-        "当用户问「这张单为什么存不下去 / 改不了 / 办不下去」时，用 diagnose_record 按当前模块与单据号取证，"
-        + "再按返回的证据顺序解释原因并给出下一步；"
-        + "属于权限或状态的原因必须直接说明（例如「你没有批核权限」「单据已结案，先取消结案」），不得含糊成「操作失败」；"
-        + "证据不足时如实说明缺哪些证据，不要猜测根因。";
 
     /// <summary>
     /// 收尾轮（工具调用已达上限）必须**明说"不能再调工具"**。
@@ -320,11 +299,27 @@ public sealed class ChatService(
         var situationText = situation is null
             ? string.Empty
             : await situation.BuildResidentTextAsync(userId, token);
+        // 当前页面模块的结构摘要：页面处境有模块号时按权限过滤后的定义现装配，不落第二份文本。
+        var briefText = moduleBrief is null || pageContext?.ModuleId is not int briefModuleId
+            ? string.Empty
+            : await moduleBrief.BuildAsync(userId, briefModuleId, token) ?? string.Empty;
         // 按**当前模型的上下文窗口**裁剪（窗口来自 3102 的模型行）：从最老的消息开始丢。
         // 系统提示与处境段不参与这个预算——它们是每轮必须带的，占用的额度由 ContextReserveTokens 预留。
         var trimmedHistory = TrimToContextWindow(history, settings, chat);
+        // 行为规则段：库内可维护（ADR-046），库内一条都没有时用代码默认值兜底——
+        // "没有配置就是没关过任何东西"与工具门禁同一约定。
+        var promptRuleSegments = promptSegments is null
+            ? PromptSegmentDefaults.All
+            : await promptSegments.ListEnabledAsync(token);
+        if (promptRuleSegments.Count == 0)
+        {
+            logger.LogWarning("行为规则段在库内为空（ASSISTANT_PROMPT_SEGMENT），本轮改用代码默认值注入");
+            promptRuleSegments = PromptSegmentDefaults.All;
+        }
+
         var messages = BuildModelMessages(
-            trimmedHistory, pageContext, settings, memoryPrefix, situationText, capability);
+            trimmedHistory, pageContext, settings, memoryPrefix, situationText, capability, briefText,
+            promptRuleSegments);
 
         // 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
         // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
@@ -519,6 +514,9 @@ public sealed class ChatService(
         var tools = new List<Agent.Harness.Abstractions.ITool>();
         foreach (var definition in toolRegistry.Definitions)
         {
+            // 按页面类型裁剪声明：配置页不摆记录写/单据动作工具，业务页不摆配置写/元数据管理工具。
+            // 这是"少给选择"，不是权限放宽或收紧——被裁掉的工具仍由管理员开关与工具内部授权控制。
+            if (!AssistantToolSetPolicy.IsOffered(definition.Name, pageContext?.PageType)) continue;
             if (toolRegistry.TryGet(definition.Name, out var tool))
             {
                 tools.Add(new EosToolAdapter(
@@ -558,6 +556,9 @@ public sealed class ChatService(
         var roundText = new StringBuilder();
         var heldTail = new StringBuilder();
         var toolLog = new List<ToolCallSummary>();
+        // 每次 ToolFinished 的 ok 按顺序留一份：Completed 里的 ToolCalls 只有 id/name/args，
+        // 没有 ok；用它把"这次工具到底成没成"补进落库摘要（旧数据没有这一列，按 null 处理）。
+        var toolOutcomes = new List<(string Name, bool Ok)>();
         var drafts = new List<object>();
         var promptTokens = 0;
         var completionTokens = 0;
@@ -629,6 +630,7 @@ public sealed class ChatService(
                     roundText.Clear();
                     heldTail.Clear();
                     var outcome = NormalizeToolOutcome(finished.Name, finished.Digest, finished.Ok, chat);
+                    toolOutcomes.Add((finished.Name, outcome.Ok));
                     yield return new ChatStreamEvent.ToolFinished(finished.Name, outcome.Digest, outcome.Ok);
                     break;
 
@@ -636,14 +638,25 @@ public sealed class ChatService(
                     finishReason = completed.Result.FinishReason;
                     promptTokens = completed.Result.Usage.PromptTokens;
                     completionTokens = completed.Result.Usage.CompletionTokens;
-                    toolLog.AddRange(completed.Result.ToolCalls.Select(call =>
+                    var outcomeCursor = 0;
+                    foreach (var call in completed.Result.ToolCalls)
                     {
                         var normalized = NormalizeToolOutcome(call.Name, call.ResultDigest, ok: true, chat);
-                        return new ToolCallSummary(
+                        bool? ok = null;
+                        for (var index = outcomeCursor; index < toolOutcomes.Count; index++)
+                        {
+                            if (!string.Equals(toolOutcomes[index].Name, call.Name, StringComparison.Ordinal)) continue;
+                            ok = toolOutcomes[index].Ok;
+                            outcomeCursor = index + 1;
+                            break;
+                        }
+
+                        toolLog.Add(new ToolCallSummary(
                             call.Name,
                             Truncate(call.ArgumentsJson, chat.MaxToolArgumentsLength),
-                            normalized.Digest);
-                    }));
+                            normalized.Digest,
+                            ok));
+                    }
                     drafts.AddRange(completed.Result.Drafts);
                     // 供应商不回 usage 时引擎记 0：按输入/输出字符保守估算，并如实标成估算值。
                     if (promptTokens == 0 && completionTokens == 0)
@@ -770,9 +783,12 @@ public sealed class ChatService(
     /// </para>
     /// </summary>
     private static void AppendRuleIfAvailable(
-        StringBuilder prompt, AssistantCapabilityOptions? capability, string rule, params string[] requiredTools)
+        StringBuilder prompt, AssistantCapabilityOptions? capability, string? pageType,
+        string rule, params string[] requiredTools)
     {
         if (capability is not null && !capability.AllowsRule(requiredTools)) return;
+        // 工具被页面类型裁掉时规则一起消失：不在提示词里要求一个这一轮根本没下发的工具。
+        if (requiredTools.Any(tool => !AssistantToolSetPolicy.IsOffered(tool, pageType))) return;
 
         prompt.Append(rule);
         prompt.AppendLine();
@@ -781,21 +797,21 @@ public sealed class ChatService(
     private static List<ChatMessage> BuildModelMessages(
         IReadOnlyList<(int Role, string Content)> history, PageContext? pageContext,
         AssistantSettings settings, string? memoryPrefix = null, string? situationText = null,
-        AssistantCapabilityOptions? capability = null)
+        AssistantCapabilityOptions? capability = null, string? briefText = null,
+        IReadOnlyList<PromptSegment>? ruleSegments = null)
     {
         var systemPrompt = new StringBuilder(settings.SystemPrompt);
         systemPrompt.AppendLine();
 
-        // 三段行为规则**随能力面派生**（ADR-030 §7.4）：规则要求的工具不在了，规则一起消失。
-        // 否则提示词里会留下"必须先通过 enum_metrics 查口径"这类指令，而那个工具已经被管理员关掉——
-        // 模型只能违反规则，或者空转着去找一个不存在的工具。三段的工具来源一样，所以
-        // "规则在不在"与"工具发没发"这两件事不可能各说各话。
-        //
-        // 涉及量化指标必须走系统口径：先查 enum_metrics 再用 resolve_metric 取数，
-        // 无口径时如实说明，禁止模型自行拼表达式或心算。
-        AppendRuleIfAvailable(systemPrompt, capability, MetricUsageRule, "enum_metrics", "resolve_metric");
-        AppendRuleIfAvailable(systemPrompt, capability, DiagnosisUsageRule, "diagnose_record");
-        AppendRuleIfAvailable(systemPrompt, capability, KnowledgeChannelRule, "describe_mechanism", "kb_search");
+        // 行为规则段**随能力面派生**（ADR-030 §7.4）：规则要求的工具不在了，规则一起消失。
+        // 否则提示词里会留下"必须先查口径"这类指令，而那个工具已经被管理员关掉——
+        // 模型只能违反规则，或者空转着去找一个不存在的工具。段落的**文本**在库（ADR-046），
+        // 依赖工具也在库；这里只做"发不发"的判定。
+        foreach (var segment in ruleSegments ?? PromptSegmentDefaults.All)
+        {
+            AppendRuleIfAvailable(systemPrompt, capability, pageContext?.PageType, segment.Text,
+                [.. segment.RequiredTools]);
+        }
 
         // 当前日期是**数据区**的一条事实（见 TodayLine）：相对时间问题（"上个月"）必须有基准，
         // 否则模型只能猜月份、并去找一个不存在的取时间工具。
@@ -805,6 +821,12 @@ public sealed class ChatService(
         if (pageContext is not null && !pageContext.IsEmpty)
         {
             pageContext.AppendTo(systemPrompt); // 页面元数据作为「内容」注入并声明非指令（提示注入隔离）
+        }
+
+        if (!string.IsNullOrWhiteSpace(briefText))
+        {
+            systemPrompt.AppendLine();
+            systemPrompt.AppendLine(briefText); // 模块结构摘要：同为数据区内容，不是指令
         }
 
         if (!string.IsNullOrWhiteSpace(situationText))

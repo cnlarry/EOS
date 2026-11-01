@@ -27,9 +27,12 @@ public sealed class NoApprovalEndpointCallTests
     private static readonly string[] ApprovalActionVerbs =
         ["approve", "deapprove", "endcase", "unendcase", "finish", "批核", "解批", "结案", "取消结案", "审批"];
 
-    /// <summary>助手动作层允许触达的仓储方法：只有既有写管线的三个（按名排序，便于与实测集合对拍）。</summary>
+    /// <summary>
+    /// 助手动作层允许触达的仓储方法：既有写管线的三个 + **写后回读**用的一个只读方法
+    /// （按名排序，便于与实测集合对拍）。回读只读、不参与写入判定。
+    /// </summary>
     private static readonly string[] AllowedRepositoryMethods =
-        ["CreateRecordAsync", "DeleteRecordAsync", "UpdateRecordAsync"];
+        ["CreateRecordAsync", "DeleteRecordAsync", "GetExportRowsByKeysAsync", "UpdateRecordAsync"];
 
     [Fact]
     public void 动作枚举表达不出批核族动作()

@@ -192,6 +192,9 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_SEARCH_MAX_VALUE_LENGTH"] = "41",
             ["TOOL_LIMIT_DETAIL_MAX_COLUMNS"] = "25",
             ["TOOL_LIMIT_DETAIL_MAX_VALUE_LENGTH"] = "201",
+            ["TOOL_LIMIT_DETAIL_MAX_ROWS"] = "51",
+            ["TOOL_LIMIT_DETAIL_ROW_COLUMNS"] = "9",
+            ["TOOL_LIMIT_DETAIL_ROW_VALUE_LENGTH"] = "41",
             ["TOOL_LIMIT_DRAFT_MAX_VALUE_LENGTH"] = "501",
             ["TOOL_LIMIT_DESCRIBE_MAX_FIELDS"] = "81",
             ["TOOL_LIMIT_LIST_MODULES_MAX"] = "51",
@@ -204,6 +207,9 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_RECORD_HISTORY_MAX"] = "21",
             ["TOOL_LIMIT_RECORD_ACTIVITY_DAYS"] = "91",
             ["TOOL_LIMIT_ATTACHMENT_LIST_MAX"] = "22",
+            ["TOOL_LIMIT_REFERENCE_MAX"] = "12",
+            ["TOOL_LIMIT_METADATA_SEARCH_MAX"] = "21",
+            ["TOOL_LIMIT_BRIEF_MAX_FIELDS"] = "25",
         };
 
         // 工具开关与动作族开关：键名由各自的清单机械生成，所以探针也按同一份清单生成——

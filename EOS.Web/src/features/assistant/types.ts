@@ -114,6 +114,7 @@ export interface AssistantActionRowOutcome {
   message: string | null
   resultKeys: string[] | null
   idempotencyKey: string
+  readback?: Record<string, string> | null
 }
 
 /** 执行结果。 */

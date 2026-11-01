@@ -61,7 +61,7 @@ public sealed class WorkbenchDefinitionBuilder(
     /// 发布/校验产出的是"当前代码 + 当前元数据"的定义，模块级字段（表/主键/业务规则/系统列/
     /// 明细必填口径/校验规则等）每次发布都重新推导，不再继承旧快照。
     /// </summary>
-    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token, bool forPublish = false)
+    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token, bool forPublish = false, bool orderByPhysicalColumns = false)
     {
         using var timing = DbTimingCollector.Instance.Measure();
         await using var connection = CreateConnection();
@@ -71,7 +71,7 @@ public sealed class WorkbenchDefinitionBuilder(
         if (forPublish)
         {
             return await BuildFromMetadataAsync(connection, moduleId, userId, execTag, canViewCost, canViewSecrecy,
-                deniedMasterFields, deniedDetailFields, version: null, token);
+                deniedMasterFields, deniedDetailFields, version: null, token, orderByPhysicalColumns);
         }
         // 运行时的生效定义只有一个来源：最近一次发布的快照。未发布的元数据改动不参与执行
         // （「已保存未发布」只改变管理端状态），因此这里不再按脏标记回退实时元数据——
@@ -79,12 +79,12 @@ public sealed class WorkbenchDefinitionBuilder(
         if (definitionProvider.TryGetBaseline(moduleId, out var baseline, out var snapshotVersion))
         {
             var fromBaseline = await BuildFromBaselineAsync(connection, baseline, snapshotVersion, moduleId, userId, execTag,
-                canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token);
+                canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token, orderByPhysicalColumns);
             logger.LogDebug("工作台定义（快照）module={ModuleId} version={Version}", moduleId, snapshotVersion);
             return fromBaseline;
         }
         var live = await BuildFromMetadataAsync(connection, moduleId, userId, execTag, canViewCost, canViewSecrecy,
-            deniedMasterFields, deniedDetailFields, version: string.Empty, token);
+            deniedMasterFields, deniedDetailFields, version: string.Empty, token, orderByPhysicalColumns);
         return live is null ? null : await AttachBusinessConfigAsync(live, moduleId, token);
     }
 
@@ -131,7 +131,8 @@ public sealed class WorkbenchDefinitionBuilder(
         bool canViewSecrecy,
         IReadOnlySet<string> deniedMasterFields,
         IReadOnlySet<string> deniedDetailFields,
-        CancellationToken token)
+        CancellationToken token,
+        bool orderByPhysicalColumns = false)
     {
         var master = baseline.MasterTable;
         var detail = baseline.DetailTable;
@@ -140,12 +141,12 @@ public sealed class WorkbenchDefinitionBuilder(
         // 放在构造函数里缓存会让改完声明后链接目标仍停在进程启动时的那一份。
         var formOpenableModules = await formCapability.GetFormEnabledIdsAsync(token);
         var masterFields = await WorkbenchBrowseResolver.ResolveAsync(connection,
-            await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
+            await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token, orderByPhysicalColumns),
             master, formOpenableModules, token);
         var detailFields = detail is null
             ? []
             : await WorkbenchBrowseResolver.ResolveAsync(connection,
-                await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token),
+                await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token, orderByPhysicalColumns),
                 detail, formOpenableModules, token);
         var groupExpressions = await ReadGroupExpressionsAsync(connection, moduleId, token);
         // 版式段是模块级事实，随快照冻结；历史快照没有该段时按当前配置补读（含默认推导）
@@ -175,7 +176,8 @@ public sealed class WorkbenchDefinitionBuilder(
         IReadOnlySet<string> deniedMasterFields,
         IReadOnlySet<string> deniedDetailFields,
         string? version,
-        CancellationToken token)
+        CancellationToken token,
+        bool orderByPhysicalColumns = false)
     {
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,AUTO_APPROVE," +
                            // FORM_TABS / FORM_COLUMNS 已退役：**在原位返回 NULL 占位**，下游按位置取值不改，
@@ -245,7 +247,7 @@ public sealed class WorkbenchDefinitionBuilder(
         // （迁移 321 删掉了那三个路由列；迁移 355 把能力从 appsettings 名单搬进 MODULES）。
         var formOpenableModules = await formCapability.GetFormEnabledIdsAsync(token);
         var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
-            await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formOpenableModules,token);
+            await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token,orderByPhysicalColumns),master,formOpenableModules,token);
         var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
         // Business rule: a static mapping wins (it carries bill-number and offset-table config);
         // otherwise it is auto-registered from MODULES metadata.
@@ -277,7 +279,7 @@ public sealed class WorkbenchDefinitionBuilder(
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await WorkbenchBrowseResolver.ResolveAsync(connection,
-                await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formOpenableModules,token),NormalizeSort(defaultSort,master,masterFields),
+                await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token,orderByPhysicalColumns),detail,formOpenableModules,token),NormalizeSort(defaultSort,master,masterFields),
             // HasAdd/HasEdit 在这里恒为 false：它由模块声明在请求期折叠（见 WorkbenchAccessPolicy.FoldRoutes）。
             // 写成推导值会让"能不能写"多出一处可能与声明不一致的真源——迁移 355 之后只剩 MODULES 两列一处。
             false,false,detailNoSave,
@@ -882,7 +884,7 @@ public sealed class WorkbenchDefinitionBuilder(
     /// 主键列不在此处补入：用户未勾选的主键列只用于行标识/子表关联，由查询层单独并入投影，
     /// 不参与渲染（行键与显示列元数据分离）。
     /// </summary>
-    private static async Task<IReadOnlyList<WorkbenchField>> ReadFields(SqlConnection connection,string userId,string masterTable,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
+    private static async Task<IReadOnlyList<WorkbenchField>> ReadFields(SqlConnection connection,string userId,string masterTable,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token,bool orderByPhysicalColumns=false)
     {
         const string sql="""
             WITH UserFields AS (
@@ -892,15 +894,30 @@ public sealed class WorkbenchDefinitionBuilder(
             SELECT f.F_ID,COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),COALESCE(f.F_TYPE,'nvarchar'),
                    COALESCE(u.F_WIDTH,f.DISPLAY_LENGTH,100),NULLIF(LTRIM(RTRIM(f.ITEM_ALIGN)),''),CAST(CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX,CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),f.VIRTUAL_EXP,f.CONVERT_FUNCTION
             FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=f.F_ID
+            LEFT JOIN sys.objects po ON po.name=@TargetTable AND po.type IN ('U','V')
+                 AND po.schema_id=SCHEMA_ID(N'dbo')
+            LEFT JOIN sys.columns pc ON pc.object_id=po.object_id AND pc.name=f.F_ID
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1
               AND (COALESCE(f.IS_VIRTUAL,0)=1 OR EXISTS (SELECT 1 FROM sys.columns c
                           JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                           JOIN sys.schemas s ON o.schema_id=s.schema_id
                           WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID))
-              AND ((h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
-            ORDER BY CASE WHEN u.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID OPTION (OPTIMIZE FOR UNKNOWN);
+              -- 明细/主表字段集保持不变（用户列选择或默认列），只在知识型读取时改**顺序**：
+              -- 按物理列序排等于建表时的业务阅读序（项次→料号→数量→单价→金额）。
+              -- 按个人列序（本账号是字母序）排会把料号/数量排到"每行前 8 列"之外，
+              -- 模型于是答"明细里没有料号/数量"。
+              AND ((h.Value=1 AND u.F_ID IS NOT NULL)
+                   OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
+            -- 知识型读取按**物理列序**排（= 建表时的业务阅读序：项次→料号→数量→单价→金额）；
+            -- 其余场景沿用个人列序，列表观感不变——包括"没有个人列配置"时的 NULL 排最后这一层，
+            -- 少了它，默认字段集内的顺序会变，已发布快照就会静默落后（check-snapshot-staleness 会红）。
+            ORDER BY CASE WHEN @OrderByPhysicalColumns=1 THEN 0
+                          ELSE CASE WHEN u.F_IDX IS NULL THEN 1 ELSE 0 END END,
+                     CASE WHEN @OrderByPhysicalColumns=1 THEN COALESCE(pc.column_id,9999)
+                          ELSE COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)) END,
+                     f.F_ID OPTION (OPTIMIZE FOR UNKNOWN);
             """;
-        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;command.Parameters.Add("@OrderByPhysicalColumns",SqlDbType.Bit).Value=orderByPhysicalColumns;
         var fields=new List<WorkbenchField>();
         await using(var reader=await command.ExecuteReaderAsync(token))
         {

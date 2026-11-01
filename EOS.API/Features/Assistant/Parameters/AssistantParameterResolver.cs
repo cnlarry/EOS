@@ -515,6 +515,15 @@ public sealed class AssistantParameterResolver(
             case "TOOL_LIMIT_DETAIL_MAX_VALUE_LENGTH":
                 builder.ToolLimits.DetailMaxValueLength = Number();
                 break;
+            case "TOOL_LIMIT_DETAIL_MAX_ROWS":
+                builder.ToolLimits.DetailMaxRows = Number();
+                break;
+            case "TOOL_LIMIT_DETAIL_ROW_COLUMNS":
+                builder.ToolLimits.DetailRowMaxColumns = Number();
+                break;
+            case "TOOL_LIMIT_DETAIL_ROW_VALUE_LENGTH":
+                builder.ToolLimits.DetailRowMaxValueLength = Number();
+                break;
             case "TOOL_LIMIT_DRAFT_MAX_VALUE_LENGTH":
                 builder.ToolLimits.DraftMaxValueLength = Number();
                 break;
@@ -550,6 +559,15 @@ public sealed class AssistantParameterResolver(
                 break;
             case "TOOL_LIMIT_ATTACHMENT_LIST_MAX":
                 builder.ToolLimits.AttachmentListMax = Number();
+                break;
+            case "TOOL_LIMIT_REFERENCE_MAX":
+                builder.ToolLimits.ReferenceMaxRows = Number();
+                break;
+            case "TOOL_LIMIT_METADATA_SEARCH_MAX":
+                builder.ToolLimits.MetadataSearchMax = Number();
+                break;
+            case "TOOL_LIMIT_BRIEF_MAX_FIELDS":
+                builder.ToolLimits.BriefMaxFields = Number();
                 break;
         }
     }

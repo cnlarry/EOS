@@ -96,7 +96,8 @@ public sealed record AssistantActionRowResult(
     string? Code,
     string? Message,
     string IdempotencyKey,
-    IReadOnlyList<string>? ResultKeys = null);
+    IReadOnlyList<string>? ResultKeys = null,
+    IReadOnlyDictionary<string, string>? Readback = null);
 
 /// <summary>一次执行的汇总。</summary>
 public sealed record AssistantActionExecution(

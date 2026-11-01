@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Modal } from '../../components/ui/Modal'
 import { getKbDocument } from './api'
 import { parseKbLinks } from './kbSources'
@@ -10,10 +11,29 @@ import type { KbDocument } from './types'
  * 来源引用是裸文本 `kb://doc/{id}#c{n}`，因此挂在行内文本钩子上——Markdown 与来源识别互不干扰。
  */
 export function KbSourceText({ text, onOpen }: { text: string; onOpen: (docId: string) => void }) {
+  const navigate = useNavigate()
   return (
     <div className="erp-assistant-md">
       {renderMarkdown(text, {
         renderText: segment => <KbSegments text={segment} onOpen={onOpen} />,
+        // 站内深链（工具结果里的 _view/_edit）走路由跳转，保留工作区标签；
+        // 外链仍走默认的新标签页，不在应用内打开。
+        renderLink: (href, label, key) => href.startsWith('/')
+          ? (
+            <a key={key} className="erp-assistant-md-link" href={href}
+              onClick={event => {
+                event.preventDefault()
+                navigate(href)
+              }}>
+              {label}
+            </a>
+          )
+          : (
+            <a key={key} className="erp-assistant-md-link" href={href}
+              target="_blank" rel="noopener noreferrer">
+              {label as ReactNode}
+            </a>
+          ),
       })}
     </div>
   )

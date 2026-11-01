@@ -19,6 +19,28 @@ public interface IWorkbenchSearchGateway
         IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields,
         CancellationToken token);
 
+    /// <summary>
+    /// 知识型读取（助手详情）用的定义：**字段集与列表一致**（个人列选择 / 默认列），
+    /// 但**按物理列序**排列——它等于建表时的业务阅读序（项次→料号→数量→单价→金额）。
+    ///
+    /// <para>
+    /// 为什么只改顺序不改集合：明细行每行只渲染前 N 列（`DetailRowMaxColumns`），
+    /// 按个人列序（本账号恰好是字母序）排，料号 / 数量会被挤到展示面之外，
+    /// 模型于是如实回答"明细里没有料号、数量"——用户问"有哪些明细"时这等于没答。
+    /// </para>
+    ///
+    /// <para>
+    /// 默认实现退化为 <see cref="GetDefinitionAsync"/>：只有读得到物理列序的实现（工作台仓储）
+    /// 才覆盖它，测试替身不必为此改造。
+    /// </para>
+    /// </summary>
+    Task<WorkbenchDefinition?> GetAssistantDefinitionAsync(
+        int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields,
+        CancellationToken token)
+        => GetDefinitionAsync(moduleId, userId, execTag, canViewCost, canViewSecrecy,
+            deniedMasterFields, deniedDetailFields, token);
+
     Task<WorkbenchData> GetRowsAsync(
         WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string, string> keys,
         int page, int pageSize, CancellationToken token, WorkbenchQuery? query = null,

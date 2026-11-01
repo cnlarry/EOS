@@ -120,4 +120,57 @@ public class AssistantQueryBuilderTests
         Assert.Null(result.Query);
         Assert.Empty(result.NotApplied);
     }
+
+    [Fact]
+    public void Explicit_Filters_Map_To_Conditions_And_Report_Rejected_Entries()
+    {
+        var result = AssistantQueryBuilder.Build(
+            PurchaseDefinition(), null, null, null, null, null,
+            [
+                new AssistantQueryBuilder.Filter("APPROVED", "eq", "0"),
+                new AssistantQueryBuilder.Filter("PURCHASE_DATE", "gte", "2026-10-01"),
+                new AssistantQueryBuilder.Filter("PURCHASE_NO", "contains", "DD", null, "or"),
+                new AssistantQueryBuilder.Filter("NOPE", "eq", "x"),
+                new AssistantQueryBuilder.Filter("PURCHASE_NO", "weird", "x"),
+                new AssistantQueryBuilder.Filter("PURCHASE_NO", "between", "A"),
+            ]);
+
+        Assert.NotNull(result.Query);
+        Assert.Equal(3, result.Query!.Conditions.Count);
+        Assert.Equal("APPROVED", result.Query.Conditions[0].Field);
+        Assert.Equal("0", result.Query.Conditions[0].Value);
+        Assert.Equal("or", result.Query.Conditions[2].Logic);
+        Assert.Contains("field:NOPE", result.NotApplied);
+        Assert.Contains("operator:weird", result.NotApplied);
+        Assert.Contains(result.NotApplied, item => item.StartsWith("between:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Explicit_Filter_On_NonQueryable_Field_Allows_Comparison_Only()
+    {
+        var definition = PurchaseDefinition();
+        var eq = AssistantQueryBuilder.Build(
+            definition, null, null, null, null, null,
+            [new AssistantQueryBuilder.Filter("APPROVED", "eq", "1")]);
+        Assert.NotNull(eq.Query);
+
+        var contains = AssistantQueryBuilder.Build(
+            definition, null, null, null, null, null,
+            [new AssistantQueryBuilder.Filter("APPROVED", "contains", "1")]);
+        Assert.Null(contains.Query);
+        Assert.Contains(contains.NotApplied, item => item.StartsWith("field:APPROVED", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Sort_Only_Accepts_Visible_Fields_And_Normalizes_Direction()
+    {
+        var definition = PurchaseDefinition();
+
+        Assert.Equal(("PURCHASE_DATE", "desc"),
+            AssistantQueryBuilder.ResolveSort(definition, "purchase_date", "DESC"));
+        Assert.Equal(("PURCHASE_DATE", "asc"),
+            AssistantQueryBuilder.ResolveSort(definition, "PURCHASE_DATE", "sideways"));
+        Assert.Equal((null, "asc"),
+            AssistantQueryBuilder.ResolveSort(definition, "NOT_A_FIELD", "asc"));
+    }
 }

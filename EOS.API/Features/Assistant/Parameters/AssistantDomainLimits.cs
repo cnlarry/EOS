@@ -170,6 +170,15 @@ public sealed class AssistantToolLimitsOptions
     /// <summary>get_record_detail 每个字段值截断到多少字符。</summary>
     public int DetailMaxValueLength { get; set; } = 200;
 
+    /// <summary>get_record_detail 明细最多带回几行。</summary>
+    public int DetailMaxRows { get; set; } = 50;
+
+    /// <summary>get_record_detail 明细每行最多带几列。</summary>
+    public int DetailRowMaxColumns { get; set; } = 8;
+
+    /// <summary>get_record_detail 明细每个字段值截断到多少字符。</summary>
+    public int DetailRowMaxValueLength { get; set; } = 40;
+
     /// <summary>draft_record 试算时单个字段值截断到多少字符。</summary>
     public int DraftMaxValueLength { get; set; } = 500;
 
@@ -205,4 +214,13 @@ public sealed class AssistantToolLimitsOptions
 
     /// <summary>list_attachments 一次最多列出几个附件。</summary>
     public int AttachmentListMax { get; set; } = 20;
+
+    /// <summary>resolve_reference 一次最多返回几个候选。</summary>
+    public int ReferenceMaxRows { get; set; } = 10;
+
+    /// <summary>search_metadata 一次最多返回几条命中。</summary>
+    public int MetadataSearchMax { get; set; } = 20;
+
+    /// <summary>模块简报每张表最多列几个字段。</summary>
+    public int BriefMaxFields { get; set; } = 24;
 }

@@ -21,29 +21,43 @@ public sealed class GetFormSchemaTool(
     public override AssistantToolRisk Risk => AssistantToolRisk.Read;
 
     public override string Description =>
-        "查询某模块录入表单的字段清单（字段Key、标签、类型、是否必填、可选值）。"
-        + "在生成单据草稿（draft_record）前必须先调用本工具获取合法字段Key。";
+        "查询某模块录入表单的字段清单（主表 + 明细的可写字段：字段Key、标签、类型、是否必填、可选值）。"
+        + "mode 可选 new（默认）/ edit / view，用于确认当前状态下哪些字段可填。"
+        + "在生成单据草稿（draft_record）或修改单据前必须先调用本工具获取合法字段Key。";
 
     public override string ParametersJson => """
         {
           "type": "object",
           "properties": {
             "module_title": { "type": "string", "description": "模块中文名关键字；与 module_id 二选一" },
-            "module_id": { "type": "integer", "description": "模块 ID" }
+            "module_id": { "type": "integer", "description": "模块 ID" },
+            "mode": { "type": "string", "enum": ["new", "edit", "view"], "description": "表单状态：new=新增（默认）、edit=编辑、view=查看" }
           }
         }
         """;
 
     public override async Task<ToolExecutionResult> ExecuteAsync(string userId, JsonElement arguments, CancellationToken token)
     {
+        var mode = arguments.GetStringArg("mode")?.Trim().ToLowerInvariant() ?? "new";
+        if (mode is not ("new" or "edit" or "view"))
+        {
+            return ToolExecutionResult.Deny("参数 mode 只能是 new、edit 或 view。");
+        }
+
         var (definition, permission) = await ResolveModuleAsync(userId, arguments, token);
         if (definition is null) return ToolExecutionResult.Deny("未找到匹配的 ERP 模块或用户无浏览权限。");
 
-        var (execTag, canViewCost, canViewSecrecy, deniedMaster, deniedDetail) = permission!.Scope();
+        if (mode == "edit" && !permission!.CanEdit)
+        {
+            return ToolExecutionResult.Deny($"用户没有模块 #{definition.ModuleId} 的修改权限，无法查看编辑态字段。");
+        }
+
+        var rights = permission!;
+        var (execTag, canViewCost, canViewSecrecy, deniedMaster, deniedDetail) = rights.Scope();
         var form = await gateway.GetFormDefinitionAsync(
-            definition, userId, "new", canViewCost, canViewSecrecy,
+            definition, userId, mode, canViewCost, canViewSecrecy,
             deniedMaster, deniedDetail, deniedMaster, deniedDetail, deniedMaster, deniedDetail,
-            token);
+            token, canAddNew: rights.CanAddNew, canEdit: rights.CanEdit);
         if (form is null)
         {
             return ToolExecutionResult.Deny($"模块 #{definition.ModuleId} 未配置统一表单，无法生成录入草稿。");
@@ -77,9 +91,23 @@ public sealed class GetFormSchemaTool(
     /// <summary>只列可写字段：可见 + 非只读 + 非主键/自增/服务端维护/虚拟。</summary>
     internal static string Compress(FormDefinition form)
     {
-        var sb = new StringBuilder($"module={form.ModuleId}({form.Title}) writable-fields:");
+        var sb = new StringBuilder($"module={form.ModuleId}({form.Title}) mode={form.Mode} writable-fields:");
         sb.AppendLine();
-        foreach (var field in form.MasterFields)
+        AppendFields(sb, form.MasterFields);
+        if (form.DetailFields.Count > 0)
+        {
+            sb.AppendLine();
+            sb.Append("detail-writable-fields:");
+            sb.AppendLine();
+            AppendFields(sb, form.DetailFields);
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendFields(StringBuilder sb, IReadOnlyList<FormFieldDefinition> fields)
+    {
+        foreach (var field in fields)
         {
             if (!IsWritable(field)) continue;
             sb.Append("- ").Append(field.Key).Append(" = ").Append(field.Label)
@@ -90,11 +118,10 @@ public sealed class GetFormSchemaTool(
                 sb.Append(",可选值:").Append(string.Join('/', field.Options.Select(o => $"{o.Value}={o.Label}")));
             }
 
+            if (field.Choosers.Count > 0) sb.Append(",引用字段");
             sb.Append('）');
             sb.AppendLine();
         }
-
-        return sb.ToString().TrimEnd();
     }
 
     /// <summary>可写判定（draft_record 与 schema 输出共用同一口径）。</summary>
