@@ -1,5 +1,5 @@
 import {
-  IconAdjustments, IconAlertTriangle, IconCircleCheck, IconEdit, IconKey, IconPlus, IconRefresh, IconTrash,
+  IconAdjustments, IconAlertTriangle, IconCircleCheck, IconEdit, IconKey, IconPlus, IconTrash,
 } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
@@ -14,11 +14,11 @@ import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
 import {
-  activateModel, clearActiveModel, deleteModel, deleteProvider, getModelUsage, listProviders,
+  activateModel, clearActiveModel, deleteModel, deleteProvider, getAssistantQuality, getModelUsage, listProviders,
 } from './api'
 import type {
-  AssistantModelItem, AssistantModelKind, AssistantModelUsage,
-  AssistantProviderItem,
+  AssistantModelItem, AssistantModelKind, AssistantModelUsage, AssistantQualityDayRow,
+  AssistantQualityReport, AssistantQualityToolRow, AssistantProviderItem,
 } from './api'
 import {
   usageModelColumns as USAGE_COLUMNS, usageTrendColumns as TREND_COLUMNS,
@@ -46,12 +46,31 @@ const KIND_TITLE: Record<AssistantModelKind, string> = {
 const KIND_SHORT: Record<AssistantModelKind, string> = { CHAT: '对话', EMBEDDING: '嵌入' }
 
 /** 页签：模型（配置面）与用量（观测面）是两种读法，混在一页里会互相挤。 */
-const PAGE_TABS: TabbedPanelTab<'models' | 'usage'>[] = [
+const PAGE_TABS: TabbedPanelTab<'models' | 'usage' | 'quality'>[] = [
   { key: 'models', label: '模型' },
   { key: 'usage', label: '用量' },
+  { key: 'quality', label: '质量' },
 ]
 
-/** 用量两张表的列定义与个人面共用（`features/assistant/usageColumns`）：呈现口径只此一份。 */
+/** 质量两张表的列定义：只做客户端排序（数据量很小，按天最多 90 行）。 */
+const QUALITY_TOOL_COLUMNS: ColumnDef<AssistantQualityToolRow>[] = [
+  { header: '工具', accessorKey: 'name' },
+  { header: '调用', accessorKey: 'calls' },
+  { header: '成功', accessorKey: 'succeeded' },
+  { header: '失败', accessorKey: 'failed' },
+  { header: '未知', accessorKey: 'unknownOutcome' },
+  { header: '拒绝', accessorKey: 'rejected' },
+  { header: '未知工具', accessorKey: 'unknown' },
+]
+
+const QUALITY_DAY_COLUMNS: ColumnDef<AssistantQualityDayRow>[] = [
+  { header: '日期', accessorKey: 'day' },
+  { header: '消息', accessorKey: 'messages' },
+  { header: '工具调用', accessorKey: 'toolCalls' },
+  { header: '失败', accessorKey: 'failed' },
+  { header: '输入 token', accessorKey: 'promptTokens' },
+  { header: '输出 token', accessorKey: 'completionTokens' },
+]
 
 
 /**
@@ -61,6 +80,12 @@ const PAGE_TABS: TabbedPanelTab<'models' | 'usage'>[] = [
  * 一页两件事，用**页签**分开：**模型**（配置面：供应商 → 模型）与**用量**（观测面：按模型 / 按天）。
  * 页签内容各自是一整块工作台，且**整页不出滚动条**——`.erp-page-tabs` 把高度接着往下传，
  * 滚动发生在表格内部（表头吸顶）。
+ * </p>
+ *
+ * <p>
+ * 三个页签内容都挂 `erp-base-page`：页签里的内容是一块**子页面**，区块间距（10px）、
+ * 卡片的"撑满 + 表格内部滚动"只由这一个骨架类提供。少了它，容器退化成普通块盒子，
+ * 两张卡会贴在一起、也不接高度——`erp-workbench-page` 只是工作台变体标记，不带骨架。
  * </p>
  *
  * <p>
@@ -77,7 +102,7 @@ const PAGE_TABS: TabbedPanelTab<'models' | 'usage'>[] = [
 export function ModelAdminPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [tab, setTab] = useState<'models' | 'usage'>('models')
+  const [tab, setTab] = useState<'models' | 'usage' | 'quality'>('models')
   const [kind, setKind] = useState<AssistantModelKind>('CHAT')
   const [pickedProviderId, setPickedProviderId] = useState<number | null>(null)
   const [days, setDays] = useState(30)
@@ -96,6 +121,12 @@ export function ModelAdminPage() {
     queryKey: ['assistant-admin-model-usage', days],
     placeholderData: keepPreviousData,
     queryFn: () => getModelUsage(days),
+  })
+  const quality = useQuery({
+    queryKey: ['assistant-admin-quality', days],
+    placeholderData: keepPreviousData,
+    queryFn: () => getAssistantQuality(days),
+    enabled: tab === 'quality',
   })
 
   const items = useMemo(() => providers.data?.providers ?? [], [providers.data])
@@ -449,47 +480,28 @@ export function ModelAdminPage() {
       <TabbedPanel label="模型与用量" className="erp-page-tabs"
         tabs={PAGE_TABS} activeKey={tab} onActiveKeyChange={setTab}>
         {tab === 'models' ? (
-          <div className="erp-workbench-page erp-model-admin-page">
-            {/* 「未配置」不再用一条横幅提醒，而是**并进卡片头那两行**（"对话：尚未配置 / 嵌入：尚未配置"）：
-                横幅把页签与内容隔开，视觉上像贴了一块膏药；而这两行本来就在说同一件事，
-                且贴着各自的"当前"值，读起来是一句话而不是两条消息。 */}
+          <div className="erp-base-page erp-workbench-page erp-model-admin-page">
             <ErpListCard
               ariaLabel="助手模型供应商"
-              actions={<>
-                {current && (
-                  <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
-                    title="取消当前对话模型：助手回到未配置状态（供应商与模型都留着）"
-                    disabled={clearActive.isPending} onClick={() => clearActive.mutate('CHAT')}>取消对话当前</Button>
-                )}
-                {currentEmbedding && (
-                  <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
-                    title="取消当前嵌入模型：知识库回到未配置状态（供应商与模型都留着）"
-                    disabled={clearActive.isPending} onClick={() => clearActive.mutate('EMBEDDING')}>取消嵌入当前</Button>
-                )}
-                <Button size="sm" className="erp-command-btn" icon={<IconPlus size={16} />}
-                  onClick={() => setAdding(true)}>添加供应商</Button>
-                <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />}
-                  onClick={refresh}>刷新</Button>
-              </>}
               header={<div className="card-header erp-card-toolbar">
                 <h2 className="card-title mb-0">模型管理</h2>
-                {/* 两个用途各说一句：它们坏掉的表现完全不同（"助手不回话"对"问制度没答案"），
-                    合成一句"模型未配置"会让人去查错方向。
-                    "尚未配置"用徽标而不是灰字：它是**正常但必须一眼看见**的状态
-                    （此时助手/知识库不可用，而用户看到的是"这功能不好用"），
-                    灰字混在标题行里没人会读。 */}
-                <span className="text-secondary small d-inline-flex align-items-center gap-1">
-                  对话：
-                  {current
-                    ? `${current.providerDisplayName} / ${current.modelCode}（${current.displayName}）`
-                    : <span className="badge bg-warning-lt">尚未配置</span>}
-                </span>
-                <span className="text-secondary small d-inline-flex align-items-center gap-1">
-                  嵌入：
-                  {currentEmbedding
-                    ? `${currentEmbedding.providerDisplayName} / ${currentEmbedding.modelCode}`
-                      + `${currentEmbedding.dimension ? `（${currentEmbedding.dimension} 维）` : ''}`
-                    : <span className="badge bg-warning-lt">尚未配置</span>}
+                {/* 标题后不写"对话：X / 嵌入：Y"这类状态句：当前模型在表里由「当前」徽标标出，
+                    没标就是没配——同一件事说两遍只会让人在两个地方核对同一个结论。 */}
+                {/* 动作与标题同处一行：配置面没有"列表自身工具"要放（无搜索、无分页），
+                    另起一条命令栏只为放一个「添加供应商」，等于给表格多加一条空行。 */}
+                <span className="ms-auto d-flex align-items-center gap-1">
+                  {current && (
+                    <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
+                      title="取消当前对话模型：助手回到未配置状态（供应商与模型都留着）"
+                      disabled={clearActive.isPending} onClick={() => clearActive.mutate('CHAT')}>取消对话当前</Button>
+                  )}
+                  {currentEmbedding && (
+                    <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
+                      title="取消当前嵌入模型：知识库回到未配置状态（供应商与模型都留着）"
+                      disabled={clearActive.isPending} onClick={() => clearActive.mutate('EMBEDDING')}>取消嵌入当前</Button>
+                  )}
+                  <Button size="sm" className="erp-command-btn" icon={<IconPlus size={16} />}
+                    onClick={() => setAdding(true)}>添加供应商</Button>
                 </span>
               </div>}
             >
@@ -564,9 +576,12 @@ export function ModelAdminPage() {
               )}
             </section>
           </div>
-        ) : (
+        ) : tab === 'usage' ? (
           <UsageTab days={days} onDaysChange={setDays} usage={usage}
             onRefresh={() => void usage.refetch()} />
+        ) : (
+          <QualityTab days={days} onDaysChange={setDays} quality={quality}
+            onRefresh={() => void quality.refetch()} />
         )}
       </TabbedPanel>
 
@@ -625,19 +640,9 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
 
   return (
     // erp-workbench-even：上下两块**等分**（模型那页签是"主表按内容、子表占满"，这里不是）
-    <div className="erp-workbench-page erp-workbench-even">
+    <div className="erp-base-page erp-workbench-page erp-workbench-even">
       <ErpListCard
         ariaLabel="助手用量"
-        actions={<>
-          <select className="form-select form-select-sm" style={{ width: 120 }} value={days}
-            aria-label="统计区间" onChange={(event) => onDaysChange(Number(event.target.value))}>
-            <option value={7}>近 7 天</option>
-            <option value={30}>近 30 天</option>
-            <option value={90}>近 90 天</option>
-          </select>
-          <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />}
-            onClick={onRefresh}>刷新</Button>
-        </>}
         header={<div className="card-header erp-card-toolbar">
           <h2 className="card-title mb-0">用量</h2>
           <span className="text-secondary small">
@@ -649,7 +654,17 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
             约 ¥{(today?.estimatedCostYuan ?? 0).toFixed(4)}
             {caps ? `（上限：每人 ¥${caps.userDailyCapYuan}/天、全局 ¥${caps.globalDailyCapYuan}/天）` : ''}
           </span>
-          <span className="ms-auto text-secondary small">按 UTC 自然日统计；成本按各模型单价估算</span>
+          {/* 统计区间是这张表的唯一控件，与标题、口径说明同处一行；不再另起一条只有它和
+              「刷新」的命令栏（切页签、窗口重新聚焦都会自动重取） */}
+          <span className="ms-auto text-secondary small d-inline-flex align-items-center gap-2">
+            按 UTC 自然日统计；成本按各模型单价估算
+            <select className="form-select form-select-sm" style={{ width: 120 }} value={days}
+              aria-label="统计区间" onChange={(event) => onDaysChange(Number(event.target.value))}>
+              <option value={7}>近 7 天</option>
+              <option value={30}>近 30 天</option>
+              <option value={90}>近 90 天</option>
+            </select>
+          </span>
         </div>}
       >
         <div className="erp-master-table-region">
@@ -686,6 +701,82 @@ function UsageTab({ days, onDaysChange, usage, onRefresh }: {
             rows={[...trend].reverse()}
             rowKey={(row) => row.day}
             fetching={usage.isFetching}
+            sorting={{ mode: 'client' }}
+          />
+        )}
+      </section>
+    </div>
+  )
+}
+
+/**
+ * 质量页签：工具使用 / 拒绝、工具轮数、token 与成本。
+ *
+ * 只读聚合，不含消息正文与工具参数；「拒绝」只按稳定标记 `rejected:` 计，
+ * 旧数据没有 Ok 列，因此不把“查到了但为空”误报成失败。
+ */
+function QualityTab({ days, onDaysChange, quality, onRefresh }: {
+  days: number
+  onDaysChange: (days: number) => void
+  quality: UseQueryResult<AssistantQualityReport, Error>
+  onRefresh: () => void
+}) {
+  const data = quality.data
+  const tools = data?.tools ?? []
+  const daily = data?.daily ?? []
+
+  return (
+    <div className="erp-base-page erp-workbench-page erp-workbench-even">
+      <ErpListCard
+        ariaLabel="助手质量"
+        header={<div className="card-header erp-card-toolbar">
+          <h2 className="card-title mb-0">质量</h2>
+          {/* 标题后不写汇总句：会话/回复/工具调用/成功失败/拒绝/tokens 都在下面两张表里，
+              同一批数字再说一遍，读的人还要核对"这两处的口径是不是一样"。 */}
+          <span className="ms-auto text-secondary small d-inline-flex align-items-center gap-2">
+            按 UTC 自然日统计；拒绝只按 rejected: 标记计
+            <select className="form-select form-select-sm" style={{ width: 120 }} value={days}
+              aria-label="统计区间" onChange={(event) => onDaysChange(Number(event.target.value))}>
+              <option value={7}>近 7 天</option>
+              <option value={30}>近 30 天</option>
+              <option value={90}>近 90 天</option>
+            </select>
+          </span>
+        </div>}
+      >
+        <div className="erp-master-table-region">
+          {quality.isPending ? <LoadingState label="正在汇总质量…" /> : quality.isError ? (
+            <ErrorState message={describeApiError(quality.error, '加载质量数据失败。')} onRetry={onRefresh} />
+          ) : tools.length === 0 ? (
+            <EmptyState title="这段时间还没有工具调用" description="有回复并触发工具后这里会出现按工具的统计。" />
+          ) : (
+            <ErpListGrid
+              plain
+              listId="assistant-admin-quality-tools"
+              columns={QUALITY_TOOL_COLUMNS}
+              rows={tools}
+              rowKey={(row) => row.name}
+              fetching={quality.isFetching}
+              sorting={{ mode: 'client' }}
+            />
+          )}
+        </div>
+      </ErpListCard>
+
+      <section className="card erp-detail-card">
+        <div className="card-header erp-card-toolbar">
+          <span className="small fw-semibold">按天（近 {data?.days ?? days} 天）</span>
+        </div>
+        {quality.isPending ? <LoadingState label="正在汇总质量…" /> : daily.length === 0 ? (
+          <EmptyState title="这段时间还没有调用记录" description="有回复之后这里会出现每日质量趋势。" />
+        ) : (
+          <ErpListGrid
+            plain
+            listId="assistant-admin-quality-days"
+            columns={QUALITY_DAY_COLUMNS}
+            rows={[...daily].reverse()}
+            rowKey={(row) => row.day}
+            fetching={quality.isFetching}
             sorting={{ mode: 'client' }}
           />
         )}

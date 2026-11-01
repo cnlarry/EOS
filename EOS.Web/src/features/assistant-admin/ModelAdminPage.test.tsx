@@ -353,7 +353,7 @@ describe('ModelAdminPage', () => {
     expect(screen.getByLabelText('支持工具调用')).not.toBeDisabled()
   })
 
-  it('两个用途各说一句，缺哪个说哪个——并进卡片头，不再用横幅', async () => {
+  it('标题行不重复用途状态：当前模型只由表里的「当前」徽标标出', async () => {
     installFetchMock({
       providers: [providerRow({ apiKeyConfigured: false, apiKeyMaskedTail: null })],
       current: null,
@@ -362,25 +362,27 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     await screen.findByText('EOS_ASSISTANT_KEY_DEEPSEEK')
-    // 两个用途各有自己的一条"尚未配置"（对话与嵌入坏掉的表现完全不同：一个是"助手不回话"，
-    // 一个是"问制度类问题没答案"），合成一句会让人去查错方向。
-    // 断言落在徽标上：它被包成一个 span 之后"对话：尚未配置"已经跨元素，getByText 匹配不到
-    expect(screen.getAllByText('尚未配置')).toHaveLength(2)
-    // 横幅已移除：它是"提醒"而不是内容，夹在页签与表格之间会把两者割开；
-    // 而这两条状态本来就在同一行上，且贴着各自的"当前"值
-    expect(screen.queryAllByRole('alert')).toHaveLength(0)
+    // 标题行只有标题：配没配由表里看得出来（有「当前」徽标就是配了），
+    // 同一件事在两个地方各说一遍，读的人还得核对两处结论是否一致
+    expect(screen.queryByText(/对话：/)).toBeNull()
+    expect(screen.queryByText(/嵌入：/)).toBeNull()
+    expect(screen.queryByText('尚未配置')).toBeNull()
+    // 「密钥未配置」是另一件事、也仍然显眼：它决定这家接入点能不能用
     expect(screen.getByText('未配置')).toBeInTheDocument()
+    // 横幅同样没有：提醒夹在页签与表格之间会把两者割开
+    expect(screen.queryAllByRole('alert')).toHaveLength(0)
   })
 
-  it('对话配好了也说清嵌入还没配（两种状态各报各的）', async () => {
+  it('当前模型在表里标「当前」：对话有、嵌入没有时两者各看得出来', async () => {
     installFetchMock()
 
     renderPage()
 
-    // 默认 mock：对话已配、嵌入没配。嵌入那条必须出现，否则"知识库为什么不好用"
-    // 在界面上没有落点——用户只会看到助手本身一切正常
-    expect(await screen.findByText(/对话：DeepSeek 开放平台 \/ deepseek-chat/)).toBeInTheDocument()
-    expect(screen.getByText('尚未配置')).toBeInTheDocument()
+    // 默认 mock：对话已配、嵌入没配。配好的那条在模型表里带「当前」徽标
+    const chatRow = await waitFor(() => rowOf('deepseek-chat'), { timeout: 10_000 })
+    expect(within(chatRow).getByText('当前')).toBeInTheDocument()
+    // 供应商行另一枚「当前对话」标出是哪一家
+    expect(screen.getByText('当前对话')).toBeInTheDocument()
   })
 
   it('完全没有供应商时给出下一步，而不是一个空表格', async () => {
@@ -389,8 +391,8 @@ describe('ModelAdminPage', () => {
     renderPage()
 
     expect(await screen.findByText('还没有供应商')).toBeInTheDocument()
-    // 两个用途都还没有配置：两条徽标都在（此时右上角还有「添加供应商」可点）
-    expect(await screen.findAllByText('尚未配置')).toHaveLength(2)
+    // 空态要指出去哪儿点：这个入口在标题行右侧，与标题同一行
+    expect(screen.getByRole('button', { name: '添加供应商' })).toBeInTheDocument()
   })
 
   it('添加供应商：选预设后带出端点与可用模型，一次提交（请求体里没有密钥）', async () => {
@@ -632,7 +634,7 @@ describe('ModelAdminPage', () => {
       call.method === 'POST' && call.url.includes('/admin/assistant/models'))).toBe(true))
   })
 
-  it('嵌入当前独立显示，且取消时带上用途（不会连带清掉对话那条）', async () => {
+  it('嵌入当前在表里独立标出，取消时带上用途（不会连带清掉对话那条）', async () => {
     const harness = installFetchMock({
       providers: [providerRow({ models: [modelRow(), embeddingRow({ isActive: true })] })],
       currentEmbedding: {
@@ -643,7 +645,13 @@ describe('ModelAdminPage', () => {
     })
 
     renderPage()
-    expect(await screen.findByText(/嵌入：.*text-embedding-v4/)).toBeInTheDocument()
+
+    // 供应商行那枚「当前嵌入」与「当前对话」并列：两个用途各自只有一个当前
+    expect(await screen.findByText('当前嵌入')).toBeInTheDocument()
+    // 切到嵌入用途后，那条模型在自己行里也带「当前」
+    fireEvent.click(await screen.findByRole('button', { name: '嵌入（1）' }))
+    const embedRow = await waitFor(() => rowOf('text-embedding-v4'), { timeout: 10_000 })
+    expect(within(embedRow).getByText('当前')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '取消嵌入当前' }))
 
@@ -665,21 +673,19 @@ describe('ModelAdminPage', () => {
     expect(screen.queryByText('未配置')).toBeNull()
   })
 
-  it('命令栏按钮是图标 + 文字（.erp-command-btn），不会被压成方块', async () => {
-    installFetchMock()
+  it('配置面动作与标题同处一行：图标 + 文字（.erp-command-btn），不再另起一条只有「刷新」的命令栏', async () => {
+    const { container } = renderPage()
 
-    renderPage()
-
-    // 工作台命令栏的 CSS 会把**没挂 .erp-command-btn** 的按钮压成 28×28 方块（文字被裁）。
-    // 这两条断言就是那个坑的哨兵：类名丢了不会有任何报错，只会让按钮变成一排看不懂的图标
+    // `.erp-command-btn` 是"图标 + 文字"的共享尺寸档：类名丢了不会有任何报错，
+    // 只会让按钮变成一排看不懂的图标
     const add = await screen.findByRole('button', { name: '添加供应商' })
     expect(add).toHaveClass('erp-command-btn')
     expect(add.querySelector('svg')).not.toBeNull()
     expect(add.textContent).toBe('添加供应商')
 
-    const refresh = screen.getByRole('button', { name: '刷新' })
-    expect(refresh).toHaveClass('erp-command-btn')
-    expect(refresh.querySelector('svg')).not.toBeNull()
+    // 这张表没有列表自身工具（无搜索、无分页）：单为「刷新」起一条命令栏等于给表格白加一行
+    expect(container.querySelector('.erp-list-command-bar')).toBeNull()
+    expect(screen.queryByRole('button', { name: '刷新' })).toBeNull()
   })
 
   it('行内动作按钮同样是图标 + 文字（纯文字按钮在读的人眼里是一排等宽的字）', async () => {
