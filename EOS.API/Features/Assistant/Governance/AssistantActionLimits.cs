@@ -31,6 +31,22 @@ public static class AssistantActionLimits
     public const int MinimumThreshold = 1;
 
     /// <summary>
+    /// 操作卡上逐行读回的最大行数与字段数，以及一次回复里读回的展示条数。
+    ///
+    /// <para>
+    /// 三者都是"一次给模型/用户看多少"的截断阈值，不是权威数据边界：读回只是让人确认
+    /// "写进去的是这几行"，超出的部分在真实单据里，不在卡片里堆。
+    /// </para>
+    /// </summary>
+    public const int MaxReadbackRows = 5;
+
+    /// <inheritdoc cref="MaxReadbackRows"/>
+    public const int MaxReadbackFields = 12;
+
+    /// <inheritdoc cref="MaxReadbackRows"/>
+    public const int MaxReadbackDisplay = 6;
+
+    /// <summary>
     /// 助手可不经用户点击直接执行的最大行数。超过即只出操作卡：
     /// 单行新增/修改属录入劳动，可代劳；删除与批量是"一把动多张"，执行主体应是用户那次确认。
     /// </summary>

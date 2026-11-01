@@ -109,7 +109,7 @@ public sealed class AssistantRecordActionService(
         var results = new List<AssistantActionRowResult>(request.Rows.Count);
         using var agentScope = agentWrites.Begin();
         // 回读是 best-effort 的附加证据：批量超过这个行数就不逐行回读，避免一次动作读 50 次。
-        const int maxReadbackRows = 5;
+        const int maxReadbackRows = AssistantActionLimits.MaxReadbackRows;
         foreach (var row in request.Rows)
         {
             var idempotencyKey = AssistantActionIdempotency.Create(
@@ -176,7 +176,7 @@ public sealed class AssistantRecordActionService(
             if (row is null) return null;
 
             var readback = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var field in access.Definition.MasterFields.Where(field => field.IsVisible).Take(12))
+            foreach (var field in access.Definition.MasterFields.Where(field => field.IsVisible).Take(AssistantActionLimits.MaxReadbackFields))
             {
                 if (!row.TryGetValue(field.Key, out var value) || value is null || value == DBNull.Value)
                 {

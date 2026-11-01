@@ -238,7 +238,7 @@ public sealed class ApplyRecordActionTool(
             if (row.Readback is { Count: > 0 })
             {
                 text.Append(" 回读：")
-                    .Append(string.Join("，", row.Readback.Take(6).Select(item => $"{item.Key}={item.Value}")));
+                    .Append(string.Join("，", row.Readback.Take(AssistantActionLimits.MaxReadbackDisplay).Select(item => $"{item.Key}={item.Value}")));
             }
         }
 
