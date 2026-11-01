@@ -8,6 +8,7 @@ public class ModuleRouteValidatorTests
     [Theory]
     [InlineData("/reports", 129801, "/reports/129801")]
     [InlineData("/workbench", 1406, "/workbench/1406")]
+    [InlineData("/workbench", 3106, "/workbench/3106")]
     public void ParameterizedBases_AppendModuleId(string url, int moduleId, string expected)
     {
         Assert.Equal(expected, ModuleRouteValidator.Resolve(url, moduleId));
@@ -15,6 +16,8 @@ public class ModuleRouteValidatorTests
 
     [Theory]
     [InlineData("/admin/menus", 230101)]
+    [InlineData("/admin/metrics", 2317)]
+    [InlineData("/admin/assistant/eval", 3107)]
     // 查询中心（迁移 444）：整页一个入口，模块号是页面内的检索目标而不是身份，不追加 /{moduleId}
     [InlineData("/search-center", 34)]
     // ADR-033 拆出的三个配置面：菜单里点进去必须是它们自己（漏登记即回落占位页）

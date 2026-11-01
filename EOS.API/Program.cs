@@ -290,6 +290,9 @@ builder.Services.AddScoped<EOS.API.Data.Workbench.NumericContextReader>();
 builder.Services.AddScoped<PrintSettingsRepository>();
 builder.Services.AddScoped<SystemParameterService>();
 builder.Services.AddScoped<ReportAdminRepository>();
+// 口径维护（REPORT_METRIC）：校验复用 ResolveMetricTool 的那一套（表达式/维度/行过滤同一实现）
+builder.Services.AddScoped<EOS.API.Data.ReportMetricAdminRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.ReportMetricAdminValidator>();
 builder.Services.AddScoped<ReportInboxRepository>();
 builder.Services.AddScoped<SearchCenterRepository>();
 builder.Services.AddScoped<EOS.API.Features.Import.ImportService>();
@@ -351,6 +354,9 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IChatModel>(sp
 builder.Services.AddScoped<EOS.API.Data.IAssistantRepository, EOS.API.Data.AssistantRepository>();
 // 管理侧会话仓储（跨用户，菜单组 31 / 3101，见 ADR-030）：与个人侧并存，语义互不影响
 builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantAdminRepository, EOS.API.Data.Assistant.AssistantAdminRepository>();
+// 评估运行器（3107，ADR-046 缺口 #4）：只跑确定性层，不调用模型
+builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantEvalRepository, EOS.API.Data.Assistant.AssistantEvalRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Evaluation.AssistantEvalRunner>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IWorkbenchSearchGateway>(sp =>
     sp.GetRequiredService<EOS.API.Data.DocumentWorkbenchRepository>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>();
@@ -456,6 +462,8 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyChangeSetTool>(
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricSchemaProbe,
     EOS.API.Features.Assistant.Metrics.SysMetricSchemaProbe>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.MetricDefinitionValidator>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricFieldWhitelist,
+    EOS.API.Features.Assistant.Metrics.MetricFieldWhitelist>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricRepository,
     EOS.API.Features.Assistant.Metrics.MetricRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricExecutor,
@@ -475,10 +483,29 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.RecordHistoryTool>()
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IAttachmentGateway,
     EOS.API.Features.Assistant.Tools.AttachmentGateway>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AttachmentListTool>();
+// 引用解析：与 form-chooser 端点同一套服务端解析链（权限 → 字段来源 → 统一选择器）
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IReferenceLookupGateway,
+    EOS.API.Features.Assistant.Tools.ReferenceLookupGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ResolveReferenceTool>();
+// 自定义单据动作：列动作 / 预演 / 执行（按钮授权、探路、幂等与审计都在既有执行器里）
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IDocumentActionGateway,
+    EOS.API.Features.Assistant.Tools.DocumentActionGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListDocumentActionsTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewDocumentActionTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyDocumentActionTool>();
+// 元数据检索：跨模块/表/字段/动作，结果按模块浏览权过滤
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IMetadataSearchGateway,
+    EOS.API.Features.Assistant.Tools.MetadataSearchGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchMetadataTool>();
+// 页面模块结构摘要：运行时从权限过滤后的工作台定义装配
+builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.IModuleBriefProvider,
+    EOS.API.Features.Assistant.Situation.ModuleBriefProvider>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IFieldRelationRepository,
     EOS.API.Features.Assistant.Metrics.FieldRelationRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantUsageRepository, EOS.API.Data.AssistantUsageRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Admin.IAssistantQualityRepository,
+    EOS.API.Features.Assistant.Admin.AssistantQualityRepository>();
 // 熔断阈值同样来自设置表，所以**按需读取**而不是构造期固定：管理员在 3105 改了阈值应当立即生效，
 // 否则"配了却要等重启"又会变成一处说不清的坑（这个单例的存活期与进程一样长）
 builder.Services.AddSingleton(sp => new EOS.API.Features.Assistant.Governance.FailureBreaker(
@@ -519,9 +546,16 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RunReportTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.RecordHistoryTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.AttachmentListTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ResolveReferenceTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListDocumentActionsTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewDocumentActionTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyDocumentActionTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.SearchMetadataTool>(),
         ]));
+// 行为规则段：文本在库（ADR-046），ChatService 每轮读取；锁定段由写接口拒绝修改
+builder.Services.AddScoped<EOS.API.Features.Assistant.Parameters.IPromptSegments,
+    EOS.API.Features.Assistant.Parameters.PromptSegmentRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
-
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
 builder.Services.Configure<ReportInboxSettings>(builder.Configuration.GetSection("ReportInbox"));
 builder.Services.Configure<ReportFormatsSettings>(builder.Configuration.GetSection(ReportFormatsSettings.SectionName));

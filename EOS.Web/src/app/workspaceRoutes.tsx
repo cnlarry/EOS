@@ -32,6 +32,7 @@ import {
   GroupButtonRightsPage,
   GroupMembersPage,
   MenuAdminPage,
+  MetricCatalogPage,
   ModuleGroupsPage,
   ModuleButtonsPage,
   ModuleActionsPage,
@@ -40,6 +41,7 @@ import {
   KbAdminPage,
   ModelAdminPage,
   AssistantSettingsPage,
+  EvalRunPage,
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
@@ -69,6 +71,14 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
     { path: 'admin/tables', element: withSuspense(<TableAdminPage />) },
     { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },
     { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
+  ] },
+  // 指标口径（模块 2317，根 23 系统管理）：REPORT_METRIC 维护；定制页，校验在服务端
+  { element: <RequirePermission permission={moduleReadPermission(2317)} />, children: [
+    { path: 'admin/metrics', element: withSuspense(<MetricCatalogPage />) },
+  ] },
+  // 评估运行（模块 3107，根 31 助手）：跑一轮确定性评估并看逐用例结论；定制页，不走统一表单
+  { element: <RequirePermission permission={moduleReadPermission(3107)} />, children: [
+    { path: 'admin/assistant/eval', element: withSuspense(<EvalRunPage />) },
   ] },
   { element: <RequirePermission permission={moduleReadPermission(230101)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
   // 模块分组（模块 230102，根 23 系统管理）：为其它模块维护列表分组；定制页，不走统一表单与发布

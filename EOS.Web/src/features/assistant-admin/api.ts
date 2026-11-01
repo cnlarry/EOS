@@ -130,6 +130,29 @@ export function deleteKbDocument(docId: string) {
   return apiClient.delete<void>(`/admin/assistant/kb/documents/${docId}`)
 }
 
+/** 入库结果：复用同一来源时 `reused=true`（版本号递增，旧块替换）。 */
+export interface KbIngestResult {
+  docId: string
+  reused: boolean
+  chunks: number
+}
+
+/**
+ * 入库一篇文档（3103 界面 → 服务端 2302 运维权限门）。
+ *
+ * 服务端入库前做两件事并**整篇拒入**：敏感信息扫描（`KB_SENSITIVE_BLOCKED`）与
+ * 业务引用逐条权限复核（`KB_REF_DENIED`）；随后切块向量化（会调用嵌入模型、产生费用）。
+ */
+export function ingestKbDocument(payload: {
+  collectionId: string
+  title: string
+  sourceUri?: string | null
+  content: string
+  visibility?: string | null
+}) {
+  return apiClient.post<KbIngestResult>('/assistant/kb/documents', payload)
+}
+
 // ---------------------------------------------------------------------------
 // 3102 模型与用量（见 ADR-030 §3）：密钥只写不读，库里只有环境变量名。
 // ---------------------------------------------------------------------------
@@ -422,6 +445,63 @@ export function getModelUsage(days = 30) {
   return apiClient.get<AssistantUsageSummary>('/admin/assistant/usage', { query: { days } })
 }
 
+export interface AssistantQualityOverview {
+  sessions: number
+  userMessages: number
+  assistantMessages: number
+  toolCalls: number
+  succeededCalls: number
+  failedCalls: number
+  unknownOutcomeCalls: number
+  rejectedCalls: number
+  unknownToolCalls: number
+  promptTokens: number
+  completionTokens: number
+  averageElapsedMs: number
+  positiveFeedback: number
+  negativeFeedback: number
+}
+
+export interface AssistantQualityToolRow {
+  name: string
+  calls: number
+  succeeded: number
+  failed: number
+  unknownOutcome: number
+  rejected: number
+  unknown: number
+}
+
+export interface AssistantQualityDayRow {
+  day: string
+  messages: number
+  toolCalls: number
+  failed: number
+  promptTokens: number
+  completionTokens: number
+}
+
+export interface AssistantQualityCallBucket {
+  callsPerReply: number
+  replies: number
+}
+
+export interface AssistantQualityReport {
+  days: number
+  since: string
+  overview: AssistantQualityOverview
+  tools: AssistantQualityToolRow[]
+  daily: AssistantQualityDayRow[]
+  callBuckets: AssistantQualityCallBucket[]
+  spentYuan: number
+  requests: number
+}
+
+/** 近 N 天质量：工具使用/拒绝、轮数分桶、token 与成本（只读聚合，不含消息正文）。 */
+export function getAssistantQuality(days = 7) {
+  return apiClient.get<AssistantQualityReport>('/admin/assistant/quality', { query: { days } })
+}
+
 // ---------------------------------------------------------------------------
 // 3105 助手设置（见 ADR-030 §5）：助手参数目录的一页视图。
 // 参数的**声明**在服务端代码（AssistantParameterCatalog），**取值**在 dbo.SYS_PARAMETER 的 OWNER_MODULE = 3105。
@@ -534,4 +614,99 @@ export function upsertScope(payload: {
 export function deleteScopeLayer(scopeType: string, scopeKey: string) {
   return apiClient.delete<void>(
     `/admin/assistant/settings/scopes/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeKey)}`)
+}
+
+/** 一段行为规则（系统提示词里的条款）：文本在库，可改；锁定段是红线，只读。 */
+export interface AssistantPromptSegment {
+  key: string
+  title: string
+  text: string
+  requiredTools: string[]
+  isLocked: boolean
+  sortIdx: number
+}
+
+/** 行为规则段清单（3105 CanBrowse）。 */
+export function listPromptSegments() {
+  return apiClient.get<AssistantPromptSegment[]>('/admin/assistant/prompt-segments')
+}
+
+/** 改一段规则文本（3105 CanSetup）。锁定段服务端回 409 `PROMPT_SEGMENT_LOCKED`。 */
+export function updatePromptSegment(key: string, text: string) {
+  return apiClient.put<{ updated: boolean }>(
+    `/admin/assistant/prompt-segments/${encodeURIComponent(key)}`, { text })
+}
+
+/** 一个可跑的评估层（八层之一）。中文名由服务端给：层与分诊是同一套业务词汇。 */
+export interface AssistantEvalLayer {
+  layer: string
+  label: string
+}
+
+/** 一轮评估的抬头。`passRate` 只按"跑过且没被跳过"的用例算（跳过不等于通过）。 */
+export interface AssistantEvalRun {
+  runId: number
+  layers: string
+  runBy: string
+  startedTime: string
+  finishedTime: string | null
+  status: string
+  caseTotal: number
+  passed: number
+  failed: number
+  skipped: number
+  passRate: number | null
+  note: string | null
+}
+
+/** 一条逐用例结论。分诊三列是运行时抄下来的（用例日后改了，历史结论照样说得清当时该改哪里）。 */
+export interface AssistantEvalResult {
+  caseId: string
+  layer: string
+  layerLabel: string
+  outcome: 'PASS' | 'FAIL' | 'SKIP' | string
+  checkCount: number
+  reason: string | null
+  fixAt: string | null
+  fixAtLabel: string | null
+  fixSuggestion: string | null
+  fixPermission: string | null
+}
+
+/** 失败按落点的计数（"下一步该补哪个入口"看的正是这张表）。 */
+export interface AssistantEvalFixBucket {
+  fixAt: string
+  label: string
+  count: number
+}
+
+export interface AssistantEvalRunReport {
+  run: AssistantEvalRun
+  results: AssistantEvalResult[]
+  byFixAt: AssistantEvalFixBucket[]
+}
+
+/** 可跑的评估层（3107 CanBrowse）。 */
+export function listEvalLayers() {
+  return apiClient.get<AssistantEvalLayer[]>('/admin/assistant/eval/layers')
+}
+
+/** 最近若干轮评估（3107 CanBrowse）。 */
+export function listEvalRuns(take = 20) {
+  return apiClient.get<AssistantEvalRun[]>('/admin/assistant/eval/runs', { query: { take } })
+}
+
+/** 某一轮的抬头 + 逐用例结论（3107 CanBrowse）。 */
+export function getEvalRun(runId: number) {
+  return apiClient.get<AssistantEvalRunReport>(`/admin/assistant/eval/runs/${runId}`)
+}
+
+/**
+ * 跑一轮确定性评估（3107 CanSetup）。
+ *
+ * **不调用模型**：只核"用例与当前系统有没有漂移"，所以可以随时跑、零费用。
+ * 层留空 = 八层全跑。
+ */
+export function runEval(layers: string[] = []) {
+  return apiClient.post<AssistantEvalRunReport>('/admin/assistant/eval/runs', { layers })
 }

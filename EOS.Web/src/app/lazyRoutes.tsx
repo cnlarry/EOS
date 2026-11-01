@@ -20,6 +20,7 @@ export const GroupButtonRightsPage = lazy(() => import('../features/rights-admin
 export const GroupMembersPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupMembersPage })))
 export const MenuAdminPage = lazy(() => import('../features/menu-admin/MenuAdminPage').then((module) => ({ default: module.MenuAdminPage })))
 export const ModuleGroupsPage = lazy(() => import('../features/admin/ModuleGroupsPage').then((module) => ({ default: module.ModuleGroupsPage })))
+export const MetricCatalogPage = lazy(() => import('../features/admin/MetricCatalogPage').then((module) => ({ default: module.MetricCatalogPage })))
 export const ModuleButtonsPage = lazy(() => import('../features/admin/ModuleButtonsPage').then((module) => ({ default: module.ModuleButtonsPage })))
 export const ModuleActionsPage = lazy(() => import('../features/admin/ModuleActionsPage').then((module) => ({ default: module.ModuleActionsPage })))
 export const ProfilePage = lazy(() => import('../features/settings/ProfilePage').then((module) => ({ default: module.ProfilePage })))
@@ -52,3 +53,4 @@ export const MechanismOverviewPage = lazy(() => import('../features/assistant-ad
 export const KbAdminPage = lazy(() => import('../features/assistant-admin/KbAdminPage').then((module) => ({ default: module.KbAdminPage })))
 export const ModelAdminPage = lazy(() => import('../features/assistant-admin/ModelAdminPage').then((module) => ({ default: module.ModelAdminPage })))
 export const AssistantSettingsPage = lazy(() => import('../features/assistant-admin/AssistantSettingsPage').then((module) => ({ default: module.AssistantSettingsPage })))
+export const EvalRunPage = lazy(() => import('../features/assistant-admin/EvalRunPage').then((module) => ({ default: module.EvalRunPage })))
