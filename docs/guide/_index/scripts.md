@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: f699bc7a7fb1a361 -->
+<!-- inventory-fingerprint: e32154ab990603c3 -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -36,12 +36,12 @@
 
 | 脚本 | 锚点 | 作用 |
 |---|---|---|
-| `gen-458-eval-case-seed.ps1` | **缺锚点** | 一次性｜锚点：迁移 458（助手评估用例模块）——把现有种子文件导出成迁移的种子数据段。 |
+| `gen-458-eval-case-seed.ps1` | 迁移 | 一次性｜锚点：迁移 458（助手评估用例模块）——把现有种子文件导出成迁移的种子数据段。 |
 | `gen-numeric-batch-migration.ps1` | ADR-038（各批 | 一次性脚本：为指定业务域生成分片的类型迁移 SQL。 |
 | `numeric-batch-prescan.ps1` | ADR-038（各批类型迁移前的溢出预扫描） | 一次性脚本：指定业务域的 float 列溢出预扫描，只读不写。 |
 | `numeric-role-registry.ps1` | ADR-038 | 一次性脚本：推断 float 列的语义族并生成迁移 357（随 ADR-038 收口失效） |
 | `rebuild-workbench-snapshots.ps1` | 迁移 | 重建全部工作台快照：备份当前快照 → 清空版本历史 → 全量重新发布。 |
-| `seed-eval-candidates-2026-10-31.ps1` | **缺锚点** | 一次性｜锚点：模块 3106（助手评估用例）——导入 2026-10-31 的三批候选。 |
+| `seed-eval-candidates-2026-10-31.ps1` | 迁移 | 一次性｜锚点：模块 3106（助手评估用例）——导入 2026-10-31 的三批候选。 |
 | `sync-bootstrap-numeric-types.ps1` | ADR-038 | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 |
 
 ## 三、门禁（CI 自动跑，不需要你动手）
