@@ -28,8 +28,10 @@ function installFetchMock(options: {
     if (url.includes('/admin/assistant/kb/collections')) {
       return jsonResponse(options.collections ?? [{ collectionId: 'kb_general', title: '通用知识库', embeddingModel: 'bge-m3', dimension: 1024, defaultVisibility: 'ALL' }])
     }
-    if (url.includes('/admin/assistant/kb/documents')) {
+    if (url.includes('/assistant/kb/documents')) {
       if ((init?.method ?? 'GET') === 'DELETE') return new Response(null, { status: 204 })
+      // 入库：返回块数（界面要把它告诉管理员）
+      if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ docId: '9', reused: false, chunks: 4 })
       return jsonResponse(options.documents ?? [{
         docId: '7', collectionId: 'kb_general', title: '开发手册-规范',
         sourceUri: 'docs/guide/60.md', visibility: 'CONSULTANT', status: 'active', version: 2,
@@ -60,7 +62,7 @@ describe('KbAdminPage', () => {
     vi.unstubAllGlobals()
   })
 
-  it('列出文档，并显眼标明"检索与入库待嵌入接线"', async () => {
+  it('列出文档，并提供入库入口（检索与入库已接线）', async () => {
     installFetchMock()
 
     renderPage()
@@ -69,9 +71,28 @@ describe('KbAdminPage', () => {
     // 可见性显示人话而不是枚举名
     expect(screen.getByText('实施顾问')).toBeInTheDocument()
     expect(screen.getByText('v2')).toBeInTheDocument()
-    // 这句话必须显眼：否则管理员会以为"库里是空的"是自己配错了
-    expect(screen.getByText(/检索与入库待嵌入接线/)).toBeInTheDocument()
-    expect(screen.getByText(/KB_EMBEDDING_NOT_CONFIGURED/)).toBeInTheDocument()
+    // 入库已可用：工具栏给入口（旧版这里是"待嵌入接线"的警示，接线后已撤掉）
+    expect(screen.getByRole('button', { name: '新增文档' })).toBeInTheDocument()
+  })
+
+  it('新增文档：填标题与正文后 POST 到入库端点，并把块数告诉管理员', async () => {
+    const harness = installFetchMock()
+
+    renderPage()
+    await screen.findByText('开发手册-规范')
+
+    fireEvent.click(screen.getByRole('button', { name: '新增文档' }))
+    fireEvent.change(await screen.findByLabelText('文档标题'), { target: { value: '客户制度-对账口径' } })
+    fireEvent.change(screen.getByLabelText('文档正文'), { target: { value: '每月 5 日对账，差异需在 3 个工作日内确认。' } })
+    fireEvent.click(screen.getByRole('button', { name: '入库' }))
+
+    await waitFor(() => {
+      const post = harness.calls.find(call =>
+        call.method === 'POST' && call.url.includes('/assistant/kb/documents'))
+      expect(post).toBeTruthy()
+    })
+    // 入库成功后回到列表并提示块数——"入库成功"但不说几块，管理员无从判断切块是否合理
+    expect(await screen.findByText(/已入库：4 块/)).toBeInTheDocument()
   })
 
   it('删除要二次确认，确认后才发 DELETE', async () => {

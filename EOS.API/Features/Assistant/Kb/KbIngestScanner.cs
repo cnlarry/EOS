@@ -18,10 +18,14 @@ public static class KbIngestScanner
     private static readonly (string Kind, Regex Pattern)[] SensitivePatterns =
     [
         ("ID_CARD", new(@"\d{17}[\dXx]", RegexOptions.Compiled)),
-        ("BANK_CARD", new(@"\d{16,19}", RegexOptions.Compiled)),
         ("MOBILE", new(@"1\d{10}", RegexOptions.Compiled)),
-        ("CREDENTIAL", new(@"(?i)(password|passwd|pwd|secret|api[_-]?key|token)\s*[:=]", RegexOptions.Compiled)),
+        // 凭据关键词后面必须真的跟一段像密钥的值：`PWD =` / `Password=` 这类
+        // “只写字段名、不写值”的说明不应被判成敏感内容。
+        ("CREDENTIAL", new(@"(?i)\b(password|passwd|pwd|secret|api[_-]?key|token)\b\s*[:=]\s*[`""']?[A-Za-z0-9_\-\.~+/]{12,}", RegexOptions.Compiled)),
     ];
+
+    /// <summary>16~19 位连续数字；是否真为银行卡还要过 Luhn，见 <see cref="Scan"/>。</summary>
+    private static readonly Regex BankCardCandidate = new(@"(?<!\d)\d{16,19}(?!\d)", RegexOptions.Compiled);
 
     private static readonly Regex ModulePattern =
         new(@"module\s*=\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -38,7 +42,35 @@ public static class KbIngestScanner
             if (pattern.IsMatch(text) && !kinds.Contains(kind)) kinds.Add(kind);
         }
 
+        // 16~19 位数字并不都是银行卡（例如浮点误差示例 30000000000000004）。
+        // 只有通过 Luhn 才记为 BANK_CARD，避免把数值说明挡在知识库外。
+        if (!kinds.Contains("BANK_CARD")
+            && BankCardCandidate.Matches(text).Any(match => PassesLuhn(match.Value)))
+        {
+            kinds.Add("BANK_CARD");
+        }
+
         return new(kinds, ExtractReferences(text));
+    }
+
+    /// <summary>Luhn 校验：真实银行卡号满足，随机长数字/浮点误差示例通常不满足。</summary>
+    private static bool PassesLuhn(string digits)
+    {
+        var sum = 0;
+        var doubleDigit = false;
+        for (var index = digits.Length - 1; index >= 0; index--)
+        {
+            var value = digits[index] - '0';
+            if (doubleDigit)
+            {
+                value *= 2;
+                if (value > 9) value -= 9;
+            }
+            sum += value;
+            doubleDigit = !doubleDigit;
+        }
+
+        return sum % 10 == 0;
     }
 
     /// <summary>

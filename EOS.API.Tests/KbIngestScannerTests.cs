@@ -18,9 +18,26 @@ public sealed class KbIngestScannerTests
     [Fact]
     public void Scan_FlagsBankCard_AndCredential()
     {
-        var result = KbIngestScanner.Scan("卡号 6222021234567890，配置 password=secret。");
+        var result = KbIngestScanner.Scan("卡号 4111111111111111，配置 password=Sup3rSecretToken123。");
 
         Assert.Contains("BANK_CARD", result.SensitiveKinds);
+        Assert.Contains("CREDENTIAL", result.SensitiveKinds);
+    }
+
+    [Fact]
+    public void Scan_Does_Not_Flag_Empty_Credential_Field_Or_Float_Artifact()
+    {
+        // ADR 里的说明性文字：字段名后没有值；以及浮点精度示例，不是银行卡。
+        var result = KbIngestScanner.Scan("连接串里 PWD =，不要把 Password= 写在文档里；浮点示例 30000000000000004。");
+
+        Assert.DoesNotContain("CREDENTIAL", result.SensitiveKinds);
+        Assert.DoesNotContain("BANK_CARD", result.SensitiveKinds);
+    }
+
+    [Fact]
+    public void Scan_Still_Flags_Real_Looking_Secret()
+    {
+        var result = KbIngestScanner.Scan("示例 token=Abc123Def456Ghi789。");
         Assert.Contains("CREDENTIAL", result.SensitiveKinds);
     }
 

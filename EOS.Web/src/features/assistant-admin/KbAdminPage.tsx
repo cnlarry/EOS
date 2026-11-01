@@ -1,4 +1,4 @@
-import { IconRefresh, IconTrash } from '@tabler/icons-react'
+import { IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '../../lib/tanstackTable'
 import { useCallback, useMemo, useState } from 'react'
@@ -9,7 +9,7 @@ import { ErpListGrid } from '../../components/common/ErpListGrid'
 import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
-import { deleteKbDocument, listKbCollections, listKbDocuments } from './api'
+import { deleteKbDocument, ingestKbDocument, listKbCollections, listKbDocuments } from './api'
 import type { KbDocumentInfo } from './api'
 
 /** 可见性三档的中文（与 KbVisibility 一致）。 */
@@ -73,6 +73,32 @@ export function KbAdminPage() {
     onError: (error) => toast.notify({ message: describeApiError(error, '删除失败。'), variant: 'danger' }),
   })
 
+  // 入库：走运维通道（服务端 2302 权限 + 敏感扫描 + 引用复核 + 嵌入向量化）。
+  // 界面上不隐藏"会产生模型费用"——一次入库就是一次出网调用。
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [form, setForm] = useState({ title: '', sourceUri: '', content: '' })
+  const ingest = useMutation({
+    mutationFn: () => ingestKbDocument({
+      collectionId: activeCollection,
+      title: form.title.trim(),
+      sourceUri: form.sourceUri.trim() || null,
+      content: form.content,
+    }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['assistant-admin-kb-documents'] })
+      toast.notify({
+        message: result.reused
+          ? `已覆盖同一来源的旧版本：${result.chunks} 块。`
+          : `已入库：${result.chunks} 块，可被检索到。`,
+        variant: 'success',
+      })
+      setForm({ title: '', sourceUri: '', content: '' })
+      setComposerOpen(false)
+    },
+    onError: (error) => toast.notify({ message: describeApiError(error, '入库失败。'), variant: 'danger' }),
+  })
+  const canSubmit = form.title.trim().length > 0 && form.content.trim().length > 0 && activeCollection.length > 0
+
   const confirmDelete = useCallback((doc: KbDocumentInfo) => {
     if (window.confirm(
       `确定删除知识库文档「${doc.title}」吗？\n\n`
@@ -135,6 +161,10 @@ export function KbAdminPage() {
         search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300}
           placeholder="搜索文档标题" ariaLabel="搜索知识库文档" />}
         actions={<>
+          <Button size="sm" variant="primary" icon={<IconPlus size={16} />}
+            onClick={() => setComposerOpen(open => !open)}>
+            {composerOpen ? '收起' : '新增文档'}
+          </Button>
           <select className="form-select form-select-sm" style={{ width: 190 }} value={activeCollection}
             aria-label="选择集合"
             onChange={(event) => setCollectionId(event.target.value)}>
@@ -156,19 +186,44 @@ export function KbAdminPage() {
           <h2 className="card-title mb-0">知识库管理</h2>
           <span className="text-secondary small">共 {items.length} 篇文档</span>
           <span className="ms-auto text-secondary small">
-            管理面只做清单与删除；入库仍走运维通道（敏感扫描 + 引用复核）
+            入库走运维通道（2302 权限 + 敏感扫描 + 引用复核）
           </span>
         </div>}
       >
-        {/* 这句话必须显眼：不写的话，管理员会以为"库里没东西"是自己配错了 */}
-        <div className="alert alert-warning mb-0 rounded-0 py-2" role="status">
-          <div className="fw-semibold">检索与入库待嵌入接线</div>
-          <div className="small">
-            当前嵌入模型仍是 fail-closed 占位（调用会返回 <code>KB_EMBEDDING_NOT_CONFIGURED</code>），
-            <code>KB_CHUNK</code> 为空。因此这里的"文档为空"是**预期现象**，不是配置错误——
-            接线后跑一次同步脚本即可入库。
-          </div>
-        </div>
+        {/* 入库入口：以前这里只写着"待嵌入接线"，而现在检索与入库都已可用（58 篇 263 文档 2312 块）。
+            仍然要提醒两件事：入库会调用嵌入模型（有费用），且服务端会整篇拒入敏感/无权限引用。 */}
+        {composerOpen && (
+          <section className="p-3 border-bottom bg-body-tertiary" aria-label="新增知识库文档">
+            <div className="row g-2">
+              <div className="col-md-6">
+                <label className="form-label" htmlFor="kb-ingest-title">标题</label>
+                <input id="kb-ingest-title" className="form-control form-control-sm"
+                  value={form.title} aria-label="文档标题"
+                  onChange={(event) => setForm({ ...form, title: event.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <label className="form-label" htmlFor="kb-ingest-source">来源 URI（可选）</label>
+                <input id="kb-ingest-source" className="form-control form-control-sm"
+                  placeholder="docs/guide/60.md 或 kb://…" value={form.sourceUri} aria-label="来源 URI"
+                  onChange={(event) => setForm({ ...form, sourceUri: event.target.value })} />
+              </div>
+              <div className="col-12">
+                <label className="form-label" htmlFor="kb-ingest-content">正文</label>
+                <textarea id="kb-ingest-content" className="form-control font-monospace" rows={8}
+                  value={form.content} aria-label="文档正文"
+                  onChange={(event) => setForm({ ...form, content: event.target.value })} />
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-2 mt-2">
+              <Button size="sm" variant="primary" loading={ingest.isPending} disabled={!canSubmit}
+                onClick={() => ingest.mutate()}>入库</Button>
+              <span className="form-hint mb-0">
+                入库会切块并调用嵌入模型（产生费用）。含证件/银行卡/手机号等敏感信息的文档会被整篇拒入；
+                文中提到的业务引用会逐条按你的权限复核。
+              </span>
+            </div>
+          </section>
+        )}
         {!activeCollection ? (
           <EmptyState title="没有可选的集合" description="知识库还没有建任何集合。" />
         ) : (
