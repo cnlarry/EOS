@@ -655,6 +655,13 @@ if (app.Environment.IsDevelopment())
 {
     versionEndpoint.AllowAnonymous();
 }
+// `/api` 下不认识的路径**不能回落到 SPA 外壳**：回落会让"调错端点"与"前后端版本不一致"
+// 都表现成 200 + HTML，客户端随后在解析 JSON 时失败——错误指向解析层，而真相是端点不存在。
+// 这条 catch-all 只吃"没有任何控制器路由命中"的 /api 请求（具体路由的优先级高于它），
+// 因此不影响既有端点；不返回任何数据，故免鉴权。
+app.Map("/api/{**rest}", () => Results.Json(
+    new { code = "ENDPOINT_NOT_FOUND", message = "该 API 路径不存在。" },
+    statusCode: StatusCodes.Status404NotFound)).AllowAnonymous();
 // SPA 外壳对未登录请求放行：登录页本身就在这套前端里，外壳被授权挡住的话
 // 未登录用户打不开登录页（页面跳转又回落到这里，形成 302 自环）。
 // 权限边界始终在 `/api`（拒绝时回 401/403），静态外壳不含任何业务数据。
