@@ -61,8 +61,8 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using (var group = new SqlCommand(
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.SYS_USER_GROUP WHERE G_IDX=@Id)
-                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,CREATED_BY,CREATED_TIME,APPROVED)
-                VALUES (@Id,N'按钮授权用例组',N'DbUp',SYSDATETIME(),0);
+                INSERT INTO dbo.SYS_USER_GROUP (G_IDX,G_DESC,CREATED_BY,CREATED_TIME)
+                VALUES (@Id,N'按钮授权用例组',N'DbUp',SYSDATETIME());
             """, connection))
         {
             group.Parameters.Add("@Id", SqlDbType.NVarChar, 20).Value = GroupId;

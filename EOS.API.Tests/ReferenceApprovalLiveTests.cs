@@ -76,6 +76,40 @@ public sealed class ReferenceApprovalLiveTests
     }
 
     [Fact]
+    public async Task 账号与用户组源不参与批核门槛_因为它们的批核三列已退役()
+    {
+        // 2306 用户权限设定 / 2305 用户组管理是定制页，没有批核流程；迁移 468 删掉了这两张表的
+        // 批核三列（决策 #176），于是"引用数据的批核门槛"（按源表有没有 APPROVED 列判定）
+        // 不再作用于它们——选择器应返回**全部**行。
+        //
+        // 这个用例同时是"有人把列加回来"的哨兵：列一旦回来，选择器立刻少行，本用例转红，
+        // 逼着当时的人明确回答"这两张表到底有没有批核概念"。
+        var token = CancellationToken.None;
+        await using var connection = new Microsoft.Data.SqlClient.SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var repository = new ChooserRepository(
+            PolicyServiceFactory.Connections(ConnectionString), NullLogger<ChooserRepository>.Instance);
+
+        foreach (var (sourceKey, table) in new[]
+                 {
+                     ("rights-admin.users", "SYS_USER_ACCOUNT"),
+                     ("rights-admin.groups", "SYS_USER_GROUP"),
+                 })
+        {
+            await using var count = new Microsoft.Data.SqlClient.SqlCommand(
+                $"SELECT COUNT_BIG(*) FROM dbo.[{table}];", connection);
+            var expected = Convert.ToInt32((long)(await count.ExecuteScalarAsync(token) ?? 0L));
+
+            var result = await repository.QueryAsync(
+                new UnifiedChooserQueryRequest(sourceKey, Page: 1, PageSize: 200), token);
+
+            Assert.NotNull(result);
+            Assert.Equal(expected, result!.Total);
+            Assert.Equal(Math.Min(expected, 200), result.Rows.Count);
+        }
+    }
+
+    [Fact]
     public async Task 没有批核列的表不受影响()
     {
         var token = CancellationToken.None;
