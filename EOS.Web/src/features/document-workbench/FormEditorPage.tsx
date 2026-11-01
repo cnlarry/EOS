@@ -904,14 +904,40 @@ export function FormEditorPage() {
       if (field.isVisible) initial[field.key] = defaults[field.key] ?? emptyValue(field)
     }
     // Assistant pre-fill: one-shot sessionStorage channel; assistant values override defaults
-    // (server-filled fields are already excluded by draft generation), final validation by the save pipeline
+    // (server-filled fields are already excluded by draft generation), final validation by the save pipeline.
+    // 兼容两种载荷：旧版直接存主表 values；新版存 { values, details }（明细随草稿一起带入）。
     const prefillRaw = sessionStorage.getItem(assistantPrefillKey(moduleId))
     if (prefillRaw) {
       sessionStorage.removeItem(assistantPrefillKey(moduleId))
       try {
-        const prefill = JSON.parse(prefillRaw) as Record<string, unknown>
-        for (const [key, value] of Object.entries(prefill)) {
+        const parsed = JSON.parse(prefillRaw) as unknown
+        const isEnvelope = parsed !== null && typeof parsed === 'object'
+          && ('values' in (parsed as Record<string, unknown>) || 'details' in (parsed as Record<string, unknown>))
+        const envelope = isEnvelope
+          ? parsed as { values?: unknown; details?: unknown }
+          : { values: parsed, details: undefined }
+        const values = envelope.values !== null && typeof envelope.values === 'object'
+          ? envelope.values as Record<string, unknown>
+          : {}
+        for (const [key, value] of Object.entries(values)) {
           if (key in initial && value != null) initial[key] = String(value)
+        }
+
+        const detailPrefill = Array.isArray(envelope.details) ? envelope.details : []
+        if (detailPrefill.length > 0 && formQuery.data.detailFields.length > 0) {
+          const detailDefaults = formQuery.data.defaultValues ?? {}
+          setDetailRows(detailPrefill.slice(0, 50).map(item => {
+            const source = item !== null && typeof item === 'object' ? item as Record<string, unknown> : {}
+            const row: Record<string, string> = {}
+            for (const field of formQuery.data.detailFields) {
+              if (!field.isVisible) continue
+              const value = source[field.key]
+              row[field.key] = value == null
+                ? detailDefaults[field.key] ?? emptyValue(field)
+                : String(value)
+            }
+            return row
+          }))
         }
       } catch {
         // 非法草稿直接忽略，不影响正常新增
