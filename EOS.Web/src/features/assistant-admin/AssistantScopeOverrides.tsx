@@ -12,7 +12,7 @@ import { deleteScopeLayer, listScopes, upsertScope } from './api'
 import type { AssistantScopeOverride } from './api'
 
 /**
- * 助手设置 → **按模块 / 按用户覆盖**（ADR-030 §6.2）。
+ * 助手设置 → **按用户 / 按模块覆盖**（ADR-030 §6.2）。
  *
  * <para>
  * 参数有三层取值：**用户 &gt; 模块 &gt; 全局**。这里管的是全局之外的两层：
@@ -36,7 +36,18 @@ import type { AssistantScopeOverride } from './api'
  * <para>
  * **清空取值 = 撤掉这一层的覆盖**，不是"设成空"：与主页面"恢复默认"同一口径。
  * </para>
+ *
+ * <para>
+ * **骨架与参数域一致**：一个分组标题栏（名称 + code + 说明 + 条数），下面每件东西一张
+ * 圆角卡片（`erp-settings-split-item`）——"新增 / 修改"一张、"已有覆盖"一张。
+ * 它不是参数行，但视觉上不能是这一页里的例外。
+ * </para>
  */
+
+/** 这一块在设置页左导航里的锚点、标题与英文标识：页面与本组件共用一份，避免两处措辞漂移。 */
+export const SCOPE_ANCHOR = '__scope__'
+export const SCOPE_LABEL = '按用户 / 按模块覆盖'
+export const SCOPE_CODE = 'SCOPE'
 
 /** 两层：值即服务端的作用域类型（`ScopeType`），不在前端另立映射表。 */
 const LAYERS = [
@@ -191,9 +202,12 @@ export function AssistantScopeOverrides() {
   const selectedParam = scopable.find(item => item.key === paramKey)
 
   return (
-    <section className="border rounded p-3">
-      <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
-        <h3 className="h5 mb-0">按模块 / 按用户覆盖</h3>
+    <section className="erp-settings-split-section" data-settings-anchor="group"
+      data-group-code={SCOPE_ANCHOR} data-group-label={SCOPE_LABEL}>
+      <div className="erp-settings-split-section-head">
+        <h3 className="h5 mb-0">{SCOPE_LABEL}</h3>
+        <span className="text-secondary small font-monospace">{SCOPE_CODE}</span>
+        <span className="text-secondary small">{rows.length} 条覆盖</span>
         <span className="text-secondary small">
           取值优先级：用户 → 模块 → 全局；这里设置的是全局之上的那两层
         </span>
@@ -203,82 +217,98 @@ export function AssistantScopeOverrides() {
         <ErrorState message={describeApiError(scopes.error, '加载覆盖失败。')} onRetry={refresh} />
       ) : (
         <>
-          {scopable.length === 0 ? (
-            <div className="text-secondary small">
-              目前没有声明"可被{currentLayer.target}覆盖"的参数，因此这一层没有可设的项。
+          <section className="erp-settings-split-item">
+            <div className="erp-settings-split-section-head">
+              <h4 className="h5 mb-0">新增 / 修改覆盖</h4>
+              <span className="text-secondary small">留空保存 = 撤掉这一层的覆盖</span>
             </div>
-          ) : (
-            <div className="row g-2 align-items-end mb-3">
-              <div className="col-auto">
-                <label className="form-label small mb-1" htmlFor="scope-layer">层级</label>
-                <select id="scope-layer" className="form-select form-select-sm" style={{ maxWidth: 140 }}
-                  value={layer} onChange={event => switchLayer(event.target.value as ScopeLayer)}
-                  aria-label="作用域层级">
-                  {LAYERS.map(item => (
-                    <option key={item.value} value={item.value} title={item.hint}>{item.label}</option>
-                  ))}
-                </select>
+
+            {scopable.length === 0 ? (
+              <div className="text-secondary small">
+                目前没有声明"可被{currentLayer.target}覆盖"的参数，因此这一层没有可设的项。
               </div>
-              <div className="col-auto">
-                <label className="form-label small mb-1" htmlFor="scope-target">{currentLayer.target}</label>
-                <div className="d-flex gap-1">
-                  <input id="scope-target" className="form-control form-control-sm font-monospace"
-                    style={{ maxWidth: 220 }} readOnly value={target?.label ?? ''}
-                    placeholder="点击右侧按钮选择" aria-label={`目标${currentLayer.target}`} />
-                  <Button size="sm"
-                    icon={layer === 'USER' ? <IconUserPlus size={14} /> : <IconSearch size={14} />}
-                    onClick={() => setChooserOpen(true)}>
-                    选择
-                  </Button>
+            ) : (
+              <div className="row g-2 align-items-end mt-2">
+                <div className="col-auto">
+                  <label className="form-label small mb-1" htmlFor="scope-layer">层级</label>
+                  <select id="scope-layer" className="form-select form-select-sm" style={{ maxWidth: 140 }}
+                    value={layer} onChange={event => switchLayer(event.target.value as ScopeLayer)}
+                    aria-label="作用域层级">
+                    {LAYERS.map(item => (
+                      <option key={item.value} value={item.value} title={item.hint}>{item.label}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-              <div className="col-auto">
-                <label className="form-label small mb-1" htmlFor="scope-param">参数</label>
-                <select id="scope-param" className="form-select form-select-sm" style={{ maxWidth: 280 }}
-                  value={paramKey} onChange={event => setParamKey(event.target.value)}>
-                  <option value="">请选择…</option>
-                  {scopable.map(item => (
-                    <option key={item.key} value={item.key}>{item.displayName}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-auto">
-                <label className="form-label small mb-1" htmlFor="scope-value">覆盖值</label>
-                <input id="scope-value" className="form-control form-control-sm" style={{ maxWidth: 160 }}
-                  value={value} onChange={event => setValue(event.target.value)}
-                  placeholder={selectedParam?.rangeHint || '留空 = 撤掉覆盖'} />
-              </div>
-              <div className="col-auto">
-                <Button size="sm" variant="primary"
-                  disabled={!target || !paramKey || save.isPending}
-                  loading={save.isPending}
-                  onClick={() => save.mutate()}>
-                  保存覆盖
-                </Button>
-              </div>
-              {selectedParam && (
-                <div className="col-12">
-                  <div className="form-hint">
-                    {selectedParam.displayName}：{selectedParam.displayNameOfPolicy}
-                    {selectedParam.unit ? `（单位：${selectedParam.unit}）` : ''}
-                    {selectedParam.rangeHint ? `；取值范围：${selectedParam.rangeHint}` : ''}
-                    。留空保存 = 撤掉这一层的覆盖。
+                <div className="col-auto">
+                  <label className="form-label small mb-1" htmlFor="scope-target">{currentLayer.target}</label>
+                  <div className="d-flex gap-1">
+                    <input id="scope-target" className="form-control form-control-sm font-monospace"
+                      style={{ maxWidth: 220 }} readOnly value={target?.label ?? ''}
+                      placeholder="点击右侧按钮选择" aria-label={`目标${currentLayer.target}`} />
+                    <Button size="sm"
+                      icon={layer === 'USER' ? <IconUserPlus size={14} /> : <IconSearch size={14} />}
+                      onClick={() => setChooserOpen(true)}>
+                      选择
+                    </Button>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="col-auto">
+                  <label className="form-label small mb-1" htmlFor="scope-param">参数</label>
+                  <select id="scope-param" className="form-select form-select-sm" style={{ maxWidth: 280 }}
+                    value={paramKey} onChange={event => setParamKey(event.target.value)}>
+                    <option value="">请选择…</option>
+                    {scopable.map(item => (
+                      <option key={item.key} value={item.key}>{item.displayName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-auto">
+                  <label className="form-label small mb-1" htmlFor="scope-value">覆盖值</label>
+                  <input id="scope-value" className="form-control form-control-sm" style={{ maxWidth: 160 }}
+                    value={value} onChange={event => setValue(event.target.value)}
+                    placeholder={selectedParam?.rangeHint || '留空 = 撤掉覆盖'} />
+                </div>
+                <div className="col-auto">
+                  <Button size="sm" variant="primary"
+                    disabled={!target || !paramKey || save.isPending}
+                    loading={save.isPending}
+                    onClick={() => save.mutate()}>
+                    保存覆盖
+                  </Button>
+                </div>
+                {selectedParam && (
+                  <div className="col-12">
+                    <div className="form-hint">
+                      {selectedParam.displayName}：{selectedParam.displayNameOfPolicy}
+                      {selectedParam.unit ? `（单位：${selectedParam.unit}）` : ''}
+                      {selectedParam.rangeHint ? `；取值范围：${selectedParam.rangeHint}` : ''}
+                      。留空保存 = 撤掉这一层的覆盖。
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
 
-          <ErpListGrid<AssistantScopeOverride>
-            plain
-            listId="assistant-scope-overrides"
-            columns={columns}
-            rows={rows}
-            rowKey={row => `${row.scopeType}|${row.scopeKey}|${row.paramKey}`}
-            sorting={{ mode: 'client' }}
-            empty={<div className="p-3 text-secondary">没有任何覆盖——所有模块与用户都按全局值运行。</div>}
-            tableProps={{ copyable: false }}
-          />
+          <section className="erp-settings-split-item">
+            <div className="erp-settings-split-section-head">
+              <h4 className="h5 mb-0">已有覆盖</h4>
+              <span className="text-secondary small">
+                「撤掉这一项」只放掉这一格取值；「清除该对象」把它在这个对象上的覆盖整批删掉
+              </span>
+            </div>
+
+            <ErpListGrid<AssistantScopeOverride>
+              plain
+              listId="assistant-scope-overrides"
+              columns={columns}
+              rows={rows}
+              rowKey={row => `${row.scopeType}|${row.scopeKey}|${row.paramKey}`}
+              sorting={{ mode: 'client' }}
+              empty={<div className="p-3 text-secondary">没有任何覆盖——所有模块与用户都按全局值运行。</div>}
+              tableProps={{ copyable: false }}
+            />
+          </section>
         </>
       )}
 

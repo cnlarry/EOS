@@ -10,15 +10,13 @@ import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
 import { listPromptSegments, listSettings, resetSetting, updatePromptSegment, updateSetting } from './api'
 import type { AssistantPromptSegment, AssistantSettingItem } from './api'
-import { AssistantScopeOverrides } from './AssistantScopeOverrides'
-
-/** 作用域覆盖那一块的锚点：它不是参数域，但同样要能在左侧点得到。 */
-const SCOPE_ANCHOR = '__scope__'
-const SCOPE_LABEL = '按用户 / 按模块覆盖'
+import { AssistantScopeOverrides, SCOPE_ANCHOR, SCOPE_CODE, SCOPE_LABEL } from './AssistantScopeOverrides'
 
 /** 行为规则段的锚点：文本在库（ADR-046），与参数是两种编辑对象，所以单独一块。 */
 const PROMPT_ANCHOR = '__prompt__'
 const PROMPT_LABEL = '行为规则（规则段）'
+/** 规则段的英文标识：左导航的第二行与这一块的标题栏都显示它，与"域"的 code 同一口径。 */
+const PROMPT_CODE = 'PROMPT_SEGMENT'
 
 /**
  * 工作助手管理 → **助手设置**（菜单组 31 / 模块 3105，路由 `/admin/assistant/settings`）。
@@ -242,6 +240,8 @@ export function AssistantSettingsPage() {
                     return {
                       id: section.code,
                       label: section.label,
+                      // 第二行是这一域的 code（与服务端的分组标识同一份），管理员对着日志/参数键说话时用得上
+                      description: <span className="font-monospace">{section.code}</span>,
                       tooltip: pendingCount > 0
                         ? `${pendingCount} 项改动还没保存`
                         : (changedCount > 0 ? `${changedCount} 项已改过（已生效）` : undefined),
@@ -255,8 +255,17 @@ export function AssistantSettingsPage() {
                       ),
                     }
                   }),
-                  { id: PROMPT_ANCHOR, label: PROMPT_LABEL },
-                  { id: SCOPE_ANCHOR, label: SCOPE_LABEL },
+                  {
+                    id: PROMPT_ANCHOR,
+                    label: PROMPT_LABEL,
+                    description: <span className="font-monospace">{PROMPT_CODE}</span>,
+                    meta: promptSegments.data ? <span>{promptSegments.data.length}</span> : undefined,
+                  },
+                  {
+                    id: SCOPE_ANCHOR,
+                    label: SCOPE_LABEL,
+                    description: <span className="font-monospace">{SCOPE_CODE}</span>,
+                  },
                 ]}
                 activeId={activeGroupCode}
                 onSelect={jumpTo}
@@ -305,35 +314,32 @@ export function AssistantSettingsPage() {
 
                 {/* 行为规则段：文本在库（ADR-046），改完下一轮对话生效。
                     与上面的参数不同，这里**逐段保存**——一段话是一个整体，没有"整页保存"的语义；
-                    锁定段（红线）是只读的：批核不可代签、金额不得估算这类条款只能走迁移改。 */}
-                <div data-settings-anchor="group" data-group-code={PROMPT_ANCHOR}
-                  data-group-label={PROMPT_LABEL}>
-                  <section className="erp-settings-split-section">
-                    <div className="erp-settings-split-section-head">
-                      <h3 className="h5 mb-0">{PROMPT_LABEL}</h3>
-                      <span className="text-secondary small">改完下一轮对话生效</span>
-                      <span className="text-secondary small">{promptSegments.data?.length ?? 0} 段</span>
-                    </div>
-                    {promptSegments.isLoading ? (
-                      <LoadingState label="正在读取行为规则…" />
-                    ) : promptSegments.isError ? (
-                      <ErrorState message={describeApiError(promptSegments.error, '读取行为规则失败。')}
-                        onRetry={() => void promptSegments.refetch()} />
-                    ) : (
-                      (promptSegments.data ?? []).map(segment => (
-                        <PromptSegmentRow key={segment.key} segment={segment} />
-                      ))
-                    )}
-                  </section>
-                </div>
+                    锁定段（红线）是只读的：批核不可代签、金额不得估算这类条款只能走迁移改。
+                    骨架与参数域一致：一个分组标题 + 每段一张圆角卡片。 */}
+                <section className="erp-settings-split-section" data-settings-anchor="group"
+                  data-group-code={PROMPT_ANCHOR} data-group-label={PROMPT_LABEL}>
+                  <div className="erp-settings-split-section-head">
+                    <h3 className="h5 mb-0">{PROMPT_LABEL}</h3>
+                    <span className="text-secondary small font-monospace">{PROMPT_CODE}</span>
+                    <span className="text-secondary small">{promptSegments.data?.length ?? 0} 段</span>
+                    <span className="text-secondary small">改完下一轮对话生效</span>
+                  </div>
+                  {promptSegments.isLoading ? (
+                    <LoadingState label="正在读取行为规则…" />
+                  ) : promptSegments.isError ? (
+                    <ErrorState message={describeApiError(promptSegments.error, '读取行为规则失败。')}
+                      onRetry={() => void promptSegments.refetch()} />
+                  ) : (
+                    (promptSegments.data ?? []).map(segment => (
+                      <PromptSegmentRow key={segment.key} segment={segment} />
+                    ))
+                  )}
+                </section>
 
                 {/* 作用域覆盖：全局值之上还有"按用户 / 按模块"两层（ADR-030 §6.2）。
                     单独成块而不是塞进各参数下面，是因为它维护的是**对象维度**（谁 / 哪个模块），
-                    与"每一项参数一个值"不是同一种编辑。它是独立一块，所以也在左侧占一条导航。 */}
-                <div data-settings-anchor="group" data-group-code={SCOPE_ANCHOR}
-                  data-group-label={SCOPE_LABEL}>
-                  <AssistantScopeOverrides />
-                </div>
+                    与"每一项参数一个值"不是同一种编辑。它自己带分组标题与圆角卡片。 */}
+                <AssistantScopeOverrides />
               </div>
             </div>
           </>
@@ -458,15 +464,15 @@ function PromptSegmentRow({ segment }: { segment: AssistantPromptSegment }) {
   const dirty = draft.trim() !== segment.text.trim()
 
   return (
-    <section className="erp-settings-split-section" data-settings-anchor="item"
+    <section className="erp-settings-split-item" data-settings-anchor="item"
       data-item-label={segment.title}>
       <div className="erp-settings-split-section-head">
-        <h3 className="h5 mb-0">{segment.title}</h3>
+        <h4 className="h5 mb-0">{segment.title}</h4>
         <span className="text-secondary small font-monospace">{segment.key}</span>
         {segment.isLocked && <span className="badge text-bg-warning">红线 · 只读</span>}
       </div>
 
-      <textarea className="form-control font-monospace" rows={4}
+      <textarea className="form-control font-monospace mt-2" rows={4}
         style={{ maxWidth: 720 }}
         value={draft} aria-label={segment.title}
         disabled={segment.isLocked}

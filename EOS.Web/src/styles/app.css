@@ -1132,8 +1132,11 @@ button, input, select { font: inherit; }
   font-size: var(--erp-font-sm);
 }
 .erp-settings-split-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
-.erp-settings-split-section-head { display: flex; align-items: center; gap: 8px; }
-/* 单项卡片外框（助手设置每个参数一张卡）。系统参数走的是三列编辑网格，不用这一层。 */
+/* 标题行允许换行：域标题 + code + 说明 + 计数在窄栏里一行放不下时，宁可另起一行，
+   也不要各自挤到折行（会出现"按用户 / 按模块覆 盖"这种断字）。 */
+.erp-settings-split-section-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 单项卡片外框（助手设置每件配置对象一张卡：参数项、行为规则段、"新增/已有覆盖"）。
+   系统参数走的是三列编辑网格，不用这一层。 */
 .erp-settings-split-item {
   padding: 12px;
   border: 1px solid var(--tblr-border-color);
