@@ -24,6 +24,7 @@ const KNOWN_COLLECTION_DIMENSION = 1024
 const KIND_LABEL: Record<AssistantModelKind, string> = {
   CHAT: '对话',
   EMBEDDING: '嵌入',
+  JUDGE: '判官',
 }
 
 /**
@@ -466,11 +467,13 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
       ...previous,
       kind,
       // 切换用途时把**另一用途才有意义的字段清空**：留着它们会在保存时被一并写进库里，
-      // 表现为一条嵌入模型带着"窗口 1048576、温度 0.3、支持工具"这类没人会去看的垃圾
-      contextWindow: kind === 'CHAT' ? previous.contextWindow : null,
-      maxOutputTokens: kind === 'CHAT' ? previous.maxOutputTokens : null,
-      defaultTemperature: kind === 'CHAT' ? previous.defaultTemperature : null,
-      outputPerMillionYuan: kind === 'CHAT' ? previous.outputPerMillionYuan : null,
+      // 表现为一条嵌入模型带着"窗口 1048576、温度 0.3、支持工具"这类没人会去看的垃圾。
+      // 判官与对话同族：窗口 / 最大输出 / 温度 / 输出单价对判定仍然有意义（判定要稳，温度应低），
+      // 只有"支持工具"对判官没有意义——判定不调工具。
+      contextWindow: kind === 'EMBEDDING' ? null : previous.contextWindow,
+      maxOutputTokens: kind === 'EMBEDDING' ? null : previous.maxOutputTokens,
+      defaultTemperature: kind === 'EMBEDDING' ? null : previous.defaultTemperature,
+      outputPerMillionYuan: kind === 'EMBEDDING' ? null : previous.outputPerMillionYuan,
       supportsTools: kind === 'CHAT' ? previous.supportsTools : false,
       // 维度留空时给个可用初值（现有集合就是 1024），但**仍然摆在屏幕上让人确认**：
       // 换成别的维度要先改集合，那一步不可能被这个默认值替人决定
@@ -559,11 +562,12 @@ export function ModelEditorDialog({ model, providerId, providers, onClose, onSav
       {/* 用途与维度紧挨着身份：模型标识的含义取决于用途（同一个字符串不会既是对话模型又是嵌入模型） */}
       <div className="row">
         <div className="col-md-6">
-          <Field label="用途" hint="对话模型用于聊天；嵌入模型用于知识库检索。两者各有一条“当前”。">
+          <Field label="用途" hint="对话用于聊天，嵌入用于知识库检索，判官只对已落库的回答做条款级判定（ADR-044）。三者各有一条「当前」。">
             <select className="form-select" value={form.kind} aria-label="用途"
               onChange={(event) => setKind(event.target.value as AssistantModelKind)}>
               <option value="CHAT">对话</option>
               <option value="EMBEDDING">嵌入</option>
+              <option value="JUDGE">判官（回答质量判定）</option>
             </select>
           </Field>
         </div>

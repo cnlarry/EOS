@@ -40,10 +40,11 @@ const orDash = (value: number | null | undefined) => (value == null ? '默认' :
 const KIND_TITLE: Record<AssistantModelKind, string> = {
   CHAT: '对话模型',
   EMBEDDING: '嵌入模型',
+  JUDGE: '判官模型',
 }
 
 /** 用途切换器上的短标签（详情区工具栏要放下"标签 + 条数 + 两个动作按钮"）。 */
-const KIND_SHORT: Record<AssistantModelKind, string> = { CHAT: '对话', EMBEDDING: '嵌入' }
+const KIND_SHORT: Record<AssistantModelKind, string> = { CHAT: '对话', EMBEDDING: '嵌入', JUDGE: '判官' }
 
 /** 页签：模型（配置面）与用量（观测面）是两种读法，混在一页里会互相挤。 */
 const PAGE_TABS: TabbedPanelTab<'models' | 'usage' | 'quality'>[] = [
@@ -132,6 +133,7 @@ export function ModelAdminPage() {
   const items = useMemo(() => providers.data?.providers ?? [], [providers.data])
   const current = providers.data?.current ?? null
   const currentEmbedding = providers.data?.currentEmbedding ?? null
+  const currentJudge = providers.data?.currentJudge ?? null
   const usedCodes = useMemo(() => items.map(item => item.code), [items])
 
   /**
@@ -158,6 +160,7 @@ export function ModelAdminPage() {
     return {
       CHAT: models.filter(model => model.kind === 'CHAT').length,
       EMBEDDING: models.filter(model => model.kind === 'EMBEDDING').length,
+      JUDGE: models.filter(model => model.kind === 'JUDGE').length,
     } satisfies Record<AssistantModelKind, number>
   }, [selectedProvider])
 
@@ -472,6 +475,9 @@ export function ModelAdminPage() {
     return {
       CHAT: chatColumns,
       EMBEDDING: embeddingColumns,
+      // 判官复用对话那套列：窗口 / 最大输出 / 温度 / 单价对判定同样重要（判定要稳，温度应低）。
+      // 差异只有"不支持工具"——那条徽标已按 kind 收窄到 CHAT。
+      JUDGE: chatColumns,
     } as Record<AssistantModelKind, ColumnDef<AssistantModelItem, unknown>[]>
   }, [activate, confirmRemoveModel, items, removeModel])
 
@@ -499,6 +505,11 @@ export function ModelAdminPage() {
                     <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
                       title="取消当前嵌入模型：知识库回到未配置状态（供应商与模型都留着）"
                       disabled={clearActive.isPending} onClick={() => clearActive.mutate('EMBEDDING')}>取消嵌入当前</Button>
+                  )}
+                  {currentJudge && (
+                    <Button size="sm" variant="secondary" className="erp-command-btn" icon={<IconAlertTriangle size={16} />}
+                      title="取消当前判官模型：判分回落到对话当前模型（供应商与模型都留着）"
+                      disabled={clearActive.isPending} onClick={() => clearActive.mutate('JUDGE')}>取消判官当前</Button>
                   )}
                   <Button size="sm" className="erp-command-btn" icon={<IconPlus size={16} />}
                     onClick={() => setAdding(true)}>添加供应商</Button>
@@ -537,7 +548,7 @@ export function ModelAdminPage() {
                   {selectedProvider ? `${selectedProvider.displayName} 的模型` : '模型'}
                 </span>
                 <div className="btn-group btn-group-sm" role="group" aria-label="模型用途">
-                  {(['CHAT', 'EMBEDDING'] as const).map(item => (
+                  {(['CHAT', 'EMBEDDING', 'JUDGE'] as const).map(item => (
                     <button key={item} type="button"
                       className={`btn ${kind === item ? 'btn-secondary' : 'btn-outline-secondary'}`}
                       onClick={() => setKind(item)}>
@@ -564,12 +575,15 @@ export function ModelAdminPage() {
                   rowKey={(row) => String(row.modelId)}
                   sorting={{ mode: 'client' }}
                   empty={<EmptyState
-                    title={kind === 'CHAT' ? '这家还没有对话模型' : '这家还没有嵌入模型'}
+                    title={kind === 'CHAT' ? '这家还没有对话模型' : kind === 'EMBEDDING' ? '这家还没有嵌入模型' : '这家还没有判官模型'}
                     // 空态只说"去哪儿点"：型号与参数下个对话框里都看得见，
                     // 在这里再解释一遍"参数会一起落库"就是复述
                     description={kind === 'CHAT'
                       ? '点上方「添加模型」，从这家的型号里选。'
-                      : '嵌入模型供知识库使用：点上方「添加模型」，嵌入型号带着维度。'} />}
+                      : kind === 'EMBEDDING'
+                        ? '嵌入模型供知识库使用：点上方「添加模型」，嵌入型号带着维度。'
+                        : '判官只对已落库的回答做条款级判定（ADR-044）：点上方「添加模型」并设为当前；'
+                          + '不配则回落到对话当前模型，判定会记「回落」。'} />}
                 />
               ) : (
                 <EmptyState title="还没有供应商" description="先在上表添加供应商，再维护它的模型。" />

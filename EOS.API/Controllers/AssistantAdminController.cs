@@ -460,6 +460,15 @@ public sealed class AssistantAdminController(
             ? null
             : providers.First(item => item.ProviderId == currentEmbedding.ProviderId);
 
+        // 判官同样"从行上取"：它不参与对话，没有需要解析的运行时快照（ADR-044 §3 落位在 EOS，
+        // 由判分任务自己按 modelId 合成调用参数）。口径与前两者一致：供应商停用 = 名下模型一起下线。
+        var currentJudge = models.FirstOrDefault(row =>
+            row.IsActive && row.Kind == AssistantModelKind.Judge && row.Enabled
+            && providers.Any(item => item.ProviderId == row.ProviderId && item.Enabled));
+        var currentJudgeProvider = currentJudge is null
+            ? null
+            : providers.First(item => item.ProviderId == currentJudge.ProviderId);
+
         return Ok(new
         {
             providers = providers.Select(provider => new
@@ -526,6 +535,18 @@ public sealed class AssistantAdminController(
                 providerDisplayName = currentEmbeddingProvider.DisplayName,
                 dimension = currentEmbedding.Dimension,
                 apiKeyConfigured = modelSecrets.IsConfigured(currentEmbeddingProvider.ApiKeyEnvVar),
+            },
+            // 判官的"当前"：同样只从行上取。没配就是 null——判分任务会回落到对话当前模型，
+            // 并在 verdict 里记 fallback，界面据此显示"未单独配置"。
+            currentJudge = currentJudge is null ? null : new
+            {
+                modelId = currentJudge.ModelId,
+                displayName = currentJudge.DisplayName,
+                modelCode = currentJudge.ModelCode,
+                providerId = currentJudge.ProviderId,
+                providerCode = currentJudgeProvider!.Code,
+                providerDisplayName = currentJudgeProvider.DisplayName,
+                apiKeyConfigured = modelSecrets.IsConfigured(currentJudgeProvider.ApiKeyEnvVar),
             },
         });
     }
@@ -862,7 +883,7 @@ public sealed class AssistantAdminController(
         if (target is null)
         {
             return BadRequest(ApiProblem.Create(
-                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "用途只能是 CHAT 或 EMBEDDING。"));
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "用途只能是 CHAT、EMBEDDING 或 JUDGE。"));
         }
 
         var before = await modelCatalog.GetActiveAsync(target.Value, token);
@@ -1281,7 +1302,7 @@ public sealed class AssistantAdminController(
         var kind = ParseModelKind(request.Kind) ?? fallbackKind;
         if (request.Kind is { Length: > 0 } raw && ParseModelKind(raw) is null)
         {
-            return "用途只能是 CHAT 或 EMBEDDING。";
+            return "用途只能是 CHAT、EMBEDDING 或 JUDGE。";
         }
 
         if (kind == AssistantModelKind.Embedding)
@@ -1371,6 +1392,7 @@ public sealed class AssistantAdminController(
         if (string.IsNullOrEmpty(text)) return null;
         if (text.Equals("CHAT", StringComparison.OrdinalIgnoreCase)) return AssistantModelKind.Chat;
         if (text.Equals("EMBEDDING", StringComparison.OrdinalIgnoreCase)) return AssistantModelKind.Embedding;
+        if (text.Equals("JUDGE", StringComparison.OrdinalIgnoreCase)) return AssistantModelKind.Judge;
         return null;
     }
 
@@ -1393,13 +1415,13 @@ public sealed class AssistantAdminController(
             request.TimeoutSeconds,
             request.InputPerMillionYuan,
             request.OutputPerMillionYuan,
-            // 嵌入模型"支持工具调用"没有意义：与其存一个真假未定的值，不如统一为否
-            kind == AssistantModelKind.Embedding ? false : request.SupportsTools ?? true,
+            // 嵌入与判官都"不支持工具调用"：与其存一个真假未定的值，不如统一为否
+            kind is AssistantModelKind.Embedding or AssistantModelKind.Judge ? false : request.SupportsTools ?? true,
             request.Enabled ?? true,
             request.SortIdx ?? 0,
             string.IsNullOrWhiteSpace(request.Remark) ? null : request.Remark.Trim(),
             kind,
-            kind == AssistantModelKind.Embedding ? request.Dimension : null);
+            kind == AssistantModelKind.Embedding ? request.Dimension : null);   // 维度只对嵌入有意义
     }
 
     /// <summary>未知取值一律按"在列"处理——列表查不出东西比抛 400 更难排查（与个人侧同口径）。</summary>

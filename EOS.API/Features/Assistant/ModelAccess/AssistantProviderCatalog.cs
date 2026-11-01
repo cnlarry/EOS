@@ -3,6 +3,12 @@ namespace EOS.API.Features.Assistant.ModelAccess;
 /// <summary>
 /// 模型用途。对话模型与嵌入模型走**同一张表、同一个目录**（ADR-031 §3.1），
 /// 所以必须能区分：两者的窗口、上限、单价语义完全不同，嵌入还多一个维度。
+///
+/// <para>
+/// 判官（<see cref="Judge"/>）是第三种用途，理由与嵌入同族：它只对已落库的回答做条款级判定
+/// （ADR-044），有自己的 prompt 契约、成本与校准基准。让判官跟着对话的当前模型走，
+/// 会让"换对话模型"等于"换判官"，历史判定失去可比性——所以它有自己的一槽。
+/// </para>
 /// </summary>
 public enum AssistantModelKind
 {
@@ -11,6 +17,9 @@ public enum AssistantModelKind
 
     /// <summary>嵌入 / 向量模型。</summary>
     Embedding = 1,
+
+    /// <summary>判官：只用于回答质量的条款级判定，不参与对话与检索。</summary>
+    Judge = 2,
 }
 
 /// <summary>

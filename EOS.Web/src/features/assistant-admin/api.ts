@@ -163,7 +163,7 @@ export function ingestKbDocument(payload: {
  * <p>取值与服务端字符串一一对应，**不在前端另立映射**：多一层映射就多一处"某天加了第三种用途、
  * 界面却把它当对话"的静默错配。</p>
  */
-export type AssistantModelKind = 'CHAT' | 'EMBEDDING'
+export type AssistantModelKind = 'CHAT' | 'EMBEDDING' | 'JUDGE'
 
 /** 能力三态：已核实支持 / 已核实不支持 / 未核实（界面据此说不同的话）。 */
 export type AssistantCapability = 'Supported' | 'Unsupported' | 'Unknown'
@@ -290,6 +290,11 @@ export interface AssistantProviderList {
   current: AssistantModelCurrent | null
   /** 当前**嵌入**模型（知识库检索看它）。 */
   currentEmbedding: AssistantModelCurrentEmbedding | null
+  /**
+   * 当前**判官**模型（回答质量判定看它）。
+   * 未单独配置时为 null——判分任务会回落到对话当前模型，并在 verdict 里记 `fallback`。
+   */
+  currentJudge: AssistantModelCurrentEmbedding | null
 }
 
 /** 新增 / 修改模型的入参（**不含密钥**：密钥挂在供应商上，走 setProviderKey 那条单独的路）。 */

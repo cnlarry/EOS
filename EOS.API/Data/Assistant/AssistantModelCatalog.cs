@@ -547,17 +547,24 @@ public sealed class AssistantModelCatalog(DbConnectionFactory connections) : IAs
     /// 前端与库都是全大写，两边对不上时不会有任何编译错误，只会让列表静默变空。
     /// </para>
     /// </summary>
-    internal static string KindCode(AssistantModelKind kind) =>
-        kind == AssistantModelKind.Embedding ? "EMBEDDING" : "CHAT";
+    internal static string KindCode(AssistantModelKind kind) => kind switch
+    {
+        AssistantModelKind.Embedding => "EMBEDDING",
+        AssistantModelKind.Judge => "JUDGE",
+        _ => "CHAT",
+    };
 
     /// <summary>
-    /// 反向解析。非 <c>EMBEDDING</c> 一律按对话处理：列上有检查约束，出现第三个值是
-    /// 数据被人从库外改过——那种情况在这里猜没有意义，按默认值走并在界面上照样看得见用途。
+    /// 反向解析。**未知值按对话处理**：列上有检查约束（允许 CHAT / EMBEDDING / JUDGE），
+    /// 出现别的值是数据被人从库外改过——那种情况在这里猜没有意义，按默认值走，
+    /// 界面上照样看得见它的用途标识。
     /// </summary>
-    internal static AssistantModelKind ParseKind(string? value) =>
-        string.Equals(value, "EMBEDDING", StringComparison.OrdinalIgnoreCase)
-            ? AssistantModelKind.Embedding
-            : AssistantModelKind.Chat;
+    internal static AssistantModelKind ParseKind(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        "EMBEDDING" => AssistantModelKind.Embedding,
+        "JUDGE" => AssistantModelKind.Judge,
+        _ => AssistantModelKind.Chat,
+    };
 
     private static AssistantProviderRow ReadProvider(SqlDataReader reader, int offset = 0) => new(
         reader.GetInt32(offset),
