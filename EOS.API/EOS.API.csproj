@@ -44,6 +44,8 @@
   <ItemGroup>
     <!-- EOS.ERP 版本化迁移脚本（唯一业务库，DbUp 启动时执行；对象名全大写） -->
     <EmbeddedResource Include="Data\Migrations\*.sql" />
+    <!-- 判官条款（ADR-044）：嵌入资源随程序集发布，任何运行环境都读得到 -->
+    <EmbeddedResource Include="Features\Assistant\Quality\rubric.v*.json" />
   </ItemGroup>
 
   <ItemGroup>

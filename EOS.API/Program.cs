@@ -357,6 +357,11 @@ builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantAdminRepository, EOS
 // 评估运行器（3107，ADR-046 缺口 #4）：只跑确定性层，不调用模型
 builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantEvalRepository, EOS.API.Data.Assistant.AssistantEvalRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Evaluation.AssistantEvalRunner>();
+// 判官（ADR-044，J0）：只读已落库回答做条款级判定；不碰权限、不写业务数据、不进阻断链
+builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantJudgeRepository, EOS.API.Data.Assistant.AssistantJudgeRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Quality.IAssistantJudgeModel,
+    EOS.API.Features.Assistant.Quality.AssistantJudgeModel>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Quality.AssistantAnswerJudge>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IWorkbenchSearchGateway>(sp =>
     sp.GetRequiredService<EOS.API.Data.DocumentWorkbenchRepository>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>();

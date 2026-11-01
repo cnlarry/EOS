@@ -96,6 +96,17 @@ public sealed class AssistantRuntimeRegistry(
     /// <inheritdoc />
     public AssistantRuntimeSnapshot Current => _current;
 
+    /// <summary>
+    /// 按**指定的模型行**合成一次调用要用的设置（判官用它）。
+    ///
+    /// <para>
+    /// 与 <see cref="Current"/> 的区别只有"用哪个模型行"：策略（提示词、限额、兜底单价）仍是
+    /// 全局同一份——判官不另开一套策略真源。传 null 表示"没有可用模型"，返回的设置按未配置处理。
+    /// </para>
+    /// </summary>
+    public AssistantSettings ComposeFor(AssistantActiveModel? active) =>
+        active is null ? PolicyOnly(_parameters.Values) : Compose(active, _parameters.Values);
+
     /// <summary>重新读取全局策略与当前模型。启动时一次，管理员改动后各一次。</summary>
     public async Task RefreshAsync(CancellationToken token)
     {
@@ -218,16 +229,10 @@ public sealed class ResolvingChatModel(
     /// <summary>
     /// 按**协议**构造客户端实现：协议来自供应商 CODE 在预设目录里的声明，
     /// 所以"换一家 OpenAI 兼容的供应商"是纯数据操作，不必碰代码。
-    /// 新增一种协议时，在这里加一个分支即可——判定入口只有这一处，
-    /// 不会出现"某家供应商偷偷走了别的客户端"。
+    /// 分支只有 <see cref="AssistantChatModelFactory"/> 一处（判官与对话共用，避免两边走不同客户端）。
     /// </summary>
-    private IChatModel Inner => _inner ??= Create(runtime.Current.Model?.ProviderCode);
-
-    private IChatModel Create(string? providerCode) =>
-        AssistantProviderCatalog.ProtocolOf(providerCode) switch
-        {
-            _ => new OpenAiCompatibleChatModel(httpClientFactory, Options.Create(Settings)),
-        };
+    private IChatModel Inner => _inner ??=
+        AssistantChatModelFactory.Create(httpClientFactory, Settings, runtime.Current.Model?.ProviderCode);
 
     /// <inheritdoc />
     public string ModelName => Settings.Model;
