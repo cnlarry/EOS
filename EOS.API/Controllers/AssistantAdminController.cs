@@ -1,6 +1,7 @@
 using EOS.API.Data;
 using EOS.API.Data.Assistant;
 using EOS.API.Errors;
+using EOS.API.Features.Assistant.Evaluation;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Parameters;
@@ -44,7 +45,9 @@ public sealed class AssistantAdminController(
     AssistantRuntimeRegistry registry,
     IAssistantUsageRepository usageRepository,
     WorkbenchAuditWriter auditWriter,
-    IPromptSegments promptSegments) : ControllerBase
+    IPromptSegments promptSegments,
+    AssistantEvalRunner evalRunner,
+    IAssistantEvalRepository evalRepository) : ControllerBase
 {
     /// <summary>
     /// 受支持的供应商 CODE。**真源是代码里的预设目录**（<see cref="AssistantProviderCatalog"/>），
@@ -1467,4 +1470,140 @@ public sealed class AssistantAdminController(
 
     /// <summary>规则段文本更新请求（只允许改正文；依赖工具、锁定标记与顺序由迁移维护）。</summary>
     public sealed record PromptSegmentUpdateRequest(string? Text);
+
+    /// <summary>跑一轮评估的请求。层留空 = 八层全跑。</summary>
+    public sealed record EvalRunRequest(IReadOnlyList<string>? Layers);
+
+    /// <summary>
+    /// 可跑的评估层（八层）与中文名。权限门：3107 的 <c>CanBrowse</c>。
+    ///
+    /// <para>
+    /// 中文名由服务端给：层与分诊是同一套业务词汇，界面再抄一份必然两边飘。
+    /// </para>
+    /// </summary>
+    [HttpGet("eval/layers")]
+    public async Task<IActionResult> EvalLayers(CancellationToken token)
+    {
+        if (!await Can(PermissionModules.AssistantAdmin.EvalRun, PermissionAction.Browse, token)) return Forbid();
+        return Ok(AssistantEvalCaseValidator.Layers.Select(layer => new
+        {
+            layer,
+            label = AssistantEvalRunner.LayerLabel(layer),
+        }));
+    }
+
+    /// <summary>
+    /// 最近若干轮评估（新的在前）。权限门：3107 的 <c>CanBrowse</c>。
+    /// </summary>
+    [HttpGet("eval/runs")]
+    public async Task<IActionResult> EvalRuns([FromQuery] int? take, CancellationToken token)
+    {
+        if (!await Can(PermissionModules.AssistantAdmin.EvalRun, PermissionAction.Browse, token)) return Forbid();
+        var runs = await evalRepository.ListRunsAsync(take ?? 20, token);
+        return Ok(runs.Select(RunShape));
+    }
+
+    /// <summary>
+    /// 跑一轮确定性评估。权限门：3107 的 <c>CanSetup</c>（见 <see cref="PermissionModules"/> 的说明）。
+    ///
+    /// <para>
+    /// **不调用模型**：只核"用例与当前系统有没有漂移"，因此可随时跑、零费用。
+    /// 返回这一轮的抬头与逐用例结论，界面不必再拉一次详情。
+    /// </para>
+    /// </summary>
+    [HttpPost("eval/runs")]
+    public async Task<IActionResult> RunEval([FromBody] EvalRunRequest? request, CancellationToken token)
+    {
+        if (!await Can(PermissionModules.AssistantAdmin.EvalRun, PermissionAction.Setup, token)) return Forbid();
+
+        var requested = request?.Layers?.Where(layer => !string.IsNullOrWhiteSpace(layer))
+            .Select(layer => layer.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+        var unknown = requested
+            .Where(layer => !AssistantEvalCaseValidator.Layers.Contains(layer, StringComparer.Ordinal))
+            .ToList();
+        if (unknown.Count > 0)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_LAYER",
+                $"不认识的评估层：{string.Join("、", unknown)}；可用层为 {string.Join("、", AssistantEvalCaseValidator.Layers)}。"));
+        }
+
+        var layers = requested.Count > 0 ? requested : AssistantEvalCaseValidator.Layers;
+        var report = await evalRunner.RunAsync(layers, userContext.UserId, token);
+        return Ok(new
+        {
+            run = RunShape(report.Run),
+            results = report.Results.Select(ResultShape),
+            byFixAt = report.FailuresByFixAt().Select(bucket => new
+            {
+                fixAt = bucket.FixAt,
+                label = AssistantEvalRunner.FixAtLabel(bucket.FixAt),
+                count = bucket.Count,
+            }),
+        });
+    }
+
+    /// <summary>某一轮的抬头 + 逐用例结论（失败在前）。权限门：3107 的 <c>CanBrowse</c>。</summary>
+    [HttpGet("eval/runs/{runId:int}")]
+    public async Task<IActionResult> EvalRun(int runId, CancellationToken token)
+    {
+        if (!await Can(PermissionModules.AssistantAdmin.EvalRun, PermissionAction.Browse, token)) return Forbid();
+        var run = await evalRepository.GetRunAsync(runId, token);
+        if (run is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "评估运行不存在。"));
+        }
+
+        var results = await evalRepository.LoadResultsAsync(runId, token);
+        var report = new AssistantEvalRunReport(run, results);
+        return Ok(new
+        {
+            run = RunShape(run),
+            results = results.Select(ResultShape),
+            byFixAt = report.FailuresByFixAt().Select(bucket => new
+            {
+                fixAt = bucket.FixAt,
+                label = AssistantEvalRunner.FixAtLabel(bucket.FixAt),
+                count = bucket.Count,
+            }),
+        });
+    }
+
+    /// <summary>抬头形状。通过率只按"跑过且没被跳过"的用例算——跳过不等于通过。</summary>
+    private static object RunShape(AssistantEvalRunDto run)
+    {
+        var evaluated = run.Passed + run.Failed;
+        return new
+        {
+            runId = run.RunId,
+            layers = run.Layers,
+            runBy = run.RunBy,
+            startedTime = run.StartedTime,
+            finishedTime = run.FinishedTime,
+            status = run.Status,
+            caseTotal = run.CaseTotal,
+            passed = run.Passed,
+            failed = run.Failed,
+            skipped = run.Skipped,
+            passRate = evaluated == 0 ? (double?)null : Math.Round((double)run.Passed / evaluated, 4),
+            note = run.Note,
+        };
+    }
+
+    /// <summary>一条结果形状（分诊标签也由服务端给）。</summary>
+    private static object ResultShape(AssistantEvalResultDto result) => new
+    {
+        caseId = result.CaseId,
+        layer = result.Layer,
+        layerLabel = AssistantEvalRunner.LayerLabel(result.Layer),
+        outcome = result.Outcome,
+        checkCount = result.CheckCount,
+        reason = result.Reason,
+        fixAt = result.FixAt,
+        fixAtLabel = string.IsNullOrWhiteSpace(result.FixAt) ? null : AssistantEvalRunner.FixAtLabel(result.FixAt),
+        fixSuggestion = result.FixSuggestion,
+        fixPermission = result.FixPermission,
+    };
 }
