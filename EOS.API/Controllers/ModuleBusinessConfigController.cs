@@ -109,7 +109,9 @@ public sealed class ModuleBusinessConfigController(
     {
         if (!await CanSetup(token)) return Forbid();
         var disabled = await repository.DisableAllActionsAsync(moduleId, userContext.EmployeeName, token);
-        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        // 发布身份传用户号（不是显示名）：`PUBLISHED_BY` 被落后检测当作"按谁的身份重建定义"，
+        // 传显示名会让两条路径各按一个身份重建，结论互相打架。
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.UserId, token);
         return Ok(new DisableAllActionsResultDto(moduleId, disabled, results.FirstOrDefault()));
     }
 
@@ -244,7 +246,8 @@ public sealed class ModuleBusinessConfigController(
         // 只给配置面（actions / manual）：`all` 是合成保存与助手侧的整模块写，不替调用方决定生效时机。
         if (configScope == BusinessConfigScope.All)
             return NoContent();
-        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        // 发布身份传用户号（不是显示名）：`PUBLISHED_BY` 被落后检测当作"按谁的身份重建定义"。
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.UserId, token);
         return Ok(new { saved = true, publish = results.FirstOrDefault() });
     }
 
@@ -256,7 +259,7 @@ public sealed class ModuleBusinessConfigController(
     public async Task<IActionResult> Publish(int moduleId, CancellationToken token)
     {
         if (!await CanPublish(token)) return Forbid();
-        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.UserId, token);
         return Ok(results);
     }
 

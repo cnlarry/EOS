@@ -172,7 +172,10 @@ public sealed class ModuleButtonAdminController(
             // 审计的 result 是 byte：行数可能超过 255，取上限而不是溢出。
             result: (byte)Math.Min(buttons.Count, byte.MaxValue), fieldChanges: null, token);
         // 保存与发布各留一条审计（"改了"与"生效了"是两件事），故发布的留痕由发布服务自己写。
-        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        // 发布身份必须传**用户号**：它既进 `PUBLISHED_BY`（落后检测按它重建定义），又决定按谁的
+        // 个人列配置装配字段视图——传显示名会让"发布"与"落后检测"两条路各按一个身份重建，
+        // 结论互相打架（见 WorkbenchDefinitionContentComparer 的字段视图归一）。
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.UserId, token);
         return Ok(new { saved = true, publish = results.FirstOrDefault() });
     }
 

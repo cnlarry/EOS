@@ -26,7 +26,8 @@ namespace EOS.API.Data.Definitions;
 ///
 /// · the `width` of a field — column width is a per-user preference (SYS_USER_COLUMN.F_WIDTH) resolved on every
 ///   read, with the field metadata value acting only as the default, so it is not a fact about the
-///   published definition (see <see cref="NormalizeFieldWidths"/>).
+///   published definition (see <see cref="NormalizeFieldViews"/>). The same goes for the **order** of
+///   the field arrays (that follows SYS_USER_COLUMN.F_IDX) and the `UserId` that built the content.
 ///
 /// Everything else is a real difference. Normalizing more than the runtime ignores would let a
 /// changed configuration reuse the old version: the evidence would still look fresh while it no
@@ -89,7 +90,11 @@ public static class WorkbenchDefinitionContentComparer
 
         NormalizeActions(definition);
         NormalizeValidationRules(definition);
-        NormalizeFieldWidths(definition);
+        NormalizeFieldViews(definition);
+        // 谁点的发布不是配置事实：`UserId` 只是装配时的身份（发布人），运行期每次按当前
+        // 用户重建字段视图。留着它，同一份配置换个账号发布就会被判成"内容变了"。
+        definition.Remove("UserId");
+        definition.Remove("userId");
         // `effectEngine` 段不再参与执行（ADR-035）：新发布的定义不再写出它，历史快照里可能还留着，
         // 两者的"内容"对运行期而言相同——故比较前直接摘掉，避免删段被当成配置变更而升版本。
         definition.Remove("effectEngine");
@@ -162,19 +167,41 @@ public static class WorkbenchDefinitionContentComparer
     }
 
     /// <summary>
-    /// 列宽不参与内容比较：它现在是个人层（SYS_USER_COLUMN.F_WIDTH）读时叠加的偏好，字段元数据的
-    /// DISPLAY_LENGTH 只是默认宽度的初值——两者都不进快照事实，运行期每次实时解析。
-    /// 落后检测按快照记录的发布者身份重建，把 width 留在比较里，等于让"谁调过列宽"触发
-    /// 全库静默落后告警（LESSONS L83 记的就是这个形状）。
+    /// 字段视图段（`MasterFields` / `DetailFields`）里有两类"不是模块定义事实"的差异，必须归一掉：
+    ///
+    /// · **列宽**（`Width`）：它是个人层偏好（`SYS_USER_COLUMN.F_WIDTH`，字段元数据的
+    ///   `DISPLAY_LENGTH` 只是默认初值），运行期每次按当前用户现算。历史实现写的是小写
+    ///   `"width"`，而序列化出来的是 `"Width"`，等于**这条归一从来没生效过**——于是谁拖一下列宽，
+    ///   已发布快照就被判落后（LESSONS L83 记的就是这个形状，但修的键名不匹配）。
+    /// · **顺序**：它来自个人列序（`SYS_USER_COLUMN.F_IDX`），运行期按当前用户重排；
+    ///   发布所得的定义里那一份顺序只反映"发布人当时怎么排的"，换个账号发布就会变。
+    ///   不归一的话，发布与落后检测会因发布人不同而给出相反结论。
+    ///
+    /// 两者都不是配置事实，故按 `Key` 归一后比较。真正的事实（字段集、类型、只读、默认值、
+    /// 选择器、必填）一个都不动——少归一一个，就会让"改了配置却复用旧版本"从另一头漏回来。
     /// </summary>
-    private static void NormalizeFieldWidths(JsonObject definition)
+    private static void NormalizeFieldViews(JsonObject definition)
     {
-        foreach(var section in new[]{"masterFields","detailFields"})
+        foreach (var section in new[] { "masterFields", "detailFields", "MasterFields", "DetailFields" })
         {
-            if(definition[section] is not JsonArray fields)continue;
-            foreach(var element in fields)
+            if (definition[section] is not JsonArray fields)
             {
-                if(element is JsonObject field)field.Remove("width");
+                continue;
+            }
+            var ordered = fields.OfType<JsonObject>()
+                .OrderBy(field => ReadString(field, "Key") ?? ReadString(field, "key") ?? string.Empty,
+                    StringComparer.Ordinal)
+                .ToList();
+            foreach (var field in ordered)
+            {
+                field.Remove("width");
+                field.Remove("Width");
+            }
+            var canonical = ordered.Select(field => field.DeepClone()).ToList();
+            fields.Clear();
+            foreach (var field in canonical)
+            {
+                fields.Add(field);
             }
         }
     }

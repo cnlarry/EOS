@@ -106,6 +106,58 @@ public class WorkbenchDefinitionContentComparerTests
     }
 
     [Fact]
+    public void 字段视图的列宽与顺序判等价_但两者字节不同()
+    {
+        // 列宽是个人层偏好（SYS_USER_COLUMN.F_WIDTH），顺序来自个人列序（SYS_USER_COLUMN.F_IDX）：
+        // 序列化用的是 PascalCase（`Width`），历史归一写的是小写 `width`，等于从未生效——
+        // 于是"谁拖了一下列宽/换了个发布人"就会让已发布快照被判落后。两条都按归一口径钉住。
+        var builtByAdmin = """
+            {"moduleId":1501,"MasterFields":[{"Key":"LINE_ID","Width":85},{"Key":"APPROVED","Width":78}]}
+            """;
+        var builtByDisplayName = """
+            {"moduleId":1501,"MasterFields":[{"Key":"APPROVED","Width":40},{"Key":"LINE_ID","Width":100}]}
+            """;
+
+        Assert.NotEqual(builtByAdmin, builtByDisplayName);
+        Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent(builtByAdmin, builtByDisplayName));
+    }
+
+    [Fact]
+    public void 字段视图的字段集不同判不等价()
+    {
+        // 归一的是"呈现层"（宽/序/发布人身份）：字段集本身是配置事实，少一列必须判差异，
+        // 否则"删了字段却复用旧版本"会被这条归一吃掉。
+        var full = """
+            {"moduleId":1501,"MasterFields":[{"Key":"LINE_ID","Width":85},{"Key":"APPROVED","Width":78}]}
+            """;
+        var missing = """{"moduleId":1501,"MasterFields":[{"Key":"LINE_ID","Width":85}]}""";
+
+        Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(full, missing));
+    }
+
+    [Fact]
+    public void 字段视图的只读与默认值不同判不等价()
+    {
+        var editable = """{"moduleId":1501,"MasterFields":[{"Key":"LINE_ID","Width":85,"IsReadonly":false,"DefaultValue":"A"}]}""";
+        var readonlyField = """{"moduleId":1501,"MasterFields":[{"Key":"LINE_ID","Width":85,"IsReadonly":true,"DefaultValue":"A"}]}""";
+        var otherDefault = """{"moduleId":1501,"MasterFields":[{"Key":"LINE_ID","Width":85,"IsReadonly":false,"DefaultValue":"B"}]}""";
+
+        Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(editable, readonlyField));
+        Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(editable, otherDefault));
+    }
+
+    [Fact]
+    public void 发布人身份不同判等价()
+    {
+        // `UserId` 只说明"这份内容是谁装配的"，不是配置事实：换个账号点发布不该升版本。
+        var byAdmin = """{"moduleId":1501,"UserId":"ADMIN","MasterFields":[]}""";
+        var byLarry = """{"moduleId":1501,"UserId":"larry","MasterFields":[]}""";
+
+        Assert.NotEqual(byAdmin, byLarry);
+        Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent(byAdmin, byLarry));
+    }
+
+    [Fact]
     public void 校验规则的空串与缺省判等价()
     {
         var withRuleEmpty = """{"moduleId":1406,"businessActions":[],"validationRules":[{"seq":1,"stage":"SAVE","validationKey":"line-require","params":"","message":""}]}""";

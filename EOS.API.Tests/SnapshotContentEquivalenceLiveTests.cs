@@ -99,6 +99,44 @@ public sealed class SnapshotContentEquivalenceLiveTests
     }
 
     [Fact]
+    public async Task 真数据_只改个人列宽与字段顺序判等价_改字段集判不等价()
+    {
+        // 形状来自真库：序列化用 PascalCase（`Width` / `MasterFields`），个人列宽与顺序来自
+        // SYS_USER_COLUMN。历史实现按小写 `width` 归一，等于从未生效——于是"谁拖了列宽、
+        // 谁换了发布账号"都会让已发布快照被判定为静默落后（发布说没变、门禁说落后）。
+        var token = CancellationToken.None;
+        var sample = await ReadSnapshotContainingAsync("\"MasterFields\":", token);
+
+        var rearranged = JsonNode.Parse(sample.DefinitionJson)!.AsObject();
+        var fields = rearranged["MasterFields"]!.AsArray();
+        Assert.True(fields.Count > 1, $"模块 {sample.ModuleId} v{sample.Version} 主表字段不足两列，取样无效。");
+        foreach (var element in fields)
+        {
+            if (element is JsonObject field && field["Width"] is JsonValue width)
+            {
+                field["Width"] = width.GetValue<int>() + 7;
+            }
+        }
+        var reordered = fields.Select(field => field!.DeepClone()).Reverse().ToList();
+        fields.Clear();
+        foreach (var field in reordered)
+        {
+            fields.Add(field);
+        }
+
+        Assert.NotEqual(sample.DefinitionJson, rearranged.ToJsonString());
+        Assert.True(WorkbenchDefinitionContentComparer.AreEquivalent(sample.DefinitionJson, rearranged.ToJsonString()),
+            $"模块 {sample.ModuleId} v{sample.Version}：只改列宽与顺序应判等价。");
+
+        // 字段集本身是配置事实：少一列必须仍判不等价，否则"删字段"会被这条归一吃掉。
+        var removed = JsonNode.Parse(sample.DefinitionJson)!.AsObject();
+        var kept = removed["MasterFields"]!.AsArray();
+        kept.RemoveAt(kept.Count - 1);
+        Assert.False(WorkbenchDefinitionContentComparer.AreEquivalent(sample.DefinitionJson, removed.ToJsonString()),
+            $"模块 {sample.ModuleId} v{sample.Version}：少一列必须判不等价。");
+    }
+
+    [Fact]
     public async Task 真数据_把结构列的空串改成缺省判等价()
     {
         var token = CancellationToken.None;
