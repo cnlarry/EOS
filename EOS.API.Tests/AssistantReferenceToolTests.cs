@@ -68,8 +68,8 @@ public sealed class AssistantReferenceToolTests
         [new FormChooserColumn("CLIENT_ID", "客户编号", "nvarchar", null),
          new FormChooserColumn("CLIENT_NAME", "客户名称", "nvarchar", null)],
         [
-            new Dictionary<string, object?> { ["CLIENT_ID"] = "C001", ["CLIENT_NAME"] = "华东客户" },
-            new Dictionary<string, object?> { ["CLIENT_ID"] = "C002", ["CLIENT_NAME"] = "华南客户" },
+            new Dictionary<string, object?> { ["CLIENT_ID"] = "C001", ["CLIENT_NAME"] = "甲客户" },
+            new Dictionary<string, object?> { ["CLIENT_ID"] = "C002", ["CLIENT_NAME"] = "乙客户" },
         ],
         Total: 2,
         ValueColumn: "CLIENT_ID",
@@ -89,7 +89,7 @@ public sealed class AssistantReferenceToolTests
         Assert.True(result.Ok);
         Assert.Contains("field=客户", result.ContentForModel);
         Assert.Contains("值=C001", result.ContentForModel);
-        Assert.Contains("客户名称=华东客户", result.ContentForModel);
+        Assert.Contains("客户名称=甲客户", result.ContentForModel);
         Assert.Contains("回填映射：CLIENT_ID←CLIENT_ID", result.ContentForModel);
         Assert.Contains("total=2", result.ContentForModel);
     }
