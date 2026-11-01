@@ -84,12 +84,22 @@ public sealed class ResolveMetricToolTests
             throw new NotSupportedException();
     }
 
-    private sealed class FakeMetricRepository(MetricDefinitionRow? metric, IReadOnlyList<int> moduleIds) : IMetricRepository
+    private sealed class FakeMetricRepository(
+        MetricDefinitionRow? metric, IReadOnlyList<int> moduleIds,
+        IReadOnlyList<MetricDefinitionRow>? searchResults = null) : IMetricRepository
     {
         public MetricPlan? ExecutedPlan { get; private set; }
 
+        public List<string> SearchedKeywords { get; } = [];
+
         public Task<MetricDefinitionRow?> GetAsync(string metricId, CancellationToken token) =>
-            Task.FromResult(metric);
+            Task.FromResult(metricId == metric?.MetricId ? metric : null);
+
+        public Task<IReadOnlyList<MetricDefinitionRow>> SearchConfirmedAsync(string keyword, CancellationToken token)
+        {
+            SearchedKeywords.Add(keyword);
+            return Task.FromResult(searchResults ?? []);
+        }
 
         public Task<IReadOnlyList<int>> FindModuleIdsByTableAsync(string table, CancellationToken token) =>
             Task.FromResult(moduleIds);
@@ -139,6 +149,44 @@ public sealed class ResolveMetricToolTests
         MasterPkOrder: ["ORDER_TYPE", "ORDER_NO"], DetailNoFields: string.Empty,
         HasWorkflow: true, UserId: "u1", ExecTag: "A");
 
+    private sealed class FakeWhitelist(IMetricSchemaProbe probe) : IMetricFieldWhitelist
+    {
+        /// <summary>按表模拟"这一列对该用户不可见"（字段级禁看/成本/保密），用于验证拒绝路径。</summary>
+        public Dictionary<string, HashSet<string>> Hidden { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public void Hide(string table, string column)
+        {
+            if (!Hidden.TryGetValue(table, out var columns))
+            {
+                columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                Hidden[table] = columns;
+            }
+            columns.Add(column);
+        }
+
+        public async Task<IReadOnlySet<string>> ReadAsync(string table, bool canViewCost, bool canViewSecrecy,
+            IReadOnlySet<string> deniedFields, CancellationToken token)
+        {
+            var hidden = Hidden.GetValueOrDefault(table) ?? [];
+            var columns = await probe.GetColumnsAsync(table, token);
+            return columns
+                .Where(column => !deniedFields.Contains(column) && !hidden.Contains(column))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>字段中文名（跨表同一 key 只有一个名字，够用例表达"日期"这类业务说法）。</summary>
+        public Dictionary<string, string> Labels { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Task<IReadOnlyDictionary<string, string>> ReadLabelsAsync(string table,
+            IReadOnlyCollection<string> columns, CancellationToken token)
+        {
+            var found = Labels
+                .Where(pair => columns.Contains(pair.Key, StringComparer.OrdinalIgnoreCase))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyDictionary<string, string>>(found);
+        }
+    }
+
     private static MetricDefinitionRow Metric(
         string confirmStatus = "CONFIRMED", string? rowFilter = SalesAmountRowFilter) => new(
         "sales_amount", "销售额", "SUM(AMOUNT_TAX)", "COP_ORDER_D",
@@ -146,13 +194,15 @@ public sealed class ResolveMetricToolTests
 
     private static ResolveMetricTool CreateTool(
         MetricDefinitionRow? metric, IReadOnlyList<int> moduleIds,
-        bool canBrowse = true, WorkbenchDefinition? definition = null)
+        bool canBrowse = true, WorkbenchDefinition? definition = null,
+        IReadOnlyList<MetricDefinitionRow>? searchResults = null)
     {
-        var repository = new FakeMetricRepository(metric, moduleIds);
+        var repository = new FakeMetricRepository(metric, moduleIds, searchResults);
+        var probe = new FakeProbe();
         var permission = new ModulePermission(Rights(canBrowse: canBrowse));
         return new ResolveMetricTool(
-            repository, new CapturingExecutor(repository), new FakeProbe(),
-            new MetricDefinitionValidator(new FakeProbe()),
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), new FakeWhitelist(probe),
             new FakePermissions(permission),
             new FakeSearchGateway(definition ?? Definition()),
             new WorkbenchScopeFilter(new ApiMetrics()));
@@ -188,6 +238,35 @@ public sealed class ResolveMetricToolTests
     }
 
     [Fact]
+    public async Task Resolves_Business_Word_To_The_Only_Confirmed_Metric()
+    {
+        // 用户说的是「营业额」而不是标识：命中唯一已确认口径就直接算，省掉一次 enum_metrics 往返。
+        var tool = CreateTool(null, [1405], searchResults: [Metric()]);
+        var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"营业额"}"""), CancellationToken.None);
+
+        Assert.True(result.Ok, result.ContentForModel);
+        Assert.Contains("1234.5", result.ContentForModel);
+        Assert.Contains("按业务词「营业额」解析", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Rejects_Ambiguous_Business_Word_And_Lists_Candidates()
+    {
+        // 业务词命中多条口径时不能猜：猜错口径算出来的数比拒绝更糟。
+        var tool = CreateTool(null, [1405], searchResults:
+        [
+            Metric(),
+            new MetricDefinitionRow("sales_amount_ex", "销售额（未税）", "SUM(AMOUNT)", "COP_ORDER_D",
+                "ORDER_DATE", 1, "CONFIRMED", SalesAmountRowFilter, "俗称销售额（未税）"),
+        ]);
+        var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"销售额"}"""), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("sales_amount（销售额）", result.ContentForModel);
+        Assert.Contains("sales_amount_ex（销售额（未税））", result.ContentForModel);
+    }
+
+    [Fact]
     public async Task Rejects_When_Source_Table_Has_No_Module()
     {
         var tool = CreateTool(Metric(), []);
@@ -214,15 +293,68 @@ public sealed class ResolveMetricToolTests
         Assert.Contains("1234.5", result.ContentForModel);
         Assert.Contains("依据链", result.ContentForModel);
         Assert.Contains("sales_amount", result.ContentForModel);
+        // 可用维度随结果给出：下次带过滤不必再枚举口径，也不会"省掉过滤重算"。
+        Assert.Contains("可用维度 ORDER_DATE、CLIENT_ID、PRO_NO", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Accepts_Chinese_Dimension_Label()
+    {
+        // 模型/用户说的是"订单日期"而不是列名 ORDER_DATE：按中文名映射回标识再算，
+        // 不要回一句"维度名不符合标识符规则"让它自己猜。
+        var repository = new FakeMetricRepository(Metric(), [1405]);
+        var probe = new FakeProbe();
+        var whitelist = new FakeWhitelist(probe);
+        whitelist.Labels["ORDER_DATE"] = "订单日期";
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), whitelist,
+            new FakePermissions(new ModulePermission(Rights())),
+            new FakeSearchGateway(Definition()),
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args(
+            """{"metric_id":"sales_amount","dimensions":{"订单日期":{"from":"2026-09-01","to":"2026-09-30"}}}"""),
+            CancellationToken.None);
+
+        Assert.True(result.Ok, result.ContentForModel);
+        Assert.Contains("[ORDER_DATE]>=@dim", repository.ExecutedPlan!.Sql);
+    }
+
+    [Fact]
+    public async Task Unknown_Dimension_Lists_Available_Dimensions_With_Labels()
+    {
+        // 映射不到时必须把"能用什么"一次说全（带中文名），否则模型下一步会省掉过滤重算——
+        // 那等于把"9 月"偷换成"全部时间"，答出的数字是另一个问题的答案。
+        var repository = new FakeMetricRepository(Metric(), [1405]);
+        var probe = new FakeProbe();
+        var whitelist = new FakeWhitelist(probe);
+        whitelist.Labels["ORDER_DATE"] = "订单日期";
+        whitelist.Labels["CLIENT_ID"] = "客户";
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), whitelist,
+            new FakePermissions(new ModulePermission(Rights())),
+            new FakeSearchGateway(Definition()),
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args(
+            """{"metric_id":"sales_amount","dimensions":{"日期":{"from":"2026-09-01","to":"2026-09-30"}}}"""),
+            CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("可用维度：ORDER_DATE（订单日期）、CLIENT_ID（客户）、PRO_NO", result.ContentForModel);
+        Assert.Null(repository.ExecutedPlan);
     }
 
     [Fact]
     public async Task Compiled_Plan_Contains_RowFilter_Exists_And_Dimension_Parameters()
     {
         var repository = new FakeMetricRepository(Metric(), [1405]);
+        var probe = new FakeProbe();
         var tool = new ResolveMetricTool(
-            repository, new CapturingExecutor(repository), new FakeProbe(),
-            new MetricDefinitionValidator(new FakeProbe()),
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), new FakeWhitelist(probe),
             new FakePermissions(new ModulePermission(Rights())),
             new FakeSearchGateway(Definition()),
             new WorkbenchScopeFilter(new ApiMetrics()));
@@ -250,9 +382,10 @@ public sealed class ResolveMetricToolTests
         // 实测按错误的结论回话会把模型带偏（它会拿同一个口径反复重试）。
         var gateway = new FakeSearchGateway(moduleId => moduleId == 1405 ? Definition() : null);
         var repository = new FakeMetricRepository(Metric(), [1406, 1405]);
+        var probe = new FakeProbe();
         var tool = new ResolveMetricTool(
-            repository, new CapturingExecutor(repository), new FakeProbe(),
-            new MetricDefinitionValidator(new FakeProbe()),
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), new FakeWhitelist(probe),
             new FakePermissions(new ModulePermission(Rights())), gateway,
             new WorkbenchScopeFilter(new ApiMetrics()));
 
@@ -270,9 +403,10 @@ public sealed class ResolveMetricToolTests
         // 不能含糊成"权限范围不足"——原因说不清会让模型重试同一个口径，白烧工具轮
         var gateway = new FakeSearchGateway(_ => null);
         var repository = new FakeMetricRepository(Metric(), [14996]);
+        var probe = new FakeProbe();
         var tool = new ResolveMetricTool(
-            repository, new CapturingExecutor(repository), new FakeProbe(),
-            new MetricDefinitionValidator(new FakeProbe()),
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), new FakeWhitelist(probe),
             new FakePermissions(new ModulePermission(Rights())), gateway,
             new WorkbenchScopeFilter(new ApiMetrics()));
 
@@ -296,19 +430,125 @@ public sealed class ResolveMetricToolTests
     [Fact]
     public async Task Rejects_When_RowFilter_Column_Hidden_By_Field_Permission()
     {
-        // Master whitelist without APPROVED: the row-filter column is not visible
-        // to this user, so computation must be refused.
+        // APPROVED 被字段级权限禁止：行过滤列对该用户不可见，计算必须拒绝——
+        // 否则等于绕开字段级禁止去用它做筛选。
+        var repository = new FakeMetricRepository(Metric(), [1405]);
+        var probe = new FakeProbe();
+        var whitelist = new FakeWhitelist(probe);
+        whitelist.Hide("COP_ORDER_M", "APPROVED");
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), whitelist,
+            new FakePermissions(new ModulePermission(Rights())),
+            new FakeSearchGateway(Definition()),
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"sales_amount"}"""), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("不可见", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Computes_When_Aggregate_Column_Is_Absent_From_Personal_Column_View()
+    {
+        // 列选择（SYS_USER_COLUMN）只是显示偏好：明细字段视图里没有 AMOUNT_TAX，不代表这个人
+        // 无权汇总总金额。口径白名单与字段视图分离，否则同一口径会因"谁问的"而时算得出时算不出。
         var definition = new WorkbenchDefinition(
             1405, "客户订单", "COP_ORDER_M", "COP_ORDER_D",
-            MasterFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("ORDER_DATE"), Field("CLIENT_ID"), Field("OWNER")],
-            DetailFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("SERIAL_NO"), Field("AMOUNT_TAX"), Field("AMOUNT"), Field("QTY"), Field("REBATE"), Field("PRO_NO")],
+            MasterFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("APPROVED"), Field("ORDER_DATE"), Field("CLIENT_ID")],
+            DetailFields: [Field("ORDER_NO"), Field("ORDER_TYPE"), Field("SERIAL_NO"), Field("AMOUNT")],
             DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
             MasterPkOrder: ["ORDER_TYPE", "ORDER_NO"], DetailNoFields: string.Empty,
             HasWorkflow: true, UserId: "u1", ExecTag: "A");
         var tool = CreateTool(Metric(), [1405], definition: definition);
+
         var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"sales_amount"}"""), CancellationToken.None);
+
+        Assert.True(result.Ok, result.ContentForModel);
+        Assert.Contains("1234.5", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Filters_By_Full_Record_Key_Set()
+    {
+        // 「这张单多少钱」：按完整主键精确过滤，不靠维度（口径维度里通常没有单号）。
+        var repository = new FakeMetricRepository(Metric(), [1405]);
+        var probe = new FakeProbe();
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), new FakeWhitelist(probe),
+            new FakePermissions(new ModulePermission(Rights())),
+            new FakeSearchGateway(Definition()),
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args(
+            """{"metric_id":"sales_amount","record":{"ORDER_TYPE":"CGD","ORDER_NO":"CGD26100010"}}"""),
+            CancellationToken.None);
+
+        Assert.True(result.Ok, result.ContentForModel);
+        var sql = repository.ExecutedPlan!.Sql;
+        Assert.Contains("[ORDER_TYPE]=@dim", sql);
+        Assert.Contains("[ORDER_NO]=@dim", sql);
+        Assert.Contains("按单据主键精确过滤", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Rejects_Incomplete_Record_Key_Set()
+    {
+        // 只给单号会在跨单别重号时静默放大范围，所以主键必须给齐。
+        var tool = CreateTool(Metric(), [1405]);
+        var result = await tool.ExecuteAsync("u1", Args(
+            """{"metric_id":"sales_amount","record":{"ORDER_NO":"CGD26100010"}}"""),
+            CancellationToken.None);
+
         Assert.False(result.Ok);
-        Assert.Contains("不可见", result.ContentForModel);
+        Assert.Contains("必须给齐主键", result.ContentForModel);
+        Assert.Contains("ORDER_TYPE", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Rejects_Record_Key_Outside_Master_Primary_Key()
+    {
+        var tool = CreateTool(Metric(), [1405]);
+        var result = await tool.ExecuteAsync("u1", Args(
+            """{"metric_id":"sales_amount","record":{"ORDER_TYPE":"CGD","ORDER_NO":"X","SERIAL_NO":"1"}}"""),
+            CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("未识别：SERIAL_NO", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Reports_Every_Distinct_Candidate_Failure()
+    {
+        // 候选模块的失败原因各不相同：只回第一条会把"按表名碰巧命中"的模块的结论当答案，
+        // 模型据此重试同一个口径只会得到同样的结果。
+        var gateway = new FakeSearchGateway(moduleId => moduleId switch
+        {
+            14989 => new WorkbenchDefinition(
+                14989, "客户未送货明细", "COP_ORDER_D", null,
+                MasterFields: [Field("ORDER_NO"), Field("AMOUNT_TAX")],
+                DetailFields: [], DefaultSort: null, HasAdd: false, HasEdit: false, DetailNoSave: false,
+                MasterPkOrder: ["ORDER_NO"], DetailNoFields: string.Empty,
+                HasWorkflow: false, UserId: "u1", ExecTag: "A"),
+            _ => Definition(),
+        });
+        var repository = new FakeMetricRepository(Metric(), [14989, 1405]);
+        var probe = new FakeProbe();
+        var whitelist = new FakeWhitelist(probe);
+        whitelist.Hide("COP_ORDER_M", "APPROVED");
+        var tool = new ResolveMetricTool(
+            repository, new CapturingExecutor(repository), probe,
+            new MetricDefinitionValidator(probe), whitelist,
+            new FakePermissions(new ModulePermission(Rights())), gateway,
+            new WorkbenchScopeFilter(new ApiMetrics()));
+
+        var result = await tool.ExecuteAsync("u1", Args("""{"metric_id":"sales_amount"}"""), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("ORDER_DATE", result.ContentForModel);
+        Assert.Contains("APPROVED", result.ContentForModel);
     }
 }
 
@@ -326,11 +566,13 @@ public sealed class ResolveMetricNullResultTests
         var metric = new MetricDefinitionRow("inventory_turnover", "库存周转率",
             "SUM(QTY) / NULLIF(SUM(IN_QTY),0)", "INV_PRO_DEPOT", "DEPOT_ID,PRO_NO", 1,
             "CONFIRMED", null, null);
+        var probe = new EmptyProbe();
         var tool = new ResolveMetricTool(
             new SingleMetricRepository(metric),
             new NullExecutor(),
-            new EmptyProbe(),
-            new MetricDefinitionValidator(new EmptyProbe()),
+            probe,
+            new MetricDefinitionValidator(probe),
+            new ProbeWhitelist(probe),
             new AlwaysBrowsePermissions(),
             new NullGateway(),
             new WorkbenchScopeFilter(new ApiMetrics()));
@@ -347,6 +589,9 @@ public sealed class ResolveMetricNullResultTests
         public Task<MetricDefinitionRow?> GetAsync(string metricId, CancellationToken token) =>
             Task.FromResult<MetricDefinitionRow?>(metric);
 
+        public Task<IReadOnlyList<MetricDefinitionRow>> SearchConfirmedAsync(string keyword, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<MetricDefinitionRow>>([]);
+
         public Task<IReadOnlyList<int>> FindModuleIdsByTableAsync(string table, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<int>>([1408]);
     }
@@ -358,6 +603,18 @@ public sealed class ResolveMetricNullResultTests
         public Task<IReadOnlySet<string>> GetColumnsAsync(string table, CancellationToken token) =>
             Task.FromResult<IReadOnlySet<string>>(
                 new HashSet<string>(["QTY", "IN_QTY", "DEPOT_ID", "PRO_NO"], StringComparer.OrdinalIgnoreCase));
+    }
+
+    private sealed class ProbeWhitelist(IMetricSchemaProbe probe) : IMetricFieldWhitelist
+    {
+        public Task<IReadOnlySet<string>> ReadAsync(string table, bool canViewCost, bool canViewSecrecy,
+            IReadOnlySet<string> deniedFields, CancellationToken token) =>
+            probe.GetColumnsAsync(table, token);
+
+        public Task<IReadOnlyDictionary<string, string>> ReadLabelsAsync(string table,
+            IReadOnlyCollection<string> columns, CancellationToken token) =>
+            Task.FromResult<IReadOnlyDictionary<string, string>>(
+                columns.ToDictionary(column => column, column => column, StringComparer.OrdinalIgnoreCase));
     }
 
     private sealed class AlwaysBrowsePermissions : IPermissionService

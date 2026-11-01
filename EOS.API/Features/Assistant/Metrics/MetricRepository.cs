@@ -20,6 +20,13 @@ public interface IMetricRepository
     Task<MetricDefinitionRow?> GetAsync(string metricId, CancellationToken token);
 
     /// <summary>
+    /// 按业务词查已确认的口径：标识、名称、说明三处匹配，标识/名称精确命中排在前面。
+    /// 供"用户说的是业务词而不是标识"时解析——命中唯一才可用，多条必须让调用方指定。
+    /// 只返回 <c>CONFIRMED</c>：候选口径不能用于计算。
+    /// </summary>
+    Task<IReadOnlyList<MetricDefinitionRow>> SearchConfirmedAsync(string keyword, CancellationToken token);
+
+    /// <summary>
     /// Modules whose master or detail table matches the metric source table,
     /// master matches first — the module owning the table anchors permission
     /// scoping for computation.
@@ -50,17 +57,51 @@ public sealed class MetricRepository(DbConnectionFactory connections) : IMetricR
         {
             return null;
         }
-        return new MetricDefinitionRow(
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            reader.GetInt32(5),
-            reader.GetString(6),
-            reader.IsDBNull(7) ? null : reader.GetString(7),
-            reader.IsDBNull(8) ? null : reader.GetString(8));
+        return ReadRow(reader);
     }
+
+    public async Task<IReadOnlyList<MetricDefinitionRow>> SearchConfirmedAsync(string keyword, CancellationToken token)
+    {
+        const string sql = """
+            SELECT TOP (10) METRIC_ID, METRIC_NAME, DEFINITION,
+                   LTRIM(RTRIM(ISNULL(SOURCE_TABLE, ''))) AS SOURCE_TABLE,
+                   LTRIM(RTRIM(ISNULL(DIMENSION_KEYS, ''))) AS DIMENSION_KEYS,
+                   VERSION,
+                   LTRIM(RTRIM(ISNULL(CONFIRM_STATUS, 'CANDIDATE'))) AS CONFIRM_STATUS,
+                   ROW_FILTER, DESCRIPTION
+            FROM dbo.REPORT_METRIC WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(ISNULL(CONFIRM_STATUS, 'CANDIDATE'))) = 'CONFIRMED'
+              AND (METRIC_ID = @Keyword
+                   OR LTRIM(RTRIM(METRIC_NAME)) = @Keyword
+                   OR METRIC_NAME LIKE '%' + @Keyword + '%'
+                   OR DESCRIPTION LIKE '%' + @Keyword + '%')
+            ORDER BY CASE WHEN METRIC_ID = @Keyword THEN 0
+                          WHEN LTRIM(RTRIM(METRIC_NAME)) = @Keyword THEN 1 ELSE 2 END,
+                     METRIC_ID;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 100).Value = keyword;
+        var rows = new List<MetricDefinitionRow>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            rows.Add(ReadRow(reader));
+        }
+        return rows;
+    }
+
+    private static MetricDefinitionRow ReadRow(SqlDataReader reader) => new(
+        reader.GetString(0),
+        reader.GetString(1),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.GetString(4),
+        reader.GetInt32(5),
+        reader.GetString(6),
+        reader.IsDBNull(7) ? null : reader.GetString(7),
+        reader.IsDBNull(8) ? null : reader.GetString(8));
 
     public async Task<IReadOnlyList<int>> FindModuleIdsByTableAsync(string table, CancellationToken token)
     {
