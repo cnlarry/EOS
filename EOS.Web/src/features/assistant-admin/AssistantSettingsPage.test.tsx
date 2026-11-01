@@ -57,6 +57,24 @@ function installFetchMock(
     const method = init?.method ?? 'GET'
     calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : null })
 
+    if (url.includes('/admin/assistant/prompt-segments')) {
+      if (method === 'GET') {
+        return jsonResponse([
+          { key: 'METRIC_USAGE', title: '指标口径取数', text: '必须用 resolve_metric 取数。',
+            requiredTools: ['resolve_metric'], isLocked: true, sortIdx: 10 },
+          { key: 'METADATA_SEARCH', title: '元数据检索', text: '先用 search_metadata 检索。',
+            requiredTools: ['search_metadata'], isLocked: false, sortIdx: 40 },
+        ])
+      }
+      // 锁定段写入一律 409：界面禁用只是提前告知，服务端才是权威
+      if (url.includes('/METRIC_USAGE')) {
+        return new Response(JSON.stringify({ code: 'PROMPT_SEGMENT_LOCKED', message: '红线条款不可改。' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return jsonResponse({ updated: true })
+    }
     if (url.includes('/admin/assistant/settings/scopes')) {
       // 覆盖区块另拉一份清单；给它空清单，免得页面上的设置项被当成"覆盖行"渲染出来
       return jsonResponse({ items: [], scopable: [] })
@@ -352,5 +370,32 @@ describe('AssistantSettingsPage', () => {
 
     expect(within(nav).getByRole('button', { name: /按用户 \/ 按模块覆盖/ }))
       .toHaveAttribute('aria-current', 'true')
+  })
+
+  it('行为规则段：锁定段只读，未锁定段可改并逐段保存', async () => {
+    const harness = installFetchMock()
+
+    renderPage()
+
+    // 锁定段（红线）在界面上就是只读：批核不可代签、金额不得估算这类条款只能走迁移
+    const locked = await screen.findByLabelText('指标口径取数')
+    expect(locked).toBeDisabled()
+    const lockedRow = locked.closest('section')!
+    expect(within(lockedRow).getByRole('button', { name: '保存「指标口径取数」' })).toBeDisabled()
+    expect(within(lockedRow).getByText(/红线条款/)).toBeInTheDocument()
+
+    // 未锁定段可以改，且**逐段保存**（与上面参数区"整页一个保存"不同）
+    const unlocked = screen.getByLabelText('元数据检索')
+    expect(unlocked).not.toBeDisabled()
+    fireEvent.change(unlocked, { target: { value: '先用 search_metadata 检索；改过的内容。' } })
+    const row = unlocked.closest('section')!
+    fireEvent.click(within(row).getByRole('button', { name: '保存「元数据检索」' }))
+
+    await waitFor(() => {
+      const put = harness.calls.find(call =>
+        call.method === 'PUT' && call.url.includes('/prompt-segments/METADATA_SEARCH'))
+      expect(put).toBeTruthy()
+      expect(put!.body ?? '').toContain('改过的内容')
+    })
   })
 })

@@ -43,7 +43,8 @@ public sealed class AssistantAdminController(
     IAssistantSecretStore modelSecrets,
     AssistantRuntimeRegistry registry,
     IAssistantUsageRepository usageRepository,
-    WorkbenchAuditWriter auditWriter) : ControllerBase
+    WorkbenchAuditWriter auditWriter,
+    IPromptSegments promptSegments) : ControllerBase
 {
     /// <summary>
     /// 受支持的供应商 CODE。**真源是代码里的预设目录**（<see cref="AssistantProviderCatalog"/>），
@@ -1418,4 +1419,52 @@ public sealed class AssistantAdminController(
         "tokens" or "messagetokens" => AssistantSessionSort.Tokens,
         _ => AssistantSessionSort.LastActive,
     };
+
+    /// <summary>
+    /// 行为规则段清单（ADR-046）：文本在库、可维护；锁定段是红线条款，只能读。
+    /// 权限门：3105 的 <c>CanBrowse</c>（看）；改文本见下面的 PUT，要求 <c>CanSetup</c>。
+    /// </summary>
+    [HttpGet("prompt-segments")]
+    public async Task<IActionResult> PromptSegments(CancellationToken token)
+    {
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Browse, token)) return Forbid();
+        var segments = await promptSegments.ListEnabledAsync(token);
+        return Ok(segments.Select(segment => new
+        {
+            key = segment.Key,
+            title = segment.Title,
+            text = segment.Text,
+            requiredTools = segment.RequiredTools,
+            isLocked = segment.IsLocked,
+            sortIdx = segment.SortIdx,
+        }));
+    }
+
+    /// <summary>
+    /// 改一段规则文本。**锁定段（红线）一律 409**：批核不可代签、金额不得估算这类条款
+    /// 只能通过迁移改，改完要过代码评审——界面与自动调优都不能碰它们（ADR-046 §4）。
+    /// </summary>
+    [HttpPut("prompt-segments/{key}")]
+    public async Task<IActionResult> UpdatePromptSegment(
+        string key, [FromBody] PromptSegmentUpdateRequest? request, CancellationToken token)
+    {
+        if (!await Can(PermissionModules.AssistantAdmin.Settings, PermissionAction.Setup, token)) return Forbid();
+        if (string.IsNullOrWhiteSpace(request?.Text))
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "规则文本不能为空。"));
+        }
+
+        var status = await promptSegments.UpdateTextAsync(key, request.Text, userContext.UserId, token);
+        return status switch
+        {
+            PromptSegmentUpdateStatus.Updated => Ok(new { updated = true, key }),
+            PromptSegmentUpdateStatus.Locked => Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "PROMPT_SEGMENT_LOCKED",
+                "该段是红线条款，界面不可修改；改动需走迁移与评审。")),
+            _ => NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "规则段不存在。")),
+        };
+    }
+
+    /// <summary>规则段文本更新请求（只允许改正文；依赖工具、锁定标记与顺序由迁移维护）。</summary>
+    public sealed record PromptSegmentUpdateRequest(string? Text);
 }

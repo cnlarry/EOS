@@ -1,6 +1,6 @@
 import { IconAlertTriangle, IconDeviceFloppy, IconRefresh, IconRotate } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSelectionList } from '../../components/common/ErpSelectionList'
@@ -8,13 +8,17 @@ import { useSectionScrollSpy } from '../../components/common/useSectionScrollSpy
 import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
 import { describeApiError } from '../../lib/errors'
-import { listSettings, resetSetting, updateSetting } from './api'
-import type { AssistantSettingItem } from './api'
+import { listPromptSegments, listSettings, resetSetting, updatePromptSegment, updateSetting } from './api'
+import type { AssistantPromptSegment, AssistantSettingItem } from './api'
 import { AssistantScopeOverrides } from './AssistantScopeOverrides'
 
 /** 作用域覆盖那一块的锚点：它不是参数域，但同样要能在左侧点得到。 */
 const SCOPE_ANCHOR = '__scope__'
 const SCOPE_LABEL = '按用户 / 按模块覆盖'
+
+/** 行为规则段的锚点：文本在库（ADR-046），与参数是两种编辑对象，所以单独一块。 */
+const PROMPT_ANCHOR = '__prompt__'
+const PROMPT_LABEL = '行为规则（规则段）'
 
 /**
  * 工作助手管理 → **助手设置**（菜单组 31 / 模块 3105，路由 `/admin/assistant/settings`）。
@@ -58,6 +62,8 @@ export function AssistantSettingsPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const settings = useQuery({ queryKey: ['assistant-admin-settings'], queryFn: listSettings })
+  // 行为规则段：与参数是两种编辑对象（逐段保存、红线只读），所以单独一个查询。
+  const promptSegments = useQuery({ queryKey: ['assistant-prompt-segments'], queryFn: listPromptSegments })
 
   // 草稿只记**被动过的**键：没动过的项直接读服务端的有效值。
   // 这样后台重新拉取（切窗口回来、保存后失效重取）不会把用户正在编辑的内容冲掉。
@@ -249,6 +255,7 @@ export function AssistantSettingsPage() {
                       ),
                     }
                   }),
+                  { id: PROMPT_ANCHOR, label: PROMPT_LABEL },
                   { id: SCOPE_ANCHOR, label: SCOPE_LABEL },
                 ]}
                 activeId={activeGroupCode}
@@ -295,6 +302,30 @@ export function AssistantSettingsPage() {
                     ))}
                   </section>
                 ))}
+
+                {/* 行为规则段：文本在库（ADR-046），改完下一轮对话生效。
+                    与上面的参数不同，这里**逐段保存**——一段话是一个整体，没有"整页保存"的语义；
+                    锁定段（红线）是只读的：批核不可代签、金额不得估算这类条款只能走迁移改。 */}
+                <div data-settings-anchor="group" data-group-code={PROMPT_ANCHOR}
+                  data-group-label={PROMPT_LABEL}>
+                  <section className="erp-settings-split-section">
+                    <div className="erp-settings-split-section-head">
+                      <h3 className="h5 mb-0">{PROMPT_LABEL}</h3>
+                      <span className="text-secondary small">改完下一轮对话生效</span>
+                      <span className="text-secondary small">{promptSegments.data?.length ?? 0} 段</span>
+                    </div>
+                    {promptSegments.isLoading ? (
+                      <LoadingState label="正在读取行为规则…" />
+                    ) : promptSegments.isError ? (
+                      <ErrorState message={describeApiError(promptSegments.error, '读取行为规则失败。')}
+                        onRetry={() => void promptSegments.refetch()} />
+                    ) : (
+                      (promptSegments.data ?? []).map(segment => (
+                        <PromptSegmentRow key={segment.key} segment={segment} />
+                      ))
+                    )}
+                  </section>
+                </div>
 
                 {/* 作用域覆盖：全局值之上还有"按用户 / 按模块"两层（ADR-030 §6.2）。
                     单独成块而不是塞进各参数下面，是因为它维护的是**对象维度**（谁 / 哪个模块），
@@ -388,6 +419,75 @@ function SettingRow({ item, groupCode, draft, unsaved, onDraftChange, onReset, r
       {item.isOverridden && item.updatedBy && (
         <div className="form-hint">
           上次由 {item.updatedBy} 于 {item.updatedAt ? new Date(item.updatedAt).toLocaleString('zh-CN') : '未知时间'} 修改
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * 一段行为规则：正文 + 逐段保存。
+ *
+ * <para>
+ * **锁定段是只读的**（红线：指标口径不得省略过滤、删除与批量不代劳、confirm 型动作不得直接执行）。
+ * 只读不是"界面上灰一下"就算：服务端对锁定段的写入直接 409，这里的禁用只是让管理员早点知道。
+ * </para>
+ *
+ * <para>
+ * **与上面参数区的保存方式不同**：参数是"整页一个保存"，规则段是"一段一个保存"——
+ * 一段话是一个整体，把它拆进整页草稿只会让"我改的这句到底存了没有"变得难判断。
+ * </para>
+ */
+function PromptSegmentRow({ segment }: { segment: AssistantPromptSegment }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const [draft, setDraft] = useState(segment.text)
+
+  // 重新拉取后（别人改过、或自己保存成功）以服务端文本为准
+  useEffect(() => setDraft(segment.text), [segment.text])
+
+  const save = useMutation({
+    mutationFn: () => updatePromptSegment(segment.key, draft),
+    onSuccess: () => {
+      toast.notify({ message: `「${segment.title}」已保存，下一轮对话生效`, variant: 'success' })
+      void queryClient.invalidateQueries({ queryKey: ['assistant-prompt-segments'] })
+    },
+    onError: (error) => toast.notify({ message: describeApiError(error, '保存失败。'), variant: 'danger' }),
+  })
+
+  const dirty = draft.trim() !== segment.text.trim()
+
+  return (
+    <section className="erp-settings-split-section" data-settings-anchor="item"
+      data-item-label={segment.title}>
+      <div className="erp-settings-split-section-head">
+        <h3 className="h5 mb-0">{segment.title}</h3>
+        <span className="text-secondary small font-monospace">{segment.key}</span>
+        {segment.isLocked && <span className="badge text-bg-warning">红线 · 只读</span>}
+      </div>
+
+      <textarea className="form-control font-monospace" rows={4}
+        style={{ maxWidth: 720 }}
+        value={draft} aria-label={segment.title}
+        disabled={segment.isLocked}
+        onChange={(event) => setDraft(event.target.value)} />
+
+      <div className="d-flex align-items-center gap-2 mt-2">
+        <Button size="sm" icon={<IconDeviceFloppy size={14} />}
+          loading={save.isPending}
+          disabled={segment.isLocked || !dirty}
+          aria-label={`保存「${segment.title}」`}
+          onClick={() => save.mutate()}>保存</Button>
+        {dirty && <span className="text-secondary small">未保存</span>}
+        {segment.isLocked && (
+          <span className="form-hint mb-0">红线条款：只能通过迁移修改，改动需评审。</span>
+        )}
+      </div>
+
+      {segment.requiredTools.length > 0 && (
+        <div className="form-hint">
+          依赖工具：<span className="font-monospace">{segment.requiredTools.join('、')}</span>
+          ——这些工具被关掉或被页面裁掉时，本段不注入。
         </div>
       )}
     </section>
