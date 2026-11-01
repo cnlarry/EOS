@@ -203,8 +203,7 @@ public sealed class WorkbenchChooserService(
         var physicalColumns=resolvedVirtualKeys.Count>0
             ? columns.Where(column=>!resolvedVirtualKeys.Contains(column.Key)).ToList()
             : columns;
-        var (rows,total)=await ReadChooserRowsAsync(connection,table,physicalColumns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,resolvedVirtualKeys,token);
-        return new FormChooserResult(columns,rows,total);
+        var (rows,total)=await ReadChooserRowsAsync(connection,connections,table,physicalColumns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,resolvedVirtualKeys,token);        return new FormChooserResult(columns,rows,total);
     }
 
     /// <summary>
@@ -409,11 +408,18 @@ public sealed class WorkbenchChooserService(
     }
 
     private static async Task<(IReadOnlyList<IReadOnlyDictionary<string,object?>> Rows,int Total)> ReadChooserRowsAsync(
-        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,string? virtualSelect,string? virtualJoin,IReadOnlySet<string> virtualKeys,CancellationToken token)
+        SqlConnection connection,DbConnectionFactory connections,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,string? virtualSelect,string? virtualJoin,IReadOnlySet<string> virtualKeys,CancellationToken token)
     {
         var select=string.Join(',',columns.Select(column=>$"[{table}].[{column.Key}]"));
         if(!string.IsNullOrWhiteSpace(virtualSelect))select+=","+virtualSelect;
         var predicates=new List<string>();
+        // 铁律（引用数据的批核门槛）：来源表只要有 APPROVED 列，就只能引用已批核的行。
+        // 判据只看列在不在——不看模块有没有启用批核/自动批核：历史数据里存在"模块没开批核、
+        // 数据却带着 APPROVED=1"的形状，靠模块标志位推断会漏。
+        // 放在这里而不是逐条写进 FIELD_DATASOURCE.FILTER_STRUCT：一千多条存量 + 以后新增的
+        // 选择器都走这一处，加一次全覆盖。
+        var approvedPredicate=await ReferenceApproval.PredicateAsync(connections,table,table,token);
+        if(approvedPredicate.Length>0)predicates.Add(approvedPredicate);
         if(!string.IsNullOrWhiteSpace(keyword))
         {
             // 关键字里的 % _ [ 是 LIKE 通配符：按 ESCAPE 规则转义，否则用户搜 "50%" 会命中一切

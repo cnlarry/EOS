@@ -576,10 +576,14 @@ public sealed class ChooserRepository(
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
         // 默认只给**还有余量**的批次：没量的批次出不了库，列进来只是噪声（与既有批次选择器来源的
         // FILTER_STRUCT 同一口径：IN_SUM > OUT_SUM）。
+        // 引用数据的批核门槛（配置面源同样受约束）：批次主档带 APPROVED 列。
+        var approvedPredicate = await ReferenceApproval.PredicateAsync(
+            connections, "m", InventoryQueryService.BatchTable, token);
+        var approvedSql = approvedPredicate.Length == 0 ? string.Empty : $" AND {approvedPredicate}";
         var filter = "(@ProNo = '' OR LTRIM(RTRIM(m.PRO_NO)) = @ProNo) "
             + $"AND ISNULL(m.{InventoryQueryService.InSummaryColumn},0) - ISNULL(m.{InventoryQueryService.OutSummaryColumn},0) > 0 "
             + "AND (@Keyword = '' OR " + keywordPredicate + ")"
-            + conditionSql;
+            + conditionSql + approvedSql;
         var sql = $"""
             SELECT COUNT_BIG(1) FROM {InventorySources.BatchRef("m")} WITH (NOLOCK) WHERE {filter};
             SELECT LTRIM(RTRIM(m.BATCH_NO)) AS BATCH_NO, LTRIM(RTRIM(m.PRO_NO)) AS PRO_NO,
@@ -770,9 +774,12 @@ public sealed class ChooserRepository(
         AddCommonParameters(command, keyword, page, pageSize);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 引用数据的批核门槛（用户 2026-11-01 拍板：配置面源同样受此约束）。
+        var approvedPredicate = await ReferenceApproval.PredicateAsync(connections, "L", "DEPOT_LOCATION", token);
+        var approvedSql = approvedPredicate.Length == 0 ? string.Empty : $" AND {approvedPredicate}";
         var sql = $"""
             SELECT COUNT_BIG(1) FROM dbo.DEPOT_LOCATION L WITH (NOLOCK)
-            WHERE L.LOCATION_NO <> N'-' AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            WHERE L.LOCATION_NO <> N'-' AND (@Keyword = '' OR {keywordPredicate}){conditionSql}{approvedSql};
             SELECT LTRIM(RTRIM(L.DEPOT_ID)) AS DEPOT_ID,LTRIM(RTRIM(L.LOCATION_NO)) AS LOCATION_NO,
                    LTRIM(RTRIM(ISNULL(L.LOCATION_NAME,''))) AS LOCATION_NAME,
                    LTRIM(RTRIM(L.LOCATION_TYPE)) AS LOCATION_TYPE,
@@ -780,7 +787,7 @@ public sealed class ChooserRepository(
                    LTRIM(RTRIM(ISNULL(L.PARENT_NO,''))) AS PARENT_NO,
                    L.SEQ_NO AS SEQ_NO,LTRIM(RTRIM(L.STATUS)) AS STATUS
             FROM dbo.DEPOT_LOCATION L WITH (NOLOCK)
-            WHERE L.LOCATION_NO <> N'-' AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            WHERE L.LOCATION_NO <> N'-' AND (@Keyword = '' OR {keywordPredicate}){conditionSql}{approvedSql}
             {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
@@ -1350,6 +1357,9 @@ public sealed class ChooserRepository(
         AddCommonParameters(command, keyword, page, pageSize);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 引用数据的批核门槛（配置面源同样受约束）：账号表带 APPROVED 列。
+        var approvedPredicate = await ReferenceApproval.PredicateAsync(connections, "l", "SYS_USER_ACCOUNT", token);
+        var approvedSql = approvedPredicate.Length == 0 ? string.Empty : $" AND {approvedPredicate}";
         const string fromSql = """
             FROM dbo.SYS_USER_ACCOUNT l WITH (NOLOCK)
             LEFT JOIN dbo.SYS_EMPLOYEE n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
@@ -1357,11 +1367,11 @@ public sealed class ChooserRepository(
         var sql = $"""
             SELECT COUNT_BIG(1)
             {fromSql}
-            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}{approvedSql};
             SELECT LTRIM(RTRIM(l.USER_ID)) AS USER_ID,
                    COALESCE(NULLIF(LTRIM(RTRIM(n.EMP_NAME)),''),LTRIM(RTRIM(l.USER_ID))) AS EMP_NAME
             {fromSql}
-            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}{approvedSql}
             {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
@@ -1398,12 +1408,15 @@ public sealed class ChooserRepository(
         AddCommonParameters(command, keyword, page, pageSize);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 引用数据的批核门槛（配置面源同样受约束）：用户组表带 APPROVED 列。
+        var approvedPredicate = await ReferenceApproval.PredicateAsync(connections, "SYS_USER_GROUP", "SYS_USER_GROUP", token);
+        var approvedSql = approvedPredicate.Length == 0 ? string.Empty : $" AND {approvedPredicate}";
         var sql = $"""
             SELECT COUNT_BIG(1) FROM dbo.SYS_USER_GROUP WITH (NOLOCK)
-            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}{approvedSql};
             SELECT LTRIM(RTRIM(G_IDX)) AS G_IDX, LTRIM(RTRIM(ISNULL(G_DESC,''))) AS G_DESC
             FROM dbo.SYS_USER_GROUP WITH (NOLOCK)
-            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}{approvedSql}
             {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
@@ -1699,12 +1712,15 @@ public sealed class ChooserRepository(
         var columnExpressions = allKeys.ToDictionary(key => key, expression, StringComparer.OrdinalIgnoreCase);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, columnExpressions, command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 铁律（引用数据的批核门槛）：被引用的单据只要主表有 APPROVED 列，就只能选已批核的。
+        var approvedPredicate = await ReferenceApproval.PredicateAsync(connections, "t", table, token);
+        var approvedSql = approvedPredicate.Length == 0 ? string.Empty : $" AND {approvedPredicate}";
         var direction = string.Equals(request.SortDirection?.Trim(), "desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
         // 主键列恒作稳定次序：单据键相同时分页顺序不能漂。
         var stable = string.Join(',', defaultKeys.Select(key => $"{expression(key)} ASC"));
         var orderBy = $"ORDER BY {expression(sortKey)} {direction}{(stable.Length == 0 ? string.Empty : "," + stable)}";
         var selectList = string.Join(',', allKeys.Select(key => $"{expression(key)} AS [{key}]"));
-        var fromSql = $"FROM dbo.[{table}] t WITH (NOLOCK) WHERE {keywordPredicate}{conditionSql}";
+        var fromSql = $"FROM dbo.[{table}] t WITH (NOLOCK) WHERE {keywordPredicate}{conditionSql}{approvedSql}";
         command.CommandText = $"""
             SELECT COUNT_BIG(1)
             {fromSql};

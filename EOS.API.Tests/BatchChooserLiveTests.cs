@@ -38,11 +38,13 @@ public sealed class BatchChooserLiveTests
             var result = await QueryAsync(repository, "ADR25CHPRO");
             Assert.NotNull(result);
 
-            // 三个有效期的批次按到期日升序，最后才是不受管控的那个
+            // 三个有效期的批次按到期日升序，最后才是不受管控的那个；
+            // `ADR25CHLOT_UNAPPR`（未批核）与 `ADR25CHLOT_EMPTY`（无余量）都必须不出现。
             Assert.Equal(
                 new[] { ExpiredBatch, SoonBatch, LaterBatch, NoExpiryBatch },
                 result!.Rows.Select(row => row["BATCH_NO"] as string).ToList());
             Assert.Equal(4, result.Total);
+            Assert.DoesNotContain("ADR25CHLOT_UNAPPR", result.Rows.Select(row => row["BATCH_NO"] as string));
 
             var remaining = result.Rows
                 .ToDictionary(row => (string)row["BATCH_NO"]!, row => row["REMAINING_DAYS"]);
@@ -146,15 +148,20 @@ public sealed class BatchChooserLiveTests
             await ExecuteAsync(connection,
                 "DELETE FROM dbo.INV_BATCH_M WHERE PRO_NO = @Pro;",
                 ("@Pro", Product));
-            // 三个有效期（过期 / 明天 / 十天后）+ 一个不受管控；都有余量，才会出现在候选里
+            // 三个有效期（过期 / 明天 / 十天后）+ 一个不受管控；都有余量，才会出现在候选里。
+            // `APPROVED=1`：1302 料件批号资料是**自动批核**模块，正经路径建出来的批次落库即已批核；
+            // 而选择器按「引用数据的批核门槛」只给已批核行，夹具直插表时必须与真实形态一致，
+            // 否则测到的不是选择器，是"夹具造了一批永远不会存在的未批核批次"。
             await ExecuteAsync(connection,
                 "INSERT INTO dbo.INV_BATCH_M (BATCH_NO, PRO_NO, IN_SUM, OUT_SUM, EFFECT_DATE, CREATED_BY, CREATED_TIME, APPROVED, FINISHED) "
-                + "VALUES (@B1, @Pro, 10, 0, @D1, N'ADR25CH', SYSDATETIME(), 0, 0), "
-                + "       (@B2, @Pro, 10, 0, @D2, N'ADR25CH', SYSDATETIME(), 0, 0), "
-                + "       (@B3, @Pro, 10, 0, @D3, N'ADR25CH', SYSDATETIME(), 0, 0), "
-                + "       (@B4, @Pro, 10, 0, NULL, N'ADR25CH', SYSDATETIME(), 0, 0), "
+                + "VALUES (@B1, @Pro, 10, 0, @D1, N'ADR25CH', SYSDATETIME(), 1, 0), "
+                + "       (@B2, @Pro, 10, 0, @D2, N'ADR25CH', SYSDATETIME(), 1, 0), "
+                + "       (@B3, @Pro, 10, 0, @D3, N'ADR25CH', SYSDATETIME(), 1, 0), "
+                + "       (@B4, @Pro, 10, 0, NULL, N'ADR25CH', SYSDATETIME(), 1, 0), "
+                // 未批核的批次不该出现在候选里（引用数据的批核门槛：源表有 APPROVED 列就只给已批核行）
+                + "       (N'ADR25CHLOT_UNAPPR', @Pro, 10, 0, @D1, N'ADR25CH', SYSDATETIME(), 0, 0), "
                 // 无余量的批次不该出现在候选里（与既有批次来源的过滤口径一致）
-                + "       (N'ADR25CHLOT_EMPTY', @Pro, 5, 5, @D1, N'ADR25CH', SYSDATETIME(), 0, 0);",
+                + "       (N'ADR25CHLOT_EMPTY', @Pro, 5, 5, @D1, N'ADR25CH', SYSDATETIME(), 1, 0);",
                 ("@Pro", Product),
                 ("@B1", ExpiredBatch), ("@D1", asOf.AddDays(-1)),
                 ("@B2", SoonBatch), ("@D2", asOf.AddDays(1)),
