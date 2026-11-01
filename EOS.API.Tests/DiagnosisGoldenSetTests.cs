@@ -13,8 +13,9 @@ namespace EOS.API.Tests;
 /// <para>
 /// 样本来自 <c>MODULE_VALIDATION_RULE</c> 的**元数据枚举**（每条规则天然是一个"应当能被诊断出来"的
 /// 用例），每条自带"标准答案"（规则消息 + 模块 + 触发条件），因此不需要推断标准答案。
-/// **候选全部 <c>reviewed:false</c>**：本跑分以"未经用户审阅的候选"作**临时黄金集**，
-/// 结论只在"归因与呈现"这一层成立（哪条规则、什么类别、消息对不对、证据不足时是否如实拒答）。
+/// **30 条已于 2026-10-31 由用户逐条审阅**（`reviewed:true` + `reviewedBy`/`reviewedAt`）：
+/// 结论成立于"归因与呈现"这一层（哪条规则、什么类别、消息对不对、证据不足时是否如实拒答）；
+/// "能否从真实卡单发现原因"仍需真实失败样本，不在本组断言内。
 /// </para>
 /// <para>
 /// 事实由夹具提供：它扮演"引擎/只读探针给出的判据命中事实"。跑分度量的是服务端能否把
@@ -37,7 +38,9 @@ public sealed class DiagnosisGoldenSetTests(ITestOutputHelper output)
         string Message,
         string Trigger,
         string SuggestedClass,
-        bool Reviewed);
+        bool Reviewed,
+        string ReviewedBy,
+        string ReviewedAt);
 
     private sealed record Score(int Total, int Hits, int Denials, IReadOnlyList<string> Errors)
     {
@@ -96,20 +99,25 @@ public sealed class DiagnosisGoldenSetTests(ITestOutputHelper output)
                 root.GetProperty("message").GetString() ?? string.Empty,
                 root.GetProperty("triggerSummary").GetString() ?? string.Empty,
                 root.GetProperty("suggestedClass").GetString() ?? string.Empty,
-                root.GetProperty("reviewed").GetBoolean()));
+                root.GetProperty("reviewed").GetBoolean(),
+                root.TryGetProperty("reviewedBy", out var reviewedBy) ? reviewedBy.GetString() ?? string.Empty : string.Empty,
+                root.TryGetProperty("reviewedAt", out var reviewedAt) ? reviewedAt.GetString() ?? string.Empty : string.Empty));
         }
 
         return cases;
     }
 
     [Fact]
-    public void 黄金集是未经用户审阅的候选且条数为三十()
+    public void 黄金集三十条均已由用户审阅且带审阅人与日期()
     {
         var cases = LoadCases();
 
         Assert.Equal(30, cases.Count);
-        // 审阅权在用户手里：候选状态不得被代码改成已审阅（改了这里会拦下）。
-        Assert.All(cases, item => Assert.False(item.Reviewed));
+        // 审阅权在用户手里：代码既不得把候选自批为已审阅，也不得把已审阅悄悄改回候选。
+        Assert.All(cases, item => Assert.True(item.Reviewed));
+        Assert.All(cases, item => Assert.False(string.IsNullOrWhiteSpace(item.ReviewedBy)));
+        Assert.All(cases, item =>
+            Assert.Matches(@"^\d{4}-\d{2}-\d{2}$", item.ReviewedAt));
     }
 
     [Fact]

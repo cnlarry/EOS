@@ -27,10 +27,17 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
 ## 行格式
 
 - 通用：每行一个 JSON `{question, expected, sources[]}`。
+- **可选字段（2026-10-31 起）**：
+  - `expect_tools[]`：期望工具链。**必须是 `AssistantToolKeys.ToolNames` 里真实存在的工具**；
+  - `page`：这条问句发生在哪类页面（`list` / `view` / `edit` / `new` / `copy` / `config-*`）。
+    声明后，`expect_tools` 里的每个工具都必须在该页面类型下被 `AssistantToolSetPolicy` 发给模型
+    （声明了 `page` 却没写 `expect_tools` 直接判错）；
+  - `reviewed`：样本是否已由顾问/产品审阅。`true` 时**必须**同时具备 `expected` 与 `expect_tools`。
+  这三条由 `AssistantEvalToolExpectationTests` 断言（含"批核族/权限授予类不得出现在 `expect_tools`"）。
 - `situation/`：`{id, situation{moduleId,pageType,docNo,filters[],selection[],formDirty[]}, expect{kinds[],zeroModel}, note}`。
 - `action/`：`{id, moduleId, action, rows[], expect{moduleCode}, note}`。
 - `config/`：`{id, surface, effectKey, observed{}, expectCode, note}`。
-- `diagnosis/`：`{id, moduleId, moduleName, stage, seq, validationKey, enabled, message, triggerSummary, suggestedClass, source, reviewed}`（由 `MODULE_VALIDATION_RULE` 枚举，**每条规则天然是一个"应当能被诊断出来"的样本**）。
+- `diagnosis/`：`{id, moduleId, moduleName, stage, seq, validationKey, enabled, message, messageSource, triggerSummary, evidenceSource, suggestedClass, source, reviewed, reviewedBy, reviewedAt}`（由 `MODULE_VALIDATION_RULE` 枚举，**每条规则天然是一个"应当能被诊断出来"的样本**）。`reviewed` 表示用户是否已逐条审阅；`true` 时必须带 `reviewedBy` 与 `reviewedAt`（`yyyy-MM-dd`），由 `DiagnosisGoldenSetTests` 断言。
 - `inference/` 另带 `required_sources[]`；`authz/` 行格式为 `{tool, args, expect, note}`（`expect` ∈ deny/empty/all_only/ok）。
 
 ## 判定方式（诚实标注）
@@ -42,6 +49,16 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
   **不是**"模型的自然语言回答对不对"——后者仍需 judge，这一层只是把人工抽样前的"依据可核对"自动化。
 - 正确率与拒答率需 LLM-as-judge（judge 模型、rubric、季度校准均未就绪），这两层的**答案对错**现阶段为人工抽样
   （每轮 ≥30 条，结果落本目录留痕），暂不阻断发布。
+- **期望工具链**（2026-10-31 补）：`expect_tools` + `page` 让"这条问句该用哪个工具、那个工具在这页上摆不摆得出"
+  变成离线可判定的断言——工具改名、被页面策略裁掉、或样本把批核族写进期望，都会当场红。
+  它判的仍是**样本自身一致性**，不是模型的选择是否正确（那要真跑模型 + judge）。
+
+### 顾问问句怎么进来
+
+真实问句先落本机候选池（`docs/plans/assistant-real-questions-*.jsonl`，`origin=agent-smoke` 表示
+由开发方冒烟产生、**不是**顾问提问）。顾问审阅时给每条补 `expected`、`expect_tools`（必要时补 `page`），
+`reviewed` 置 `true`，再把该行移入本目录对应层；移入后跑一次
+`dotnet test --filter FullyQualifiedName~AssistantEval` 即可确认没有漏填与漂移。
 - 锚定的实际收益（本次抓出并订正 5 处）：1 条**空来源**（`[""]`）；2 条把依据指向**项目外**的遗留实现
   （`Admin.GetUserRightDetail` / `Admin.GetRepeat`，实为 `Right.cs` 的参考语义，已改指 `ModuleRightsRepository` /
   `RightsAdminRepository`）；2 条用**中文描述**当依据（`删除补偿守卫`，已改指
