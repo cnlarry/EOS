@@ -132,12 +132,12 @@ try {
 
     $files = Get-ChildItem -LiteralPath $SrcDir -Recurse -Include *.ts, *.tsx -File |
         Where-Object { $_.FullName -notmatch '[\\/]node_modules[\\/]' }
-    # 「页面根未挂 erp-base-page」的具名例外：这几处是把骨架类当**子区域布局**复用
-    # （模型管理页的分区、版式设计器的加载态），不是页面根，不该要求它们挂 erp-base-page。
+    # 「页面根未挂 erp-base-page」的具名例外：这一处是把骨架类当**子区域布局**复用
+    # （版式设计器的加载态），不是页面根，不该要求它挂 erp-base-page。
     # 键是"相对路径 + 该行类名签名"，不记行号——行号会漂移，签名不会。
+    # 模型管理页的页签内容原本在这里豁免，现已挂 erp-base-page（它是子页面骨架，
+    # 少了它区块间距与高度链都断在这一层），故例外撤销。
     $basePageExemptions = @(
-        'features/assistant-admin/ModelAdminPage.tsx|erp-workbench-page erp-model-admin-page',
-        'features/assistant-admin/ModelAdminPage.tsx|erp-workbench-page erp-workbench-even',
         'features/form-designer/FormDesignerPage.tsx|erp-designer erp-designer-loading'
     )
     $found = @()
