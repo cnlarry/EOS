@@ -47,22 +47,6 @@ public static class AssistantActionLimits
     public const int MaxReadbackDisplay = 6;
 
     /// <summary>
-    /// 判分输入的截断上限（字符）：问句、回答、每条工具摘要各一档（ADR-044 §4.4）。
-    ///
-    /// <para>
-    /// 截断不是"省 token 的优化"，而是**防止一次超长回答把判定变成不可能**：超上限时判分提示词里
-    /// 会明确写"回答被截断"，判官因此只能记 UNSURE，而不是按片段下结论。
-    /// </para>
-    /// </summary>
-    public const int MaxJudgeQuestionChars = 2000;
-
-    /// <inheritdoc cref="MaxJudgeQuestionChars"/>
-    public const int MaxJudgeAnswerChars = 12000;
-
-    /// <inheritdoc cref="MaxJudgeQuestionChars"/>
-    public const int MaxJudgeToolDigestChars = 300;
-
-    /// <summary>
     /// 助手可不经用户点击直接执行的最大行数。超过即只出操作卡：
     /// 单行新增/修改属录入劳动，可代劳；删除与批量是"一把动多张"，执行主体应是用户那次确认。
     /// </summary>

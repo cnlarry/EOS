@@ -39,11 +39,15 @@ public sealed class AssistantEvalCaseValidatorTests
     [Fact]
     public void 种子按层覆盖到八层()
     {
+        // judge 层**不进仓库种子**：它的标签必须由人给，仓库里没有"人"可代签；这一层由用户在 3106 内维护。
         var layers = LoadSeedCases().Select(seed => seed.Record.Layer).Distinct().ToList();
-        foreach (var layer in AssistantEvalCaseValidator.Layers)
+        foreach (var layer in AssistantEvalCaseValidator.Layers.Where(item => item != "judge"))
         {
             Assert.Contains(layer, layers);
         }
+
+        Assert.Contains("judge", AssistantEvalCaseValidator.Layers);
+        Assert.DoesNotContain("judge", layers);
     }
 
     [Fact]
@@ -251,6 +255,101 @@ public sealed class AssistantEvalCaseValidatorTests
                 .ToList();
             Assert.True(silent.Count == 0, $"这些用例一条检查都没判过：{string.Join("、", silent)}");
         }
+    }
+
+    /// <summary>
+    /// 判官校准层：样本要"六条条款都标、PASS/FAIL 带引文、四态闭集、审阅人/日期齐备"。
+    ///
+    /// <para>
+    /// 六条标签是硬要求：只标容易判的那两条，一致率会漂亮得没有信息量——覆盖不全的样本算不出一致率。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void 判官校准样本必须标满六条且带引文()
+    {
+        var complete = """
+            {"id":"JG-01","messageId":34092,"question":"9 月营业额？","answer":"**18,080**　口径 sales_amount",
+             "labels":[
+               {"clause":"A","verdict":"PASS","evidence":"口径 sales_amount"},
+               {"clause":"B","verdict":"PASS","evidence":"仅统计 9 月"},
+               {"clause":"C","verdict":"NA"},
+               {"clause":"D","verdict":"NA"},
+               {"clause":"E","verdict":"PASS","evidence":"18,080"},
+               {"clause":"F","verdict":"NA"}
+             ],
+             "reviewed":true,"reviewedBy":"larry","reviewedAt":"2026-11-02"}
+            """;
+        var good = AssistantEvalCaseValidator.Validate(Case("JG-01", "judge", complete));
+        Assert.DoesNotContain(good, check => check.Outcome == AssistantEvalOutcome.Failed);
+        Assert.Contains(good, check => check.Code == "JUDGE_LABELS_COVERAGE"
+                                       && check.Outcome == AssistantEvalOutcome.Passed);
+        // 一致率不在这一层判：判它要模型，本层只核样本完整
+        Assert.Contains(good, check => check.Code == "JUDGE_AGREEMENT"
+                                       && check.Outcome == AssistantEvalOutcome.Skipped);
+
+        // 缺回答正文
+        var noAnswer = AssistantEvalCaseValidator.Validate(Case("JG-02", "judge",
+            """{"id":"JG-02","question":"q","labels":[]}"""));
+        Assert.Contains(noAnswer, check => check.Code == "JUDGE_SAMPLE_MISSING");
+
+        // 标了 PASS 却拿不出引文（与判官自己的硬规则同一口径）
+        var noEvidence = AssistantEvalCaseValidator.Validate(Case("JG-03", "judge",
+            """{"id":"JG-03","question":"q","answer":"a","labels":[{"clause":"A","verdict":"PASS"}]}"""));
+        Assert.Contains(noEvidence, check => check.Code == "JUDGE_LABELS_INVALID");
+
+        // 只标两条：覆盖不全
+        var partial = AssistantEvalCaseValidator.Validate(Case("JG-04", "judge",
+            """
+            {"id":"JG-04","question":"q","answer":"a","labels":[
+               {"clause":"A","verdict":"NA"},{"clause":"B","verdict":"NA"}]}
+            """));
+        Assert.Contains(partial, check => check.Code == "JUDGE_LABELS_INCOMPLETE");
+
+        // 条款编号不在当前条款版本里
+        var unknownClause = AssistantEvalCaseValidator.Validate(Case("JG-05", "judge",
+            """{"id":"JG-05","question":"q","answer":"a","labels":[{"clause":"Z","verdict":"NA"}]}"""));
+        Assert.Contains(unknownClause, check => check.Code == "JUDGE_LABELS_INVALID");
+
+        // reviewed:true 必须能证明"谁在什么时候认的"
+        var noReviewer = AssistantEvalCaseValidator.Validate(Case("JG-06", "judge",
+            """
+            {"id":"JG-06","question":"q","answer":"a","reviewed":true,"labels":[
+               {"clause":"A","verdict":"NA"},{"clause":"B","verdict":"NA"},{"clause":"C","verdict":"NA"},
+               {"clause":"D","verdict":"NA"},{"clause":"E","verdict":"NA"},{"clause":"F","verdict":"NA"}]}
+            """));
+        Assert.Contains(noReviewer, check => check.Code == "JUDGE_REVIEWED_INCOMPLETE");
+
+        // 未审阅的草稿可保存，但明确标注"不计入校准"
+        var draft = AssistantEvalCaseValidator.Validate(Case("JG-07", "judge",
+            """
+            {"id":"JG-07","question":"q","answer":"a","labels":[
+               {"clause":"A","verdict":"NA"},{"clause":"B","verdict":"NA"},{"clause":"C","verdict":"NA"},
+               {"clause":"D","verdict":"NA"},{"clause":"E","verdict":"NA"},{"clause":"F","verdict":"NA"}]}
+            """));
+        Assert.DoesNotContain(draft, check => check.Outcome == AssistantEvalOutcome.Failed);
+        Assert.Contains(draft, check => check.Code == "JUDGE_NOT_REVIEWED"
+                                        && check.Outcome == AssistantEvalOutcome.Skipped);
+    }
+
+    /// <summary>
+    /// 未审阅的校准样本记 SKIP 而不是 PASS：结构完整不等于"这条校准做过了"，
+    /// 读到"6 条全过"而其实一条都没校，是这条流程最容易被误读的地方。
+    /// </summary>
+    [Fact]
+    public void 未审阅的校准样本记为跳过而不是通过()
+    {
+        var record = new AssistantEvalCaseRecord(
+            "JG-90", "judge", null, null, null, null,
+            """
+            {"id":"JG-90","messageId":1,"question":"q","answer":"a",
+             "labels":[
+               {"clause":"A","verdict":"NA"},{"clause":"B","verdict":"NA"},{"clause":"C","verdict":"NA"},
+               {"clause":"D","verdict":"NA"},{"clause":"E","verdict":"NA"},{"clause":"F","verdict":"NA"}]}
+            """);
+
+        var result = AssistantEvalRunner.Evaluate(record, null);
+
+        Assert.Equal(AssistantEvalRunner.OutcomeSkip, result.Outcome);
     }
 
     private static AssistantEvalCaseRecord Case(string caseId, string layer, string payload) =>

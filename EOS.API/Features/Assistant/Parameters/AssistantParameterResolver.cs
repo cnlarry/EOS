@@ -55,6 +55,9 @@ public sealed record AssistantPolicyValues(
     /// <summary>知识库的检索与切块上限。</summary>
     public AssistantKbLimitsOptions Kb { get; init; } = new();
 
+    /// <summary>判官的抽样、截断、日上限与保留期（ADR-044）。</summary>
+    public AssistantJudgeLimitsOptions Judge { get; init; } = new();
+
     /// <summary>工具输出上限（7 个读工具的行数 / 列数 / 截断长度）。</summary>
     public AssistantToolLimitsOptions ToolLimits { get; init; } = new();
 
@@ -195,6 +198,7 @@ public sealed class AssistantParameterResolver(
             Memory = builder.Memory,
             Kb = builder.Kb,
             ToolLimits = builder.ToolLimits,
+            Judge = builder.Judge,
         };
     }
 
@@ -222,6 +226,8 @@ public sealed class AssistantParameterResolver(
         public AssistantKbLimitsOptions Kb { get; } = new();
 
         public AssistantToolLimitsOptions ToolLimits { get; } = new();
+
+        public AssistantJudgeLimitsOptions Judge { get; } = new();
     }
 
     /// <summary>
@@ -568,6 +574,53 @@ public sealed class AssistantParameterResolver(
                 break;
             case "TOOL_LIMIT_BRIEF_MAX_FIELDS":
                 builder.ToolLimits.BriefMaxFields = Number();
+                break;
+
+            // ---- 域 JUDGE ----
+            case "JUDGE_ENABLED":
+                builder.Judge.Enabled = value == "1";
+                break;
+            case "JUDGE_SAMPLE_RATE_PCT":
+                builder.Judge.SampleRatePct = Number();
+                break;
+            case "JUDGE_AMOUNT_SAMPLE_RATE_PCT":
+                builder.Judge.AmountSampleRatePct = Number();
+                break;
+            case "JUDGE_MAX_QUESTION_CHARS":
+                builder.Judge.MaxQuestionChars = Number();
+                break;
+            case "JUDGE_MAX_ANSWER_CHARS":
+                builder.Judge.MaxAnswerChars = Number();
+                break;
+            case "JUDGE_MAX_TOOL_DIGEST_CHARS":
+                builder.Judge.MaxToolDigestChars = Number();
+                break;
+            case "JUDGE_BATCH_SIZE":
+                builder.Judge.BatchSize = Number();
+                break;
+            case "JUDGE_DAILY_MAX_CALLS":
+                builder.Judge.DailyMaxCalls = Number();
+                break;
+            case "JUDGE_DAILY_COST_CAP_YUAN":
+                builder.Judge.DailyCostCapYuan = decimal.Parse(value, invariant);
+                break;
+            case "JUDGE_SCAN_INTERVAL_MINUTES":
+                builder.Judge.ScanIntervalMinutes = Number();
+                break;
+            case "JUDGE_RETENTION_DAYS":
+                builder.Judge.RetentionDays = Number();
+                break;
+            case "JUDGE_WINDOW_DAYS":
+                builder.Judge.WindowDays = Number();
+                break;
+            case "JUDGE_ALERT_CITATION_MIN_PCT":
+                builder.Judge.AlertCitationMinPct = Number();
+                break;
+            case "JUDGE_ALERT_UNSURE_MAX_PCT":
+                builder.Judge.AlertUnsureMaxPct = Number();
+                break;
+            case "JUDGE_ALERT_MIN_SAMPLES":
+                builder.Judge.AlertMinSamples = Number();
                 break;
         }
     }

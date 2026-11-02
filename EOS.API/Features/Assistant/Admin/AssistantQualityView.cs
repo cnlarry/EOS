@@ -34,7 +34,18 @@ public sealed record AssistantQualityReport(
     IReadOnlyList<AssistantQualityDay> Daily,
     IReadOnlyList<AssistantQualityCallBucket> CallBuckets,
     decimal SpentYuan,
-    int Requests);
+    int Requests)
+{
+    /// <summary>
+    /// 「回答质量」区块（ADR-044 §4.5）。单独作为可选属性而不是构造函数参数：
+    /// 它来自另一张表（判定结论），取数失败时整页质量报表仍应可用——但那时它会明确为空，
+    /// 而不是显示一组 0（0 表示"判了，全都错"）。
+    /// </summary>
+    public AssistantAnswerQualityBlock? AnswerQuality { get; init; }
+
+    /// <summary>质量告警（J3，只告警不阻断）：口径标注率偏低 / 越界承诺 / 无法判定率偏高 / 停判。</summary>
+    public IReadOnlyList<AssistantQualityAlert> Alerts { get; init; } = [];
+}
 
 /// <summary>
 /// 质量看板的纯聚合：输入消息样本与用量，输出结构化统计。

@@ -1,8 +1,19 @@
 using System.Text;
 using EOS.API.Data.Assistant;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 
 namespace EOS.API.Features.Assistant.Quality;
+
+/// <summary>一次判分请求的结果：模型原文、用量与按当前单价折算的花费。</summary>
+/// <param name="Content">模型原文（解析在 <see cref="AssistantJudgeVerdictParser"/>）。</param>
+/// <param name="PromptTokens">输入 token；模型没报用量时按字符数估算。</param>
+/// <param name="CompletionTokens">输出 token；同上。</param>
+/// <param name="Estimated">用量是否为估算值（没拿到厂商用量时）。</param>
+/// <param name="CostYuan">本次判定的花费（元），按当前判官模型单价折算。</param>
+public sealed record AssistantJudgeCompletion(
+    string Content, int PromptTokens, int CompletionTokens, bool Estimated, double CostYuan);
 
 /// <summary>
 /// 判官用的模型通道：按 **JUDGE 槽**解析一次、固定下来，再把一次判定发出去。
@@ -21,8 +32,8 @@ public interface IAssistantJudgeModel
     /// <summary>是否回落到对话当前模型（JUDGE 槽没配时为 true，同样写进 verdict）。</summary>
     bool FellBackToChat { get; }
 
-    /// <summary>发一次判定请求，返回模型原文（解析在 <see cref="AssistantJudgeVerdictParser"/>）。</summary>
-    Task<string> CompleteAsync(string system, string user, CancellationToken token);
+    /// <summary>发一次判定请求，返回模型原文、用量与花费。</summary>
+    Task<AssistantJudgeCompletion> CompleteAsync(string system, string user, CancellationToken token);
 }
 
 /// <summary>
@@ -46,7 +57,7 @@ public sealed class AssistantJudgeModel(
     public bool FellBackToChat { get; private set; }
 
     /// <inheritdoc />
-    public async Task<string> CompleteAsync(string system, string user, CancellationToken token)
+    public async Task<AssistantJudgeCompletion> CompleteAsync(string system, string user, CancellationToken token)
     {
         var inner = await ResolveAsync(token);
         var messages = new List<ChatMessage>
@@ -56,12 +67,23 @@ public sealed class AssistantJudgeModel(
         };
 
         var builder = new StringBuilder();
+        ChatUsage? usage = null;
         await foreach (var delta in inner.StreamAsync(messages, tools: null, token))
         {
+            if (delta.Usage is not null) usage = delta.Usage;
             if (!string.IsNullOrEmpty(delta.ContentDelta)) builder.Append(delta.ContentDelta);
         }
 
-        return builder.ToString();
+        // 厂商没报用量时按字符数估算（与记忆提炼同一口径）：判定的成本上限要用它，
+        // 估不出来就只能按 0 计——那等于这个上限不存在。
+        var estimated = usage is null;
+        var promptTokens = usage?.PromptTokens ?? Math.Max(1, system.Length + user.Length);
+        var completionTokens = usage?.CompletionTokens ?? Math.Max(1, builder.Length);
+        var cost = AssistantCost.Calculate(
+            promptTokens, completionTokens, _settings?.Cost ?? new AssistantCostOptions(),
+            _settings?.InputPerMillionYuan, _settings?.OutputPerMillionYuan);
+
+        return new AssistantJudgeCompletion(builder.ToString(), promptTokens, completionTokens, estimated, cost);
     }
 
     private async Task<IChatModel> ResolveAsync(CancellationToken token)

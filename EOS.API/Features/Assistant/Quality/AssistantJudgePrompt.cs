@@ -1,5 +1,6 @@
 using System.Text;
 using EOS.API.Features.Assistant.Governance;
+using EOS.API.Features.Assistant.Parameters;
 
 namespace EOS.API.Features.Assistant.Quality;
 
@@ -36,7 +37,8 @@ public static class AssistantJudgePrompt
         """;
 
     /// <summary>拼 user 消息：条款清单 + 转录（回答超上限时截断并**明确写出被截断**）。</summary>
-    public static string BuildUser(AssistantJudgeRubric rubric, AssistantJudgeTranscript transcript)
+    public static string BuildUser(
+        AssistantJudgeRubric rubric, AssistantJudgeTranscript transcript, AssistantJudgeLimitsOptions limits)
     {
         var builder = new StringBuilder();
         builder.AppendLine("<条款>");
@@ -48,9 +50,9 @@ public static class AssistantJudgePrompt
 
         builder.AppendLine("</条款>");
         builder.AppendLine("<转录>");
-        builder.Append("用户问句：").AppendLine(Trim(transcript.Question, AssistantActionLimits.MaxJudgeQuestionChars));
-        builder.Append("助手回答：").AppendLine(Trim(transcript.Answer, AssistantActionLimits.MaxJudgeAnswerChars));
-        if (transcript.AnswerTruncated || transcript.Answer.Length > AssistantActionLimits.MaxJudgeAnswerChars)
+        builder.Append("用户问句：").AppendLine(Trim(transcript.Question, limits.MaxQuestionChars));
+        builder.Append("助手回答：").AppendLine(Trim(transcript.Answer, limits.MaxAnswerChars));
+        if (transcript.AnswerTruncated || transcript.Answer.Length > limits.MaxAnswerChars)
         {
             builder.AppendLine("（注意：上面的回答因长度上限被截断，后续内容未提供；无法判断的部分记 UNSURE。）");
         }
@@ -67,7 +69,7 @@ public static class AssistantJudgePrompt
                 builder.Append("  - ").Append(call.Name)
                     .Append(" / ").Append(call.Ok switch { true => "成功", false => "失败", null => "结果不明" })
                     .Append(" / ")
-                    .AppendLine(Trim(call.ResultDigest ?? string.Empty, AssistantActionLimits.MaxJudgeToolDigestChars));
+                    .AppendLine(Trim(call.ResultDigest ?? string.Empty, limits.MaxToolDigestChars));
             }
         }
 

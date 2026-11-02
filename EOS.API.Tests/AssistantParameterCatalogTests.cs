@@ -73,7 +73,8 @@ public sealed class AssistantParameterCatalogTests
         JsonSerializer.Serialize(values.Chat),
         JsonSerializer.Serialize(values.Memory),
         JsonSerializer.Serialize(values.Kb),
-        JsonSerializer.Serialize(values.ToolLimits));
+        JsonSerializer.Serialize(values.ToolLimits),
+        JsonSerializer.Serialize(values.Judge));
 
     private static string DefaultFingerprint() => Fingerprint(AssistantPolicyValues.Default);
 
@@ -210,6 +211,21 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_REFERENCE_MAX"] = "12",
             ["TOOL_LIMIT_METADATA_SEARCH_MAX"] = "21",
             ["TOOL_LIMIT_BRIEF_MAX_FIELDS"] = "25",
+            ["JUDGE_ENABLED"] = "0",
+            ["JUDGE_SAMPLE_RATE_PCT"] = "21",
+            ["JUDGE_AMOUNT_SAMPLE_RATE_PCT"] = "99",
+            ["JUDGE_MAX_QUESTION_CHARS"] = "2001",
+            ["JUDGE_MAX_ANSWER_CHARS"] = "12001",
+            ["JUDGE_MAX_TOOL_DIGEST_CHARS"] = "301",
+            ["JUDGE_BATCH_SIZE"] = "21",
+            ["JUDGE_DAILY_MAX_CALLS"] = "201",
+            ["JUDGE_DAILY_COST_CAP_YUAN"] = "5.5",
+            ["JUDGE_SCAN_INTERVAL_MINUTES"] = "11",
+            ["JUDGE_RETENTION_DAYS"] = "181",
+            ["JUDGE_WINDOW_DAYS"] = "8",
+            ["JUDGE_ALERT_CITATION_MIN_PCT"] = "81",
+            ["JUDGE_ALERT_UNSURE_MAX_PCT"] = "39",
+            ["JUDGE_ALERT_MIN_SAMPLES"] = "21",
         };
 
         // 工具开关与动作族开关：键名由各自的清单机械生成，所以探针也按同一份清单生成——

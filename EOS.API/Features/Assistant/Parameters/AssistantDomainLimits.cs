@@ -135,6 +135,87 @@ public sealed class AssistantKbLimitsOptions
 }
 
 /// <summary>
+/// 域 `JUDGE`（判官）的运行时取值：判什么、判多少、花多少、留多久。
+///
+/// <para>
+/// 这些数字此前一半是常量（截断长度）一半根本不存在（采样率、日次数、成本、保留期）。
+/// **属性初始值就是默认值，也是唯一一份**：目录条目、迁移里的 <c>DEFAULT_VALUE</c>、界面上的
+/// "默认值"提示都引用这里，不写第二遍数字。
+/// </para>
+///
+/// <para>
+/// 采样率是**确定性**的：按消息编号取模落桶，同一条回答在重复扫描里要么一直被抽中、要么一直不被抽中。
+/// 用随机数会让"再跑一次看看"变成另一种结果，指标因此不可比。
+/// </para>
+/// </summary>
+public sealed class AssistantJudgeLimitsOptions
+{
+    /// <summary>总开关。关掉即完全不判定（含后台扫描与手动触发），但已落库的结论与看板数字保留。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>普通回答的抽样比例（百分比）。金额/数量/比率类另有 <see cref="AmountSampleRatePct"/>。</summary>
+    public int SampleRatePct { get; set; } = 20;
+
+    /// <summary>
+    /// 金额/数量/比率类回答的抽样比例（百分比），默认全判——口径标注与范围一致这两条
+    /// 恰恰只在这类回答上才有意义（ADR-044 §4.4）。
+    /// </summary>
+    public int AmountSampleRatePct { get; set; } = 100;
+
+    /// <summary>判分输入里问句的字符上限。</summary>
+    public int MaxQuestionChars { get; set; } = 2_000;
+
+    /// <summary>
+    /// 判分输入里回答的字符上限。超上限时判分提示词会**明确写出被截断**，
+    /// 判官因此只能记 UNSURE，而不是按片段下结论。
+    /// </summary>
+    public int MaxAnswerChars { get; set; } = 12_000;
+
+    /// <summary>判分输入里每条工具结果摘要的字符上限。</summary>
+    public int MaxToolDigestChars { get; set; } = 300;
+
+    /// <summary>一次扫描最多判几条（手动触发也受它约束）。</summary>
+    public int BatchSize { get; set; } = 20;
+
+    /// <summary>每日判定调用次数上限。到顶即本轮跳过并**在看板上明示**，不静默停判。</summary>
+    public int DailyMaxCalls { get; set; } = 200;
+
+    /// <summary>每日判定成本上限（元）。判定用量记在系统账户 `__judge__`，不扣任何人的日上限。</summary>
+    public decimal DailyCostCapYuan { get; set; } = 5;
+
+    /// <summary>后台扫描间隔（分钟）。判定是离线批处理，改它不影响对话。</summary>
+    public int ScanIntervalMinutes { get; set; } = 10;
+
+    /// <summary>判定结论的保留天数（ADR-044 §8 #2：180 天，过期清理，不做长期明细堆积）。</summary>
+    public int RetentionDays { get; set; } = 180;
+
+    /// <summary>后台扫描回看的时间窗（天）：只看最近这些天的回答，避免一次把历史全捞进来。</summary>
+    public int WindowDays { get; set; } = 7;
+
+    /// <summary>
+    /// 口径标注率（A 条款）的**告警下限**（百分比）：低于它就在看板上告警。
+    ///
+    /// <para>
+    /// 它只是**告警线**，不是"改判官的门槛"：低于它要查条款是否写不清或模型是否换了，
+    /// 而不是把这条线调低（那正是 ADR-044 §6 要防的"把指标优化成好看"）。
+    /// </para>
+    /// </summary>
+    public int AlertCitationMinPct { get; set; } = 80;
+
+    /// <summary>无法判定率的**告警上限**（百分比）：高于它说明条款写不清或在拿不准时乱判。</summary>
+    public int AlertUnsureMaxPct { get; set; } = 40;
+
+    /// <summary>
+    /// 告警生效的最小样本数：窗口内判过的回答少于它就不告警。
+    ///
+    /// <para>
+    /// 没有这条，3 条里 1 条不通过就会报"标注率 67%"，运维很快就学会无视这个告警。
+    /// </para>
+    /// </summary>
+    public int AlertMinSamples { get; set; } = 20;
+}
+
+/// <summary>
 /// 域 `TOOL_LIMIT`（工具输出上限）的运行时取值：7 个"读"工具各自能吐回多少东西。
 ///
 /// <para>

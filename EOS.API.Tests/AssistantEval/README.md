@@ -23,6 +23,12 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
 | `inference/` | `seed-01.jsonl` | 格式与必要来源声明（跨 ≥3 源） | `AssistantEvalRunnerTests` |
 | `functional/` | `seed-01.jsonl` | **来源锚定**（`sources[]` 必须在仓库里真实存在）＋ 检索类种子（答案对错：人工抽样） | `AssistantEvalLayersTests.检索与回答层的样本来源锚定到代码或仓库` |
 | `business/` | `seed-01.jsonl` | **来源锚定**（同上）＋ 回答类种子（答案对错：人工抽样） | `AssistantEvalLayersTests.检索与回答层的样本来源锚定到代码或仓库` |
+| `judge/`（库内） | **无仓库种子** | **判官校准**：一条真实回答 + 人对六条条款的四态 + 引文（ADR-044 §5 的 J2） | `AssistantEvalCaseValidatorTests.判官校准样本必须标满六条且带引文` |
+
+> `judge` 层**只有库内用例**，由用户/顾问在 3106「评估用例」里自己出题（`LAYER` 填 `judge`）：
+> 标签必须由人给，仓库里没有"人"可代签。条数不设门槛——觉得不够就自己加题。
+> 它判的仍是**样本自身是否完整**（六条都标、PASS/FAIL 带引文、四态闭集、审阅人/日期齐备）；
+> "人与判官是否一致"要等判官跑过同一条回答之后才算，不在这一层制造数字。
 
 ## 行格式
 
@@ -39,6 +45,11 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
 - `config/`：`{id, surface, effectKey, observed{}, expectCode, note}`。
 - `diagnosis/`：`{id, moduleId, moduleName, stage, seq, validationKey, enabled, message, messageSource, triggerSummary, evidenceSource, suggestedClass, source, reviewed, reviewedBy, reviewedAt}`（由 `MODULE_VALIDATION_RULE` 枚举，**每条规则天然是一个"应当能被诊断出来"的样本**）。`reviewed` 表示用户是否已逐条审阅；`true` 时必须带 `reviewedBy` 与 `reviewedAt`（`yyyy-MM-dd`），由 `DiagnosisGoldenSetTests` 断言。
 - `inference/` 另带 `required_sources[]`；`authz/` 行格式为 `{tool, args, expect, note}`（`expect` ∈ deny/empty/all_only/ok）。
+- `judge/`（库内 3106，无仓库种子）：`{id, question, answer, labels[{clause, verdict, evidence}], reviewed, reviewedBy, reviewedAt, note}`。
+  `clause` 取当前条款版本（`AssistantJudgeRubric.Current.Clauses` 的 A–F），`verdict` ∈ PASS/FAIL/NA/UNSURE；
+  **六条都要标**（少一条算不出一致率），PASS/FAIL **必须带逐字引文**，`reviewed:true` 必须带
+  `reviewedBy` 与 `reviewedAt`（`yyyy-MM-dd`）——这三条由 `AssistantEvalCaseValidator.CheckJudge` 判，
+  **跑一轮评估时**报出来（确定性层，零模型调用与费用），保存本身只做统一表单的必填/类型校验。
 
 ## 判定方式（诚实标注）
 
@@ -47,8 +58,12 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
   模块映射已登记（`ModuleBusinessMap`）、工具名在工具源码里被声明过、文件在仓库里、类型或成员在 `EOS.API`
   程序集里、库对象名/错误码能在业务代码与 SQL 里找到。它判的是"**样本没有自造依据**"，
   **不是**"模型的自然语言回答对不对"——后者仍需 judge，这一层只是把人工抽样前的"依据可核对"自动化。
-- 正确率与拒答率需 LLM-as-judge（judge 模型、rubric、季度校准均未就绪），这两层的**答案对错**现阶段为人工抽样
-  （每轮 ≥30 条，结果落本目录留痕），暂不阻断发布。
+- 正确率与拒答率需 LLM-as-judge。判官与 rubric **已就绪**（ADR-044 J0/J1：`Features/Assistant/Quality/`，
+  看板在 3102「质量」页签），但它只判"有没有如实回答"（口径标注 / 范围一致 / 诚实缺口 / 不越界承诺 /
+  不编造事实 / 权限明说），**不判数值真值**——数值仍由确定性对拍负责。
+- 这两层的**答案对错**现阶段仍以人工复核为准，抽样条数按验收需要定（不设固定门槛），结果落本目录留痕，
+  暂不阻断发布。**判官校准是另一件事**：它要的是"人对同一条回答的 A–F 四态 + 引文"，样本集由用户按需要
+  自行维护（不写死 30 条）；详见 ADR-044 §5。
 - **期望工具链**（2026-10-31 补）：`expect_tools` + `page` 让"这条问句该用哪个工具、那个工具在这页上摆不摆得出"
   变成离线可判定的断言——工具改名、被页面策略裁掉、或样本把批核族写进期望，都会当场红。
   它判的仍是**样本自身一致性**，不是模型的选择是否正确（那要真跑模型 + judge）。

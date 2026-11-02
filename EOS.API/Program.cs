@@ -362,6 +362,13 @@ builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantJudgeRepository, EOS
 builder.Services.AddScoped<EOS.API.Features.Assistant.Quality.IAssistantJudgeModel,
     EOS.API.Features.Assistant.Quality.AssistantJudgeModel>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Quality.AssistantAnswerJudge>();
+// 判官（ADR-044，J1）：结论落库 + 后台扫描；判定用量记在系统账户 __judge__，不扣任何人的日上限
+builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantVerdictRepository,
+    EOS.API.Data.Assistant.AssistantVerdictRepository>();
+builder.Services.AddScoped<EOS.API.Data.Assistant.IAssistantCalibrationRepository,
+    EOS.API.Data.Assistant.AssistantCalibrationRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Quality.AssistantJudgeRunner>();
+builder.Services.AddHostedService<EOS.API.Services.AssistantJudgeScheduler>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IWorkbenchSearchGateway>(sp =>
     sp.GetRequiredService<EOS.API.Data.DocumentWorkbenchRepository>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>();

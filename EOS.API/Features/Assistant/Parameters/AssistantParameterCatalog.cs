@@ -118,6 +118,7 @@ public static class AssistantParameterCatalog
         new("DIAGNOSIS", "诊断", 70),
         new("MEMORY", "记忆", 80),
         new("KB", "知识库", 90),
+        new("JUDGE", "判官", 100),
     ];
 
     // ===== 默认值的真源：代码默认对象 =====
@@ -133,6 +134,7 @@ public static class AssistantParameterCatalog
     private static readonly AssistantMemoryLimitsOptions MemoryDefaults = new();
     private static readonly AssistantKbLimitsOptions KbDefaults = new();
     private static readonly AssistantToolLimitsOptions ToolLimitDefaults = new();
+    private static readonly AssistantJudgeLimitsOptions JudgeDefaults = new();
 
     /// <summary>
     /// 参数清单。**声明顺序即同组内的呈现顺序**（<c>SEQ_NO</c> 按 10 递增推导），
@@ -539,6 +541,88 @@ public static class AssistantParameterCatalog
             + "**与「一次检索的命中条数上限」分开**：那个管进模型上下文几条，这个管界面能翻出几条——"
             + "合成一个的话，为省 token 调小工具上限会把检索页一起缩水。",
             KbDefaults.EndpointMaxHits, ["EndpointMaxHits"], min: 1, max: 200),
+
+        // ---- 域 JUDGE（判官）----
+        // 判官是离线批处理：这里每一条都直接决定"判多少、花多少钱、留多久"，
+        // 默认值引用 AssistantJudgeLimitsOptions 的属性初始值，不写第二份数字。
+        new(
+            "JUDGE_ENABLED",
+            "启用回答质量判定",
+            "JUDGE",
+            "bit",
+            null,
+            "后台按抽样对**已落库的回答**做条款级判定（ADR-044）。关掉即完全不判定；"
+            + "已落库的结论与看板数字保留，不会因此变成「没问题」。",
+            JudgeDefaults.Enabled ? "1" : "0",
+            AssistantParameterScopePolicy.None,
+            ["Enabled"]),
+        IntParameter(
+            "JUDGE_SAMPLE_RATE_PCT", "普通回答的抽样比例", "JUDGE", "%",
+            "金额/数量/比率类以外的回答抽多少判定。**确定性抽样**（按消息编号落桶），"
+            + "所以同一条回答重复扫描的结果一致，指标可比。0 = 不判普通回答。",
+            JudgeDefaults.SampleRatePct, ["SampleRatePct"], min: 0, max: 100),
+        IntParameter(
+            "JUDGE_AMOUNT_SAMPLE_RATE_PCT", "金额类回答的抽样比例", "JUDGE", "%",
+            "涉及金额/数量/比率的回答抽多少判定——口径标注与范围一致只在这类回答上才有意义，默认全判。",
+            JudgeDefaults.AmountSampleRatePct, ["AmountSampleRatePct"], min: 0, max: 100),
+        IntParameter(
+            "JUDGE_MAX_QUESTION_CHARS", "判分问句字符上限", "JUDGE", "字符",
+            "送进判官的问句截断长度。",
+            JudgeDefaults.MaxQuestionChars, ["MaxQuestionChars"], min: 1, max: 20_000),
+        IntParameter(
+            "JUDGE_MAX_ANSWER_CHARS", "判分回答字符上限", "JUDGE", "字符",
+            "送进判官的回答截断长度。超上限时提示词会明确写出「回答被截断」，判官只能记 UNSURE——"
+            + "所以调小它等于把长回答判成「无法判定」，不是省 token 的小事。",
+            JudgeDefaults.MaxAnswerChars, ["MaxAnswerChars"], min: 100, max: 200_000),
+        IntParameter(
+            "JUDGE_MAX_TOOL_DIGEST_CHARS", "判分工具摘要字符上限", "JUDGE", "字符",
+            "每条工具结果摘要送进判官的截断长度。截得太短会让 E 条款（不编造事实）判不出来。",
+            JudgeDefaults.MaxToolDigestChars, ["MaxToolDigestChars"], min: 20, max: 4_000),
+        IntParameter(
+            "JUDGE_BATCH_SIZE", "一轮判定条数上限", "JUDGE", "条",
+            "一次扫描（或手动触发）最多判几条。",
+            JudgeDefaults.BatchSize, ["BatchSize"], min: 1, max: 200),
+        IntParameter(
+            "JUDGE_DAILY_MAX_CALLS", "每日判定次数上限", "JUDGE", "次",
+            "到顶即本轮跳过，并在看板上明示「已达上限」——不静默停判（停判会伪装成没问题）。",
+            JudgeDefaults.DailyMaxCalls, ["DailyMaxCalls"], min: 0, max: 10_000),
+        new(
+            "JUDGE_DAILY_COST_CAP_YUAN",
+            "每日判定成本上限",
+            "JUDGE",
+            "decimal",
+            "元",
+            "判定用量的日成本上限。判定用量记在系统账户 __judge__（看得见成本），不扣任何人的日上限；"
+            + "到顶同样在本轮跳过并在看板明示。",
+            JudgeDefaults.DailyCostCapYuan.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture),
+            AssistantParameterScopePolicy.None,
+            ["DailyCostCapYuan"],
+            Min: 0),
+        IntParameter(
+            "JUDGE_SCAN_INTERVAL_MINUTES", "后台判定扫描间隔", "JUDGE", "分钟",
+            "后台扫描的间隔。判定是离线批处理，与对话请求无关。",
+            JudgeDefaults.ScanIntervalMinutes, ["ScanIntervalMinutes"], min: 1, max: 1_440),
+        IntParameter(
+            "JUDGE_RETENTION_DAYS", "判定结论保留天数", "JUDGE", "天",
+            "过期结论按天清理。明细长期堆积会诱导拿它做考核——那不是判官的用途（ADR-044 §2.4）。",
+            JudgeDefaults.RetentionDays, ["RetentionDays"], min: 1, max: 3_650),
+        IntParameter(
+            "JUDGE_WINDOW_DAYS", "判定扫描的时间窗", "JUDGE", "天",
+            "只看最近这些天的回答，避免一次把历史全捞进来（历史回答由人工抽样覆盖）。",
+            JudgeDefaults.WindowDays, ["WindowDays"], min: 1, max: 90),
+        // 告警线（J3）：只影响"要不要提醒"，不影响判定本身——调低它不会让判官变准，只会让问题不再被看见。
+        IntParameter(
+            "JUDGE_ALERT_CITATION_MIN_PCT", "口径标注率告警下限", "JUDGE", "%",
+            "A 条款通过率低于它即看板告警。**这是告警线不是合格线**：低于它要查条款或模型，不要调低它。",
+            JudgeDefaults.AlertCitationMinPct, ["AlertCitationMinPct"], min: 0, max: 100),
+        IntParameter(
+            "JUDGE_ALERT_UNSURE_MAX_PCT", "无法判定率告警上限", "JUDGE", "%",
+            "UNSURE 占比高于它即看板告警：通常意味着条款写不清，或判官在拿不准时乱判。",
+            JudgeDefaults.AlertUnsureMaxPct, ["AlertUnsureMaxPct"], min: 0, max: 100),
+        IntParameter(
+            "JUDGE_ALERT_MIN_SAMPLES", "告警生效的最小样本数", "JUDGE", "条",
+            "窗口内判过的回答少于它就不告警——否则 3 条里 1 条不通过就报红线，告警会被当成噪声忽略。",
+            JudgeDefaults.AlertMinSamples, ["AlertMinSamples"], min: 0, max: 10_000),
 
         // ---- 域 CAPABILITY（能力面：工具开关）----
         // 键名 = TOOL_ + 工具名转大写；默认全开（关掉才落非默认值）。

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 
 namespace EOS.API.Features.Assistant.Quality;
 
@@ -23,13 +24,20 @@ public sealed record AssistantJudgeVerdict(
     string? Evidence,
     string? Note);
 
-/// <summary>一次判定的结果：条款版本、判官模型、是否回落，以及逐条结论。</summary>
+/// <summary>一次判定的用量与花费（判官的成本上限按它累计）。</summary>
+public sealed record AssistantJudgeUsage(
+    int PromptTokens, int CompletionTokens, bool Estimated, double CostYuan);
+
+/// <summary>一次判定的结果：条款版本、判官模型、是否回落、用量，以及逐条结论。</summary>
 public sealed record AssistantJudgeOutcome(
     long MessageId,
+    long SessionId,
+    string UserId,
     string RubricVersion,
     string JudgeModel,
     bool FellBackToChat,
-    IReadOnlyList<AssistantJudgeVerdict> Verdicts);
+    IReadOnlyList<AssistantJudgeVerdict> Verdicts,
+    AssistantJudgeUsage Usage);
 
 /// <summary>
 /// 判官：把"问句 + 回答 + 工具摘要"交给模型，按条款逐条取四态结论。
@@ -42,18 +50,22 @@ public sealed record AssistantJudgeOutcome(
 public sealed class AssistantAnswerJudge(IAssistantJudgeModel model)
 {
     public async Task<AssistantJudgeOutcome> JudgeAsync(
-        AssistantJudgeTranscript transcript, CancellationToken token)
+        AssistantJudgeTranscript transcript, AssistantJudgeLimitsOptions limits, CancellationToken token)
     {
         var rubric = AssistantJudgeRubric.Current;
-        var user = AssistantJudgePrompt.BuildUser(rubric, transcript);
-        var raw = await model.CompleteAsync(AssistantJudgePrompt.System, user, token);
+        var user = AssistantJudgePrompt.BuildUser(rubric, transcript, limits);
+        var completion = await model.CompleteAsync(AssistantJudgePrompt.System, user, token);
 
         return new AssistantJudgeOutcome(
             transcript.MessageId,
+            transcript.SessionId,
+            transcript.UserId,
             rubric.Version,
             model.Descriptor,
             model.FellBackToChat,
-            AssistantJudgeVerdictParser.Parse(raw, rubric));
+            AssistantJudgeVerdictParser.Parse(completion.Content, rubric),
+            new AssistantJudgeUsage(
+                completion.PromptTokens, completion.CompletionTokens, completion.Estimated, completion.CostYuan));
     }
 }
 

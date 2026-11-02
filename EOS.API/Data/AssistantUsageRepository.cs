@@ -5,6 +5,9 @@ namespace EOS.API.Data;
 
 public sealed record DailyUsage(int Requests, long PromptTokens, long CompletionTokens);
 
+/// <summary>用量日表里某一行（系统账户判分用）：已花微元与请求次数。</summary>
+public sealed record AssistantLedgerDay(long SpentMicroYuan, int Requests);
+
 /// <summary>按模型的用量（模型管理页用）：<paramref name="ModelName"/> 取消息落库时的实际值。</summary>
 public sealed record ModelUsage(string ModelName, DailyUsage Usage, DateTimeOffset LastUsedAt);
 
@@ -57,6 +60,28 @@ public interface IAssistantUsageRepository
     /// <summary>与 <see cref="GetDailyTrendAsync"/> 同一条聚合，限定**某一个用户**。</summary>
     Task<IReadOnlyList<DayUsage>> GetUserDailyTrendAsync(
         string userId, DateTimeOffset sinceUtc, CancellationToken token);
+
+    /// <summary>
+    /// 某个账户某一天的**台账读数**（微元与次数）。用于判分的"今日已判次数 / 已花成本"判定。
+    ///
+    /// <para>
+    /// 与 <see cref="GetUserDailyUsageAsync"/> 不是一条路：那个从 <c>ASSISTANT_MESSAGE</c> 数消息，
+    /// 而判分没有消息行——它的账只落在 <c>ASSISTANT_USAGE_DAY</c>。
+    /// </para>
+    /// </summary>
+    Task<AssistantLedgerDay> GetLedgerDayAsync(string userId, DateTimeOffset dayStartUtc, CancellationToken token);
+
+    /// <summary>
+    /// 直接记一笔花费（**不预留、不按上限拒绝**）。
+    ///
+    /// <para>
+    /// 只给系统账户用（判分）：它的日上限由自己的参数判定，且"到顶降采样"而不是拒绝调用；
+    /// 走用户那套预留/条件扣减会把判分卡在全局日上限上，让"看板突然没有新结论"变得无从解释。
+    /// 全局哨兵行 <c>*</c> 同样累加——判分花的是真钱，总账里不该少这一笔。
+    /// </para>
+    /// </summary>
+    Task RecordSpendAsync(
+        string userId, DateTimeOffset dayStartUtc, long actualMicro, int requests, CancellationToken token);
 }
 
 /// <summary> 用量聚合：复用 ASSISTANT_MESSAGE 已记录的 token/耗时，按 UTC 自然日聚合。</summary>
@@ -226,6 +251,55 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
             command.Parameters.Add("@Reserve", SqlDbType.BigInt).Value = reserveMicro;
             command.Parameters.Add("@Actual", SqlDbType.BigInt).Value = actualMicro;
             command.Parameters.Add("@Completed", SqlDbType.Int).Value = completed ? 1 : 0;
+            command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = key;
+            command.Parameters.Add("@Day", SqlDbType.Date).Value = dayStartUtc.UtcDateTime.Date;
+            await command.ExecuteNonQueryAsync(token);
+        }
+
+        await transaction.CommitAsync(token);
+    }
+
+    /// <inheritdoc />
+    public async Task<AssistantLedgerDay> GetLedgerDayAsync(
+        string userId, DateTimeOffset dayStartUtc, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand("""
+            SELECT ISNULL(SUM(SPENT_MICROYUAN), 0), ISNULL(SUM(REQUESTS), 0)
+            FROM dbo.ASSISTANT_USAGE_DAY WITH (NOLOCK)
+            WHERE USER_ID = @UserId AND USAGE_DATE = @Day;
+            """, connection);
+        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+        command.Parameters.Add("@Day", SqlDbType.Date).Value = dayStartUtc.UtcDateTime.Date;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        return await reader.ReadAsync(token)
+            ? new AssistantLedgerDay(Convert.ToInt64(reader.GetValue(0)), Convert.ToInt32(reader.GetValue(1)))
+            : new AssistantLedgerDay(0, 0);
+    }
+
+    /// <inheritdoc />
+    public async Task RecordSpendAsync(
+        string userId, DateTimeOffset dayStartUtc, long actualMicro, int requests, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        await EnsureRowAsync(connection, transaction, userId, dayStartUtc, token);
+        await EnsureRowAsync(connection, transaction, "*", dayStartUtc, token);
+
+        const string sql = """
+            UPDATE dbo.ASSISTANT_USAGE_DAY
+            SET SPENT_MICROYUAN = SPENT_MICROYUAN + @Actual,
+                REQUESTS = REQUESTS + @Requests,
+                MODIFIED_TIME = SYSUTCDATETIME()
+            WHERE USER_ID = @UserId AND USAGE_DATE = @Day;
+            """;
+        foreach (var key in new[] { userId, "*" })
+        {
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@Actual", SqlDbType.BigInt).Value = actualMicro;
+            command.Parameters.Add("@Requests", SqlDbType.Int).Value = requests;
             command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = key;
             command.Parameters.Add("@Day", SqlDbType.Date).Value = dayStartUtc.UtcDateTime.Date;
             await command.ExecuteNonQueryAsync(token);

@@ -502,11 +502,167 @@ export interface AssistantQualityReport {
   callBuckets: AssistantQualityCallBucket[]
   spentYuan: number
   requests: number
+  /** 「回答质量」区块（ADR-044）：判定结论落库后的四个数字与用量。 */
+  answerQuality: AssistantAnswerQuality | null
+  /** 质量告警（J3，只告警不阻断）：口径标注率偏低 / 越界承诺 / 无法判定率偏高 / 停判。 */
+  alerts?: AssistantQualityAlert[]
+}
+
+/** 一条质量告警。`critical` 目前只有「越界承诺」一类（目标恒 0）。 */
+export interface AssistantQualityAlert {
+  code: string
+  severity: 'critical' | 'warning'
+  title: string
+  message: string
+  critical: boolean
+}
+
+/** 一个条款的 PASS/FAIL/NA/UNSURE 计数（条款标题服务端给，前端不抄一份）。 */
+export interface AssistantJudgeClauseStat {
+  clause: string
+  title: string
+  pass: number
+  fail: number
+  na: number
+  unsure: number
+  evaluated: number
+  passRate: number | null
+}
+
+/**
+ * 「回答质量」区块：四个数字的口径由服务端 `AssistantJudgeMetrics` 一处定义
+ * （口径标注率 / 范围一致率 / 越界承诺数 / 无法判定率），前端只显示不再算。
+ */
+export interface AssistantAnswerQuality {
+  judged: number
+  clauses: AssistantJudgeClauseStat[]
+  citationRate: number | null
+  scopeRate: number | null
+  overreachCount: number
+  unsureRate: number | null
+  rubricVersion: string
+  judgeModels: string[]
+  spentYuan: number
+  calls: number
+  dailyCalls: number
+  dailyMaxCalls: number
+  dailySpentYuan: number
+  dailyCostCapYuan: number
+  /** 今日已达上限：此时"没有新结论"不是"没问题"，界面必须说出来。 */
+  capped: boolean
+}
+
+/** 一条判定结论（看板按条款/会话筛选时的行）。 */
+export interface AssistantVerdictRow {
+  verdictId: number
+  messageId: number
+  sessionId: number
+  userId: string
+  clause: string
+  verdict: 'PASS' | 'FAIL' | 'NA' | 'UNSURE'
+  evidence: string | null
+  note: string | null
+  rubricVersion: string
+  judgeModel: string
+  fallback: boolean
+  judgedAt: string
+  currentRubric: boolean
+}
+
+export interface AssistantVerdictPage {
+  items: AssistantVerdictRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface AssistantVerdictQuery {
+  days?: number
+  clause?: string
+  sessionId?: number
+  verdict?: string
+  page?: number
+  pageSize?: number
+}
+
+/** 一轮判定的结果（手动触发时回显）。 */
+export interface AssistantJudgeRunResult {
+  candidates: number
+  judged: number
+  skippedBySampling: number
+  skippedByCap: number
+  failed: number
+  stopReason: string | null
+  costYuan: number
 }
 
 /** 近 N 天质量：工具使用/拒绝、轮数分桶、token 与成本（只读聚合，不含消息正文）。 */
 export function getAssistantQuality(days = 7) {
   return apiClient.get<AssistantQualityReport>('/admin/assistant/quality', { query: { days } })
+}
+
+/** 判定结论分页（按条款 / 会话 / 结论筛选）。 */
+export function getAssistantVerdicts(params: AssistantVerdictQuery = {}) {
+  const { days = 7, clause, sessionId, verdict, page = 1, pageSize = 50 } = params
+  return apiClient.get<AssistantVerdictPage>('/admin/assistant/quality/verdicts', {
+    query: {
+      days, clause: clause || undefined, sessionId, verdict: verdict || undefined, page, pageSize,
+    },
+  })
+}
+
+/** 手动跑一轮判定（与后台扫描同一条实现；只花判分预算，不改业务数据）。 */
+export function runAssistantJudge(limit?: number) {
+  return apiClient.post<AssistantJudgeRunResult>('/admin/assistant/quality/judge', undefined, {
+    query: { limit },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// 判官校准（ADR-044 §5 J2）：用户维护的样本标签 vs 库内判官结论。
+// 样本在 3106「评估用例」的 judge 层；这里只读，零模型调用。
+// ---------------------------------------------------------------------------
+
+export interface AssistantCalibrationClause {
+  clause: string
+  title: string
+  compared: number
+  agreed: number
+  mismatched: number
+  rate: number | null
+}
+
+export interface AssistantCalibrationMismatch {
+  caseId: string
+  messageId: number
+  clause: string
+  humanVerdict: string
+  humanEvidence: string | null
+  judgeVerdict: string
+  judgeEvidence: string | null
+  judgeModel: string
+  /** 人判不通过、判官判通过（漏报）——比误报危险，单独计。 */
+  dangerous: boolean
+}
+
+export interface AssistantCalibrationReport {
+  samples: number
+  reviewed: number
+  compared: number
+  uncompared: number
+  clauses: AssistantCalibrationClause[]
+  /** 一条都没比过时为 null（不是 0）。 */
+  agreementRate: number | null
+  dangerousCount: number
+  mismatches: AssistantCalibrationMismatch[]
+  rubricVersion: string
+  judgeModels: string[]
+  notes: string[]
+}
+
+/** 判官校准读数（只读、零费用）。 */
+export function getJudgeCalibration() {
+  return apiClient.get<AssistantCalibrationReport>('/admin/assistant/quality/calibration')
 }
 
 // ---------------------------------------------------------------------------

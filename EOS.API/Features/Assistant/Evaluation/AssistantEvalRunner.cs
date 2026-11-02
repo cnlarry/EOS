@@ -110,7 +110,11 @@ public sealed class AssistantEvalRunner(IAssistantEvalRepository repository)
 
         var outcome = failures.Count > 0
             ? OutcomeFail
-            : passed > 0 ? OutcomePass : OutcomeSkip;
+            // 未审阅的校准样本：结构可以完整，但"还没人认可"不能算通过——
+            // 跳过不等于通过，这里同样适用（否则一轮跑完会读到"6 条全过"，而其实一条都没校）。
+            : skipped.Any(check => check.Code == "JUDGE_NOT_REVIEWED")
+                ? OutcomeSkip
+                : passed > 0 ? OutcomePass : OutcomeSkip;
 
         var reason = outcome switch
         {
@@ -154,6 +158,7 @@ public sealed class AssistantEvalRunner(IAssistantEvalRepository repository)
         "inference" => "推断",
         "functional" => "检索",
         "business" => "回答",
+        "judge" => "判官校准",
         _ => layer,
     };
 

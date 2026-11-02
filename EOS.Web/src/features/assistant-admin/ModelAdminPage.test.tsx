@@ -99,6 +99,104 @@ function embeddingRow(overrides: Partial<Record<string, unknown>> = {}) {
   })
 }
 
+/** 质量页签的默认聚合：带一段「回答质量」结论，四个数字都能算出来。 */
+const defaultQualityReport = {
+  days: 7,
+  since: '2026-10-25T00:00:00Z',
+  overview: {
+    sessions: 3, userMessages: 5, assistantMessages: 5, toolCalls: 4, succeededCalls: 3,
+    failedCalls: 1, unknownOutcomeCalls: 0, rejectedCalls: 0, unknownToolCalls: 0,
+    promptTokens: 900, completionTokens: 400, averageElapsedMs: 1200, positiveFeedback: 1,
+    negativeFeedback: 0,
+  },
+  tools: [{
+    name: 'resolve_metric', calls: 4, succeeded: 3, failed: 1, unknownOutcome: 0,
+    rejected: 0, unknown: 0,
+  }],
+  daily: [{ day: '2026-10-31', messages: 10, toolCalls: 4, failed: 1, promptTokens: 900, completionTokens: 400 }],
+  callBuckets: [{ callsPerReply: 1, replies: 4 }],
+  spentYuan: 0.006,
+  requests: 12,
+  alerts: [
+    {
+      code: 'JUDGE_OVERREACH', severity: 'critical', title: '越界承诺', critical: true,
+      message: '有 1 条回答声称做了不可代签的动作（批核/解批/结案/权限授予）。目标恒为 0：先停用相关能力面并复盘。',
+    },
+    {
+      code: 'JUDGE_DAILY_CAP', severity: 'warning', title: '今日判定已达上限', critical: false,
+      message: '今日判定次数或成本已达上限：此后不再产出新结论——这是「没判」，不是「没问题」。',
+    },
+  ],
+  answerQuality: {
+    judged: 2,
+    clauses: [
+      { clause: 'A', title: '口径标注', pass: 5, fail: 1, na: 0, unsure: 0, evaluated: 6, passRate: 5 / 6 },
+      { clause: 'B', title: '范围一致', pass: 6, fail: 0, na: 0, unsure: 0, evaluated: 6, passRate: 1 },
+      { clause: 'C', title: '诚实缺口', pass: 3, fail: 0, na: 3, unsure: 0, evaluated: 3, passRate: 1 },
+      { clause: 'D', title: '不越界承诺', pass: 5, fail: 0, na: 1, unsure: 0, evaluated: 5, passRate: 1 },
+      { clause: 'E', title: '不编造事实', pass: 4, fail: 0, na: 0, unsure: 2, evaluated: 4, passRate: 1 },
+      { clause: 'F', title: '权限明说', pass: 0, fail: 0, na: 4, unsure: 2, evaluated: 0, passRate: null },
+    ],
+    citationRate: 5 / 6,
+    scopeRate: 1,
+    overreachCount: 0,
+    unsureRate: 0.15,
+    rubricVersion: 'v1',
+    judgeModels: ['deepseek/deepseek-flash'],
+    spentYuan: 0.0123,
+    calls: 2,
+    dailyCalls: 2,
+    dailyMaxCalls: 200,
+    dailySpentYuan: 0.0123,
+    dailyCostCapYuan: 5,
+    capped: false,
+  },
+}
+
+/** 判定结论的默认分页：一条 FAIL（带逐字证据）一条 PASS。 */
+const defaultVerdictPage = {
+  items: [
+    {
+      verdictId: 2, messageId: 34092, sessionId: 33523, userId: 'admin', clause: 'A', verdict: 'FAIL',
+      evidence: '合计 139,022,210.42', note: '未点名口径', rubricVersion: 'v1',
+      judgeModel: 'deepseek/deepseek-flash', fallback: false, judgedAt: '2026-10-31T13:12:00Z',
+      currentRubric: true,
+    },
+    {
+      verdictId: 1, messageId: 34090, sessionId: 33522, userId: 'admin', clause: 'B', verdict: 'PASS',
+      evidence: '仅统计 9 月', note: null, rubricVersion: 'v1',
+      judgeModel: 'deepseek/deepseek-flash', fallback: true, judgedAt: '2026-10-30T02:00:00Z',
+      currentRubric: true,
+    },
+  ],
+  total: 2,
+  page: 1,
+  pageSize: 50,
+}
+
+/** 判官校准读数：一条漏报（人判不通过、判官判通过），用来验红色警示与两边引文都摆出来。 */
+const defaultCalibrationReport = {
+  samples: 3,
+  reviewed: 2,
+  compared: 1,
+  uncompared: 1,
+  clauses: [
+    { clause: 'A', title: '口径标注', compared: 1, agreed: 0, mismatched: 1, rate: 0 },
+    { clause: 'B', title: '范围一致', compared: 1, agreed: 1, mismatched: 0, rate: 1 },
+  ],
+  agreementRate: 0.5,
+  dangerousCount: 1,
+  mismatches: [{
+    caseId: 'JG-01', messageId: 34092, clause: 'A',
+    humanVerdict: 'FAIL', humanEvidence: '人：全部时间也算进来了',
+    judgeVerdict: 'PASS', judgeEvidence: '回答里提到了口径',
+    judgeModel: 'deepseek/deepseek-flash', dangerous: true,
+  }],
+  rubricVersion: 'v1',
+  judgeModels: ['deepseek/deepseek-flash'],
+  notes: ['JG-02：判官还没有对回答 999999 给出当前条款版本的结论，无法比对。'],
+}
+
 function installFetchMock(options: {
   providers?: unknown[]
   current?: Record<string, unknown> | null
@@ -109,6 +207,12 @@ function installFetchMock(options: {
   discovered?: unknown[]
   /** 让拉取失败，用来验"降级到目录、并说明原因"。 */
   discoverFails?: boolean
+  /** 质量页签的聚合（默认带一段「回答质量」结论，用来验四个数字与筛选）。 */
+  quality?: Record<string, unknown>
+  /** 判定结论分页（默认两条：一条 FAIL、一条 PASS）。 */
+  verdicts?: Record<string, unknown>
+  /** 判官校准读数（默认一条漏报）。 */
+  calibration?: Record<string, unknown>
 } = {}) {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -192,6 +296,21 @@ function installFetchMock(options: {
           ],
         },
       ])
+    }
+    if (url.includes('/admin/assistant/quality/calibration')) {
+      return jsonResponse(options.calibration ?? defaultCalibrationReport)
+    }
+    if (url.includes('/admin/assistant/quality/verdicts')) {
+      return jsonResponse(options.verdicts ?? defaultVerdictPage)
+    }
+    if (url.includes('/admin/assistant/quality/judge') && method === 'POST') {
+      return jsonResponse({
+        candidates: 3, judged: 1, skippedBySampling: 2, skippedByCap: 0, failed: 0,
+        stopReason: null, costYuan: 0.0012,
+      })
+    }
+    if (url.includes('/admin/assistant/quality')) {
+      return jsonResponse(options.quality ?? defaultQualityReport)
     }
     if (url.includes('/admin/assistant/usage')) {
       return jsonResponse({
@@ -752,6 +871,62 @@ describe('ModelAdminPage', () => {
 
     await waitFor(() => expect(container.querySelector('.erp-tabbed-panel-body > .erp-workbench-page'))
       .toHaveClass('erp-workbench-even'))
+  })
+
+  it('质量页签：回答质量给出四个数字，判定结论带逐字证据并可按条款筛选', async () => {
+    const { calls } = installFetchMock()
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: '质量' }))
+
+    // 四个数字是 ADR-044 §4.5 写死的那四个，界面上必须逐条点名（不能只给一个"质量分"）
+    expect(await screen.findByText('口径标注率')).toBeInTheDocument()
+    // 条款版本只显示一个 v（rubricVersion 本身已含 v，再拼就成 "vv1"）
+    expect(await screen.findByText(/只判「有没有如实回答」/)).toBeInTheDocument()
+    await waitFor(() => expect(document.body.textContent ?? '').toContain('条款 v1 ·'))
+    expect(document.body.textContent ?? '').not.toContain('vv1')
+    expect(screen.getByText('范围一致率')).toBeInTheDocument()
+    expect(screen.getByText('越界承诺数')).toBeInTheDocument()
+    expect(screen.getByText('无法判定率')).toBeInTheDocument()
+    // 告警（J3）：红线与"停判"都必须看得见——停判不是"没问题"
+    expect(await screen.findByText(/先停用相关能力面/)).toBeInTheDocument()
+    expect(screen.getByText(/今日判定次数或成本已达上限/)).toBeInTheDocument()
+    // 5/6 与 100% 同时出现说明比率不是"全通过/全失败"的假值（数据到达前显示的是 —）
+    await waitFor(() => expect(screen.getAllByText('83.3%').length).toBeGreaterThan(0))
+    expect(screen.getAllByText('100.0%').length).toBeGreaterThan(0)
+
+    // 结论行：条款 / 结论 / 逐字证据 / 判官模型（含回落与旧版本标记）
+    const failRow = (await screen.findByText('合计 139,022,210.42')).closest('tr')!
+    expect(within(failRow).getByText('不通过')).toBeInTheDocument()
+    expect(within(failRow).getByText('A')).toBeInTheDocument()
+    expect(within(failRow).getByText(/deepseek\/deepseek-flash/)).toBeInTheDocument()
+    // 回落是要标出来的：判官没配时用的是对话模型，不能假装用的是判官模型
+    const passRow = screen.getByText('仅统计 9 月').closest('tr')!
+    expect(within(passRow).getByText(/· 回落/)).toBeInTheDocument()
+
+    // 按条款筛选走服务端：请求里带 clause=A（前端不自己过滤，否则分页总数会与它不一致）
+    fireEvent.change(screen.getByLabelText('按条款筛选'), { target: { value: 'A' } })
+    await waitFor(() => expect(calls.some((call) => call.url.includes('clause=A'))).toBe(true))
+  })
+
+  it('判官校准：给出样本/一致率，漏报单独红标并把两边的引文都摆出来', async () => {
+    installFetchMock()
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: '质量' }))
+
+    expect(await screen.findByText('判官校准')).toBeInTheDocument()
+    // 一致率与样本计数：只算已审阅（2 条里 1 条能对上）
+    await waitFor(() => expect(screen.getByText(/一致率 50\.0%/)).toBeInTheDocument())
+    expect(screen.getByText(/样本 3 \/ 已审阅 2 \/ 可比对 1 \/ 未比对 1/)).toBeInTheDocument()
+    // 漏报（人判不通过、判官判通过）必须单独红标——它会把错误答案留在库里
+    expect(screen.getByText(/有 1 条漏报/)).toBeInTheDocument()
+    expect(screen.getByText(/不要调采样率/)).toBeInTheDocument()
+    // 不一致行：两边的话都要看得见，否则改条款时无从下笔
+    expect(await screen.findByText('人：全部时间也算进来了')).toBeInTheDocument()
+    expect(screen.getByText('回答里提到了口径')).toBeInTheDocument()
+    // 比不了的要说明原因，不能静默消失
+    expect(screen.getByText(/判官还没有对回答 999999/)).toBeInTheDocument()
   })
 
   it('表格按电子表口径：表头可排序（真的重排）、操作列冻结、列宽可拖、右键可复制', async () => {

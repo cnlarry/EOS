@@ -1,12 +1,12 @@
 using System.Text.Json;
-using EOS.API.Features.Assistant.Governance;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Quality;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Assistant;
 
 /// <summary>
-/// 判分的输入来源：从已落库的会话里取"最近若干条回答 + 它们各自的问句与工具摘要"。
+/// 判分的输入来源：从已落库的会话里取"若干条回答 + 它们各自的问句与工具摘要"。
 ///
 /// <para>
 /// **只读、只取最小必要字段**（ADR-044 §4.1）：问句、回答正文、工具调用摘要、时间。
@@ -20,16 +20,41 @@ namespace EOS.API.Data.Assistant;
 /// </summary>
 public interface IAssistantJudgeRepository
 {
-    /// <summary>最近 <paramref name="take"/> 条有内容的助手回答，新的在前。</summary>
-    Task<IReadOnlyList<AssistantJudgeTranscript>> LoadRecentAnswersAsync(int take, CancellationToken token);
+    /// <summary>最近 <paramref name="take"/> 条有内容的助手回答，新的在前（回放用，不看是否判过）。</summary>
+    Task<IReadOnlyList<AssistantJudgeTranscript>> LoadRecentAnswersAsync(
+        int take, AssistantJudgeLimitsOptions limits, CancellationToken token);
+
+    /// <summary>
+    /// 待判回答：时间窗内、**该条款版本还没有结论**的回答，新的在前。
+    ///
+    /// <para>
+    /// 去重只按「回答 + 条款版本」：同一条款版本下一条回答只判一次，换判官模型**不会**自动重判
+    /// （重判要再花一次钱，而结论差异本该由 rubric 版本承担）。表上的唯一键仍含
+    /// `JUDGE_MODEL`，所以人工重判可以写第二份结论，历史不覆盖。
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<AssistantJudgeTranscript>> LoadCandidatesAsync(
+        DateTimeOffset since, int take, string rubricVersion,
+        AssistantJudgeLimitsOptions limits, CancellationToken token);
 }
 
 /// <summary>判分输入的 SQL Server 实现。</summary>
 public sealed class AssistantJudgeRepository(DbConnectionFactory connections) : IAssistantJudgeRepository
 {
     /// <inheritdoc />
-    public async Task<IReadOnlyList<AssistantJudgeTranscript>> LoadRecentAnswersAsync(
-        int take, CancellationToken token)
+    public Task<IReadOnlyList<AssistantJudgeTranscript>> LoadRecentAnswersAsync(
+        int take, AssistantJudgeLimitsOptions limits, CancellationToken token) =>
+        LoadAsync(null, take, null, limits, token);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<AssistantJudgeTranscript>> LoadCandidatesAsync(
+        DateTimeOffset since, int take, string rubricVersion,
+        AssistantJudgeLimitsOptions limits, CancellationToken token) =>
+        LoadAsync(since, take, rubricVersion, limits, token);
+
+    private async Task<IReadOnlyList<AssistantJudgeTranscript>> LoadAsync(
+        DateTimeOffset? since, int take, string? rubricVersion,
+        AssistantJudgeLimitsOptions limits, CancellationToken token)
     {
         // 问句取"同一会话里、这条回答之前最近的一条用户消息"：助手可能连答多轮，
         // 但每条回答对应的落库上下文是它自己那一问一答，不做跨轮拼接。
@@ -40,6 +65,10 @@ public sealed class AssistantJudgeRepository(DbConnectionFactory connections) : 
                 FROM dbo.ASSISTANT_MESSAGE m
                 WHERE m.ROLE = 2
                   AND NULLIF(LTRIM(RTRIM(m.CONTENT)), N'') IS NOT NULL
+                  AND (@Since IS NULL OR m.CREATED_TIME >= @Since)
+                  AND (@RubricVersion IS NULL OR NOT EXISTS (
+                        SELECT 1 FROM dbo.ASSISTANT_ANSWER_VERDICT v
+                        WHERE v.MESSAGE_ID = m.ID AND v.RUBRIC_VERSION = @RubricVersion))
                 ORDER BY m.ID DESC
             )
             SELECT a.ID,
@@ -63,6 +92,11 @@ public sealed class AssistantJudgeRepository(DbConnectionFactory connections) : 
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@Take", Math.Clamp(take, 1, 200));
+        command.Parameters.Add("@Since", System.Data.SqlDbType.DateTime2).Value =
+            since is null ? DBNull.Value : since.Value.UtcDateTime;
+        command.Parameters.Add("@RubricVersion", System.Data.SqlDbType.NVarChar, 16).Value =
+            (object?)rubricVersion ?? DBNull.Value;
+
         await using var reader = await command.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token))
         {
@@ -76,7 +110,7 @@ public sealed class AssistantJudgeRepository(DbConnectionFactory connections) : 
                 ParseToolCalls(reader.IsDBNull(4) ? null : reader.GetString(4)),
                 new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc)))
             {
-                AnswerTruncated = answer.Length > AssistantActionLimits.MaxJudgeAnswerChars,
+                AnswerTruncated = answer.Length > limits.MaxAnswerChars,
             });
         }
 

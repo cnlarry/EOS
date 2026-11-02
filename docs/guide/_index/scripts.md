@@ -1,4 +1,4 @@
-<!-- inventory-fingerprint: e32154ab990603c3 -->
+<!-- inventory-fingerprint: b1bc8de24e14a7bf -->
 # 脚本台账（`scripts/`）
 
 > 本文件由 [`scripts/script-inventory.ps1`](../../../scripts/script-inventory.ps1) **生成**，不要手改；
@@ -21,12 +21,12 @@
 
 ## 一、总览
 
-- 入库脚本 **96** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 23 · 工具 33
+- 入库脚本 **97** 个：门禁（CI） 21 · 门禁（本地按需） 19 · 一次性批次 24 · 工具 33
 - 说明缺失（三种头注释都没有）：**0** 个
 - 非标准头（有说明但不是 `.SYNOPSIS`，`Get-Help` 取不到）：**0** 个
 - 无人引用（不在 CI / 手册 / 技能 / 其它脚本里）：**12** 个，见第七节
-- `scripts/oneshot/` 待清理的一次性脚本：**7** 个，见第二节
-- 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **67** 个——被 `.git/info/exclude` 排除，
+- `scripts/oneshot/` 待清理的一次性脚本：**8** 个，见第二节
+- 本机不入库的验收脚本（不入库）：`EOS.API.Tests/*.ps1` 等 **69** 个——被 `.git/info/exclude` 排除，
   别人的克隆里没有它们，故不参与上面的引用统计。
 
 ## 二、一次性脚本落点（`scripts/oneshot/`，用完即删）
@@ -42,6 +42,7 @@
 | `numeric-role-registry.ps1` | ADR-038 | 一次性脚本：推断 float 列的语义族并生成迁移 357（随 ADR-038 收口失效） |
 | `rebuild-workbench-snapshots.ps1` | 迁移 | 重建全部工作台快照：备份当前快照 → 清空版本历史 → 全量重新发布。 |
 | `seed-eval-candidates-2026-10-31.ps1` | 迁移 | 一次性｜锚点：模块 3106（助手评估用例）——导入 2026-10-31 的三批候选。 |
+| `seed-judge-calibration-drafts.ps1` | ADR-044 | 按本安装库里的真实问答生成 judge 层校准样本草稿（reviewed=false），供顾问在 3106 复核后转正。 |
 | `sync-bootstrap-numeric-types.ps1` | ADR-038 | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 |
 
 ## 三、门禁（CI 自动跑，不需要你动手）
@@ -52,7 +53,7 @@
 | `check-assistant-action-limits.ps1` | 助手动作阈值门禁：阈值只声明一次（业务代码里不得写死），红线开关恒为开且覆盖尝试启动即失败。 | 仅静态 | 6 |
 | `check-assistant-action-registry.ps1` | 助手可代理动作注册表门禁：六要素齐全、动作名唯一、且注册表内不含职权类动作。 | 仅静态 | 6 |
 | `check-commit-msg.ps1` | 提交信息门禁：拦「只有本次会话才看得懂」的内容——对话上下文、任务条目、验证流水。 | git | 9 |
-| `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 4 |
+| `check-controller-permission-boundary.ps1` | 静态门禁：控制器不得直接做模块权限决策（ADR-036 §5 断言 B）。 | 仅静态 | 5 |
 | `check-controller-sql-boundary.ps1` | 静态门禁：控制器不得持有数据访问（ADR-036 §5 断言 A）。 | 仅静态 | 3 |
 | `check-css-classes.ps1` | 前端样式类门禁：JSX 里用的 erp-* 类名必须在 CSS 里有定义（禁止悬空类名）。 | 仅静态 | 8 |
 | `check-data-layer-boundary.ps1` | 分层边界门禁：EOS.API/Data/ 根目录的 .cs 文件集合不得新增（白名单棘轮，只减不增）。 | 仅静态 | 7 |
@@ -86,7 +87,7 @@
 | `check-master-amount-rollup.ps1` | 连库门禁：主表金额汇总（主表列 = 明细同名列 SUM）的三项断言。 | 连库 | 2 |
 | `check-migration-journal.ps1` | 迁移脚本与 DbUp 台账的一致性门禁：幽灵名、重复行、未落库。 | 连库 | 8 |
 | `check-module-filter-columns.ps1` | 声明可写的模块（`MODULES.UNIFIED_FORM_ENABLED` + `UNIFIED_FORM_EDIT_ENABLED`）的模块过滤条件（`MODULES.FILTER`）必须能被新记录满足。 | 连库 | 1 |
-| `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 9 |
+| `check-module-node-kind.ps1` | 菜单节点形态（dbo.V_MODULE_NODE）与形态外配置残留巡检。 | 连库 | 11 |
 | `check-numeric-role.ps1` | 连库门禁：FIELDS.NUMERIC_ROLE 的完整性与一致性。 | 连库 | 4 |
 | `check-required-columns.ps1` | 必填口径巡检：明细主键里「用户能填、库里却非空」的列必须标必填。 | 连库 | 3 |
 | `check-snapshot-staleness.ps1` | 快照落后常态检查：已发布快照是否落后于"按当前配置重建的定义"，尤其是**没有任何标记提示**的那种。 | 需 API 在线 | 11 |
@@ -119,6 +120,7 @@
 | `restore-placeholder-formula-rows.ps1` | 按清理脚本留下的备份文件，把占位公式行**逐列按原值**插回。 | 连库 | 1 |
 | `rollback-report-attribution.ps1` | 回滚报表归属列（REPORT.M_IDX）的落库：删列 + 卸约束 + 撤销迁移台账行。 | 连库 | 独立工具 |
 | `seed-eval-candidates-2026-10-31.ps1` | 一次性｜锚点：模块 3106（助手评估用例）——导入 2026-10-31 的三批候选。 | 连库 | 1 |
+| `seed-judge-calibration-drafts.ps1` | 按本安装库里的真实问答生成 judge 层校准样本草稿（reviewed=false），供顾问在 3106 复核后转正。 | 连库 | 2 |
 | `sync-bootstrap-numeric-types.ps1` | 一次性脚本：把建库基线里的数值列类型同步为语义族的 decimal。 | 仅静态 | 2 |
 | `verify-adr024-remainder.ps1` | ADR-024 收尾批的落库与运行态复验（重启 EOS.API 之后跑）。 | 连库、需 API 在线 | 独立工具 |
 

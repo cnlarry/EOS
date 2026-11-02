@@ -1673,6 +1673,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-metric-card { overflow: hidden; }
 .erp-metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tblr-primary); }
 .erp-metric-icon { display: grid; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: .7rem; color: var(--tblr-primary); background: var(--tblr-primary-lt); }
+/* 质量页签的四个回答质量数字：四列平铺（不依赖首页的 --erp-dashboard-cols，那一套是整页布局用的） */
+.erp-quality-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px; flex: 0 0 auto; }
+@media (max-width: 992px) { .erp-quality-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* 首页：整页随视口自适应，页面级不出滚动条。高度链自 `.erp-tab-panel > .container-fluid`
    （flex 列 + min-height:0）承接：指标行定高，主区（待批核单据 + 快捷入口）吃掉剩余高度，
    两块各自在容器内滚动，内容多也只出容器滚动条。
@@ -3327,3 +3330,12 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-workbench-page.erp-workbench-even > .erp-list-card,
 .erp-workbench-page.erp-workbench-even > .erp-detail-card { flex: 1 1 0; min-height: 120px; max-height: none; }
 .erp-workbench-page.erp-workbench-even > .erp-list-card .erp-master-table-region { max-height: none; }
+
+/* 质量页签（3102）：回答质量 / 工具 / 按天三块**按内容高度纵向排列、整页滚动**。
+   与上面"等分且各自内部滚动"不同：第一块里有四个数字加两张表，等分会被压到读不出数。
+   max-height:none 压掉工作台明细卡默认的 260px 上限（同权重、靠出现得更晚生效）。 */
+.erp-base-page.erp-quality-page { overflow-y: auto; }
+.erp-base-page.erp-quality-page > .card { flex: 0 0 auto; max-height: none; }
+/* 质量页签里的从属表（校准条款 / 不一致清单）：随内容高度，不沿用主表区 341px 的最小高度
+   （6 行条款表若按主表区高度撑开，看起来像"内容丢了"） */
+.erp-quality-subtable { min-height: 0; }

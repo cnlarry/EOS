@@ -47,14 +47,15 @@ public sealed class AssistantJudgeReplay
         await registry.RefreshAsync(CancellationToken.None);
 
         var repository = new AssistantJudgeRepository(connections);
-        var transcripts = await repository.LoadRecentAnswersAsync(3, CancellationToken.None);
+        var limits = new AssistantJudgeLimitsOptions();
+        var transcripts = await repository.LoadRecentAnswersAsync(3, limits, CancellationToken.None);
         Assert.NotEmpty(transcripts);
 
         var judge = new AssistantAnswerJudge(new AssistantJudgeModel(catalog, registry, new StubHttpClientFactory()));
         var outcomes = new List<AssistantJudgeOutcome>();
         foreach (var transcript in transcripts)
         {
-            outcomes.Add(await judge.JudgeAsync(transcript, CancellationToken.None));
+            outcomes.Add(await judge.JudgeAsync(transcript, limits, CancellationToken.None));
         }
 
         // 打印到测试输出：这一份就是 J0 的首次基线证据

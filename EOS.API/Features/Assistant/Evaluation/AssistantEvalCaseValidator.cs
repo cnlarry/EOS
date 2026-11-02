@@ -5,6 +5,7 @@ using EOS.API.Data;
 using EOS.API.Data.Workbench;
 using EOS.API.Features.Assistant.Config;
 using EOS.API.Features.Assistant.Parameters;
+using EOS.API.Features.Assistant.Quality;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Features.Assistant.Tools;
 
@@ -76,9 +77,16 @@ public sealed record AssistantEvalCaseRecord(
 /// </summary>
 public static class AssistantEvalCaseValidator
 {
-    /// <summary>支持的八个层（与 `EOS.API.Tests/AssistantEval/` 的子目录一一对应）。</summary>
+    /// <summary>
+    /// 支持的评估层。前八层与 `EOS.API.Tests/AssistantEval/` 的子目录一一对应（仓库种子）；`judge` 层是
+    /// **用户自行维护的判官校准样本**，只存在于 3106 的库内用例里，**不进仓库种子**——它的标签必须由人给，
+    /// 仓库里没有"人"可代签。
+    /// </summary>
     public static IReadOnlyList<string> Layers { get; } =
-        ["situation", "diagnosis", "action", "config", "authz", "inference", "functional", "business"];
+    [
+        "situation", "diagnosis", "action", "config", "authz", "inference", "functional", "business",
+        "judge",
+    ];
 
     /// <summary>处境层摘要类别（取自 <see cref="SituationDigestKinds"/>）。</summary>
     private static readonly string[] SituationKinds =
@@ -137,6 +145,9 @@ public static class AssistantEvalCaseValidator
     /// <summary>来源里的工具形态：`search_records:1405`（工具 + 作用模块）。</summary>
     private static readonly Regex ToolSource = new(@"^([a-z][a-z0-9_]*):(\d+)$", RegexOptions.Compiled);
 
+    /// <summary>审阅日期形态（与诊断黄金集的 `reviewedAt` 同口径）。</summary>
+    private static readonly Regex ReviewedDate = new(@"^\d{4}-\d{2}-\d{2}$", RegexOptions.Compiled);
+
     /// <summary>
     /// 跑完一条用例的全部确定性检查。**任何一条 Failed 即整条失败**；Skipped 不计入通过。
     /// </summary>
@@ -177,6 +188,7 @@ public static class AssistantEvalCaseValidator
                 case "action": CheckAction(payload, lookups, checks); break;
                 case "config": CheckConfig(payload, checks); break;
                 case "authz": CheckAuthz(payload, checks); break;
+                case "judge": CheckJudge(record, payload, checks); break;
                 default: CheckCorpus(record, payload, checks); break;   // functional / business / inference
             }
 
@@ -465,8 +477,7 @@ public static class AssistantEvalCaseValidator
     }
 
     private static void CheckAuthz(JsonElement payload, List<AssistantEvalCheck> checks)
-    {
-        var tool = Text(payload, "tool");
+    {        var tool = Text(payload, "tool");
         checks.Add(tool is not null && AssistantToolKeys.ToolNames.Contains(tool, StringComparer.Ordinal)
             ? Passed("AUTHZ_TOOL", $"受试工具「{tool}」在注册表里。")
             : Failed("AUTHZ_TOOL_UNKNOWN",
@@ -480,6 +491,143 @@ public static class AssistantEvalCaseValidator
 
         checks.Add(Skipped("AUTHZ_EXECUTION",
             "越权样本的实际拒绝要按真实身份调用一次工具（写入面会落数据），本层只核样本自身一致性。"));
+    }
+
+    /// <summary>
+    /// 判官校准层：**一条真实回答 + 人对六条条款的四态判定 + 引文**（ADR-044 §5 的 J2）。
+    ///
+    /// <para>
+    /// 这一层只核**样本自身是否完整**：问句与回答正文在不在、六条条款是否都标了、PASS/FAIL 是否带引文、
+    /// 状态是否在四态闭集内、审阅人/日期是否齐备。**"人与判官是否一致"不在这里判**——那要同一轮判官
+    /// 跑过同一条回答之后才算得出来，判它需要模型，而这一层的全部价值就是"不花钱也能发现样本坏了"。
+    /// </para>
+    ///
+    /// <para>
+    /// 为什么要求**标满六条**：只标"容易判的那两条"，一致率会漂亮得没有任何信息量——
+    /// 覆盖不全的样本算不出一致率，所以宁可在保存时就红。
+    /// </para>
+    /// </summary>
+    private static void CheckJudge(
+        AssistantEvalCaseRecord record, JsonElement payload, List<AssistantEvalCheck> checks)
+    {
+        // 问句优先取正文，其次取 QUESTION 列：3106 的表单里那个字段就在手边，没有理由逼用户再抄一遍。
+        var question = Text(payload, "question") ?? record.Question;
+        var answer = Text(payload, "answer");
+        checks.Add(!string.IsNullOrWhiteSpace(question) && !string.IsNullOrWhiteSpace(answer)
+            ? Passed("JUDGE_SAMPLE", "校准样本带问句与回答正文。")
+            : Failed("JUDGE_SAMPLE_MISSING",
+                "校准样本必须有问句（正文或 QUESTION 列）与回答正文（payload.answer，即库内那条回答的原文）："
+                + "要判的就是这一条回答，缺正文就无从比对。"));
+
+        var rubric = AssistantJudgeRubric.Current;
+        if (!payload.TryGetProperty("labels", out var labels) || labels.ValueKind != JsonValueKind.Array)
+        {
+            checks.Add(Failed("JUDGE_LABELS_MISSING",
+                $"校准样本必须带 labels 数组：人是拿 {string.Join("/", rubric.Clauses.Select(item => item.Code))} 的判定跟判官比的。"));
+            return;
+        }
+
+        var known = rubric.Clauses.Select(item => item.Code).ToHashSet(StringComparer.Ordinal);
+        var seen = new List<string>();
+        var problems = new List<string>();
+        foreach (var item in labels.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                problems.Add("有一个标签不是对象");
+                continue;
+            }
+
+            var clause = Text(item, "clause")?.Trim().ToUpperInvariant();
+            var verdict = Text(item, "verdict")?.Trim().ToUpperInvariant();
+            var evidence = Text(item, "evidence");
+
+            if (clause is null || !known.Contains(clause))
+            {
+                problems.Add($"条款「{clause}」不在当前条款版本里");
+                continue;
+            }
+
+            if (verdict is null || !AssistantJudgeVerdicts.IsKnown(verdict))
+            {
+                problems.Add($"{clause} 的结论「{verdict}」不在四态之内（PASS/FAIL/NA/UNSURE）");
+                continue;
+            }
+
+            // 与判官自己的硬规则一致：判 PASS/FAIL 必须逐字引用回答原文，否则这条标签本身不可复核。
+            if (verdict is AssistantJudgeVerdicts.Pass or AssistantJudgeVerdicts.Fail
+                && string.IsNullOrWhiteSpace(evidence))
+            {
+                problems.Add($"{clause} 判 {verdict} 却没给逐字引文");
+                continue;
+            }
+
+            if (seen.Contains(clause, StringComparer.Ordinal))
+            {
+                problems.Add($"{clause} 重复标注");
+                continue;
+            }
+
+            seen.Add(clause);
+        }
+
+        checks.Add(problems.Count == 0
+            ? Passed("JUDGE_LABELS", $"标签格式正确（{seen.Count} 条）。")
+            : Failed("JUDGE_LABELS_INVALID", string.Join("；", problems) + "。"));
+
+        var missing = rubric.Clauses.Select(item => item.Code)
+            .Where(code => !seen.Contains(code, StringComparer.Ordinal))
+            .ToList();
+        checks.Add(missing.Count == 0
+            ? Passed("JUDGE_LABELS_COVERAGE", $"六条条款都有人的判定（{rubric.Version}）。")
+            : Failed("JUDGE_LABELS_INCOMPLETE",
+                $"还缺 {string.Join("/", missing)} 的判定：覆盖不全的样本算不出一致率。"));
+
+        CheckJudgeReview(payload, checks);
+
+        // 诚实标注：一致率必须等同一轮判官跑过同一条回答，本层不制造这个数字。
+        checks.Add(Skipped("JUDGE_AGREEMENT",
+            "人与判官是否一致要等判官跑过同一条回答之后才算，本层只核样本自身是否完整。"));
+    }
+
+    /// <summary>
+    /// 校准样本的审阅归属：`reviewed:true` 必须带 `reviewedBy` 与 `reviewedAt`（`yyyy-MM-dd`）。
+    ///
+    /// <para>
+    /// 它不是形式主义：J2 的硬边界是"**人先给标签、且在看判官结论之前**"，没有署名与日期就无法证明
+    /// 标签不是在看到判官结论之后补的——那正好是最容易发生、也最没有价值的一种"一致"。
+    /// </para>
+    /// </summary>
+    private static void CheckJudgeReview(JsonElement payload, List<AssistantEvalCheck> checks)
+    {
+        var reviewed = payload.TryGetProperty("reviewed", out var reviewedElement)
+                       && reviewedElement.ValueKind == JsonValueKind.True;
+        if (!reviewed)
+        {
+            checks.Add(Skipped("JUDGE_NOT_REVIEWED",
+                "样本尚未标记 reviewed:true：可以先存草稿，但它的结论不计入校准。"));
+            return;
+        }
+
+        var by = Text(payload, "reviewedBy");
+        var at = Text(payload, "reviewedAt");
+        var messageId = Text(payload, "messageId");
+        var problems = new List<string>();
+        if (string.IsNullOrWhiteSpace(by)) problems.Add("缺 reviewedBy");
+        if (string.IsNullOrWhiteSpace(at)) problems.Add("缺 reviewedAt");
+        else if (!ReviewedDate.IsMatch(at)) problems.Add($"reviewedAt「{at}」不是 yyyy-MM-dd");
+        // 已审阅的校准样本必须锚定到库内那条回答：没有 messageId 就没法跟判官结论比对，
+        // 这样的一致率会变成"自己跟自己比"。
+        if (messageId is null
+            || !long.TryParse(messageId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+            || id <= 0)
+        {
+            problems.Add("缺 messageId（要对比的是库内哪一条回答，取 ASSISTANT_MESSAGE.ID）");
+        }
+
+        checks.Add(problems.Count == 0
+            ? Passed("JUDGE_REVIEWED", $"已由 {by} 于 {at} 审阅（回答 {messageId}）。")
+            : Failed("JUDGE_REVIEWED_INCOMPLETE", string.Join("；", problems) + "。"));
     }
 
     /// <summary>检索/回答/推断三层：问句、期望工具链、以及能在运行期核对的来源。</summary>

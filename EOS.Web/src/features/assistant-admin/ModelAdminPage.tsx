@@ -23,6 +23,8 @@ import type {
 import {
   usageModelColumns as USAGE_COLUMNS, usageTrendColumns as TREND_COLUMNS,
 } from '../assistant/usageColumns'
+import { AnswerQualityPanel } from './AnswerQualityPanel'
+import { JudgeCalibrationPanel } from './JudgeCalibrationPanel'
 import {
   AddModelsDialog, ModelEditorDialog, PresetPickerDialog, ProviderEditorDialog, ProviderKeyDialog,
 } from './ModelAdminDialogs'
@@ -741,7 +743,11 @@ function QualityTab({ days, onDaysChange, quality, onRefresh }: {
   const daily = data?.daily ?? []
 
   return (
-    <div className="erp-base-page erp-workbench-page erp-workbench-even">
+    <div className="erp-base-page erp-workbench-page erp-quality-page">
+      <AnswerQualityPanel days={days} answerQuality={data?.answerQuality ?? null}
+        alerts={data?.alerts ?? []} onRefresh={onRefresh} />
+      <JudgeCalibrationPanel />
+
       <ErpListCard
         ariaLabel="助手质量"
         header={<div className="card-header erp-card-toolbar">

@@ -94,6 +94,15 @@ public sealed class AssistantChatGovernanceTests
             string userId, DateTimeOffset sinceUtc, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<DayUsage>>([]);
 
+        // 判官的台账读写不参与治理测试：给空读数、忽略记账
+        public Task<AssistantLedgerDay> GetLedgerDayAsync(
+            string userId, DateTimeOffset dayStartUtc, CancellationToken token) =>
+            Task.FromResult(new AssistantLedgerDay(0, 0));
+
+        public Task RecordSpendAsync(
+            string userId, DateTimeOffset dayStartUtc, long actualMicro, int requests, CancellationToken token) =>
+            Task.CompletedTask;
+
         public Task<bool> TryReserveAsync(string userId, DateTimeOffset dayStartUtc, long reserveMicro,
             long userCapMicro, long globalCapMicro, CancellationToken token)
         {

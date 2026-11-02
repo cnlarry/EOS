@@ -1,4 +1,5 @@
 using EOS.API.Features.Assistant.Governance;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Quality;
 using Xunit;
 
@@ -57,7 +58,7 @@ public sealed class AssistantAnswerJudgeTests
     {
         var judge = new AssistantAnswerJudge(new StubJudgeModel(FullJson));
 
-        var outcome = await judge.JudgeAsync(Transcript(), CancellationToken.None);
+        var outcome = await judge.JudgeAsync(Transcript(), new AssistantJudgeLimitsOptions(), CancellationToken.None);
 
         Assert.Equal("v1", outcome.RubricVersion);
         Assert.Equal("stub/model-a", outcome.JudgeModel);
@@ -151,7 +152,7 @@ public sealed class AssistantAnswerJudgeTests
 
         var outcomes = new List<AssistantJudgeOutcome>
         {
-            await judge.JudgeAsync(Transcript(), CancellationToken.None),
+            await judge.JudgeAsync(Transcript(), new AssistantJudgeLimitsOptions(), CancellationToken.None),
         };
         var metrics = AssistantJudgeMetrics.From(outcomes);
 
@@ -166,10 +167,148 @@ public sealed class AssistantAnswerJudgeTests
         Assert.Equal(2.0 / 5.0, metrics.UnsureRate!.Value, 3);
     }
 
+    /// <summary>
+    /// 抽样：金额/数量/比率类回答**全判**，其余按比例；抽样是确定性的（同一编号每次同一结论）。
+    /// </summary>
+    [Fact]
+    public void 抽样对金额类全判且对普通回答是确定性的()
+    {
+        var limits = new AssistantJudgeLimitsOptions { SampleRatePct = 20, AmountSampleRatePct = 100 };
+
+        var amount = Transcript() with { ToolCalls = [new AssistantJudgeToolCall("resolve_metric", "x", true)] };
+        Assert.True(AssistantJudgeSampling.IsAmountRelated(amount));
+        Assert.True(AssistantJudgeSampling.ShouldJudge(amount, limits));
+
+        var plain = Transcript() with
+        {
+            MessageId = 7,
+            Question = "怎么新建一张销售订单？",
+            ToolCalls = [],
+        };
+        Assert.False(AssistantJudgeSampling.IsAmountRelated(plain));
+        // 确定性：同一编号多次询问得到同一结论（用随机数会让"再跑一次"变成另一种结果）
+        var first = AssistantJudgeSampling.ShouldJudge(plain, limits);
+        Assert.Equal(first, AssistantJudgeSampling.ShouldJudge(plain, limits));
+        // 0% 时一律不判
+        Assert.False(AssistantJudgeSampling.ShouldJudge(
+            plain, new AssistantJudgeLimitsOptions { SampleRatePct = 0, AmountSampleRatePct = 0 }));
+        // 100% 时一律判
+        Assert.True(AssistantJudgeSampling.ShouldJudge(
+            plain, new AssistantJudgeLimitsOptions { SampleRatePct = 100 }));
+    }
+
+    [Fact]
+    public void 回答超上限时提示词明确写出被截断()
+    {
+        var limits = new AssistantJudgeLimitsOptions { MaxAnswerChars = 10 };
+        var transcript = Transcript() with { Answer = new string('答', 50), AnswerTruncated = true };
+
+        var prompt = AssistantJudgePrompt.BuildUser(AssistantJudgeRubric.Current, transcript, limits);
+
+        Assert.Contains("被截断", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **同一份定义、两个入口**：回放用内存结果、看板用落库计数，四个数字必须一致。
+    /// 这条钉住"两处各算一遍"这种漂移（它是看板可信度的全部依据）。
+    /// </summary>
+    [Fact]
+    public async Task 落库计数与内存结果算出同一组数字()
+    {
+        var judge = new AssistantAnswerJudge(new StubJudgeModel(FullJson));
+        var outcome = await judge.JudgeAsync(Transcript(), new AssistantJudgeLimitsOptions(), CancellationToken.None);
+
+        var fromMemory = AssistantJudgeMetrics.From([outcome]);
+        var tallies = outcome.Verdicts
+            .GroupBy(verdict => verdict.Clause, StringComparer.Ordinal)
+            .Select(group => new AssistantJudgeClauseTally(
+                group.Key,
+                group.Count(v => v.Verdict == AssistantJudgeVerdicts.Pass),
+                group.Count(v => v.Verdict == AssistantJudgeVerdicts.Fail),
+                group.Count(v => v.Verdict == AssistantJudgeVerdicts.NotApplicable),
+                group.Count(v => v.Verdict == AssistantJudgeVerdicts.Unsure)))
+            .ToList();
+        var fromRows = AssistantJudgeMetrics.FromTallies(1, tallies);
+
+        Assert.Equal(fromMemory.CitationRate, fromRows.CitationRate);
+        Assert.Equal(fromMemory.ScopeRate, fromRows.ScopeRate);
+        Assert.Equal(fromMemory.OverreachCount, fromRows.OverreachCount);
+        Assert.Equal(fromMemory.UnsureRate, fromRows.UnsureRate);
+    }
+
+    /// <summary>
+    /// 判定的结论**不进阻断链、不进业务审计**（ADR-044 §2.4 / §9）。
+    ///
+    /// <para>
+    /// 这两条最容易在"顺手加个门禁/加条审计"时被破坏：CI 与发布脚本里出现 verdict 引用，
+    /// 或仓储层写了 <c>AUDIT_EVENT</c>，都会让本来只用于发现回归的指标变成权力。
+    /// 用源码扫描钉住，而不是靠评审记得。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void 判定结论不进阻断链也不进业务审计()
+    {
+        var root = FindRepoRoot();
+        foreach (var file in new[]
+                 {
+                     Path.Combine(root, ".github", "workflows", "ci.yml"),
+                     Path.Combine(root, "scripts", "release.ps1"),
+                 })
+        {
+            Assert.True(File.Exists(file), $"找不到流水线文件：{file}");
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("ASSISTANT_ANSWER_VERDICT", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("AssistantJudge", text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var repository = File.ReadAllText(Path.Combine(
+            root, "EOS.API", "Data", "Assistant", "AssistantVerdictRepository.cs"));
+        Assert.DoesNotContain("AUDIT_EVENT", repository, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IPermissionService", repository, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 看板区块：四个数字取自同一份定义，且**到上限要明说**。
+    /// 上限判定分两条（次数、成本），任一条到顶即 `capped`——判分停了却显示"没问题"正是要防的那件事。
+    /// </summary>
+    [Fact]
+    public void 看板区块给出四个数字并标出已达上限()
+    {
+        var summary = new EOS.API.Data.Assistant.AssistantVerdictSummary(
+            JudgedMessages: 2,
+            VerdictRows: 5,
+            Clauses:
+            [
+                new AssistantJudgeClauseTally("A", 3, 1, 0, 0),
+                new AssistantJudgeClauseTally("D", 0, 1, 0, 0),
+            ],
+            JudgeModels: ["stub/model-a"],
+            SpentMicroYuan: 2_000_000,
+            JudgeCalls: 4);
+
+        var block = EOS.API.Features.Assistant.Admin.AssistantAnswerQualityView.Build(
+            summary, new EOS.API.Data.AssistantLedgerDay(2_000_000, 4), new AssistantJudgeLimitsOptions());
+
+        Assert.Equal(2, block.Judged);
+        Assert.Equal(0.75, block.CitationRate);
+        Assert.Equal(1, block.OverreachCount);
+        Assert.Equal(2m, block.SpentYuan);
+        Assert.False(block.Capped);
+
+        // 成本到顶（5 元上限、已花 5 元）
+        var capped = EOS.API.Features.Assistant.Admin.AssistantAnswerQualityView.Build(
+            summary, new EOS.API.Data.AssistantLedgerDay(5_000_000, 4), new AssistantJudgeLimitsOptions());
+        Assert.True(capped.Capped);
+
+        // 次数到顶
+        var callsCapped = EOS.API.Features.Assistant.Admin.AssistantAnswerQualityView.Build(
+            summary, new EOS.API.Data.AssistantLedgerDay(0, 200), new AssistantJudgeLimitsOptions());
+        Assert.True(callsCapped.Capped);
+    }
+
     [Fact]
     public void 判官不碰权限也不写业务库()
-    {
-        // 红线（ADR-044 §2.2 / §11.4）：判官既不引权限服务，也不写业务表。
+    {        // 红线（ADR-044 §2.2 / §11.4）：判官既不引权限服务，也不写业务表。
         // 这条用源码扫描钉住——reflection 查不到"某天有人顺手加了一个仓库依赖"。
         var dir = Path.Combine(FindRepoRoot(), "EOS.API", "Features", "Assistant", "Quality");
         Assert.True(Directory.Exists(dir), $"找不到判官目录：{dir}");
@@ -222,11 +361,11 @@ public sealed class AssistantAnswerJudgeTests
 
         public bool FellBackToChat => fellBack;
 
-        public Task<string> CompleteAsync(string system, string user, CancellationToken token)
+        public Task<AssistantJudgeCompletion> CompleteAsync(string system, string user, CancellationToken token)
         {
             Assert.False(string.IsNullOrWhiteSpace(system));
             Assert.False(string.IsNullOrWhiteSpace(user));
-            return Task.FromResult(response);
+            return Task.FromResult(new AssistantJudgeCompletion(response, 100, 50, Estimated: false, CostYuan: 0.001));
         }
     }
 }
