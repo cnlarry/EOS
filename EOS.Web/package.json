@@ -17,7 +17,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
     "@tabler/core": "^1.6.1",
-    "@tabler/icons-react": "^3.48.0",
+    "@tabler/icons-react": "^3.50.0",
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-table": "^9.2.6",
     "@xyflow/react": "^12.12.0",
