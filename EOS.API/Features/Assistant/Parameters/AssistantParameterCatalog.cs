@@ -551,8 +551,9 @@ public static class AssistantParameterCatalog
             "JUDGE",
             "bit",
             null,
-            "后台按抽样对**已落库的回答**做条款级判定（ADR-044）。关掉即完全不判定；"
-            + "已落库的结论与看板数字保留，不会因此变成「没问题」。",
+            "后台按抽样对**已落库的回答**做条款级判定（ADR-044）。**默认关闭**（预览能力，"
+            + "供应商未连通时不判定却会每轮记失败）；需要时打开。关掉即完全不判定，已落库的结论"
+            + "与看板数字保留，不会因此变成「没问题」。",
             JudgeDefaults.Enabled ? "1" : "0",
             AssistantParameterScopePolicy.None,
             ["Enabled"]),

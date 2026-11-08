@@ -150,8 +150,11 @@ public sealed class AssistantKbLimitsOptions
 /// </summary>
 public sealed class AssistantJudgeLimitsOptions
 {
-    /// <summary>总开关。关掉即完全不判定（含后台扫描与手动触发），但已落库的结论与看板数字保留。</summary>
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// 总开关。默认关闭：判官是预览能力（ADR-044），供应商未连通时开着只会每轮记一次失败。
+    /// 需要时在 3105 打开；关掉即完全不判定（含后台扫描与手动触发），但已落库的结论与看板数字保留。
+    /// </summary>
+    public bool Enabled { get; set; } = false;
 
     /// <summary>普通回答的抽样比例（百分比）。金额/数量/比率类另有 <see cref="AmountSampleRatePct"/>。</summary>
     public int SampleRatePct { get; set; } = 20;

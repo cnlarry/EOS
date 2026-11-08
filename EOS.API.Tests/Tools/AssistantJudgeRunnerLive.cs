@@ -57,6 +57,8 @@ public sealed class AssistantJudgeRunnerLive
         // 抽样固定 100%、批量 2、窗口 30 天：小样本下要"一定判得到"，否则验不出落库
         var limits = new AssistantJudgeLimitsOptions
         {
+            // 默认值在 1.0.0 起改为关闭（预览能力）；这个工具要真跑一轮，必须显式打开。
+            Enabled = true,
             SampleRatePct = 100, AmountSampleRatePct = 100, BatchSize = 2, WindowDays = 30,
         };
         var runner = new AssistantJudgeRunner(
