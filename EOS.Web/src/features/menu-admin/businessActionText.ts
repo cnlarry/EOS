@@ -70,11 +70,6 @@ export interface MatchItem {
   source: { scope?: string | null; field?: string | null; table?: string | null }
 }
 
-export interface SourceTerm {
-  field: string
-  coef?: number
-}
-
 /** 表/字段显示名查询器：有中文元数据时显示「中文名(标识符)」，否则退回标识符本身。 */
 export interface BusinessNameLookup {
   /** 字段显示名（`中文名(列名)`）。 */

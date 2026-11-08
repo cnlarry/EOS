@@ -54,12 +54,6 @@ export function ensureReportId(existing?: string | null): string {
   return existing && existing.trim().length > 0 ? existing : newReportId()
 }
 
-/** 一行式报障编号，供提示条展示（编号是排障关联键，必须完整给出、可复制）。 */
-export function describeReportId(error: unknown): string | undefined {
-  const id = reportIdOf(error)
-  return id ? `报障编号：${id}` : undefined
-}
-
 export function formatDiagnostics(info: AppInfo, reportId?: string, detail?: string): string {
   const lines = [
     '【EOS 诊断信息】',

@@ -4,7 +4,6 @@ import type {
   ApprovalRequestAction,
   ApprovalRequestPayload,
   AssistantApplyResult,
-  AssistantApprovalRequestPreview,
   AssistantConfigApplyResult,
   AssistantConfigDiff,
   AssistantMemoryList,
@@ -130,14 +129,6 @@ export function applyChangeset(changeset: unknown) {
  */
 export function previewRecordAction(payload: AssistantRecordActionPayload) {
   return apiClient.post<AssistantRecordActionPreview>('/assistant/record-actions/preview', payload)
-}
-
-/**
- * 操作请求卡：重算逐行判定（只读）。与模型调用是同一段服务端代码、同一份参数契约，
- * 因此卡上"重算"出来的结论与助手先前说的是同一个东西。
- */
-export function previewApprovalRequest(payload: ApprovalRequestPayload) {
-  return apiClient.post<AssistantApprovalRequestPreview>('/assistant/approval-requests/preview', payload)
 }
 
 /**

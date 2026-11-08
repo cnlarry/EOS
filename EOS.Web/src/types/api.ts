@@ -1,8 +1,3 @@
-export interface PageRequest {
-  page: number
-  pageSize: number
-}
-
 export interface PageResponse<T> {
   items: T[]
   page: number
@@ -16,12 +11,6 @@ export interface ApiFieldError {
   code: string
   /** 明细行错误行号（0 起）；主表/整单级错误为 null */
   rowIndex?: number | null
-}
-
-/** 保存成功但存在后续异常时的非阻断告警 */
-export interface ApiSaveWarning {
-  code: string
-  message: string
 }
 
 export interface ApiErrorBody {

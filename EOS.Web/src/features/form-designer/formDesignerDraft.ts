@@ -416,18 +416,6 @@ export function resetRow(draft: DesignDraft, table: DesignTable, key: string): D
   return withRows(draft, table, table === 'master' ? normalizeMaster(next) : renumber(next, 'detail'))
 }
 
-/** 重置为默认版式：完全回到推导结果（由后端删行后重新推导）。 */
-export function resetAll(draft: DesignDraft): DesignDraft {
-  return {
-    ...draft,
-    tabs: normalizeTabs([{ no: RESIDENT_TAB_NO, title: '' }]),
-    master: cloneRows(draft.baseline.master),
-    detail: cloneRows(draft.baseline.detail),
-    masterPool: draft.masterPool,
-    detailPool: draft.detailPool,
-  }
-}
-
 export function toSavePayload(
   draft: DesignDraft,
   baseUpdatedAt: string | null,

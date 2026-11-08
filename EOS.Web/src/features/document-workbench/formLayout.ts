@@ -1,5 +1,3 @@
-import type { FormFieldDefinition } from './formDefinition'
-
 /**
  * 版式行：字段在表单上的位置与占位。与服务端 FormLayoutRow 同形（模块级版式的编译产物）。
  * 明细是网格不是格版式，只消费 key/orderNo/hidden 三项（见 FormDetailLayoutRow）。
@@ -27,13 +25,6 @@ export interface FormDetailLayoutRow {
 export interface FormTabRow {
   no: number
   title: string
-}
-
-/** 版式文档（推导结果 / 设计态草稿的形状）。 */
-export interface FormLayoutDoc {
-  /** 页签集合；空列表表示"未配置页签"，渲染侧兜底为单页签「默认」（不写库）。 */
-  tabs: FormTabRow[]
-  rows: FormLayoutRow[]
 }
 
 /** 行跨度上限：三行约 78px，更高的诉求改用多行文本控件高度。 */
@@ -74,13 +65,6 @@ export function resolveTabColumns(
   tabNo: number,
 ): number {
   return resolveFormColumns(tabs?.find(tab => tab.no === tabNo)?.columns)
-}
-
-/** 备注类/长文本字段：整行独占且占两行高（与服务端同一判据）。 */
-export function isWideTextField(field: Pick<FormFieldDefinition, 'key' | 'dataType'>): boolean {
-  const type = (field.dataType ?? '').toLowerCase()
-  if (type === 'text' || type === 'ntext') return true
-  return /REMARK$/i.test(field.key)
 }
 
 /** 版式行 → 明细版式行（明细只保留列顺序与列显隐）。 */
@@ -341,7 +325,3 @@ function packCellsInSection<T extends PackableCell>(cells: T[][], columns: numbe
 }
 
 
-
-export function buildFormCells(fields: FormFieldDefinition[]): FormFieldDefinition[][] {
-  return buildPackedCells(fields)
-}

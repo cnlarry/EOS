@@ -144,25 +144,6 @@ export interface RightsModuleFields {
   detailFields: RightsFieldInfo[]
 }
 
-export interface EffectiveRightsDetail {
-  source: RightsSource
-  execTag: string
-  canBrowse: boolean
-  canAddNew: boolean
-  canEdit: boolean
-  canDelete: boolean
-  canViewCost: boolean
-  canViewSecrecy: boolean
-  canSetup: boolean
-  deniedMasterFields: string[]
-  deniedDetailFields: string[]
-  denyNewMasterFields: string[]
-  denyNewDetailFields: string[]
-  denyModiMasterFields: string[]
-  denyModiDetailFields: string[]
-  dataFilter: string
-}
-
 export type DenyFieldKey = 'denyViewMaster' | 'denyViewDetail' | 'denyNewMaster' | 'denyNewDetail' | 'denyModiMaster' | 'denyModiDetail'
 
 export const BASIC_RIGHTS: { key: keyof Omit<ModuleRightsInput, 'moduleId' | 'execTag' | 'denyViewMaster' | 'denyViewDetail' | 'denyNewMaster' | 'denyNewDetail' | 'denyModiMaster' | 'denyModiDetail' | 'dataFilter'>; label: string }[] = [

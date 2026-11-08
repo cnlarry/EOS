@@ -9,10 +9,6 @@ export interface TabDirtyHandlers {
   discard: () => void
 }
 
-export interface TabDirtyEntry extends TabDirtyHandlers {
-  dirty: boolean
-}
-
 export interface WorkspaceDirtyValue {
   /** 登记某标签的处置动作，返回注销函数 */
   register: (tabId: string, handlers: TabDirtyHandlers) => () => void

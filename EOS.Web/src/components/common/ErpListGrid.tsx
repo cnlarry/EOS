@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react'
 import type { ColumnDef, RowData, RowSelectionState, SortingState } from '../../lib/tanstackTable'
-import { EmptyState, ErrorState, LoadingState } from './AsyncState'
+import { ErrorState, LoadingState } from './AsyncState'
 import { ErpListCard } from './ErpListCard'
 import { ErpPagination } from './ErpPagination'
 import { ErpTable, type ErpTableProps } from './ErpTable'
@@ -178,7 +178,4 @@ export function ErpListGrid<TData extends RowData>({
   )
 }
 
-/** 列表空态的统一写法：省得每页各写一份 `<EmptyState>` 的属性 */
-export function listEmpty(title: string, description?: string) {
-  return <EmptyState title={title} description={description} />
-}
+

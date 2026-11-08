@@ -47,7 +47,3 @@ export function pushRecentSearch(entry: Omit<RecentSearch, 'at'>): RecentSearch[
   return next
 }
 
-export function clearRecentSearches(): RecentSearch[] {
-  writeJson(RECENT_KEY, [])
-  return []
-}
