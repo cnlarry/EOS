@@ -21,6 +21,8 @@ public sealed class AssistantQualityAlertsTests
         int citationMin = 80, int unsureMax = 40, int minSamples = 10) =>
         new()
         {
+            // 判官默认关闭（1.0.0 预览能力）；告警判定要测"开着但指标健康"，这里显式打开。
+            Enabled = true,
             AlertCitationMinPct = citationMin,
             AlertUnsureMaxPct = unsureMax,
             AlertMinSamples = minSamples,

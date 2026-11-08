@@ -211,7 +211,7 @@ public sealed class AssistantParameterCatalogTests
             ["TOOL_LIMIT_REFERENCE_MAX"] = "12",
             ["TOOL_LIMIT_METADATA_SEARCH_MAX"] = "21",
             ["TOOL_LIMIT_BRIEF_MAX_FIELDS"] = "25",
-            ["JUDGE_ENABLED"] = "0",
+            ["JUDGE_ENABLED"] = "1",
             ["JUDGE_SAMPLE_RATE_PCT"] = "21",
             ["JUDGE_AMOUNT_SAMPLE_RATE_PCT"] = "99",
             ["JUDGE_MAX_QUESTION_CHARS"] = "2001",
