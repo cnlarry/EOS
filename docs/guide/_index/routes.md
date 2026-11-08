@@ -1,4 +1,4 @@
-<!-- code-map-fingerprint: 9faf98c71899f373 -->
+<!-- code-map-fingerprint: 73888d462afa5222 -->
 # 代码地图（路由与页面）
 
 > 本文件由 [`scripts/gen-code-map.ps1`](../../../scripts/gen-code-map.ps1) **生成**，不要手改；
@@ -11,7 +11,7 @@
 
 ## 一、后端路由
 
-- 控制器 42 个、方法级路由属性 303 处、解析出 303 条（两者必须相等，否则 `-Check` 报 FAIL）。
+- 控制器 42 个、方法级路由属性 306 处、解析出 306 条（两者必须相等，否则 `-Check` 报 FAIL）。
 
 | 方法 | 路径 | 处理函数 | 文件 |
 |---|---|---|---|
@@ -38,6 +38,9 @@
 | PUT | `api/v1/admin/assistant/providers/{providerId:int}` | UpdateProvider | `AssistantAdminController.cs` |
 | PUT | `api/v1/admin/assistant/providers/{providerId:int}/key` | SetProviderKey | `AssistantAdminController.cs` |
 | GET | `api/v1/admin/assistant/quality` | Get | `AssistantQualityController.cs` |
+| GET | `api/v1/admin/assistant/quality/calibration` | Calibration | `AssistantQualityController.cs` |
+| POST | `api/v1/admin/assistant/quality/judge` | Judge | `AssistantQualityController.cs` |
+| GET | `api/v1/admin/assistant/quality/verdicts` | Verdicts | `AssistantQualityController.cs` |
 | GET | `api/v1/admin/assistant/sessions` | ListSessions | `AssistantAdminController.cs` |
 | DELETE | `api/v1/admin/assistant/sessions/{sessionId:long}` | DeleteSession | `AssistantAdminController.cs` |
 | PUT | `api/v1/admin/assistant/sessions/{sessionId:long}/archive` | ArchiveSession | `AssistantAdminController.cs` |
