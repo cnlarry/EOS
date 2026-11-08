@@ -26,13 +26,14 @@ public sealed class WorkbenchDefinitionBuilder(
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
 
     /// <summary>
-    /// 过账引擎可能要求、因此必须出现在明细表单里的维度列（与"必填"同款处理）：
-    /// 位置档 3 的库别要求指明库位，管批次的料号（`MANAGE_BATCH=1` 或批次档 2）要求批号。
-    /// 判据在引擎侧，而这两列是否进表单取决于用户的「选择列」配置——不补进表单，
-    /// 用户就会遇到「引擎要求填、界面没有格子」的死结。
+    /// 过账引擎或保存管线要求、因此必须出现在明细表单里的列（与"必填"同款处理）：
+    /// 位置档 3 的库别要求指明库位，管批次的料号（`MANAGE_BATCH=1` 或批次档 2）要求批号；
+    /// 项次（`SERIAL_NO`）是明细行身份——保存管线靠它给新行编号、下游单据靠它引用行，
+    /// 缺了它 INSERT 就会漏列。判据在引擎/保存管线侧，而这些列是否进表单取决于用户的
+    /// 「选择列」配置——不补进表单，用户就会遇到「引擎要求填、界面没有格子」的死结。
     /// </summary>
     private static readonly HashSet<string> RuntimeRequiredDetailColumns =
-        new(StringComparer.OrdinalIgnoreCase) { "LOCATION_NO", "BATCH_NO" };
+        new(StringComparer.OrdinalIgnoreCase) { "LOCATION_NO", "BATCH_NO", "SERIAL_NO" };
 
     private SqlConnection CreateConnection()=>connections.Create();
     /// <summary>
