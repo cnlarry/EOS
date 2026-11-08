@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Query;
 
 /// <summary>
 /// 引用数据的批核门槛：**任何被引用的外部数据，只要来源表有 APPROVED 列，就只能是已批核的行**。

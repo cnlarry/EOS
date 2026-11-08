@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Query;
 using EOS.API.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
