@@ -33,12 +33,6 @@ public static class DiagnosisClasses
     public const string Unknown = "unknown";
 }
 
-/// <summary>一次诊断的请求（主键可缺省：由页面处境推断，调用方负责补齐）。</summary>
-public sealed record DiagnosisRequest(
-    int ModuleId,
-    IReadOnlyList<string> Keys,
-    IReadOnlyList<string> AttemptedFields);
-
 /// <summary>诊断上下文：定义与权限结果由调用方（工具）在同一轮里取一次，避免重复授权与重复取定义。</summary>
 public sealed record DiagnosisContext(
     WorkbenchDefinition Definition,
