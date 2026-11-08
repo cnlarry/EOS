@@ -47,6 +47,8 @@ pwsh scripts/release.ps1 -DryRun -BuildOutput "$env:TEMP\eos-release-build"
 - **`版本：X → Y（依据：minor/patch）`** —— 判定依据是自上个标签以来的**提交类型**
   （`feat`→MINOR；`fix`/`perf`→PATCH；`refactor`/`docs`/`chore` 等不单独涨）。
   判定不合预期时不要硬改，先看是不是有提交写错了类型。
+- **跨到 1.0.0 必须显式 `-Bump major`**：`-Bump auto` 在 `0.x` 期间仍按 MINOR 表达 BREAKING
+  （ADR-026 §2.6），这是有意的——自动判定不替人做"产品进入稳定期"的决定。
 - **`本版含迁移 A–B（共 N 个）`** 或 **`本版不含迁移`** —— 这行会进 CHANGELOG 草稿与 Release 说明。
 
 **首次发布（仓库无任何 `v*` 标签）**：脚本走"基线版"分支——不生成全历史草稿、版本取 `version.json` 现值，

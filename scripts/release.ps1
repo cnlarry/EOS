@@ -225,8 +225,10 @@ function Step-Version([string]$current) {
         Skip '自上次发布以来没有 feat/fix/perf 提交——按 ADR-026 §2.6 无需升版本'
         return $current
     }
-    if ($suggested -eq 'major' -and $major -eq 0) {
-        Write-Host '  提交含 BREAKING：0.x 期间按 MINOR 表达（ADR-026 §2.6）' -ForegroundColor Yellow
+    # 0.x 期间的 BREAKING 默认按 MINOR 表达（ADR-026 §2.6）；但显式 -Bump major 是主动跨到
+    # 1.0.0 的唯一入口，不能被这条自动规则吞掉（自动判定与人工决定必须分开）。
+    if ($suggested -eq 'major' -and $major -eq 0 -and $Bump -eq 'auto') {
+        Write-Host '  提交含 BREAKING：0.x 期间按 MINOR 表达（ADR-026 §2.6）；确需 1.0.0 请显式 -Bump major' -ForegroundColor Yellow
         $suggested = 'minor'
     }
     switch ($suggested) {
@@ -315,12 +317,13 @@ function Step-ChangelogSection($subjects, [string]$version, [string]$previousTag
 
 # README 项目状态行里的版本引用。README 要给读者一个版本号，而版本真源是 version.json；
 # 两者由"发布时在这里改写 + check-docs.ps1 校验一致"绑定，手写就必然漂移。
-# 格式固定为「项目状态：早期开发阶段（vX.Y.Z）」——正则要能解析，改格式会让发布失败。
+# 格式固定为「项目状态：<短语>（vX.Y.Z）」——**只锁括号里的版本号，短语随产品阶段自由改写**。
+# （此前正则把"早期开发阶段"写死，1.0.0 改文案时发布与校验会一起失败。）
 #
 # 首尾拆成 head/tail 两组：`-replace` 替换的是**整个匹配**，替换串必须把首尾原样拼回去
-# （曾经只写 `v${version}`，于是"项目状态：早期开发阶段（"和"）"被整段吃掉），
+# （曾经只写 `v${version}`，于是"项目状态：……（"和"）"被整段吃掉），
 # 而替换串里的 `${version}` 是 .NET 的**捕获组**（旧号），不是 PowerShell 的新号——两个坑叠在一起。
-$readmeVersionPattern = '(?<head>项目状态：早期开发阶段（v)(?<version>\d+\.\d+\.\d+)(?<tail>）)'
+$readmeVersionPattern = '(?<head>项目状态：[^（\r\n]*（v)(?<version>\d+\.\d+\.\d+)(?<tail>）)'
 
 function Step-ReadmeVersion([string]$version) {
     if (-not (Test-Path $readmeFile)) {
@@ -328,19 +331,22 @@ function Step-ReadmeVersion([string]$version) {
         return
     }
     $readme = Get-Content -Raw -Encoding utf8 $readmeFile
-    if ($readme -notmatch $readmeVersionPattern) {
-        Fail "README.md 里找不到版本引用（期望「项目状态：早期开发阶段（v$version）」）——格式被改过就同步不了，先改回再发布"
+    $original = [regex]::Match($readme, $readmeVersionPattern)
+    if (-not $original.Success) {
+        Fail "README.md 里找不到版本引用（期望「项目状态：<短语>（vX.Y.Z）」）——格式被改过就同步不了，先改回再发布"
         return
     }
     # 单引号给出 .NET 的具名组引用，$version 走 PowerShell 插值给出新号。
     # head 组里已经含那个 "v"，这里不能再补一个（补了会得到"（vv9.10.0）"）。
     $updated = $readme -replace $readmeVersionPattern, ('${head}' + $version + '${tail}')
-    # 落盘前自检：把改写后的整段拿出来与期望串逐字比对。这类"整段替换"写错会静默吃掉正文
+    # 落盘前自检：只允许版本号变，短语与括号必须逐字不动。这类"整段替换"写错会静默吃掉正文
     # 或多拼一个字符，而替换动作本身不会报错——只比对版本号数字的话，多一个 v 是查不出来的。
     $check = [regex]::Match($updated, $readmeVersionPattern)
-    $expected = "项目状态：早期开发阶段（v$version）"
-    if (-not $check.Success -or $check.Value -ne $expected) {
-        Fail "README.md 改写后不是「$expected」（实际匹配到「$($check.Value)」）——**未写盘**，请检查版本引用格式"
+    if (-not $check.Success -or
+        $check.Groups['version'].Value -ne $version -or
+        $check.Groups['head'].Value -ne $original.Groups['head'].Value -or
+        $check.Groups['tail'].Value -ne $original.Groups['tail'].Value) {
+        Fail "README.md 改写后版本引用不符合预期（实际匹配到「$($check.Value)」）——**未写盘**，请检查版本引用格式"
         return
     }
     if ($DryRun) { Skip "README.md 版本引用（DryRun 未改写）：→ v$version"; return }
@@ -415,7 +421,7 @@ try {
         if ($script:exitCode -eq 0) {
             $readmeMatch = [regex]::Match((Get-Content -Raw -Encoding utf8 $readmeFile), $readmeVersionPattern)
             if (-not $readmeMatch.Success) {
-                Fail "README.md 里找不到版本引用（期望「项目状态：早期开发阶段（v$repoVersion）」）"
+                Fail "README.md 里找不到版本引用（期望「项目状态：<短语>（v$repoVersion）」）"
             } elseif ($readmeMatch.Groups['version'].Value -ne $repoVersion) {
                 Fail "README.md 写的是 v$($readmeMatch.Groups['version'].Value)，与 version.json 的 $repoVersion 不一致——别手改，跑 release.ps1 同步"
             }

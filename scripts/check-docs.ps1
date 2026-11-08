@@ -153,10 +153,10 @@ if (Test-Path $readmePath) {
 $versionPath = Join-Path $root 'version.json'
 if ($null -ne $readme -and (Test-Path $versionPath)) {
     $repoVersion = ([string](Get-Content -Raw -Encoding UTF8 $versionPath | ConvertFrom-Json).version).Trim()
-    # 格式写死成"（vX.Y.Z）"：机器要能解析，所以别改成别的写法
-    $match = [regex]::Match($readme, '项目状态：早期开发阶段（v(?<version>\d+\.\d+\.\d+)）')
+    # 只锁括号里的"（vX.Y.Z）"：状态短语可随产品阶段改写，版本号必须能被机器解析
+    $match = [regex]::Match($readme, '项目状态：[^（\r\n]*（v(?<version>\d+\.\d+\.\d+)）')
     if (-not $match.Success) {
-        $errors.Add("README.md 找不到版本引用（期望「项目状态：早期开发阶段（v$repoVersion）」）——版本要能被机器校验，格式别改")
+        $errors.Add("README.md 找不到版本引用（期望「项目状态：<短语>（v$repoVersion）」）——版本要能被机器校验，格式别改")
     } elseif ($match.Groups['version'].Value -ne $repoVersion) {
         $errors.Add("README.md 写的是 v$($match.Groups['version'].Value)，而 version.json 是 $repoVersion" +
                     "——发布脚本会同步，手工只改一边即漂移")
