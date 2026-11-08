@@ -9,7 +9,18 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const require = createRequire(import.meta.url)
-const pwCorePath = process.env.PW_CORE_PATH || join(process.env.TEMP || '.', 'pw-core', 'node_modules', 'playwright-core')
+// playwright-core 不随仓库安装：优先用显式路径，再按本机既有安装位置兜底。
+const pwCandidates = [
+  process.env.PW_CORE_PATH,
+  join(process.env.TEMP || '.', 'eos-pw', 'node_modules', 'playwright-core'),
+  join(process.env.TEMP || '.', 'eos-ui-verify', 'node_modules', 'playwright-core'),
+  join(process.env.TEMP || '.', 'pw-core', 'node_modules', 'playwright-core'),
+].filter(Boolean)
+const pwCorePath = pwCandidates.find((candidate) => existsSync(candidate))
+if (!pwCorePath) {
+  console.error('找不到 playwright-core：请设置 PW_CORE_PATH，或把 playwright-core 装到 node_modules。')
+  process.exit(2)
+}
 const { chromium } = require(pwCorePath)
 
 const baseUrl = process.argv[2] || 'http://localhost:5173'

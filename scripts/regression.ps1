@@ -116,7 +116,9 @@ if (-not $SkipUnit) {
     $artifacts = Join-Path $OutDir "artifacts-unit"
     [void](Invoke-NativeStep -Name '单测 dotnet test' -StepLog $log -Body {
         # --artifacts-path 把构建输出重定向到独立目录，避免与正在运行的 EOS.API 进程争用默认 bin
-        dotnet test (Join-Path $root 'EOS.API.Tests\EOS.API.Tests.csproj') --nologo -v minimal --filter 'Category!=Live' --artifacts-path $artifacts
+        # 真库用例要跑（Category=Integration），人工工具（Category=Tool，需真实模型密钥）必须排除；
+        # 早先写的是 Category!=Live——那个 trait 不存在，等于把 Tool 也跑了进来。
+        dotnet test (Join-Path $root 'EOS.API.Tests\EOS.API.Tests.csproj') --nologo -v minimal --filter 'Category!=Tool' --artifacts-path $artifacts
     })
 }
 
