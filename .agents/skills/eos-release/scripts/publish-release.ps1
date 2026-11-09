@@ -200,7 +200,10 @@ if (-not $script:failed -and -not $VerifyOnly -and $CreateRelease) {
     else {
         $endIndex = $lines.Count - 1
         for ($i = $startIndex + 1; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^##\s*\[' -or $lines[$i] -match '^\[') { $endIndex = $i - 1; break }
+            # 只认"下一个版本节"或"版本链接定义"（`[1.0.0]: https://...`）作结束；
+            # 不能用 `^\[`：正文里的行内链接若恰好换行到行首（如 `[ADR-047](...)`），
+            # 会把 Release 说明从中间截断——v1.0.0 实际踩过一次。
+            if ($lines[$i] -match '^##\s*\[' -or $lines[$i] -match '^\[\d+\.\d+\.\d+\]:') { $endIndex = $i - 1; break }
         }
         $section = ($lines[$startIndex..$endIndex] -join "`n").Trim()
         $notes = "# EOS $tag`n`n$section"
