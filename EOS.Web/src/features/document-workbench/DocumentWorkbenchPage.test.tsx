@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { ToastProvider } from '../../components/ui/Toast'
 import { useAuth } from '../auth/authContext'
+import { WORKBENCH_SPLIT_KEY } from '../../lib/storageKeys'
 import { DocumentWorkbenchPage } from './DocumentWorkbenchPage'
 
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
@@ -130,6 +131,7 @@ async function loaded() {
 
 describe('DocumentWorkbenchPage', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
     FakeIntersectionObserver.instances = []
     vi.mocked(useAuth).mockReturnValue({ bootstrap: null, loading: false, login: vi.fn(), logout: vi.fn(), hasPermission: () => true })
@@ -699,6 +701,22 @@ describe('DocumentWorkbenchPage', () => {
     const { container } = renderPage()
     await loaded()
     expect(container.querySelector('.erp-workbench-page')).not.toHaveClass('erp-workbench-single')
+  })
+
+  it('子表卡上方有高度分割条，已保存的比例应用到明细卡', async () => {
+    localStorage.setItem(WORKBENCH_SPLIT_KEY, '0.42')
+    renderPage()
+    await loaded()
+    expect(screen.getByRole('separator', { name: '调整主表与明细高度' })).toBeInTheDocument()
+    const card = document.querySelector('.erp-detail-card') as HTMLElement
+    expect(card.style.flexBasis).toBe('42%')
+  })
+
+  it('单表模块不渲染高度分割条', async () => {
+    installApiMocks({ definition: { ...definition, detailTable: undefined } })
+    renderPage()
+    await loaded()
+    expect(screen.queryByRole('separator', { name: '调整主表与明细高度' })).not.toBeInTheDocument()
   })
 
 })

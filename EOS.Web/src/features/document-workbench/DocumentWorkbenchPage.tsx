@@ -12,10 +12,13 @@ import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpC
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
+import { ErpSplitHandle } from '../../components/common/ErpSplitHandle'
 import type { RangeSummary } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toastContext'
 import { useColumnWidthSaver } from '../../hooks/useColumnWidthSaver'
+import { useVerticalSplit } from '../../hooks/useVerticalSplit'
+import { WORKBENCH_SPLIT_KEY } from '../../lib/storageKeys'
 import { apiClient } from '../../services/api'
 import { moduleReadPermission } from '../auth/modulePermissions'
 import { ApiError } from '../../types/api'
@@ -98,6 +101,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
   const [fitting,setFitting]=useState(false)
   /** 选区数值摘要（Excel 状态栏的等价物）：选一块单元格后显示合计/平均 */
   const [rangeSummary,setRangeSummary]=useState<RangeSummary|null>(null)
+  /** 主表 / 明细的高度分配：拖动两卡之间的分割条调整，比例存本机（没拖过时沿用 app.css 的默认档位） */
+  const split=useVerticalSplit(WORKBENCH_SPLIT_KEY)
   const [selected,setSelected]=useState<Record<string,Record<string,unknown>>>({})
   const [activeKey,setActiveKey]=useState<string|null>(null)
   const [sort,setSort]=useState<SortingState>(initialState.sort)
@@ -611,7 +616,9 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
         loadingMore:records.isFetchingNextPage,
       }}
     />
-    {definition.data.detailTable&&<section className="card erp-detail-card">
+    {definition.data.detailTable&&<>
+      <ErpSplitHandle split={split} />
+      <section className="card erp-detail-card" style={split.bottomStyle}>
       <div className="card-header erp-card-toolbar">
         <span className="small fw-semibold text-secondary text-nowrap">明细</span>
         {active&&masterDescribe?(<div className="small text-truncate" title={masterDescribe}>{masterDescribe}</div>):(<span className="small text-secondary text-nowrap">选择主表行查看明细</span>)}
@@ -632,7 +639,8 @@ export function DocumentWorkbenchPage({ underlay = false }: { underlay?: boolean
           // 子表列顺序同样是个人列配置：拖列头即改「选择列」里子表字段的上下顺序
           onColumnsReorder:handleDetailColumnsReorder,
         }}
-      />}</section>}
+      />}</section>
+    </>}
     {columnsOpen&&<ErpColumnSelector
       open
       groups={columnGroups}

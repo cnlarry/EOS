@@ -1966,6 +1966,37 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-base-page > .erp-detail-card { flex: 0 0 30%; min-height: 150px; max-height: 260px; display: flex; flex-direction: column; overflow: hidden; }
 .erp-base-page > .erp-detail-card .erp-table-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
 .erp-base-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow: visible; border-radius: var(--tblr-border-radius); }
+/* 主表 / 明细之间的高度分割条：整条叠在两卡之间的 10px 间隙里（负 margin 抵消 flex gap），
+   **不额外占高度**。悬停 / 聚焦 / 拖动时中线亮起，光标为上下调整。
+   拖动后的比例由 useVerticalSplit 写在明细卡的内联 flex-basis 上；没拖过时不写任何内联样式，
+   仍然沿用上面那条默认分配（主表占剩余高度、明细卡 30%/150~260px）。 */
+.erp-split-handle {
+  position: relative;
+  flex: 0 0 auto;
+  height: 14px;
+  margin-block: -12px;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+}
+.erp-split-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 2px;
+  margin: -1px 0 0 -32px;
+  border-radius: 1px;
+  content: '';
+  background: var(--tblr-border-color);
+  transition: background-color .12s ease;
+}
+.erp-split-handle:hover::after,
+.erp-split-handle:focus-visible::after,
+.erp-split-handle-active::after { background: var(--tblr-primary); }
+.erp-split-handle:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -4px; border-radius: 4px; }
+/* 拖动中：全局上下调整光标 + 禁止选中（与列宽拖拽的 .erp-col-resizing 同一手法） */
+.erp-row-resizing, .erp-row-resizing * { cursor: row-resize !important; user-select: none !important; }
 /* 工作台「分组」下拉：这个类名被 JS 当作「点击到外区域就收起」的判据
    （DocumentWorkbenchPage 的 closest('.erp-group-dropdown')），删不得——这里补上显式定义，
    兼作下拉的定位锚点（Tabler 的 .dropdown 也给了相对定位，但不该靠第三方类兜住自家判据） */

@@ -35,3 +35,9 @@ export function workspaceTabsKey(userId: string): string {
 
 /** 工作区多标签特性开关：置为 `off` 即回退到单标签行为（默认开启）。 */
 export const WORKSPACE_TABS_ENABLED_KEY = 'erp-workspace-tabs-enabled'
+
+/**
+ * 统一工作台「主表 / 明细」的高度比例（拖动分割条后写入，0~1 的小数）。
+ * 没有这条记录 = 沿用 app.css 的默认分配（主表占剩余高度、明细卡 30%/150~260px）。
+ */
+export const WORKBENCH_SPLIT_KEY = 'erp-workbench-split'
